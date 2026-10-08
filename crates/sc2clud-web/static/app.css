@@ -338,7 +338,7 @@ footer { color: var(--muted); font-size: 12px; text-align: center; padding: 14px
   text-overflow: ellipsis; white-space: nowrap; vertical-align: middle;
 }
 .admin-table.users .user-name {
-  display: inline-block; max-width: 15em; overflow: hidden;
+  display: inline-block; max-width: 100%; overflow: hidden;
   text-overflow: ellipsis; white-space: nowrap; vertical-align: middle;
 }
 /* 卡片/列表里的作者名同样收口（保留头像，只截文字） */
@@ -406,15 +406,20 @@ footer { color: var(--muted); font-size: 12px; text-align: center; padding: 14px
 /* 名称列：**不要**把 td 设成 flex——那会让表格单元尺寸失控（徽标被挤掉、名字重叠）。
    内层用 span 容器承载 flex 布局。 */
 .admin-table.users td.name-cell { white-space: nowrap; }
-.name-wrap { display: inline-flex; align-items: center; gap: 8px; vertical-align: middle; }
+.name-wrap { display: inline-flex; align-items: center; gap: 8px; vertical-align: middle; max-width: 100%; }
+.admin-table.users td.name-cell { overflow: hidden; }
 .admin-table.users td.name-cell .user-name { font-weight: 600; }
+/* 列宽用「固定表格布局」精确分配：
+ * 操作列要塞下 5 个 32px 按钮（5×32 + 4×8 = 192px），168px 装不下就会重叠、
+ * 表格总宽还会超出面板导致最右边被裁掉（踩过）。 */
+.admin-table.users { table-layout: fixed; width: 100%; }
 .admin-table.users td { padding: 12px 10px; }
 .admin-table.users th:nth-child(1) { width: 24%; }
-.admin-table.users th:nth-child(2) { width: 158px; }
+.admin-table.users th:nth-child(2) { width: 152px; }
 .admin-table.users th:nth-child(3) { width: 24%; }
-.admin-table.users th:nth-child(4) { width: 132px; }
-.admin-table.users th:nth-child(5) { width: 124px; }
-.admin-table.users th:nth-child(6) { width: 168px; text-align: right; }
+.admin-table.users th:nth-child(4) { width: 124px; }
+.admin-table.users th:nth-child(5) { width: 112px; }
+.admin-table.users th:nth-child(6) { width: 208px; text-align: right; }
 .admin-table.users .role-badge { background: #eef2f8; color: #46536b; }
 [data-theme='dark'] .admin-table.users .role-badge { background: #1e2937; color: #9fb0c8; }
 [data-theme='dark'] .admin-table.users .role-badge.role-super { background: #3a2122; color: #f0a9a4; }
@@ -808,7 +813,7 @@ html[data-post-view='card'] .post-list { display: none; }
 .dot.on { background: #2f9e6f; box-shadow: 0 0 0 3px rgba(47,158,111,.18); }
 .dot.off { background: #c9d2df; }
 /* 操作列：一行排开，别换行——换行会把行高撑起来，看着就是「没对齐」 */
-.row-actions { display: flex; align-items: center; justify-content: flex-start; gap: 8px; flex-wrap: nowrap; }
+.row-actions { display: flex; align-items: center; justify-content: flex-end; gap: 8px; flex-wrap: nowrap; }
 .icon-btn {
   display: inline-grid; place-items: center; width: 30px; height: 30px; border-radius: 8px;
   border: 1px solid var(--line); background: var(--card); color: var(--muted); cursor: pointer;
