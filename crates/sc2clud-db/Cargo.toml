@@ -9,6 +9,7 @@ description = "SQLite（WAL）元数据库访问层：连接参数、迁移与�
 [dependencies]
 sc2clud-core.workspace = true
 sqlx = { version = "0.8.6", default-features = false, features = ["runtime-tokio", "sqlite", "migrate", "macros"] }
+tracing = "0.1.44"
 
 [dev-dependencies]
 tempfile = "3.27.0"

@@ -1,0 +1,53 @@
+{% extends "base.html" %}
+
+{% block title %}{{ post.title }} · {{ site_name }}{% endblock %}
+
+{% block content %}
+<section class="card">
+  <div class="head" style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px">
+    <span class="kind kind-{{ post.kind }}">{{ post.kind_label }}</span>
+    {% if post.state != "approved" %}<span class="kind state-{{ post.state }}">{{ post.state_label }}</span>{% endif %}
+  </div>
+  <h1 style="margin:0 0 8px;font-size:22px;line-height:1.4">{{ post.title }}</h1>
+  <div class="meta">{{ post.author }} · {{ post.author_role_label }} · {{ post.created_at }}
+    {% if post.image_count > 0 %} · {{ post.image_count }} 张图{% endif %}</div>
+  {% if let Some(note) = post.review_note %}
+  <p class="alert" style="margin-top:12px">审核备注：{{ note }}</p>
+  {% endif %}
+  <p class="post-body">{{ post.body }}</p>
+  <div class="actions-inline" style="margin-top:18px">
+    <a class="btn ghost" href="/">返回首页</a>
+    {% if is_staff %}
+    <span class="hint">你是管理员：可见审核状态「{{ post.state_label }}」</span>
+    {% endif %}
+  </div>
+</section>
+
+<section class="card">
+  <h2>回复 <span class="count">{{ comments.len() }}</span><span class="spacer">回复不带图</span></h2>
+  {% if comments.is_empty() %}
+  <p class="empty">还没有回复。</p>
+  {% else %}
+  <div class="comments">
+    {% for c in comments %}
+    <div class="comment">
+      <div class="who">{{ c.author }}</div>
+      <p>{{ c.body }}</p>
+      <time class="meta" datetime="{{ c.created_at }}">{{ c.created_at }}</time>
+    </div>
+    {% endfor %}
+  </div>
+  {% endif %}
+  {% if can_reply %}
+  <form method="post" action="/p/{{ post.id }}/comments" class="stack" style="margin-top:18px">
+    <input type="hidden" name="csrf" value="{{ csrf }}">
+    <label>回复内容<textarea name="body" required minlength="2" maxlength="5000"></textarea></label>
+    <button class="btn" type="submit">发布回复</button>
+  </form>
+  {% else if user_label.is_none() %}
+  <p class="hint" style="margin-top:16px"><a href="/login">登录</a>并激活后可以回复。</p>
+  {% else %}
+  <p class="hint" style="margin-top:16px">账号激活后才能回复。</p>
+  {% endif %}
+</section>
+{% endblock %}

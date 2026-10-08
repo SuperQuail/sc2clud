@@ -7,6 +7,7 @@
 
 pub mod error;
 pub mod pages_auth;
+pub mod pages_posts;
 pub mod routes;
 pub mod session;
 pub mod templates;

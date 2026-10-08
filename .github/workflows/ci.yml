@@ -10,8 +10,9 @@ env:
   CARGO_TERM_COLOR: always
 
 jobs:
+  # ---------------------------------------------------------------- Rust
   rust:
-    name: Rust（fmt / clippy / test / build）
+    name: Rust（fmt / clippy / test / 冒烟）
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -27,15 +28,16 @@ jobs:
         run: cargo clippy --workspace --all-targets --all-features -- -D warnings
       - name: 单元测试
         run: cargo test --workspace
+      - name: 构建可执行文件（冒烟测试用）
+        run: cargo build -p sc2clud-app
+      - name: 端到端冒烟（自拉起服务；覆盖登录、上传、签名、回收、权限收口）
+        run: bash scripts/smoke.sh
       - name: Release 构建
         run: cargo build --release -p sc2clud-app
-      - name: 端到端冒烟
-        run: |
-          chmod +x scripts/smoke.sh
-          ./scripts/smoke.sh
 
+  # ---------------------------------------------------------------- 前端
   web:
-    name: 前端岛（构建 + 体积预算）
+    name: 前端岛（类型检查 + 构建 + 体积预算）
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -53,5 +55,5 @@ jobs:
         run: pnpm -C web typecheck
       - name: 构建
         run: pnpm -C web build
-      - name: 体积预算
+      - name: 体积预算（超限即失败）
         run: node scripts/check-budgets.mjs

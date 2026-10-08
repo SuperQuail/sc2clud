@@ -51,6 +51,16 @@ pub fn pages() -> Router<AppState> {
             axum::routing::get(crate::pages_auth::login_form).post(crate::pages_auth::login_submit),
         )
         .route("/logout", axum::routing::post(crate::pages_auth::logout))
+        .route("/p/{id}", axum::routing::get(crate::pages_posts::post_page))
+        .route(
+            "/p/{id}/comments",
+            axum::routing::post(crate::pages_posts::comment_submit),
+        )
+        .route(
+            "/new",
+            axum::routing::get(crate::pages_posts::new_post_form)
+                .post(crate::pages_posts::new_post_submit),
+        )
         .route("/f/{id}", axum::routing::get(file_page))
         .route("/healthz", axum::routing::get(healthz))
         .route("/readyz", axum::routing::get(readyz))
@@ -79,7 +89,7 @@ pub fn api_upload() -> Router<AppState> {
 
 // ------------------------------------------------------------ 工具
 
-fn wants_html(headers: &HeaderMap) -> bool {
+pub(crate) fn wants_html(headers: &HeaderMap) -> bool {
     headers
         .get(header::ACCEPT)
         .and_then(|v| v.to_str().ok())
@@ -168,7 +178,7 @@ pub async fn readyz(State(state): State<AppState>) -> Response {
 // ------------------------------------------------------------ 页面
 
 /// 取当前登录者；文件与发帖相关操作都要求已登录。
-async fn require_user(state: &AppState, headers: &HeaderMap) -> AppResult<CurrentUser> {
+pub(crate) async fn require_user(state: &AppState, headers: &HeaderMap) -> AppResult<CurrentUser> {
     session::current_user(state, headers)
         .await?
         .ok_or_else(|| AppError::Domain(DomainError::Unauthorized("请先登录".to_string())))

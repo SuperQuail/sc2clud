@@ -50,6 +50,55 @@ pub async fn add_used_bytes(pool: &SqlitePool, user_id: i64, delta: i64) -> Resu
     Ok(())
 }
 
+/// 保证站点始终有一个可用的**超级管理员**账号（启动时调用）。
+///
+/// 该账号的口令默认是不可用的占位哈希，必须由运维执行
+/// `sc2clud set-password <用户名> <口令>` 之后才能登录——所以不存在「默认口令」风险。
+/// 已存在的账号若角色不是 super 或被停用，会在这里被纠正并记录一条警告。
+pub async fn ensure_super_admin(
+    pool: &SqlitePool,
+    handle: &str,
+    quota_bytes: i64,
+    now: i64,
+) -> Result<i64> {
+    let existing: Option<UserRow> = query_as::<_, UserRow>("SELECT * FROM users WHERE handle = ?")
+        .bind(handle)
+        .fetch_optional(pool)
+        .await
+        .map_err(db_err)?;
+
+    match existing {
+        Some(user) => {
+            if user.role != "super" || user.activated_at.is_none() {
+                query(
+                    "UPDATE users SET role = 'super', activated_at = COALESCE(activated_at, ?) WHERE id = ?",
+                )
+                .bind(now)
+                .bind(user.id)
+                .execute(pool)
+                .await
+                .map_err(db_err)?;
+                tracing::warn!(
+                    user.id = user.id,
+                    "引导账号已提升为超级管理员并激活（口令仍需 set-password 设置）"
+                );
+            }
+            Ok(user.id)
+        }
+        None => {
+            let email = format!("{handle}@localhost");
+            let id = register_user(pool, handle, &email, "!", true, now).await?;
+            query("UPDATE users SET role = 'super' WHERE id = ?")
+                .bind(id)
+                .execute(pool)
+                .await
+                .map_err(db_err)?;
+            tracing::info!(user.id = id, %handle, "已创建引导超级管理员（口令待设置）");
+            Ok(id)
+        }
+    }
+}
+
 /// 启动时确保归属用户存在。
 ///
 /// **脚手架阶段的临时设施**：尚未接入登录，站点内容先挂在这个用户下。

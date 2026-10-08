@@ -9,16 +9,14 @@
       <p class="eyebrow">SC2CLUD · 星际争霸 II 社区</p>
       <h1>{{ site_name }}</h1>
       <p>讨论、资源与转载，都在这里。游客可以浏览；登录并激活后即可发帖与回复。</p>
-      <div class="actions">
+      <div class="actions-inline">
         {% if user_label.is_none() %}
         <a class="btn" href="/login">登录</a>
         <a class="btn ghost" href="/register">注册</a>
         {% else if needs_activation %}
-        <span class="tag gray">账号待激活</span>
-        <form method="post" action="/logout"><button class="btn ghost" type="submit">退出</button></form>
+        <span class="kind state-pending">账号待激活</span>
         {% else %}
-        <a class="btn" href="#posts">去发帖</a>
-        <form method="post" action="/logout"><button class="btn ghost" type="submit">退出</button></form>
+        <a class="btn" href="/new">发新帖</a>
         {% endif %}
       </div>
     </div>
@@ -41,35 +39,29 @@
 <section class="card" id="posts">
   <h2>帖子 <span class="count">{{ visible_posts }}</span>
     <span class="spacer">
-      {% if can_post %}你可以发帖：讨论 / 资源 / 转载{% else if user_label.is_none() %}登录后可发帖{% else %}待激活后可发帖{% endif %}
+      {% if can_post %}<a href="/new">发新帖</a>{% else if user_label.is_none() %}<a href="/login">登录后可发帖</a>{% else %}待激活后可发帖{% endif %}
     </span>
   </h2>
   {% if posts.is_empty() %}
   <p class="empty">还没有帖子。</p>
   {% else %}
-  <ul class="list">
+  <div class="post-grid">
     {% for post in posts %}
-    <li>
-      <div class="row">
-        <div class="grow">
-          <div class="title-line">
-            <span class="tag">{{ post.kind_label }}</span>
-            {% if post.state != "approved" %}
-            <span class="tag warn">{{ post.state_label }}</span>
-            {% endif %}
-            <span>{{ post.title }}</span>
-          </div>
-          <p class="meta" style="margin:6px 0 0">{{ post.preview }}</p>
-          <div class="meta">{{ post.author }} · {{ post.author_role_label }}
-            {% if post.image_count > 0 %} · {{ post.image_count }} 张图{% endif %}
-            {% if post.is_mine %} · <span class="tag gray">我的</span>{% endif %}
-          </div>
-        </div>
-        <time class="meta" datetime="{{ post.created_at }}">{{ post.created_at }}</time>
+    <article class="post-card">
+      <div class="head">
+        <span class="kind kind-{{ post.kind }}">{{ post.kind_label }}</span>
+        {% if post.state != "approved" %}<span class="kind state-{{ post.state }}">{{ post.state_label }}</span>{% endif %}
+        {% if post.is_mine %}<span class="kind" style="background:#f1f4f9;color:#7b8798">我的</span>{% endif %}
       </div>
-    </li>
+      <h3><a href="/p/{{ post.id }}">{{ post.title }}</a></h3>
+      <p class="preview">{{ post.preview }}</p>
+      <div class="foot">
+        <span>{{ post.author }} · {{ post.author_role_label }}{% if post.image_count > 0 %} · {{ post.image_count }} 图{% endif %}</span>
+        <time datetime="{{ post.created_at }}">{{ post.created_at }}</time>
+      </div>
+    </article>
     {% endfor %}
-  </ul>
+  </div>
   {% endif %}
 </section>
 

@@ -178,9 +178,9 @@ async fn serve() -> Result<()> {
 
     let now = sc2clud_core::now_unix();
     // 脚手架阶段的归属用户：接入登录后由会话解析替换（见 repo::ensure_bootstrap_user）。
-    let owner_id = repo::ensure_bootstrap_user(db.pool(), "demo", 1 << 30, now)
+    let owner_id = repo::ensure_super_admin(db.pool(), "demo", 1 << 30, now)
         .await
-        .context("创建归属用户失败")?;
+        .context("准备引导管理员失败")?;
 
     let signer = DownloadSigner::new(
         config.secret.download_secret.clone(),

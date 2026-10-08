@@ -166,6 +166,66 @@ pub struct PostCreateRequest {
 
 // ------------------------------------------------------------ 展示辅助
 
+/// 帖子详情页。
+#[derive(Template)]
+#[template(path = "post.html")]
+pub struct PostPageTemplate<'a> {
+    pub site_name: &'a str,
+    pub user_label: Option<String>,
+    /// CSRF 令牌（表单隐藏字段）；用 String 以免模板结构体借用调用方的局部变量。
+    pub csrf: String,
+    pub post: PostDetailView,
+    pub comments: Vec<CommentView>,
+    /// 已登录且已激活才能回复（回复不带图）。
+    pub can_reply: bool,
+    pub is_staff: bool,
+}
+
+/// 帖子正文视图。
+pub struct PostDetailView {
+    pub id: i64,
+    pub title: String,
+    pub body: String,
+    pub kind: String,
+    pub kind_label: String,
+    pub state: String,
+    pub state_label: String,
+    pub review_note: Option<String>,
+    pub author: String,
+    pub author_role_label: String,
+    pub created_at: String,
+    pub image_count: i64,
+    pub is_mine: bool,
+}
+
+/// 回复视图。
+pub struct CommentView {
+    pub author: String,
+    pub body: String,
+    pub created_at: String,
+}
+
+/// 发帖页。
+#[derive(Template)]
+#[template(path = "new.html")]
+pub struct NewPostTemplate<'a> {
+    pub site_name: &'a str,
+    pub user_label: Option<String>,
+    pub csrf: String,
+    pub error: Option<String>,
+    pub kinds: Vec<KindOption>,
+    pub title: &'a str,
+    pub body: &'a str,
+}
+
+/// 发帖类型选项。
+pub struct KindOption {
+    pub value: String,
+    pub label: String,
+    pub hint: String,
+    pub checked: bool,
+}
+
 /// 登录页。
 #[derive(Template)]
 #[template(path = "login.html")]

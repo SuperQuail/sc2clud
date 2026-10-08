@@ -148,4 +148,82 @@ footer { color: var(--muted); font-size: 12px; text-align: center; padding: 26px
   .detail { flex-direction: column; }
   .detail .art { width: 110px; }
   .stats { gap: 20px; }
+  .post-grid { grid-template-columns: 1fr; }
 }
+
+/* ============================================================
+ * 社区部分：卡片式帖子、表单、提示
+ * 蓝白体系延续顶栏（与启动器一致），版式按社区站重排。
+ * ============================================================ */
+
+.post-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 14px;
+}
+
+.post-card {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  padding: 16px 16px 14px;
+  box-shadow: 0 4px 14px rgba(29, 60, 116, .06);
+  transition: transform .12s ease, box-shadow .12s ease;
+}
+.post-card:hover { transform: translateY(-2px); box-shadow: 0 10px 22px rgba(29, 60, 116, .12); }
+.post-card .head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.post-card h3 { margin: 0; font-size: 15px; line-height: 1.45; }
+.post-card h3 a { color: var(--ink); }
+.post-card h3 a:hover { color: var(--blue); text-decoration: none; }
+.post-card .preview {
+  margin: 0; color: var(--muted); font-size: 13px;
+  display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden;
+}
+.post-card .foot {
+  margin-top: auto; padding-top: 8px; border-top: 1px solid var(--line);
+  display: flex; align-items: center; gap: 8px; justify-content: space-between;
+  color: var(--muted); font-size: 12px;
+}
+
+.kind { border-radius: 999px; padding: 2px 10px; font-size: 12px; font-weight: 600; white-space: nowrap; }
+.kind-discussion { background: #eaf1fd; color: #1f57bd; }
+.kind-resource { background: #e8f7ef; color: #1c7a52; }
+.kind-repost { background: #fdf1e6; color: #a35a17; }
+.state-pending { background: #fff4e5; color: #a35a17; }
+.state-rejected { background: #fdeceb; color: #b3261e; }
+
+.post-body { white-space: pre-wrap; line-height: 1.75; margin: 12px 0 0; }
+.comments { margin-top: 8px; }
+.comment { padding: 12px 0; border-top: 1px solid var(--line); }
+.comment .who { font-weight: 600; font-size: 13px; }
+.comment p { margin: 4px 0 0; }
+
+/* 表单（登录 / 注册 / 发帖 / 回复） */
+.auth-card { max-width: 460px; margin: 4vh auto 0; }
+.stack { display: grid; gap: 14px; margin: 12px 0 4px; }
+.stack label { display: grid; gap: 6px; font-size: 14px; font-weight: 600; }
+.stack input[type='text'],
+.stack input[type='email'],
+.stack input[type='password'],
+.stack textarea,
+.stack select {
+  font: inherit; font-weight: 400; padding: 10px 12px; border: 1px solid var(--line);
+  border-radius: 10px; background: #fbfcfe; color: var(--ink); width: 100%;
+}
+.stack input:focus, .stack textarea:focus, .stack select:focus {
+  outline: 2px solid var(--blue-soft); border-color: var(--blue);
+}
+.stack textarea { min-height: 160px; resize: vertical; }
+.kind-picker { display: flex; flex-wrap: wrap; gap: 8px; }
+.kind-picker label {
+  display: flex; align-items: center; gap: 6px; font-weight: 400; font-size: 14px;
+  border: 1px solid var(--line); border-radius: 999px; padding: 6px 14px; cursor: pointer;
+}
+.kind-picker input { margin: 0; }
+.alert { background: #fdeceb; color: #b3261e; border-radius: 10px; padding: 10px 12px; font-size: 13px; }
+.actions-inline { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+.title-line { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; font-weight: 600; }
+
