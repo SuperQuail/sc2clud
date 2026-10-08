@@ -10,9 +10,9 @@ use sqlx::{SqlitePool, query, query_as};
 
 use crate::db_err;
 use crate::models::{
-    AdminUserRow, AuditRow, BlobRow, CommentWithAuthorRow, FileRow, FileWithOwnerRow, ImageJobRow,
-    PostImageRow, PostRow, PostSourceRow, PostWithAuthorRow, ReleaseAssetRow, ReleaseRow,
-    SessionRow, UploadSessionRow, UserRow,
+    AdminUserRow, AuditRow, BlobRow, BlockRow, CommentWithAuthorRow, ConversationRow, FileRow,
+    FileWithOwnerRow, ImageJobRow, MessageRow, PostImageRow, PostRow, PostSourceRow,
+    PostWithAuthorRow, ReleaseAssetRow, ReleaseRow, SessionRow, UploadSessionRow, UserRow,
 };
 
 // ---------------------------------------------------------------- 用户
@@ -822,7 +822,9 @@ pub async fn list_feed(
                 (SELECT COALESCE(pi.display_hash, pi.original_hash) \
                  FROM post_images pi \
                  WHERE pi.post_id = p.id AND pi.state <> 'failed' \
-                 ORDER BY pi.position, pi.id LIMIT 1) AS cover_hash \
+                 ORDER BY pi.position, pi.id LIMIT 1) AS cover_hash, \
+                (SELECT COUNT(*) FROM comments c \
+                 WHERE c.post_id = p.id AND c.deleted_at IS NULL) AS comment_count \
          FROM posts p JOIN users u ON u.id = p.author_id \
          WHERE p.deleted_at IS NULL \
            AND (p.review_state = 'approved' \
@@ -859,7 +861,9 @@ pub async fn list_feed_by_section(
                 (SELECT COALESCE(pi.display_hash, pi.original_hash) \
                  FROM post_images pi \
                  WHERE pi.post_id = p.id AND pi.state <> 'failed' \
-                 ORDER BY pi.position, pi.id LIMIT 1) AS cover_hash \
+                 ORDER BY pi.position, pi.id LIMIT 1) AS cover_hash, \
+                (SELECT COUNT(*) FROM comments c \
+                 WHERE c.post_id = p.id AND c.deleted_at IS NULL) AS comment_count \
          FROM posts p JOIN users u ON u.id = p.author_id \
          WHERE p.deleted_at IS NULL \
            AND (?5 = '' OR p.section = ?5) \
@@ -895,7 +899,9 @@ pub async fn list_posts_by_author(
                 (SELECT COALESCE(pi.display_hash, pi.original_hash) \
                  FROM post_images pi \
                  WHERE pi.post_id = p.id AND pi.state <> 'failed' \
-                 ORDER BY pi.position, pi.id LIMIT 1) AS cover_hash \
+                 ORDER BY pi.position, pi.id LIMIT 1) AS cover_hash, \
+                (SELECT COUNT(*) FROM comments c \
+                 WHERE c.post_id = p.id AND c.deleted_at IS NULL) AS comment_count \
          FROM posts p JOIN users u ON u.id = p.author_id \
          WHERE p.deleted_at IS NULL AND p.author_id = ?1 \
            AND (p.review_state = 'approved' OR ?2 = 1) \
@@ -948,6 +954,31 @@ pub async fn create_comment(
             .await
             .map_err(db_err)?;
     Ok(res.last_insert_rowid())
+}
+
+/// 回复列表：**过滤掉查看者拉黑的人**（拉黑的另一半意义就在这里）。
+pub async fn list_comments_for(
+    pool: &SqlitePool,
+    post_id: i64,
+    viewer_id: Option<i64>,
+    limit: i64,
+) -> Result<Vec<CommentWithAuthorRow>> {
+    query_as::<_, CommentWithAuthorRow>(
+        "SELECT c.id, c.post_id, c.author_id, u.handle AS author_handle, \
+                u.display_name AS author_display_name, u.avatar_hash AS author_avatar, \
+                c.body, c.created_at \
+         FROM comments c JOIN users u ON u.id = c.author_id \
+         WHERE c.post_id = ?1 AND c.deleted_at IS NULL \
+           AND NOT EXISTS (SELECT 1 FROM blocks b \
+                           WHERE b.blocker_id = COALESCE(?2, -1) AND b.blocked_id = c.author_id) \
+         ORDER BY c.created_at, c.id LIMIT ?3",
+    )
+    .bind(post_id)
+    .bind(viewer_id)
+    .bind(limit)
+    .fetch_all(pool)
+    .await
+    .map_err(db_err)
 }
 
 pub async fn list_comments(
@@ -1331,6 +1362,186 @@ pub async fn quota_totals(pool: &SqlitePool) -> Result<(i64, i64)> {
             .await
             .map_err(db_err)?;
     Ok(row)
+}
+
+// ------------------------------------------------------------ 私信与拉黑
+
+/// 发一条私信。
+///
+/// 业务规则（双方任一拉黑即禁止）由调用方先判断；这里只负责落库。
+pub async fn send_message(
+    pool: &SqlitePool,
+    sender_id: i64,
+    recipient_id: i64,
+    body: &str,
+    now: i64,
+) -> Result<i64> {
+    let res = query(
+        "INSERT INTO messages (sender_id, recipient_id, body, created_at) VALUES (?, ?, ?, ?)",
+    )
+    .bind(sender_id)
+    .bind(recipient_id)
+    .bind(body)
+    .bind(now)
+    .execute(pool)
+    .await
+    .map_err(db_err)?;
+    Ok(res.last_insert_rowid())
+}
+
+/// 双方之间是否存在拉黑（任一方向）。
+pub async fn blocked_between(pool: &SqlitePool, a: i64, b: i64) -> Result<bool> {
+    let row: Option<(i64,)> = query_as(
+        "SELECT 1 FROM blocks WHERE (blocker_id = ?1 AND blocked_id = ?2) \
+         OR (blocker_id = ?2 AND blocked_id = ?1) LIMIT 1",
+    )
+    .bind(a)
+    .bind(b)
+    .fetch_optional(pool)
+    .await
+    .map_err(db_err)?;
+    Ok(row.is_some())
+}
+
+/// 把某人加入自己的黑名单（幂等）。
+pub async fn block_user(
+    pool: &SqlitePool,
+    blocker_id: i64,
+    blocked_id: i64,
+    now: i64,
+) -> Result<bool> {
+    let affected = query(
+        "INSERT INTO blocks (blocker_id, blocked_id, created_at) VALUES (?, ?, ?) \
+         ON CONFLICT(blocker_id, blocked_id) DO NOTHING",
+    )
+    .bind(blocker_id)
+    .bind(blocked_id)
+    .bind(now)
+    .execute(pool)
+    .await
+    .map_err(db_err)?
+    .rows_affected();
+    Ok(affected == 1)
+}
+
+pub async fn unblock_user(pool: &SqlitePool, blocker_id: i64, blocked_id: i64) -> Result<bool> {
+    let affected = query("DELETE FROM blocks WHERE blocker_id = ? AND blocked_id = ?")
+        .bind(blocker_id)
+        .bind(blocked_id)
+        .execute(pool)
+        .await
+        .map_err(db_err)?
+        .rows_affected();
+    Ok(affected == 1)
+}
+
+/// 我拉黑了谁。
+pub async fn list_blocks(pool: &SqlitePool, blocker_id: i64) -> Result<Vec<BlockRow>> {
+    query_as::<_, BlockRow>(
+        "SELECT u.handle, u.display_name, u.avatar_hash, b.created_at \
+         FROM blocks b JOIN users u ON u.id = b.blocked_id \
+         WHERE b.blocker_id = ? ORDER BY b.created_at DESC",
+    )
+    .bind(blocker_id)
+    .fetch_all(pool)
+    .await
+    .map_err(db_err)
+}
+
+/// 会话列表：每个聊过的人一行，带最后一条与未读数。
+pub async fn list_conversations(pool: &SqlitePool, user_id: i64) -> Result<Vec<ConversationRow>> {
+    query_as::<_, ConversationRow>(
+        "SELECT u.id AS other_id, u.handle AS other_handle, u.display_name AS other_display_name, \
+                u.avatar_hash AS other_avatar, \
+                m.body AS last_body, m.created_at AS last_at, \
+                CASE WHEN m.sender_id = ?1 THEN 1 ELSE 0 END AS last_from_me, \
+                (SELECT COUNT(*) FROM messages x \
+                 WHERE x.sender_id = u.id AND x.recipient_id = ?1 \
+                   AND x.read_at IS NULL AND x.recipient_deleted = 0) AS unread \
+         FROM messages m JOIN users u \
+           ON u.id = CASE WHEN m.sender_id = ?1 THEN m.recipient_id ELSE m.sender_id END \
+         WHERE (m.sender_id = ?1 AND m.sender_deleted = 0) \
+            OR (m.recipient_id = ?1 AND m.recipient_deleted = 0) \
+         GROUP BY u.id \
+         HAVING m.created_at = MAX(m.created_at) \
+         ORDER BY m.created_at DESC LIMIT 100",
+    )
+    .bind(user_id)
+    .fetch_all(pool)
+    .await
+    .map_err(db_err)
+}
+
+/// 与某个人的往来消息（按时间正序）。
+pub async fn list_thread(
+    pool: &SqlitePool,
+    me: i64,
+    other: i64,
+    limit: i64,
+) -> Result<Vec<MessageRow>> {
+    query_as::<_, MessageRow>(
+        "SELECT id, sender_id, recipient_id, body, created_at, read_at FROM messages \
+         WHERE ((sender_id = ?1 AND recipient_id = ?2 AND sender_deleted = 0) \
+             OR (sender_id = ?2 AND recipient_id = ?1 AND recipient_deleted = 0)) \
+         ORDER BY created_at DESC, id DESC LIMIT ?3",
+    )
+    .bind(me)
+    .bind(other)
+    .bind(limit)
+    .fetch_all(pool)
+    .await
+    .map_err(db_err)
+}
+
+/// 打开会话即标记已读。
+pub async fn mark_thread_read(pool: &SqlitePool, me: i64, other: i64, now: i64) -> Result<u64> {
+    let affected = query(
+        "UPDATE messages SET read_at = ? \
+         WHERE recipient_id = ? AND sender_id = ? AND read_at IS NULL",
+    )
+    .bind(now)
+    .bind(me)
+    .bind(other)
+    .execute(pool)
+    .await
+    .map_err(db_err)?
+    .rows_affected();
+    Ok(affected)
+}
+
+/// 未读私信总数（顶栏红点用）。
+pub async fn unread_message_count(pool: &SqlitePool, user_id: i64) -> Result<i64> {
+    let row: (i64,) = query_as(
+        "SELECT COUNT(*) FROM messages \
+         WHERE recipient_id = ? AND read_at IS NULL AND recipient_deleted = 0",
+    )
+    .bind(user_id)
+    .fetch_one(pool)
+    .await
+    .map_err(db_err)?;
+    Ok(row.0)
+}
+
+/// 待审核的帖子（管理面板用）。
+pub async fn list_pending_posts(pool: &SqlitePool, limit: i64) -> Result<Vec<PostWithAuthorRow>> {
+    query_as::<_, PostWithAuthorRow>(
+        "SELECT p.id, p.title, p.body, p.kind, p.section, p.review_state, p.review_note, \
+                p.image_count, p.created_at, p.author_id, u.handle AS author_handle, \
+                u.display_name AS author_display_name, u.avatar_hash AS author_avatar, \
+                u.role AS author_role, \
+                (SELECT COALESCE(pi.display_hash, pi.original_hash) FROM post_images pi \
+                 WHERE pi.post_id = p.id AND pi.state <> 'failed' \
+                 ORDER BY pi.position, pi.id LIMIT 1) AS cover_hash, \
+                (SELECT COUNT(*) FROM comments c \
+                 WHERE c.post_id = p.id AND c.deleted_at IS NULL) AS comment_count \
+         FROM posts p JOIN users u ON u.id = p.author_id \
+         WHERE p.deleted_at IS NULL AND p.review_state = 'pending' \
+         ORDER BY p.created_at ASC LIMIT ?",
+    )
+    .bind(limit)
+    .fetch_all(pool)
+    .await
+    .map_err(db_err)
 }
 
 pub async fn count_comments(pool: &SqlitePool) -> Result<i64> {

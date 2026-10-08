@@ -60,6 +60,8 @@ pub struct PostWithAuthorRow {
     pub author_role: String,
     /// 封面图：该帖第一张图（压缩图优先，未处理时用原图）；没有图则为 NULL。
     pub cover_hash: Option<String>,
+    /// 回复数（列表视图的统计条用）。
+    pub comment_count: i64,
 }
 
 /// 回复 + 作者。
@@ -102,6 +104,39 @@ pub struct ReleaseAssetRow {
     pub size: i64,
     pub sha256: Option<String>,
     pub download_count: i64,
+    pub created_at: i64,
+}
+
+/// 一条私信。
+#[derive(Debug, Clone, FromRow)]
+pub struct MessageRow {
+    pub id: i64,
+    pub sender_id: i64,
+    pub recipient_id: i64,
+    pub body: String,
+    pub created_at: i64,
+    pub read_at: Option<i64>,
+}
+
+/// 会话列表里的一行：对方 + 最后一条 + 未读数。
+#[derive(Debug, Clone, FromRow)]
+pub struct ConversationRow {
+    pub other_id: i64,
+    pub other_handle: String,
+    pub other_display_name: String,
+    pub other_avatar: Option<String>,
+    pub last_body: String,
+    pub last_at: i64,
+    pub last_from_me: i64,
+    pub unread: i64,
+}
+
+/// 黑名单里的一行。
+#[derive(Debug, Clone, FromRow)]
+pub struct BlockRow {
+    pub handle: String,
+    pub display_name: String,
+    pub avatar_hash: Option<String>,
     pub created_at: i64,
 }
 

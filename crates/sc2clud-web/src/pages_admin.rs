@@ -15,7 +15,7 @@ use sc2clud_db::repo;
 
 use crate::AppState;
 use crate::error::{AppError, AppResult};
-use crate::routes::require_user;
+use crate::routes::{feed_view, require_user};
 use crate::session;
 use crate::templates::{
     AdminTemplate, AdminUserView, format_date, format_relative, human_bytes, render,
@@ -94,6 +94,7 @@ async fn build_panel<'a>(
     let now = now_unix();
     let rows = repo::admin_list_users(state.db.pool(), query, 200).await?;
     let total_users = repo::count_users(state.db.pool()).await?;
+    let pending_rows = repo::list_pending_posts(state.db.pool(), 50).await?;
     // 磁盘预算总览：服务器还剩多少、已经承诺出去多少、其中还没被用掉多少
     let (allocated, used) = repo::quota_totals(state.db.pool()).await?;
     let free_bytes = state.storage.available_bytes().await.unwrap_or(0);
@@ -145,6 +146,10 @@ async fn build_panel<'a>(
             .map(|r| (r.as_str().to_string(), r.label().to_string()))
             .collect(),
         users,
+        pending: pending_rows
+            .iter()
+            .map(|row| feed_view(row, Some(user.id)))
+            .collect(),
     })
 }
 
@@ -351,6 +356,81 @@ pub async fn set_quota(
     Ok(done(&headers, "已保存", "/admin/users/overview"))
 }
 
+#[derive(Debug, Deserialize)]
+pub struct ReviewForm {
+    pub csrf: String,
+    #[serde(default)]
+    pub note: Option<String>,
+}
+
+pub async fn approve(
+    State(state): State<AppState>,
+    Path(id): Path<i64>,
+    headers: HeaderMap,
+    Form(form): Form<ReviewForm>,
+) -> AppResult<Response> {
+    review(&state, id, &headers, &form, true).await
+}
+
+pub async fn reject(
+    State(state): State<AppState>,
+    Path(id): Path<i64>,
+    headers: HeaderMap,
+    Form(form): Form<ReviewForm>,
+) -> AppResult<Response> {
+    review(&state, id, &headers, &form, false).await
+}
+
+/// 人工过审 / 拒绝。管理员与开发者都能做（`Permission::ReviewPost`）。
+async fn review(
+    state: &AppState,
+    id: i64,
+    headers: &HeaderMap,
+    form: &ReviewForm,
+    allow: bool,
+) -> AppResult<Response> {
+    let actor = require_user(state, headers).await?;
+    session::guard(Some(&actor), Permission::ReviewPost)?;
+    session::check_csrf(&actor, &form.csrf)?;
+    let typed = form
+        .note
+        .as_deref()
+        .map(str::trim)
+        .filter(|s| !s.is_empty());
+    let fallback = if allow {
+        "管理员人工通过"
+    } else {
+        "管理员人工拒绝"
+    };
+    let note = typed.unwrap_or(fallback);
+    let state_str = if allow { "approved" } else { "rejected" };
+    let now = now_unix();
+    if !repo::set_post_review_state(state.db.pool(), id, state_str, Some(note), actor.id, now)
+        .await?
+    {
+        return Err(AppError::not_found("帖子不存在"));
+    }
+    tracing::info!(
+        post.id = id,
+        review_state = state_str,
+        actor.id = actor.id,
+        "人工改判审核状态"
+    );
+    let _ = repo::record_audit(
+        state.db.pool(),
+        Some(actor.id),
+        if allow { "post.approve" } else { "post.reject" },
+        Some(&format!("post:{id}")),
+        Some(note),
+        now,
+    )
+    .await;
+    Ok(done(
+        headers,
+        if allow { "已通过" } else { "已拒绝" },
+        "/admin/users/overview",
+    ))
+}
 pub async fn set_role(
     State(state): State<AppState>,
     Path(id): Path<i64>,

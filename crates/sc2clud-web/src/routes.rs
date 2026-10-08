@@ -34,7 +34,8 @@ use crate::error::{AppError, AppResult};
 use crate::session::{self, CurrentUser};
 use crate::templates::{
     ClaimRequest, FeedView, FileDto, FilePageTemplate, FileView, IndexTemplate, MyFileStats,
-    PostCreateRequest, PostDto, SectionOption, UploadQuery, format_date, human_bytes,
+    PostCreateRequest, PostDto, SectionOption, UploadQuery, format_date, format_relative,
+    human_bytes,
 };
 use crate::upload::{DEFAULT_QUEUE_DEPTH, pump_body};
 
@@ -55,6 +56,30 @@ pub fn pages() -> Router<AppState> {
         )
         .route("/logout", axum::routing::post(crate::pages_auth::logout))
         .route("/me", axum::routing::get(crate::pages_profile::me))
+        .route(
+            "/messages",
+            axum::routing::get(crate::pages_messages::inbox),
+        )
+        .route(
+            "/messages/{handle}",
+            axum::routing::get(crate::pages_messages::thread).post(crate::pages_messages::send),
+        )
+        .route(
+            "/u/{handle}/block",
+            axum::routing::post(crate::pages_messages::block),
+        )
+        .route(
+            "/u/{handle}/unblock",
+            axum::routing::post(crate::pages_messages::unblock),
+        )
+        .route(
+            "/admin/posts/{id}/approve",
+            axum::routing::post(crate::pages_admin::approve),
+        )
+        .route(
+            "/admin/posts/{id}/reject",
+            axum::routing::post(crate::pages_admin::reject),
+        )
         .route("/settings", axum::routing::get(crate::pages_settings::page))
         .route(
             "/settings/display-name",
@@ -357,6 +382,8 @@ pub(crate) fn feed_view(row: &sc2clud_db::PostWithAuthorRow, viewer_id: Option<i
         author_role_label: author_role.to_string(),
         created_at: format_date(row.created_at),
         image_count: row.image_count,
+        comment_count: row.comment_count,
+        time_ago: format_relative(row.created_at, sc2clud_core::now_unix()),
         is_mine: viewer_id == Some(row.author_id),
         cover_hash: row.cover_hash.clone(),
     }

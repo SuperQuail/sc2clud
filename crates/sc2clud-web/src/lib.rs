@@ -9,6 +9,7 @@ pub mod error;
 pub mod pages_admin;
 pub mod pages_auth;
 pub mod pages_debug;
+pub mod pages_messages;
 pub mod pages_posts;
 pub mod pages_profile;
 pub mod pages_settings;

@@ -2,27 +2,50 @@
 
 {% block title %}{{ site_name }}{% endblock %}
 
-{# 站点概况放在顶部蓝条里，页面顶部不再占一大块 #}
+{% block head %}
+  <script>
+    // 显示方式要在首次绘制前定下来，避免卡片/列表闪一下
+    (function () {
+      var view = 'card';
+      try { view = localStorage.getItem('sc2clud-view') || 'card'; } catch (e) {}
+      document.documentElement.setAttribute('data-post-view', view);
+    })();
+  </script>
+{% endblock %}
+
 {% block bar_stats %}<span>可见帖子 {{ visible_posts }}</span>{% endblock %}
 {% block bar_avatar %}{% if let Some(hash) = my_avatar %}/avatar/{{ hash }}{% else %}/static/art/miyin-chibi-80.webp{% endif %}{% endblock %}
 
-
 {% block content %}
-<section class="card">
-  <nav class="section-nav">
-    <a href="/" class="{% if sections_all_active %}active{% endif %}">全部</a>
-    {% for section in sections %}
-    <a href="/?section={{ section.value }}" class="{% if section.checked %}active{% endif %}">{{ section.label }}</a>
-    {% endfor %}
-  </nav>
+<section class="card" id="posts">
+  <div class="list-toolbar">
+    <nav class="section-nav">
+      <a href="/" class="{% if sections_all_active %}active{% endif %}">全部</a>
+      {% for section in sections %}
+      <a href="/?section={{ section.value }}" class="{% if section.checked %}active{% endif %}">{{ section.label }}</a>
+      {% endfor %}
+    </nav>
+    <div class="view-switch" role="group" aria-label="显示方式">
+      <button type="button" data-view-btn="card" title="卡片视图" aria-label="卡片视图">
+        <svg viewBox="0 0 16 16" width="15" height="15"><rect x="1.5" y="1.5" width="5.5" height="5.5" rx="1.2" fill="currentColor"/><rect x="9" y="1.5" width="5.5" height="5.5" rx="1.2" fill="currentColor"/><rect x="1.5" y="9" width="5.5" height="5.5" rx="1.2" fill="currentColor"/><rect x="9" y="9" width="5.5" height="5.5" rx="1.2" fill="currentColor"/></svg>
+      </button>
+      <button type="button" data-view-btn="list" title="列表视图" aria-label="列表视图">
+        <svg viewBox="0 0 16 16" width="15" height="15"><rect x="1.5" y="2.5" width="13" height="2.4" rx="1.2" fill="currentColor"/><rect x="1.5" y="6.8" width="13" height="2.4" rx="1.2" fill="currentColor"/><rect x="1.5" y="11.1" width="13" height="2.4" rx="1.2" fill="currentColor"/></svg>
+      </button>
+    </div>
+  </div>
+
   <h2>帖子 <span class="count">{{ visible_posts }}</span>
     <span class="spacer">
       {% if can_post %}<a href="/new">发新帖</a>{% else if user_label.is_none() %}<a href="/login">登录后可发帖</a>{% else %}待激活后可发帖{% endif %}
     </span>
   </h2>
+
   {% if posts.is_empty() %}
   <p class="empty">这个分区还没有帖子。</p>
   {% else %}
+
+  {# 卡片视图 #}
   <div class="post-grid">
     {% for post in posts %}
     <article class="post-card">
@@ -47,11 +70,79 @@
           {% endif %}
           {{ post.author }}
         </span>
-        <span>{% if post.image_count > 0 %}· {{ post.image_count }} 图 · {% endif %}{{ post.created_at }}</span>
+        <span>{{ post.time_ago }}</span>
       </div>
+    </article>
+    {% endfor %}
+  </div>
+
+  {# 列表视图（参考社区项目列表：标题 + 一行摘要 + 统计条 + 缩略图） #}
+  <div class="post-list">
+    {% for post in posts %}
+    <article class="post-row">
+      <div class="row-main">
+        <div class="chips">
+          <span class="chip">{{ post.section_label }}</span>
+          <span class="chip">{{ post.kind_label }}</span>
+          {% if post.state != "approved" %}<span class="chip warn">{{ post.state_label }}</span>{% endif %}
+        </div>
+        <h3><a href="/p/{{ post.id }}">{{ post.title }}</a></h3>
+        <p class="row-preview">{{ post.preview }}</p>
+        <div class="row-stats">
+          <span class="stat" title="回复">
+            <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><path d="M2 3.5h12v8H7l-3.4 2.6V11.5H2z" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/></svg>
+            {{ post.comment_count }}
+          </span>
+          {% if post.image_count > 0 %}
+          <span class="stat" title="配图">
+            <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><rect x="1.8" y="2.8" width="12.4" height="10.4" rx="1.6" fill="none" stroke="currentColor" stroke-width="1.4"/><circle cx="5.6" cy="6.4" r="1.2" fill="currentColor"/><path d="M3 11.5l3.4-3 2.6 2.2 2-1.7 2.6 2.5" fill="none" stroke="currentColor" stroke-width="1.3"/></svg>
+            {{ post.image_count }}
+          </span>
+          {% endif %}
+          <span class="stat" title="发布时间">
+            <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><circle cx="8" cy="8" r="6" fill="none" stroke="currentColor" stroke-width="1.4"/><path d="M8 4.6V8l2.4 1.6" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>
+            {{ post.time_ago }}
+          </span>
+          <span class="stat byline">
+            {% if let Some(avatar) = post.avatar %}
+            <img class="avatar" src="/avatar/{{ avatar }}" alt="" width="18" height="18" loading="lazy">
+            {% else %}
+            <img class="avatar" src="/static/art/miyin-chibi-80.webp" alt="" width="18" height="18" loading="lazy">
+            {% endif %}
+            {{ post.author }}
+          </span>
+        </div>
+      </div>
+      {% if let Some(cover) = post.cover_hash %}
+      <a class="row-thumb" href="/p/{{ post.id }}" style="background-image:url('/img/{{ cover }}')" aria-hidden="true"></a>
+      {% endif %}
     </article>
     {% endfor %}
   </div>
   {% endif %}
 </section>
+{% endblock %}
+
+{% block scripts %}
+<script>
+  (function () {
+    var root = document.documentElement;
+    var buttons = document.querySelectorAll('[data-view-btn]');
+    var sync = function () {
+      var view = root.getAttribute('data-post-view') || 'card';
+      buttons.forEach(function (b) {
+        b.classList.toggle('active', b.getAttribute('data-view-btn') === view);
+      });
+    };
+    sync();
+    buttons.forEach(function (b) {
+      b.addEventListener('click', function () {
+        var view = b.getAttribute('data-view-btn');
+        root.setAttribute('data-post-view', view);
+        try { localStorage.setItem('sc2clud-view', view); } catch (e) {}
+        sync();
+      });
+    });
+  })();
+</script>
 {% endblock %}

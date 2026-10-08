@@ -89,6 +89,16 @@ async fn build<'a>(
             detail: row.detail.unwrap_or_default(),
         })
         .collect();
+    let blocks = repo::list_blocks(state.db.pool(), user.id)
+        .await?
+        .into_iter()
+        .map(|row| crate::templates::BlockView {
+            handle: row.handle,
+            display_name: row.display_name,
+            avatar: row.avatar_hash,
+            when: format_date(row.created_at),
+        })
+        .collect();
     let (notice, error) = notice_of(&query);
     Ok(SettingsTemplate {
         site_name: &state.config.server.site_name,
@@ -107,6 +117,7 @@ async fn build<'a>(
         avatar: row.avatar_hash.clone(),
         joined_at: format_date(row.created_at),
         audit,
+        blocks,
         notice,
         error,
     })

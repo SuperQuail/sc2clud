@@ -20,9 +20,9 @@ pub mod models;
 pub mod repo;
 
 pub use models::{
-    AdminUserRow, AuditRow, BlobRow, CommentRow, CommentWithAuthorRow, FileRow, FileWithOwnerRow,
-    ImageJobRow, PostImageRow, PostRow, PostWithAuthorRow, ReleaseAssetRow, ReleaseRow, SessionRow,
-    UploadSessionRow, UserRow,
+    AdminUserRow, AuditRow, BlobRow, BlockRow, CommentRow, CommentWithAuthorRow, ConversationRow,
+    FileRow, FileWithOwnerRow, ImageJobRow, MessageRow, PostImageRow, PostRow, PostWithAuthorRow,
+    ReleaseAssetRow, ReleaseRow, SessionRow, UploadSessionRow, UserRow,
 };
 
 /// 编译期嵌入的迁移集合。

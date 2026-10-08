@@ -12,6 +12,7 @@ pub mod config;
 pub mod counter;
 pub mod error;
 pub mod hash;
+pub mod message;
 pub mod ratelimit;
 pub mod resource;
 pub mod review;

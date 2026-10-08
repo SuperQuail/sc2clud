@@ -202,7 +202,8 @@ async fn build_post_page<'a>(
         })
         .collect::<Vec<_>>();
     let show_sources = !sources.is_empty();
-    let comments = repo::list_comments(state.db.pool(), id, 200).await?;
+    // 过滤掉查看者拉黑的人（登录才谈得上黑名单）
+    let comments = repo::list_comments_for(state.db.pool(), id, viewer_id, 200).await?;
 
     let state_ = ReviewState::parse(&row.review_state).unwrap_or(ReviewState::Pending);
     let kind = PostKind::parse(&row.kind).unwrap_or(PostKind::Discussion);

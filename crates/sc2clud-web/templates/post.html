@@ -18,6 +18,21 @@
     {% endif %}
     {{ post.author }} · {{ post.author_role_label }} · {{ post.created_at }}
     {% if post.image_count > 0 %} · {{ post.image_count }} 张图{% endif %}</div>
+  {% if is_staff && post.state != "approved" %}
+  <div class="review-bar">
+    <span class="hint">此帖当前状态「{{ post.state_label }}」，只有你与作者看得到：</span>
+    <form method="post" action="/admin/posts/{{ post.id }}/approve" data-async data-after="refresh" class="inline-form">
+      <input type="hidden" name="csrf" value="{{ csrf }}">
+      <button class="btn" type="submit">通过</button>
+    </form>
+    <form method="post" action="/admin/posts/{{ post.id }}/reject" data-async data-after="refresh" class="inline-form">
+      <input type="hidden" name="csrf" value="{{ csrf }}">
+      <input type="text" name="note" placeholder="拒绝理由" maxlength="80">
+      <button class="btn ghost" type="submit">拒绝</button>
+    </form>
+  </div>
+  {% endif %}
+
   {% if let Some(note) = post.review_note %}
   {% if post.state == "approved" %}
   <p class="hint" style="margin-top:12px">发布说明：{{ note }}</p>
@@ -103,6 +118,7 @@
 {% endblock %}
 
 {% block scripts %}
+{% if is_staff %}<script type="module" src="/static/islands/admin.js"></script>{% endif %}
 <script type="module">
   // 镜像实测：HEAD 探一次，按耗时把最快的排到最前（用户仍可点任何一个）。
   for (const group of document.querySelectorAll('.mirrors')) {

@@ -46,6 +46,10 @@ pub struct FeedView {
     pub id: i64,
     /// 作者头像摘要（NULL = 首字母兜底）。
     pub avatar: Option<String>,
+    /// 回复数（列表视图统计条）。
+    pub comment_count: i64,
+    /// 「多久以前」（列表视图统计条）。
+    pub time_ago: String,
     pub title: String,
     pub preview: String,
     /// 封面图（该帖第一张图）；卡片用它铺底。
@@ -299,6 +303,59 @@ pub struct SourceSlot {
     pub provider: String,
 }
 
+/// 私信收件箱。
+#[derive(Template)]
+#[template(path = "messages.html")]
+pub struct MessagesTemplate<'a> {
+    pub site_name: &'a str,
+    pub user_label: Option<String>,
+    pub is_staff: bool,
+    pub csrf: String,
+    pub conversations: Vec<ConversationView>,
+}
+
+/// 会话列表一行。
+pub struct ConversationView {
+    pub handle: String,
+    pub display_name: String,
+    pub avatar: Option<String>,
+    pub preview: String,
+    pub when: String,
+    pub from_me: bool,
+    pub unread: i64,
+}
+
+/// 一个会话。
+#[derive(Template)]
+#[template(path = "thread.html")]
+pub struct ThreadTemplate<'a> {
+    pub site_name: &'a str,
+    pub user_label: Option<String>,
+    pub is_staff: bool,
+    pub csrf: String,
+    pub handle: String,
+    pub display_name: String,
+    pub avatar: Option<String>,
+    pub messages: Vec<MessageView>,
+    pub blocked: bool,
+}
+
+/// 一条私信。
+pub struct MessageView {
+    pub mine: bool,
+    pub body: String,
+    pub when: String,
+    pub read: bool,
+}
+
+/// 黑名单一行（账户设置里展示）。
+pub struct BlockView {
+    pub handle: String,
+    pub display_name: String,
+    pub avatar: Option<String>,
+    pub when: String,
+}
+
 /// 账户设置页（左侧分栏 + 右侧内容，形态参考雨云的账户设置）。
 #[derive(Template)]
 #[template(path = "settings.html")]
@@ -313,6 +370,7 @@ pub struct SettingsTemplate<'a> {
     pub avatar: Option<String>,
     pub joined_at: String,
     pub audit: Vec<DebugAuditView>,
+    pub blocks: Vec<BlockView>,
     pub notice: Option<String>,
     pub error: Option<String>,
 }
@@ -331,6 +389,10 @@ pub struct ProfileTemplate<'a> {
     pub avatar: Option<String>,
     pub joined_at: String,
     pub is_self: bool,
+    /// 当前查看者是否已拉黑 TA。
+    pub blocked: bool,
+    /// 是否登录（决定能否私信 / 拉黑）。
+    pub can_interact: bool,
     /// 本人或管理员才看得到「换头像」。
     pub can_edit_avatar: bool,
     pub posts: Vec<FeedView>,
@@ -394,6 +456,8 @@ pub struct AdminTemplate<'a> {
     /// (值, 显示名)
     pub roles: Vec<(String, String)>,
     pub users: Vec<AdminUserView>,
+    /// 待审核的帖子（按提交时间正序，先来先审）。
+    pub pending: Vec<FeedView>,
 }
 
 /// 管理员面板里的用户行。

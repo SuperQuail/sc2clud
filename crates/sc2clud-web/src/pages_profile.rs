@@ -70,6 +70,15 @@ async fn build_profile<'a>(
         avatar: owner.avatar_hash.clone(),
         joined_at: format_date(owner.created_at),
         is_self,
+        blocked: match viewer.as_ref() {
+            Some(v) if v.id != owner.id => {
+                repo::blocked_between(state.db.pool(), v.id, owner.id).await?
+            }
+            _ => false,
+        },
+        can_interact: viewer
+            .as_ref()
+            .is_some_and(|v| v.id != owner.id && v.activated),
         can_edit_avatar: is_self || is_staff,
         accepted,
         posts: posts
