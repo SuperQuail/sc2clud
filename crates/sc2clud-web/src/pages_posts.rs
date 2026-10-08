@@ -382,14 +382,16 @@ async fn save_edit(
     let now = now_unix();
     if !repo::update_post(
         state.db.pool(),
-        id,
-        &title,
-        &body,
-        kind.as_str(),
-        section.as_str(),
-        outcome.state.as_str(),
-        outcome.note.as_deref(),
-        now,
+        repo::PostEdit {
+            id,
+            title: &title,
+            body: &body,
+            kind: kind.as_str(),
+            section: section.as_str(),
+            review_state: outcome.state.as_str(),
+            review_note: outcome.note.as_deref(),
+            now,
+        },
     )
     .await?
     {

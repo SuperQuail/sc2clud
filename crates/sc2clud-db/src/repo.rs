@@ -1557,31 +1557,33 @@ pub async fn list_pending_posts(pool: &SqlitePool, limit: i64) -> Result<Vec<Pos
     .map_err(db_err)
 }
 
-/// 更新帖子内容（作者或管理员编辑后调用），并把新的审核结果写回。
-pub async fn update_post(
-    pool: &SqlitePool,
-    id: i64,
-    title: &str,
-    body: &str,
-    kind: &str,
-    section: &str,
-    review_state: &str,
-    review_note: Option<&str>,
-    now: i64,
-) -> Result<bool> {
+/// 编辑帖子的入参（作者或管理员编辑后调用）。
+pub struct PostEdit<'a> {
+    pub id: i64,
+    pub title: &'a str,
+    pub body: &'a str,
+    pub kind: &'a str,
+    pub section: &'a str,
+    pub review_state: &'a str,
+    pub review_note: Option<&'a str>,
+    pub now: i64,
+}
+
+/// 更新帖子内容，并把新的审核结果写回。
+pub async fn update_post(pool: &SqlitePool, edit: PostEdit<'_>) -> Result<bool> {
     let affected = query(
         "UPDATE posts SET title = ?, body = ?, kind = ?, section = ?, \
                            review_state = ?, review_note = ?, auto_reviewed = 1, updated_at = ? \
          WHERE id = ? AND deleted_at IS NULL",
     )
-    .bind(title)
-    .bind(body)
-    .bind(kind)
-    .bind(section)
-    .bind(review_state)
-    .bind(review_note)
-    .bind(now)
-    .bind(id)
+    .bind(edit.title)
+    .bind(edit.body)
+    .bind(edit.kind)
+    .bind(edit.section)
+    .bind(edit.review_state)
+    .bind(edit.review_note)
+    .bind(edit.now)
+    .bind(edit.id)
     .execute(pool)
     .await
     .map_err(db_err)?
