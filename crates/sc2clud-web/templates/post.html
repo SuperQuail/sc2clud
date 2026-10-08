@@ -27,8 +27,8 @@
     </form>
     <form method="post" action="/admin/posts/{{ post.id }}/reject" data-async data-after="refresh" class="inline-form">
       <input type="hidden" name="csrf" value="{{ csrf }}">
-      <input type="text" name="note" placeholder="拒绝理由" maxlength="80">
       <button class="btn ghost sm" type="submit">拒绝</button>
+      <input type="text" name="note" placeholder="拒绝理由" maxlength="80">
     </form>
   </div>
   {% endif %}
@@ -142,10 +142,17 @@
     function wire(form, apply) {
       form.addEventListener('submit', function (event) {
         event.preventDefault();
+        var payload = new URLSearchParams();
+        new FormData(form).forEach(function (value, key) {
+          if (typeof value === 'string') payload.append(key, value);
+        });
         fetch(form.action, {
           method: 'POST',
-          body: new FormData(form),
-          headers: { 'x-requested-with': 'fetch' },
+          body: payload,
+          headers: {
+            'x-requested-with': 'fetch',
+            'content-type': 'application/x-www-form-urlencoded;charset=UTF-8',
+          },
           credentials: 'same-origin',
         })
           .then(function (r) { return r.ok ? r.json() : Promise.reject(r.status); })

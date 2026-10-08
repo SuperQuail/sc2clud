@@ -1,8 +1,9 @@
-﻿# 前端岛产物在 .gitignore 里（服务器没有 Node，不能在那边构建），
+# 前端岛产物在 .gitignore 里（服务器没有 Node，不能在那边构建），
 # 所以每次发布都要在本机构建后同步过去。
 # 用法：pwsh -File scripts/push-islands.ps1
 param(
-  [string]$Server = 'root@191.40.41.97',
+  # 部署目标：不写默认值，避免把某台机器的地址带进公开仓库
+  [Parameter(Mandatory = $true)][string]$Server,
   [string]$Key = (Join-Path $PSScriptRoot '..\..\secrets\ssh\id_ed25519_deploy')
 )
 

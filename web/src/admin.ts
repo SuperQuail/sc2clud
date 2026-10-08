@@ -72,10 +72,20 @@ async function submit(form: HTMLFormElement) {
   const restore = button?.disabled ?? false
   if (button) button.disabled = true
   try {
+    // 注意：不能直接发 FormData —— 那是 multipart/form-data，
+    // 而 axum 的 Form 提取器只接受 application/x-www-form-urlencoded（会 415）。
+    // 所以这里显式转成 URLSearchParams（多值字段也不会丢）。
+    const payload = new URLSearchParams()
+    new FormData(form).forEach((value, key) => {
+      if (typeof value === 'string') payload.append(key, value)
+    })
     const res = await fetch(form.action, {
       method: 'POST',
-      body: new FormData(form),
-      headers: { 'x-requested-with': 'fetch' },
+      body: payload,
+      headers: {
+        'x-requested-with': 'fetch',
+        'content-type': 'application/x-www-form-urlencoded;charset=UTF-8',
+      },
       credentials: 'same-origin',
     })
     const data = (await res.json().catch(() => ({}))) as { message?: string }
