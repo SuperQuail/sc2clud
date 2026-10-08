@@ -11,6 +11,10 @@ pub struct UserRow {
     pub handle: String,
     /// 显示名：对外展示，非空、≤ 20 字符，可改。
     pub display_name: String,
+    /// 头像摘要（NULL = 未设置）。
+    pub avatar_hash: Option<String>,
+    /// 头像 MIME。
+    pub avatar_mime: Option<String>,
     pub email: Option<String>,
     pub password_hash: String,
     pub role: String,
@@ -51,6 +55,8 @@ pub struct PostWithAuthorRow {
     pub author_handle: String,
     /// 对外展示用：帖子卡片与详情页显示它。
     pub author_display_name: String,
+    /// 作者头像的内容摘要（NULL = 没设置，页面回退到首字母）。
+    pub author_avatar: Option<String>,
     pub author_role: String,
     /// 封面图：该帖第一张图（压缩图优先，未处理时用原图）；没有图则为 NULL。
     pub cover_hash: Option<String>,
@@ -64,6 +70,7 @@ pub struct CommentWithAuthorRow {
     pub author_id: i64,
     pub author_handle: String,
     pub author_display_name: String,
+    pub author_avatar: Option<String>,
     pub body: String,
     pub created_at: i64,
 }

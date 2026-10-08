@@ -26,7 +26,14 @@
       {% for user in users %}
       <tr>
         <td>{{ user.id }}</td>
-        <td>{{ user.handle }}{% if user.is_self %} <span class="tag">我</span>{% endif %}</td>
+        <td class="byline">
+          {% if let Some(avatar) = user.avatar %}
+          <img class="avatar" src="/avatar/{{ avatar }}" alt="" width="22" height="22" loading="lazy">
+          {% else %}
+          <img class="avatar" src="/static/art/miyin-chibi-80.webp" alt="" width="22" height="22" loading="lazy">
+          {% endif %}
+          {{ user.handle }}{% if user.is_self %} <span class="tag">我</span>{% endif %}
+        </td>
         <td>
           {% if is_super %}
           <form method="post" action="/admin/users/{{ user.id }}/rename" class="inline-form">

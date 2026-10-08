@@ -309,6 +309,55 @@ footer { color: var(--muted); font-size: 12px; text-align: center; padding: 14px
 .title-line { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; font-weight: 600; }
 
 /* ============================================================
+ * 顶栏信息 + 右侧悬浮窗 + 头像
+ * 页面顶部不再放整块 hero：概况进蓝条，动作进右侧悬浮窗。
+ * ============================================================ */
+.bar-stats { display: flex; gap: 18px; margin-left: 22px; flex-wrap: wrap; }
+.bar-stats span { font-size: 13px; color: #dbe7ff; }
+.bar-user { margin-left: auto; display: flex; align-items: center; gap: 10px; }
+.user-chip { display: flex; align-items: center; gap: 8px; color: #fff; font-weight: 600; font-size: 14px; }
+.user-chip:hover { text-decoration: none; opacity: .9; }
+.avatar { border-radius: 50%; object-fit: cover; background: #e9eff8; border: 1px solid rgba(0,0,0,.08); vertical-align: middle; }
+[data-theme='dark'] .avatar { background: #1b2431; border-color: var(--line); }
+.byline { display: inline-flex; align-items: center; gap: 6px; }
+
+.dock {
+  position: fixed; right: 16px; top: 96px; z-index: 40;
+  display: flex; align-items: flex-start; gap: 6px;
+}
+.dock-items {
+  display: flex; flex-direction: column; gap: 6px;
+  background: var(--card); border: 1px solid var(--line); border-radius: 14px;
+  padding: 8px; box-shadow: 0 10px 26px rgba(29,60,116,.16);
+}
+.dock-items a, .dock-items button {
+  font: inherit; font-size: 13px; text-align: left; white-space: nowrap;
+  padding: 8px 12px; border-radius: 10px; border: 1px solid transparent;
+  background: transparent; color: var(--ink); cursor: pointer;
+}
+.dock-items a:hover, .dock-items button:hover { background: var(--blue-soft); color: var(--blue-deep); text-decoration: none; }
+.dock-toggle {
+  width: 26px; height: 26px; border-radius: 50%; cursor: pointer;
+  border: 1px solid var(--line); background: var(--card); color: var(--muted); font: inherit;
+}
+.dock.closed .dock-items { display: none; }
+@media (max-width: 900px) {
+  .dock { top: auto; bottom: 14px; right: 14px; }
+  .dock-items { flex-direction: row; overflow-x: auto; max-width: 82vw; }
+  .bar-stats { display: none; }
+}
+
+/* 个人主页 */
+.profile-head { display: flex; align-items: center; gap: 16px; }
+.profile-head h1 { margin: 0 0 4px; font-size: 22px; }
+.avatar-lg { width: 72px; height: 72px; }
+.avatar-editor { margin-top: 16px; border-top: 1px solid var(--line); padding-top: 14px; }
+.avatar-crop { margin-top: 10px; display: grid; gap: 10px; max-width: 360px; }
+.avatar-crop canvas { width: 320px; height: 320px; border-radius: 12px; border: 1px solid var(--line); touch-action: none; cursor: crosshair; }
+.avatar-crop input[type='range'] { width: 320px; }
+
+
+/* ============================================================
  * 夜间模式
  * 主题由 base.html 的内联脚本在首次绘制前写到 <html data-theme>，
  * 默认跟随系统（prefers-color-scheme），用户切换后记在 localStorage。

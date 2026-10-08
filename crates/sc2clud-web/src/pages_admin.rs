@@ -48,6 +48,7 @@ async fn build_panel<'a>(state: &'a AppState, headers: &HeaderMap) -> AppResult<
         .into_iter()
         .map(|row| AdminUserView {
             id: row.id,
+            avatar: row.avatar_hash.clone(),
             handle: row.handle,
             display_name: row.display_name,
             role_label: Role::parse(&row.role)

@@ -11,7 +11,8 @@ export default defineConfig({
     target: 'es2020',
     cssCodeSplit: false,
     rollupOptions: {
-      input: { uploader: 'src/main.ts' },
+      // 头像岛是纯 TS（不引 Vue），单独入口，互不牵连
+      input: { uploader: 'src/main.ts', avatar: 'src/avatar.ts' },
       output: {
         format: 'es',
         entryFileNames: '[name].js',

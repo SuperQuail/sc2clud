@@ -1,42 +1,15 @@
 {% extends "base.html" %}
 
-{% block nav_home %}active{% endblock %}
+{% block title %}{{ site_name }}{% endblock %}
+
+{# 站点概况放在顶部蓝条里，页面顶部不再占一大块 #}
+{% block bar_stats %}<span>可见帖子 {{ visible_posts }}</span>{% endblock %}
+{% block bar_avatar %}{% if let Some(hash) = my_avatar %}/avatar/{{ hash }}{% else %}/static/art/miyin-chibi-80.webp{% endif %}{% endblock %}
+
+{% block dock_extra %}{% if is_staff %}<a href="/admin">管理面板</a>{% endif %}{% endblock %}
 
 {% block content %}
 <section class="card">
-  <div class="hero">
-    <div class="copy">
-      <p class="eyebrow">SC2CLUD · 星际争霸 II 社区</p>
-      <h1>{{ site_name }}</h1>
-      <p>讨论、资源与转载，都在这里。游客可以浏览；登录并激活后即可发帖与回复。</p>
-      <div class="actions-inline">
-        {% if user_label.is_none() %}
-        <a class="btn" href="/login">登录</a>
-        <a class="btn ghost" href="/register">注册</a>
-        {% else if needs_activation %}
-        <span class="kind state-pending">账号待激活</span>
-        {% else %}
-        <a class="btn" href="/new">发新帖</a>
-        {% endif %}
-      </div>
-    </div>
-    <div class="art">
-      <img src="/static/art/miyin-wink-260.webp"
-           srcset="/static/art/miyin-wink-260.webp 260w, /static/art/miyin-wink-520.webp 520w"
-           sizes="260px" width="260" height="260" alt="弥音" fetchpriority="high">
-    </div>
-  </div>
-  <div class="stats">
-    <div><div class="label">可见帖子</div><div class="value">{{ visible_posts }}</div></div>
-    {% if let Some(stats) = my_file_stats %}
-    <div><div class="label">我的文件</div><div class="value">{{ stats.files }}</div></div>
-    <div><div class="label">占用空间</div><div class="value">{{ stats.bytes_human }}</div></div>
-    <div><div class="label">被下载</div><div class="value">{{ stats.downloads }}</div></div>
-    {% endif %}
-  </div>
-</section>
-
-<section class="card" id="posts">
   <nav class="section-nav">
     <a href="/" class="{% if sections_all_active %}active{% endif %}">全部</a>
     {% for section in sections %}
@@ -45,12 +18,11 @@
   </nav>
   <h2>帖子 <span class="count">{{ visible_posts }}</span>
     <span class="spacer">
-      {% if is_staff %}<a href="/admin">管理面板</a> · {% endif %}
       {% if can_post %}<a href="/new">发新帖</a>{% else if user_label.is_none() %}<a href="/login">登录后可发帖</a>{% else %}待激活后可发帖{% endif %}
     </span>
   </h2>
   {% if posts.is_empty() %}
-  <p class="empty">还没有帖子。</p>
+  <p class="empty">这个分区还没有帖子。</p>
   {% else %}
   <div class="post-grid">
     {% for post in posts %}
@@ -64,58 +36,23 @@
         <span class="tag">{{ post.section_label }}</span>
         <span class="kind kind-{{ post.kind }}">{{ post.kind_label }}</span>
         {% if post.state != "approved" %}<span class="kind state-{{ post.state }}">{{ post.state_label }}</span>{% endif %}
-        {% if post.is_mine %}<span class="kind" style="background:#f1f4f9;color:#7b8798">我的</span>{% endif %}
       </div>
       <h3><a href="/p/{{ post.id }}">{{ post.title }}</a></h3>
       <p class="preview">{{ post.preview }}</p>
       <div class="foot">
-        <span>{{ post.author }} · {{ post.author_role_label }}{% if post.image_count > 0 %} · {{ post.image_count }} 图{% endif %}</span>
-        <time datetime="{{ post.created_at }}">{{ post.created_at }}</time>
+        <span class="byline">
+          {% if let Some(avatar) = post.avatar %}
+          <img class="avatar" src="/avatar/{{ avatar }}" alt="" width="20" height="20" loading="lazy">
+          {% else %}
+          <img class="avatar" src="/static/art/miyin-chibi-80.webp" alt="" width="20" height="20" loading="lazy">
+          {% endif %}
+          {{ post.author }}
+        </span>
+        <span>{% if post.image_count > 0 %}· {{ post.image_count }} 图 · {% endif %}{{ post.created_at }}</span>
       </div>
     </article>
     {% endfor %}
   </div>
   {% endif %}
 </section>
-
-{# 网盘只对网站管理员及以上可见：这是后续施工内容，普通用户看不到入口。 #}
-{% if netdisk_visible %}
-<section class="card" id="files">
-  <h2>网盘 <span class="count">{% if let Some(stats) = my_file_stats %}{{ stats.files }}{% else %}0{% endif %}</span>
-    <span class="spacer">仅管理员可见 · 单文件上限 {{ max_upload_human }}</span>
-  </h2>
-  <p class="hint">此区域仅管理员可见。</p>
-  <div data-island="uploader">
-    <form id="upload-form" class="uploader">
-      <input id="upload-input" type="file" required>
-      <button id="upload-submit" class="btn" type="submit">上传</button>
-      <p class="hint">选择文件后上传。</p>
-    </form>
-  </div>
-  {% if my_files.is_empty() %}
-  <p class="empty">还没有文件。</p>
-  {% else %}
-  <ul class="list">
-    {% for file in my_files %}
-    <li>
-      <div class="row">
-        <div class="grow">
-          <a class="name" href="/f/{{ file.id }}">{{ file.name }}</a>
-          <div class="meta">{{ file.mime }} · 下载 {{ file.download_count }} 次 · {{ file.created_at }}</div>
-        </div>
-        <span class="size-pill">{{ file.size_human }}</span>
-        <a class="btn ghost" href="/f/{{ file.id }}">详情</a>
-      </div>
-    </li>
-    {% endfor %}
-  </ul>
-  {% endif %}
-</section>
-{% endif %}
-{% endblock %}
-
-{% block scripts %}
-{% if can_post %}
-<script type="module" src="/static/islands/uploader.js"></script>
-{% endif %}
 {% endblock %}

@@ -1,0 +1,75 @@
+{% extends "base.html" %}
+
+{% block title %}{{ display_name }} · {{ site_name }}{% endblock %}
+
+{% block bar_stats %}<span>帖子 {{ accepted }}</span><span>加入于 {{ joined_at }}</span>{% endblock %}
+{% block bar_avatar %}{% if let Some(hash) = avatar %}/avatar/{{ hash }}{% else %}/static/art/miyin-chibi-80.webp{% endif %}{% endblock %}
+
+{% block dock_extra %}{% if is_self %}<a href="/new">发新帖</a>{% endif %}{% endblock %}
+
+{% block content %}
+<section class="card profile">
+  <div class="profile-head">
+    {% if let Some(hash) = avatar %}
+    <img class="avatar avatar-lg" src="/avatar/{{ hash }}" alt="" width="72" height="72">
+    {% else %}
+    <img class="avatar avatar-lg" src="/static/art/miyin-chibi-160.webp" alt="" width="72" height="72">
+    {% endif %}
+    <div>
+      <h1>{{ display_name }}</h1>
+      <p class="meta">@{{ handle }} · {{ role_label }} · 加入于 {{ joined_at }}</p>
+    </div>
+  </div>
+
+  {% if is_self %}
+  <div class="avatar-editor" data-island="avatar" data-csrf="{{ csrf }}">
+    <p class="hint">换头像：选择图片后可拖动选择区域，浏览器会裁好并压到 64 KB 以内再上传。</p>
+    <input type="file" accept="image/*" id="avatar-input">
+    <div class="avatar-crop" id="avatar-crop" hidden>
+      <canvas id="avatar-canvas" width="320" height="320"></canvas>
+      <p class="hint">在图上拖动选择要保留的方形区域，滚轮或滑块缩放。</p>
+      <input type="range" id="avatar-zoom" min="1" max="3" step="0.01" value="1">
+      <div class="actions-inline">
+        <button class="btn" type="button" id="avatar-save">上传头像</button>
+        <button class="btn ghost" type="button" id="avatar-cancel">取消</button>
+        <span class="hint" id="avatar-status"></span>
+      </div>
+    </div>
+  </div>
+  {% endif %}
+</section>
+
+<section class="card">
+  <h2>TA 的帖子 <span class="count">{{ posts.len() }}</span></h2>
+  {% if posts.is_empty() %}
+  <p class="empty">还没有帖子。</p>
+  {% else %}
+  <div class="post-grid">
+    {% for post in posts %}
+    <article class="post-card">
+      {% if let Some(cover) = post.cover_hash %}
+      <div class="post-cover" style="background-image:url('/img/{{ cover }}')"></div>
+      {% else %}
+      <div class="post-cover post-cover-empty"></div>
+      {% endif %}
+      <div class="head">
+        <span class="tag">{{ post.section_label }}</span>
+        <span class="kind kind-{{ post.kind }}">{{ post.kind_label }}</span>
+        {% if post.state != "approved" %}<span class="kind state-{{ post.state }}">{{ post.state_label }}</span>{% endif %}
+      </div>
+      <h3><a href="/p/{{ post.id }}">{{ post.title }}</a></h3>
+      <p class="preview">{{ post.preview }}</p>
+      <div class="foot">
+        <span>{{ post.created_at }}</span>
+        <span>{% if post.image_count > 0 %}{{ post.image_count }} 图{% endif %}</span>
+      </div>
+    </article>
+    {% endfor %}
+  </div>
+  {% endif %}
+</section>
+{% endblock %}
+
+{% block scripts %}
+{% if is_self %}<script type="module" src="/static/islands/avatar.js"></script>{% endif %}
+{% endblock %}

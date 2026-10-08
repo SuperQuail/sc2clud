@@ -20,43 +20,77 @@
 </head>
 <body>
   <header class="topbar">
-    <img class="mascot" src="/static/art/miyin-chibi-80.webp"
-         srcset="/static/art/miyin-chibi-80.webp 80w, /static/art/miyin-chibi-160.webp 160w"
-         sizes="40px" width="40" height="40" alt="弥音" fetchpriority="high">
-    <a class="brand" href="/">{{ site_name }}<small>COMMUNITY &amp; CLOUD</small></a>
-    <nav class="main-nav">
-      <a href="/" class="{% block nav_home %}{% endblock %}">社区</a>
+    <a class="brand" href="/">
+      <img class="mascot" src="/static/art/miyin-chibi-80.webp"
+           srcset="/static/art/miyin-chibi-80.webp 80w, /static/art/miyin-chibi-160.webp 160w"
+           sizes="40px" width="40" height="40" alt="弥音" fetchpriority="high">
+      <span>{{ site_name }}<small>COMMUNITY &amp; CLOUD</small></span>
+    </a>
+    <div class="bar-stats">{% block bar_stats %}{% endblock %}</div>
+    <div class="bar-user">
       {% if let Some(name) = user_label %}
-      <a href="/">{{ name }}</a>
+      <a class="user-chip" href="/me" title="我的主页">
+        <img class="avatar" src="{% block bar_avatar %}/static/art/miyin-chibi-80.webp{% endblock %}" alt="" width="28" height="28">
+        <span>{{ name }}</span>
+      </a>
       {% else %}
-      <a href="/login">登录</a>
-      <a href="/register">注册</a>
-      <button class="theme-toggle" type="button" id="theme-toggle" aria-label="切换夜间模式">夜间</button>
+      <a class="btn ghost" href="/login">登录</a>
+      <a class="btn" href="/register">注册</a>
       {% endif %}
-    </nav>
-  <script>
-    (function () {
-      var button = document.getElementById('theme-toggle');
-      if (!button) return;
-      var sync = function () {
-        var dark = document.documentElement.getAttribute('data-theme') === 'dark';
-        button.textContent = dark ? '日间' : '夜间';
-        button.setAttribute('aria-pressed', dark ? 'true' : 'false');
-      };
-      sync();
-      button.addEventListener('click', function () {
-        var next = document.documentElement.getAttribute('data-theme') === 'dark' ? 'light' : 'dark';
-        document.documentElement.setAttribute('data-theme', next);
-        try { localStorage.setItem('sc2clud-theme', next); } catch (e) {}
-        sync();
-      });
-    })();
-  </script>
+    </div>
   </header>
+
+  {# 右侧悬浮窗：主要动作都挂在这里，页面顶部不再占用大块空间 #}
+  <aside class="dock" id="dock" aria-label="快捷操作">
+    <button class="dock-toggle" type="button" id="dock-toggle" aria-expanded="true" title="收起/展开">⟨</button>
+    <div class="dock-items">
+      {% if user_label.is_some() %}<a href="/new">发新帖</a>{% else %}<a href="/login">登录</a>{% endif %}
+      <a href="/me">我的主页</a>
+      {% if let Some(name) = user_label %}
+      <a href="/?section=announcement">公告</a>
+      {% endif %}
+      {% block dock_extra %}{% endblock %}
+      <a href="/">社区首页</a>
+      <button class="dock-theme" type="button" id="theme-toggle" aria-label="切换夜间模式">夜间</button>
+    </div>
+  </aside>
+
   <main>
 {% block content %}{% endblock %}
   </main>
   <footer>{{ site_name }} · 星际争霸 II 社区</footer>
+  <script>
+    (function () {
+      // 夜间模式
+      var button = document.getElementById('theme-toggle');
+      if (button) {
+        var sync = function () {
+          var dark = document.documentElement.getAttribute('data-theme') === 'dark';
+          button.textContent = dark ? '日间模式' : '夜间模式';
+          button.setAttribute('aria-pressed', dark ? 'true' : 'false');
+        };
+        sync();
+        button.addEventListener('click', function () {
+          var next = document.documentElement.getAttribute('data-theme') === 'dark' ? 'light' : 'dark';
+          document.documentElement.setAttribute('data-theme', next);
+          try { localStorage.setItem('sc2clud-theme', next); } catch (e) {}
+          sync();
+        });
+      }
+      // 悬浮窗收起状态记在本地
+      var dock = document.getElementById('dock');
+      var toggle = document.getElementById('dock-toggle');
+      if (dock && toggle) {
+        if (localStorage.getItem('sc2clud-dock') === 'closed') { dock.classList.add('closed'); }
+        toggle.addEventListener('click', function () {
+          dock.classList.toggle('closed');
+          var closed = dock.classList.contains('closed');
+          toggle.setAttribute('aria-expanded', closed ? 'false' : 'true');
+          try { localStorage.setItem('sc2clud-dock', closed ? 'closed' : 'open'); } catch (e) {}
+        });
+      }
+    })();
+  </script>
 {% block scripts %}{% endblock %}
 </body>
 </html>

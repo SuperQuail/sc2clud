@@ -26,6 +26,8 @@ pub struct CurrentUser {
     pub handle: String,
     /// 显示名：页面上展示的名字。
     pub display_name: String,
+    /// 头像的内容摘要（NULL = 用首字母兜底）。
+    pub avatar_hash: Option<String>,
     pub role: Role,
     pub activated: bool,
     pub csrf_token: String,
@@ -75,6 +77,7 @@ pub async fn current_user(state: &AppState, headers: &HeaderMap) -> AppResult<Op
         id: user.id,
         handle: user.handle,
         display_name,
+        avatar_hash: user.avatar_hash,
         role,
         activated: user.activated_at.is_some(),
         csrf_token: session.csrf_token,

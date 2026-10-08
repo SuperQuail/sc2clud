@@ -69,6 +69,8 @@ pub enum Permission {
     CreateRepost,
     /// 回复帖子。
     Comment,
+    /// 设置自己的头像（任何已激活用户）。
+    SetAvatar,
     /// 使用网盘（上传/下载/管理自己的文件）。
     ///
     /// **当前阶段只对网站管理员及以上开放**：网盘是后续施工内容，
@@ -87,9 +89,10 @@ impl Permission {
     pub fn min_role(self) -> Option<Role> {
         match self {
             Permission::ViewContent => None,
-            Permission::CreateDiscussion | Permission::CreateRepost | Permission::Comment => {
-                Some(Role::Member)
-            }
+            Permission::CreateDiscussion
+            | Permission::CreateRepost
+            | Permission::Comment
+            | Permission::SetAvatar => Some(Role::Member),
             // 网盘：暂只对管理员开放（施工中）
             Permission::UseNetdisk => Some(Role::Admin),
             // 讨论 / 资源 / 转载三类帖子对**所有已激活用户**开放（产品决定：不设发布门槛）。
@@ -202,6 +205,12 @@ pub fn validate_handle(raw: &str) -> Result<String> {
     Ok(handle.to_string())
 }
 
+/// 头像成品的体积上限：64 KB。
+///
+/// 压缩在**用户浏览器**里完成（canvas），服务端只做最后一道校验——
+/// 2 vCPU 的机器不该把算力花在图片转码上。
+pub const MAX_AVATAR_BYTES: u64 = 64 * 1024;
+
 /// 显示名上限（字符数，不是字节数）——中文一个字算一个。
 pub const MAX_DISPLAY_NAME_CHARS: usize = 20;
 
@@ -300,6 +309,11 @@ mod tests {
     #[test]
     fn developer_and_admin_tiers() {
         assert!(allows(Some(Role::Developer), true, Permission::ReviewPost));
+        assert!(allows(Some(Role::Member), true, Permission::SetAvatar));
+        assert!(
+            !allows(Some(Role::Member), false, Permission::SetAvatar),
+            "未激活不能换头像"
+        );
         // 网盘暂不对普通用户/开发者开放
         assert!(!allows(Some(Role::Member), true, Permission::UseNetdisk));
         assert!(!allows(Some(Role::Developer), true, Permission::UseNetdisk));

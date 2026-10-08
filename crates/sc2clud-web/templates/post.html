@@ -10,7 +10,13 @@
     {% if post.state != "approved" %}<span class="kind state-{{ post.state }}">{{ post.state_label }}</span>{% endif %}
   </div>
   <h1 style="margin:0 0 8px;font-size:22px;line-height:1.4">{{ post.title }}</h1>
-  <div class="meta">{{ post.author }} · {{ post.author_role_label }} · {{ post.created_at }}
+  <div class="meta byline">
+    {% if let Some(avatar) = post.avatar %}
+    <img class="avatar" src="/avatar/{{ avatar }}" alt="" width="24" height="24">
+    {% else %}
+    <img class="avatar" src="/static/art/miyin-chibi-80.webp" alt="" width="24" height="24">
+    {% endif %}
+    {{ post.author }} · {{ post.author_role_label }} · {{ post.created_at }}
     {% if post.image_count > 0 %} · {{ post.image_count }} 张图{% endif %}</div>
   {% if let Some(note) = post.review_note %}
   {% if post.state == "approved" %}
@@ -68,7 +74,14 @@
   <div class="comments">
     {% for c in comments %}
     <div class="comment">
-      <div class="who">{{ c.author }}</div>
+      <div class="who byline">
+        {% if let Some(avatar) = c.avatar %}
+        <img class="avatar" src="/avatar/{{ avatar }}" alt="" width="20" height="20" loading="lazy">
+        {% else %}
+        <img class="avatar" src="/static/art/miyin-chibi-80.webp" alt="" width="20" height="20" loading="lazy">
+        {% endif %}
+        {{ c.author }}
+      </div>
       <p>{{ c.body }}</p>
       <time class="meta" datetime="{{ c.created_at }}">{{ c.created_at }}</time>
     </div>

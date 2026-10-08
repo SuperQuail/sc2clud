@@ -54,6 +54,15 @@ pub fn pages() -> Router<AppState> {
             axum::routing::get(crate::pages_auth::login_form).post(crate::pages_auth::login_submit),
         )
         .route("/logout", axum::routing::post(crate::pages_auth::logout))
+        .route("/me", axum::routing::get(crate::pages_profile::me))
+        .route(
+            "/u/{handle}",
+            axum::routing::get(crate::pages_profile::profile),
+        )
+        .route(
+            "/avatar/{hash}",
+            axum::routing::get(crate::pages_profile::serve_avatar),
+        )
         .route("/admin", axum::routing::get(crate::pages_admin::panel))
         .route(
             "/admin/users/{id}/activate",
@@ -111,6 +120,7 @@ pub fn api_read() -> Router<AppState> {
 pub fn api_upload() -> Router<AppState> {
     Router::new()
         .route("/api/v1/files", axum::routing::put(upload_file))
+        .route("/api/v1/me/avatar", axum::routing::post(upload_avatar))
         .route(
             "/api/v1/posts/{post_id}/images",
             axum::routing::post(upload_post_image),
@@ -294,6 +304,7 @@ async fn build_index<'a>(
         visible_posts: feed.len() as i64,
         posts: feed.iter().map(|row| feed_view(row, viewer_id)).collect(),
         is_staff,
+        my_avatar: user.and_then(|u| u.avatar_hash.clone()),
         netdisk_visible,
         my_files: my_files.iter().map(FileView::from_row).collect(),
         my_file_stats,
@@ -302,7 +313,7 @@ async fn build_index<'a>(
 }
 
 /// 帖子卡片视图：状态解析失败时按「审核中」处理——宁可不显示，也不要误露。
-fn feed_view(row: &sc2clud_db::PostWithAuthorRow, viewer_id: Option<i64>) -> FeedView {
+pub(crate) fn feed_view(row: &sc2clud_db::PostWithAuthorRow, viewer_id: Option<i64>) -> FeedView {
     let state = ReviewState::parse(&row.review_state).unwrap_or(ReviewState::Pending);
     let kind = PostKind::parse(&row.kind).unwrap_or(PostKind::Discussion);
     let author_role = sc2clud_core::auth::Role::parse(&row.author_role)
@@ -311,6 +322,7 @@ fn feed_view(row: &sc2clud_db::PostWithAuthorRow, viewer_id: Option<i64>) -> Fee
     let section = PostSection::parse(&row.section).unwrap_or(PostSection::default_section());
     FeedView {
         id: row.id,
+        avatar: row.author_avatar.clone(),
         title: row.title.clone(),
         section: section.as_str().to_string(),
         section_label: section.label().to_string(),
@@ -371,7 +383,7 @@ pub async fn not_found(headers: HeaderMap) -> Response {
 // ------------------------------------------------------------ 帖子图片
 
 /// 认图片格式只看魔数，不信客户端声明的 Content-Type。
-fn sniff_image_mime(head: &[u8]) -> Option<&'static str> {
+pub(crate) fn sniff_image_mime(head: &[u8]) -> Option<&'static str> {
     if head.starts_with(&[0x89, b'P', b'N', b'G']) {
         Some("image/png")
     } else if head.starts_with(&[0xFF, 0xD8, 0xFF]) {
@@ -396,7 +408,8 @@ pub async fn upload_post_image(
     body: Body,
 ) -> AppResult<Json<serde_json::Value>> {
     let user = require_user(&state, &headers).await?;
-    session::guard(Some(&user), Permission::UseNetdisk)?;
+    // 帖子配图不是网盘：任何已激活用户都能给自己的帖子加图
+    session::guard(Some(&user), Permission::CreateDiscussion)?;
     ensure_free_space(
         state.storage.available_bytes().await?,
         state.config.limits.min_free_bytes,
@@ -552,6 +565,95 @@ pub async fn serve_image(
     );
     let _ = cache;
     Ok(response)
+}
+
+// ------------------------------------------------------------ 头像
+
+/// 上传头像。
+///
+/// 压缩与裁剪**已经在浏览器里做完**（canvas，压到 ≤64KB），服务端只做：
+/// 登录 + 已激活 + CSRF + 魔数认类型 + 体积上限（流式计数，超了直接断）+ 磁盘闸门。
+pub async fn upload_avatar(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    body: Body,
+) -> AppResult<Json<serde_json::Value>> {
+    let user = require_user(&state, &headers).await?;
+    session::guard(Some(&user), Permission::SetAvatar)?;
+    let token = headers
+        .get("x-csrf-token")
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or("");
+    session::check_csrf(&user, token)?;
+    ensure_free_space(
+        state.storage.available_bytes().await?,
+        state.config.limits.min_free_bytes,
+    )?;
+
+    let mut stream = body.into_data_stream();
+    let first = stream.next().await;
+    let head_bytes = match &first {
+        Some(Ok(chunk)) => chunk.clone(),
+        Some(Err(e)) => return Err(AppError::internal(format!("读取请求体失败：{e}"))),
+        None => Bytes::new(),
+    };
+    let Some(mime) = sniff_image_mime(&head_bytes) else {
+        return Err(invalid("只接受 PNG / JPEG / GIF / WebP 图片"));
+    };
+
+    let chained = futures_util::stream::iter(first).chain(stream);
+    let body_stream: std::pin::Pin<
+        Box<dyn futures_util::Stream<Item = Result<Bytes, axum::Error>> + Send>,
+    > = Box::pin(chained);
+    let (tx, rx) = mpsc::channel::<Result<Bytes, std::io::Error>>(DEFAULT_QUEUE_DEPTH);
+    let reader: BlobReader = Box::pin(StreamReader::new(ReceiverStream::new(rx)));
+    let subject = client_subject(&headers, None);
+    let limit = sc2clud_core::auth::MAX_AVATAR_BYTES.min(state.config.limits.max_upload_bytes);
+    let pump = tokio::spawn(pump_body(
+        body_stream,
+        tx,
+        Arc::clone(&state.upload_gate),
+        subject,
+        limit,
+    ));
+
+    let stored = state.storage.put_stream(reader, None).await;
+    let pumped = match pump.await {
+        Ok(result) => result,
+        Err(join) => Err(AppError::internal(format!("上传任务异常：{join}"))),
+    };
+    let outcome = match (stored, pumped) {
+        (Ok(outcome), Ok(_)) => outcome,
+        (Ok(_), Err(client_err)) => return Err(client_err),
+        (Err(storage_err), Err(client_err)) => {
+            let (status, _, _) = client_err.parts();
+            return if status.is_client_error() {
+                Err(client_err)
+            } else {
+                Err(storage_err.into())
+            };
+        }
+        (Err(storage_err), Ok(_)) => return Err(storage_err.into()),
+    };
+
+    let hash = outcome.stat.hash.clone();
+    let size = outcome.stat.size as i64;
+    if outcome.stat.size > sc2clud_core::auth::MAX_AVATAR_BYTES {
+        return Err(AppError::Domain(DomainError::QuotaExceeded(format!(
+            "头像不得超过 {} KB",
+            sc2clud_core::auth::MAX_AVATAR_BYTES / 1024
+        ))));
+    }
+    repo::ensure_blob(state.db.pool(), hash.as_str(), size, now_unix()).await?;
+    repo::set_user_avatar(state.db.pool(), user.id, Some(hash.as_str()), Some(mime)).await?;
+    state.counters.bump("avatar:set", 1);
+    tracing::info!(user.id = user.id, blob = %hash, size, %mime, "更新头像");
+    Ok(Json(json!({
+        "hash": hash.to_string(),
+        "url": format!("/avatar/{hash}"),
+        "size": size,
+        "mime": mime,
+    })))
 }
 
 // ------------------------------------------------------------ 社区接口

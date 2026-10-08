@@ -28,6 +28,8 @@ pub struct IndexTemplate<'a> {
     pub visible_posts: i64,
     /// 当前用户是否管理员及以上（决定导航里是否出现「管理」）。
     pub is_staff: bool,
+    /// 当前用户的头像摘要（顶栏用）。
+    pub my_avatar: Option<String>,
     /// 网盘区块是否可见（当前仅网站管理员及以上）。
     pub netdisk_visible: bool,
     /// **只显示自己的文件**——别人的文件不进首页。
@@ -40,6 +42,8 @@ pub struct IndexTemplate<'a> {
 /// 首页帖子卡片。
 pub struct FeedView {
     pub id: i64,
+    /// 作者头像摘要（NULL = 首字母兜底）。
+    pub avatar: Option<String>,
     pub title: String,
     pub preview: String,
     /// 封面图（该帖第一张图）；卡片用它铺底。
@@ -202,6 +206,7 @@ pub struct PostPageTemplate<'a> {
 /// 帖子正文视图。
 pub struct PostDetailView {
     pub id: i64,
+    pub avatar: Option<String>,
     pub title: String,
     pub section: String,
     pub section_label: String,
@@ -244,6 +249,7 @@ pub struct ImageView {
 /// 回复视图。
 pub struct CommentView {
     pub author: String,
+    pub avatar: Option<String>,
     pub body: String,
     pub created_at: String,
 }
@@ -284,6 +290,25 @@ pub struct SourceSlot {
     pub url: String,
     pub code: String,
     pub provider: String,
+}
+
+/// 用户主页。
+#[derive(Template)]
+#[template(path = "profile.html")]
+pub struct ProfileTemplate<'a> {
+    pub site_name: &'a str,
+    pub user_label: Option<String>,
+    pub csrf: String,
+    pub handle: String,
+    pub display_name: String,
+    pub role_label: String,
+    pub avatar: Option<String>,
+    pub joined_at: String,
+    pub is_self: bool,
+    /// 本人或管理员才看得到「换头像」。
+    pub can_edit_avatar: bool,
+    pub posts: Vec<FeedView>,
+    pub accepted: i64,
 }
 
 /// 调试页（开发自检；生产实例不注册该路由）。
@@ -332,6 +357,7 @@ pub struct AdminTemplate<'a> {
 /// 管理员面板里的用户行。
 pub struct AdminUserView {
     pub id: i64,
+    pub avatar: Option<String>,
     pub handle: String,
     pub display_name: String,
     pub role: String,

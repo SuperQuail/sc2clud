@@ -222,6 +222,7 @@ async fn build_post_page<'a>(
         show_sources,
         post: PostDetailView {
             id: row.id,
+            avatar: author.as_ref().and_then(|u| u.avatar_hash.clone()),
             title: row.title.clone(),
             section: section.as_str().to_string(),
             section_label: section.label().to_string(),
@@ -241,6 +242,7 @@ async fn build_post_page<'a>(
             .into_iter()
             .map(|c| CommentView {
                 author: c.author_display_name,
+                avatar: c.author_avatar,
                 body: c.body,
                 created_at: format_date(c.created_at),
             })

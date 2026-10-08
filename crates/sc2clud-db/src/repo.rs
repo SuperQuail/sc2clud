@@ -817,7 +817,8 @@ pub async fn list_feed(
     query_as::<_, PostWithAuthorRow>(
         "SELECT p.id, p.title, p.body, p.kind, p.section, p.review_state, p.review_note, p.image_count, \
                 p.created_at, p.author_id, u.handle AS author_handle, \
-                u.display_name AS author_display_name, u.role AS author_role, \
+                u.display_name AS author_display_name, u.avatar_hash AS author_avatar, \
+                u.role AS author_role, \
                 (SELECT COALESCE(pi.display_hash, pi.original_hash) \
                  FROM post_images pi \
                  WHERE pi.post_id = p.id AND pi.state <> 'failed' \
@@ -853,7 +854,8 @@ pub async fn list_feed_by_section(
     query_as::<_, PostWithAuthorRow>(
         "SELECT p.id, p.title, p.body, p.kind, p.section, p.review_state, p.review_note, \
                 p.image_count, p.created_at, p.author_id, u.handle AS author_handle, \
-                u.display_name AS author_display_name, u.role AS author_role, \
+                u.display_name AS author_display_name, u.avatar_hash AS author_avatar, \
+                u.role AS author_role, \
                 (SELECT COALESCE(pi.display_hash, pi.original_hash) \
                  FROM post_images pi \
                  WHERE pi.post_id = p.id AND pi.state <> 'failed' \
@@ -871,6 +873,37 @@ pub async fn list_feed_by_section(
     .bind(limit)
     .bind(offset)
     .bind(section)
+    .fetch_all(pool)
+    .await
+    .map_err(db_err)
+}
+
+/// 某个作者的帖子（个人主页用）。
+///
+/// 非本人/非管理员只看得到已通过的帖子——和首页同一套可见性规则。
+pub async fn list_posts_by_author(
+    pool: &SqlitePool,
+    author_id: i64,
+    include_pending: bool,
+    limit: i64,
+) -> Result<Vec<PostWithAuthorRow>> {
+    query_as::<_, PostWithAuthorRow>(
+        "SELECT p.id, p.title, p.body, p.kind, p.section, p.review_state, p.review_note, \
+                p.image_count, p.created_at, p.author_id, u.handle AS author_handle, \
+                u.display_name AS author_display_name, u.avatar_hash AS author_avatar, \
+                u.role AS author_role, \
+                (SELECT COALESCE(pi.display_hash, pi.original_hash) \
+                 FROM post_images pi \
+                 WHERE pi.post_id = p.id AND pi.state <> 'failed' \
+                 ORDER BY pi.position, pi.id LIMIT 1) AS cover_hash \
+         FROM posts p JOIN users u ON u.id = p.author_id \
+         WHERE p.deleted_at IS NULL AND p.author_id = ?1 \
+           AND (p.review_state = 'approved' OR ?2 = 1) \
+         ORDER BY p.created_at DESC, p.id DESC LIMIT ?3",
+    )
+    .bind(author_id)
+    .bind(i64::from(include_pending))
+    .bind(limit)
     .fetch_all(pool)
     .await
     .map_err(db_err)
@@ -924,7 +957,8 @@ pub async fn list_comments(
 ) -> Result<Vec<CommentWithAuthorRow>> {
     query_as::<_, CommentWithAuthorRow>(
         "SELECT c.id, c.post_id, c.author_id, u.handle AS author_handle, \
-                u.display_name AS author_display_name, c.body, c.created_at \
+                u.display_name AS author_display_name, u.avatar_hash AS author_avatar, \
+                c.body, c.created_at \
          FROM comments c JOIN users u ON u.id = c.author_id \
          WHERE c.post_id = ? AND c.deleted_at IS NULL ORDER BY c.created_at, c.id LIMIT ?",
     )
@@ -1168,6 +1202,49 @@ pub async fn set_user_password(pool: &SqlitePool, user_id: i64, password_hash: &
 }
 
 /// 改显示名（不影响登录名）。为空或超长由领域层校验，这里只做写入。
+/// 设置头像（内容摘要）。传 NULL 即清除。
+pub async fn set_user_avatar(
+    pool: &SqlitePool,
+    user_id: i64,
+    avatar_hash: Option<&str>,
+    avatar_mime: Option<&str>,
+) -> Result<bool> {
+    let affected = query(
+        "UPDATE users SET avatar_hash = ?, avatar_mime = ? \
+         WHERE id = ? AND COALESCE(avatar_hash, '') <> COALESCE(?, '')",
+    )
+    .bind(avatar_hash)
+    .bind(avatar_mime)
+    .bind(user_id)
+    .bind(avatar_hash)
+    .execute(pool)
+    .await
+    .map_err(db_err)?
+    .rows_affected();
+    Ok(affected == 1)
+}
+
+/// 某个作者的头像摘要是否被某个用户使用（`/avatar/{hash}` 只服务登记过的内容）。
+pub async fn avatar_is_used(pool: &SqlitePool, hash: &str) -> Result<bool> {
+    let row: Option<(i64,)> = query_as("SELECT 1 FROM users WHERE avatar_hash = ? LIMIT 1")
+        .bind(hash)
+        .fetch_optional(pool)
+        .await
+        .map_err(db_err)?;
+    Ok(row.is_some())
+}
+
+/// 头像的 MIME（给 `/avatar/{hash}` 定 Content-Type）。
+pub async fn avatar_mime(pool: &SqlitePool, hash: &str) -> Result<Option<String>> {
+    let row: Option<(Option<String>,)> =
+        query_as("SELECT avatar_mime FROM users WHERE avatar_hash = ? LIMIT 1")
+            .bind(hash)
+            .fetch_optional(pool)
+            .await
+            .map_err(db_err)?;
+    Ok(row.and_then(|r| r.0))
+}
+
 pub async fn set_display_name(pool: &SqlitePool, user_id: i64, display_name: &str) -> Result<bool> {
     let affected = query("UPDATE users SET display_name = ? WHERE id = ? AND display_name <> ?")
         .bind(display_name)
