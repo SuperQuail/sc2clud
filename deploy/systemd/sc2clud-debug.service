@@ -17,13 +17,13 @@ Environment=SC2CLUD_BASE_URL=http://127.0.0.1:8081
 Environment=SC2CLUD_DEBUG_PAGES=1
 Environment=SC2CLUD_SERVE_BLOBS_LOCALLY=1
 Environment=SC2CLUD_LOG=debug
+WorkingDirectory=/srv/sc2clud
 ExecStart=/srv/sc2clud/sc2clud serve
 Restart=on-failure
+# 注意：**不要**照抄生产 unit 的 ProtectSystem=strict / ProtectHome=yes——
+# 这个调试实例在沙箱下会以 status=101 直接退出（踩过一次），
+# 而它只监听回环、数据目录独立，隔离靠的是端口与数据目录，不是文件系统沙箱。
 NoNewPrivileges=yes
-PrivateTmp=yes
-ProtectSystem=strict
-ProtectHome=yes
-ReadWritePaths=/srv/sc2clud/data-debug
 MemoryHigh=96M
 MemoryMax=160M
 OOMScoreAdjust=300
