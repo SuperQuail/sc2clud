@@ -73,6 +73,10 @@ pub async fn register_form(State(state): State<AppState>, headers: HeaderMap) ->
     crate::templates::render(RegisterTemplate {
         site_name: &state.config.server.site_name,
         is_staff: false,
+        csrf: user
+            .as_ref()
+            .map(|u| u.csrf_token.clone())
+            .unwrap_or_default(),
         user_label: user.as_ref().map(|u| u.display_name.clone()),
         needs_activation,
         error: None,
@@ -91,6 +95,7 @@ pub async fn register_submit(
         crate::templates::render(RegisterTemplate {
             site_name: &state.config.server.site_name,
             is_staff: false,
+            csrf: String::new(),
             user_label: None,
             needs_activation: true,
             error: Some(error.to_string()),
@@ -190,6 +195,10 @@ pub async fn login_form(State(state): State<AppState>, headers: HeaderMap) -> Re
     crate::templates::render(LoginTemplate {
         site_name: &state.config.server.site_name,
         is_staff: false,
+        csrf: user
+            .as_ref()
+            .map(|u| u.csrf_token.clone())
+            .unwrap_or_default(),
         user_label: None,
         error: None,
         account: "",
@@ -205,6 +214,7 @@ pub async fn login_submit(
         crate::templates::render(LoginTemplate {
             site_name: &state.config.server.site_name,
             is_staff: false,
+            csrf: String::new(),
             user_label: None,
             error: Some(error.to_string()),
             account: "",

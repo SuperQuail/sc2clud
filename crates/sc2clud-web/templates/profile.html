@@ -5,7 +5,6 @@
 {% block bar_stats %}<span>帖子 {{ accepted }}</span><span>加入于 {{ joined_at }}</span>{% endblock %}
 {% block bar_avatar %}{% if let Some(hash) = avatar %}/avatar/{{ hash }}{% else %}/static/art/miyin-chibi-80.webp{% endif %}{% endblock %}
 
-{% block dock_extra %}{% if is_self %}<a href="/new">发新帖</a>{% endif %}{% endblock %}
 
 {% block content %}
 <section class="card profile">
@@ -22,20 +21,10 @@
   </div>
 
   {% if is_self %}
-  <div class="avatar-editor" data-island="avatar" data-csrf="{{ csrf }}">
-    <p class="hint">换头像：选择图片后可拖动选择区域，浏览器会裁好并压到 64 KB 以内再上传。</p>
-    <input type="file" accept="image/*" id="avatar-input">
-    <div class="avatar-crop" id="avatar-crop" hidden>
-      <canvas id="avatar-canvas" width="320" height="320"></canvas>
-      <p class="hint">在图上拖动选择要保留的方形区域，滚轮或滑块缩放。</p>
-      <input type="range" id="avatar-zoom" min="1" max="3" step="0.01" value="1">
-      <div class="actions-inline">
-        <button class="btn" type="button" id="avatar-save">上传头像</button>
-        <button class="btn ghost" type="button" id="avatar-cancel">取消</button>
-        <span class="hint" id="avatar-status"></span>
-      </div>
-    </div>
-  </div>
+  <p class="actions-inline" style="margin-top:14px">
+    <a class="btn" href="/settings">更换头像 / 修改资料</a>
+    <a class="btn ghost" href="/new">发新帖</a>
+  </p>
   {% endif %}
 </section>
 
@@ -70,6 +59,4 @@
 </section>
 {% endblock %}
 
-{% block scripts %}
-{% if is_self %}<script type="module" src="/static/islands/avatar.js"></script>{% endif %}
-{% endblock %}
+

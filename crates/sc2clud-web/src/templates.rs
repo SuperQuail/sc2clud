@@ -28,6 +28,8 @@ pub struct IndexTemplate<'a> {
     pub visible_posts: i64,
     /// 当前用户是否管理员及以上（决定导航里是否出现「管理」）。
     pub is_staff: bool,
+    /// 顶栏下拉里的退出表单要带 CSRF（游客为空串）。
+    pub csrf: String,
     /// 当前用户的头像摘要（顶栏用）。
     pub my_avatar: Option<String>,
     /// 网盘区块是否可见（当前仅网站管理员及以上）。
@@ -74,6 +76,8 @@ pub struct MyFileStats {
 pub struct FilePageTemplate<'a> {
     /// 管理入口是否可见。
     pub is_staff: bool,
+    /// 顶栏下拉里的退出表单要带 CSRF。
+    pub csrf: String,
     pub site_name: &'a str,
     pub user_label: Option<String>,
     pub file: FileView,
@@ -295,6 +299,24 @@ pub struct SourceSlot {
     pub provider: String,
 }
 
+/// 账户设置页（左侧分栏 + 右侧内容，形态参考雨云的账户设置）。
+#[derive(Template)]
+#[template(path = "settings.html")]
+pub struct SettingsTemplate<'a> {
+    pub site_name: &'a str,
+    pub user_label: Option<String>,
+    pub is_staff: bool,
+    pub csrf: String,
+    pub handle: String,
+    pub display_name: String,
+    pub role_label: String,
+    pub avatar: Option<String>,
+    pub joined_at: String,
+    pub audit: Vec<DebugAuditView>,
+    pub notice: Option<String>,
+    pub error: Option<String>,
+}
+
 /// 用户主页。
 #[derive(Template)]
 #[template(path = "profile.html")]
@@ -320,6 +342,7 @@ pub struct ProfileTemplate<'a> {
 #[template(path = "debug.html")]
 pub struct DebugTemplate<'a> {
     pub is_staff: bool,
+    pub csrf: String,
     pub site_name: &'a str,
     pub user_label: Option<String>,
     pub version: &'a str,
@@ -386,6 +409,7 @@ pub struct KindOption {
 #[template(path = "login.html")]
 pub struct LoginTemplate<'a> {
     pub is_staff: bool,
+    pub csrf: String,
     pub site_name: &'a str,
     pub user_label: Option<String>,
     pub error: Option<String>,
@@ -397,6 +421,7 @@ pub struct LoginTemplate<'a> {
 #[template(path = "register.html")]
 pub struct RegisterTemplate<'a> {
     pub is_staff: bool,
+    pub csrf: String,
     pub site_name: &'a str,
     pub user_label: Option<String>,
     /// 站点当前是否要求管理员手动激活（决定页面文案）。

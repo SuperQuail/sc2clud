@@ -4,7 +4,6 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <script>
-    // 主题要在首次绘制前定下来，否则会先闪一下白底。
     (function () {
       var dark = true;
       try {
@@ -29,10 +28,27 @@
     <div class="bar-stats">{% block bar_stats %}{% endblock %}</div>
     <div class="bar-user">
       {% if let Some(name) = user_label %}
-      <a class="user-chip" href="/me" title="我的主页">
-        <img class="avatar" src="{% block bar_avatar %}/static/art/miyin-chibi-80.webp{% endblock %}" alt="" width="28" height="28">
-        <span>{{ name }}</span>
-      </a>
+      <div class="usermenu" id="usermenu">
+        <button class="user-chip" type="button" id="usermenu-toggle" aria-haspopup="menu" aria-expanded="false">
+          <img class="avatar" src="{% block bar_avatar %}/static/art/miyin-chibi-80.webp{% endblock %}" alt="" width="28" height="28">
+          <span>{{ name }}</span>
+          <svg class="chev" viewBox="0 0 16 16" width="12" height="12" aria-hidden="true"><path d="M4 6l4 4 4-4" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
+        </button>
+        <div class="usermenu-panel" id="usermenu-panel" role="menu">
+          <div class="usermenu-head">
+            <img class="avatar" src="{% block menu_avatar %}/static/art/miyin-chibi-80.webp{% endblock %}" alt="" width="44" height="44">
+            <div><strong>{{ name }}</strong><div class="meta">已登录</div></div>
+          </div>
+          <a href="/me" role="menuitem">我的主页</a>
+          <a href="/settings" role="menuitem">账户设置</a>
+          {% if is_staff %}<a href="/admin" role="menuitem">管理面板</a>{% endif %}
+          <button type="button" class="menu-btn" id="theme-toggle" role="menuitem">夜间模式</button>
+          <form method="post" action="/logout" class="menu-form">
+            <input type="hidden" name="csrf" value="{{ csrf }}">
+            <button type="submit" class="menu-btn" role="menuitem">退出登录</button>
+          </form>
+        </div>
+      </div>
       {% else %}
       <a class="btn ghost" href="/login">登录</a>
       <a class="btn" href="/register">注册</a>
@@ -40,21 +56,20 @@
     </div>
   </header>
 
-  {# 右侧悬浮窗：主要动作都挂在这里，页面顶部不再占用大块空间 #}
-  <aside class="dock" id="dock" aria-label="快捷操作">
-    <button class="dock-toggle" type="button" id="dock-toggle" aria-expanded="true" title="收起/展开">⟨</button>
-    <div class="dock-items">
-      {% if user_label.is_some() %}<a href="/new">发新帖</a>{% else %}<a href="/login">登录</a>{% endif %}
-      <a href="/me">我的主页</a>
-      {% if let Some(name) = user_label %}
-      <a href="/?section=announcement">公告</a>
-      {% endif %}
-      {% if is_staff %}<a href="/admin">管理面板</a>{% endif %}
-      {% block dock_extra %}{% endblock %}
-      <a href="/">社区首页</a>
-      <button class="dock-theme" type="button" id="theme-toggle" aria-label="切换夜间模式">夜间</button>
+  {# 右下角快捷按钮：只放「发帖」，其余功能都在用户菜单与账户设置里 #}
+  {% if user_label.is_some() %}
+  <div class="fab" id="fab">
+    <div class="fab-menu" id="fab-menu">
+      <a class="fab-item" href="/new"><span>发帖</span></a>
     </div>
-  </aside>
+    <button class="fab-btn" type="button" id="fab-btn" aria-expanded="false" aria-label="发帖">
+      <svg viewBox="0 0 24 24" width="26" height="26" aria-hidden="true">
+        <path d="M4 20h4l10-10-4-4L4 16v4z" fill="currentColor"/>
+        <path d="M14.5 5.5l4 4" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+      </svg>
+    </button>
+  </div>
+  {% endif %}
 
   <main>
 {% block content %}{% endblock %}
@@ -62,32 +77,53 @@
   <footer>{{ site_name }} · 星际争霸 II 社区</footer>
   <script>
     (function () {
-      // 夜间模式
-      var button = document.getElementById('theme-toggle');
-      if (button) {
+      // 用户下拉
+      var menu = document.getElementById('usermenu');
+      var toggle = document.getElementById('usermenu-toggle');
+      if (menu && toggle) {
+        var close = function () { menu.classList.remove('open'); toggle.setAttribute('aria-expanded', 'false'); };
+        toggle.addEventListener('click', function (event) {
+          event.stopPropagation();
+          var open = menu.classList.toggle('open');
+          toggle.setAttribute('aria-expanded', open ? 'true' : 'false');
+        });
+        document.addEventListener('click', function (event) { if (!menu.contains(event.target)) close(); });
+        document.addEventListener('keydown', function (event) { if (event.key === 'Escape') close(); });
+      }
+      // 右下角按钮
+      var fab = document.getElementById('fab');
+      var fabBtn = document.getElementById('fab-btn');
+      if (fab && fabBtn) {
+        fabBtn.addEventListener('click', function (event) {
+          event.stopPropagation();
+          var open = fab.classList.toggle('open');
+          fabBtn.setAttribute('aria-expanded', open ? 'true' : 'false');
+        });
+        document.addEventListener('click', function (event) { if (!fab.contains(event.target)) fab.classList.remove('open'); });
+      }
+      // 夜间模式（在用户菜单里）
+      var theme = document.getElementById('theme-toggle');
+      if (theme) {
         var sync = function () {
           var dark = document.documentElement.getAttribute('data-theme') === 'dark';
-          button.textContent = dark ? '日间模式' : '夜间模式';
-          button.setAttribute('aria-pressed', dark ? 'true' : 'false');
+          theme.textContent = dark ? '日间模式' : '夜间模式';
         };
         sync();
-        button.addEventListener('click', function () {
+        theme.addEventListener('click', function () {
           var next = document.documentElement.getAttribute('data-theme') === 'dark' ? 'light' : 'dark';
           document.documentElement.setAttribute('data-theme', next);
           try { localStorage.setItem('sc2clud-theme', next); } catch (e) {}
           sync();
         });
       }
-      // 悬浮窗收起状态记在本地
-      var dock = document.getElementById('dock');
-      var toggle = document.getElementById('dock-toggle');
-      if (dock && toggle) {
-        if (localStorage.getItem('sc2clud-dock') === 'closed') { dock.classList.add('closed'); }
-        toggle.addEventListener('click', function () {
-          dock.classList.toggle('closed');
-          var closed = dock.classList.contains('closed');
-          toggle.setAttribute('aria-expanded', closed ? 'false' : 'true');
-          try { localStorage.setItem('sc2clud-dock', closed ? 'closed' : 'open'); } catch (e) {}
+      // 账户设置页：点了「更换头像」才出现控件
+      var pick = document.getElementById('avatar-pick');
+      var editor = document.getElementById('avatar-editor');
+      var input = document.getElementById('avatar-input');
+      if (pick && editor && input) {
+        pick.addEventListener('click', function () {
+          editor.hidden = false;
+          input.click();
         });
       }
     })();

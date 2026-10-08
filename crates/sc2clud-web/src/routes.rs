@@ -55,6 +55,15 @@ pub fn pages() -> Router<AppState> {
         )
         .route("/logout", axum::routing::post(crate::pages_auth::logout))
         .route("/me", axum::routing::get(crate::pages_profile::me))
+        .route("/settings", axum::routing::get(crate::pages_settings::page))
+        .route(
+            "/settings/display-name",
+            axum::routing::post(crate::pages_settings::update_display_name),
+        )
+        .route(
+            "/settings/password",
+            axum::routing::post(crate::pages_settings::update_password),
+        )
         .route(
             "/u/{handle}",
             axum::routing::get(crate::pages_profile::profile),
@@ -308,6 +317,7 @@ async fn build_index<'a>(
         visible_posts: feed.len() as i64,
         posts: feed.iter().map(|row| feed_view(row, viewer_id)).collect(),
         is_staff,
+        csrf: user.map(|u| u.csrf_token.clone()).unwrap_or_default(),
         my_avatar: user.and_then(|u| u.avatar_hash.clone()),
         netdisk_visible,
         my_files: my_files.iter().map(FileView::from_row).collect(),
@@ -374,6 +384,7 @@ async fn build_file_page<'a>(
         site_name: &state.config.server.site_name,
         user_label: Some(user.display_name.clone()),
         is_staff: user.is_staff(),
+        csrf: user.csrf_token.clone(),
         file: FileView::from_owner_row(&row),
         owner_handle: row.owner_handle.clone(),
         download_href,

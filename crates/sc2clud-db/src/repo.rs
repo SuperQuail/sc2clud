@@ -1365,6 +1365,21 @@ pub async fn record_audit(
     Ok(())
 }
 
+/// 某个用户相关的审计记录（`actor_id` 是他，或对象是他）。
+pub async fn list_user_audit(pool: &SqlitePool, user_id: i64, limit: i64) -> Result<Vec<AuditRow>> {
+    let target = format!("user:{user_id}");
+    query_as::<_, AuditRow>(
+        "SELECT * FROM audit_log WHERE actor_id = ?1 OR target = ?2 \
+         ORDER BY created_at DESC, id DESC LIMIT ?3",
+    )
+    .bind(user_id)
+    .bind(target)
+    .bind(limit)
+    .fetch_all(pool)
+    .await
+    .map_err(db_err)
+}
+
 pub async fn recent_audit(pool: &SqlitePool, limit: i64) -> Result<Vec<AuditRow>> {
     query_as::<_, AuditRow>("SELECT * FROM audit_log ORDER BY id DESC LIMIT ?")
         .bind(limit)

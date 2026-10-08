@@ -11,6 +11,7 @@ pub mod pages_auth;
 pub mod pages_debug;
 pub mod pages_posts;
 pub mod pages_profile;
+pub mod pages_settings;
 pub mod routes;
 pub mod session;
 pub mod templates;
