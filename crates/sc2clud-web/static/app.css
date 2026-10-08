@@ -309,6 +309,50 @@ footer { color: var(--muted); font-size: 12px; text-align: center; padding: 14px
 .title-line { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; font-weight: 600; }
 
 /* ============================================================
+ * 管理表格对齐 + 异步提交反馈
+ * ============================================================ */
+.admin-table.users { table-layout: fixed; }
+.admin-table.users th:nth-child(1), .admin-table.users td:nth-child(1) { width: 92px; }
+.admin-table.users th:nth-child(2), .admin-table.users td:nth-child(2) { width: 192px; }
+.admin-table.users th:nth-child(3), .admin-table.users td:nth-child(3) { width: 200px; }
+.admin-table.users th:nth-child(4), .admin-table.users td:nth-child(4) { width: 236px; }
+.admin-table.users th:nth-child(5), .admin-table.users td:nth-child(5) { width: 104px; }
+.admin-table.users th:nth-child(6), .admin-table.users td:nth-child(6) { width: 104px; }
+.admin-table.users th:nth-child(7), .admin-table.users td:nth-child(7) { width: 210px; }
+.admin-table.users td { vertical-align: middle; }
+.admin-table.users td:nth-child(3) { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* 预算：数值右对齐占固定宽度，编辑器紧跟其后，头尾对齐 */
+.quota-cell { white-space: nowrap; }
+.quota-cell .quota-value {
+  display: inline-block; min-width: 78px; text-align: right;
+  font-variant-numeric: tabular-nums; color: var(--muted);
+}
+.quota-cell .inline-form { display: inline-flex; align-items: center; gap: 6px; margin-left: 10px; vertical-align: middle; }
+.quota-cell input[type='number'] {
+  width: 76px; text-align: right; font-variant-numeric: tabular-nums;
+  font: inherit; font-size: 13px; padding: 6px 8px;
+  border: 1px solid var(--line); border-radius: 8px; background: var(--card); color: var(--ink);
+}
+.quota-cell input[type='number']::-webkit-outer-spin-button,
+.quota-cell input[type='number']::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+.row-actions { justify-content: flex-start; gap: 8px; }
+.row-actions .inline-form { display: inline-flex; align-items: center; gap: 6px; }
+
+/* 异步反馈：一行小字 + 单元格闪一下，不需要整页刷新 */
+.form-note { font-size: 12px; margin-left: 8px; transition: opacity .2s ease; }
+.form-note.ok { color: #1c7a52; }
+.form-note.err { color: #b3261e; }
+[data-theme='dark'] .form-note.ok { color: #86d6ab; }
+[data-theme='dark'] .form-note.err { color: #f3b4ae; }
+@keyframes flashOk { 0% { background: rgba(47,158,111,.18); } 100% { background: transparent; } }
+@keyframes flashErr { 0% { background: rgba(179,38,30,.16); } 100% { background: transparent; } }
+.flash-ok { animation: flashOk .9s ease; }
+.flash-err { animation: flashErr .9s ease; }
+@media (max-width: 1100px) { .admin-table.users { table-layout: auto; } }
+
+
+/* ============================================================
  * 管理页（参考云控制台的用户管理） + 夜间模式输入框收口
  * ============================================================ */
 .home-btn {

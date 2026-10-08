@@ -1,0 +1,127 @@
+// 管理面板的异步提交。
+//
+// 目标：改预算 / 改显示名 / 改等级 / 激活停用 / 添加用户，**都不刷新整页**——
+// 只就地更新受影响的单元格与总览，避免编辑时页面跳动、滚动位置丢失。
+// 没有 JS 时表单照旧 POST + 跳转（服务端两条路都支持）。
+
+const NOTE_CLASS = 'form-note'
+
+function note(form: HTMLFormElement, text: string, ok: boolean) {
+  let el = form.querySelector<HTMLElement>('[data-note]')
+  if (!el) {
+    el = document.createElement('span')
+    el.dataset.note = ''
+    el.className = NOTE_CLASS
+    form.appendChild(el)
+  }
+  el.textContent = text
+  el.classList.toggle('ok', ok)
+  el.classList.toggle('err', !ok)
+  window.setTimeout(() => {
+    if (el) el.textContent = ''
+  }, 2600)
+}
+
+function flash(el: Element | null, ok: boolean) {
+  if (!el) return
+  el.classList.remove('flash-ok', 'flash-err')
+  void (el as HTMLElement).offsetWidth
+  el.classList.add(ok ? 'flash-ok' : 'flash-err')
+}
+
+function humanBytes(bytes: number): string {
+  if (bytes <= 0) return '0 B'
+  const units = ['B', 'KiB', 'MiB', 'GiB', 'TiB']
+  let value = bytes
+  let unit = 0
+  while (value >= 1024 && unit < units.length - 1) {
+    value /= 1024
+    unit += 1
+  }
+  return `${value >= 100 || unit === 0 ? Math.round(value) : value.toFixed(1)} ${units[unit]}`
+}
+
+function syncQuotaText(form: HTMLFormElement) {
+  const input = form.querySelector<HTMLInputElement>('input[name="quota_gb"]')
+  const cell = form.closest('.quota-cell')
+  const label = cell?.querySelector<HTMLElement>('[data-quota-value]')
+  if (!input || !label) return
+  const gb = Number.parseFloat(input.value || '0')
+  label.textContent = humanBytes(Math.max(0, gb) * 1024 * 1024 * 1024)
+}
+
+/// 只换掉数据区域，不整页刷新：用于新增用户、激活状态这类会改动多处的动作。
+async function refreshRegions() {
+  const res = await fetch(window.location.pathname + window.location.search, {
+    headers: { 'x-requested-with': 'fetch' },
+    credentials: 'same-origin',
+  })
+  if (!res.ok) return
+  const html = await res.text()
+  const doc = new DOMParser().parseFromString(html, 'text/html')
+  for (const id of ['users', 'quota']) {
+    const fresh = doc.getElementById(id)
+    const current = document.getElementById(id)
+    if (fresh && current) current.replaceWith(fresh)
+  }
+  bind()
+}
+
+async function submit(form: HTMLFormElement) {
+  const button = form.querySelector<HTMLButtonElement>('button[type="submit"]')
+  const restore = button?.disabled ?? false
+  if (button) button.disabled = true
+  try {
+    const res = await fetch(form.action, {
+      method: 'POST',
+      body: new FormData(form),
+      headers: { 'x-requested-with': 'fetch' },
+      credentials: 'same-origin',
+    })
+    const data = (await res.json().catch(() => ({}))) as { message?: string }
+    if (!res.ok) {
+      flash(form, false)
+      note(form, data.message || `失败（${res.status}）`, false)
+      return
+    }
+    flash(form, true)
+    note(form, data.message || '已保存', true)
+
+    const after = form.dataset.after
+    if (after === 'quota') {
+      syncQuotaText(form)
+      await refreshRegions()
+    } else if (after === 'name') {
+      const name = (form.querySelector('input[name="display_name"]') as HTMLInputElement | null)?.value
+      const cell = form.closest('tr')?.querySelector('[data-display-name]')
+      if (name && cell) cell.textContent = name
+    } else if (after === 'role') {
+      const select = form.querySelector('select[name="role"]') as HTMLSelectElement | null
+      const badge = form.closest('tr')?.querySelector<HTMLElement>('[data-role-badge]')
+      if (select && badge) {
+        badge.textContent = select.options[select.selectedIndex]?.text ?? badge.textContent
+        badge.className = 'role-badge role-' + select.value
+      }
+    } else {
+      await refreshRegions()
+    }
+  } catch (error) {
+    flash(form, false)
+    note(form, '网络错误：' + String(error), false)
+  } finally {
+    if (button) button.disabled = restore
+  }
+}
+
+function bind() {
+  for (const form of document.querySelectorAll<HTMLFormElement>('form[data-async]')) {
+    if (form.dataset.bound === '1') continue
+    form.dataset.bound = '1'
+    form.addEventListener('submit', (event) => {
+      event.preventDefault()
+      void submit(form)
+    })
+  }
+}
+
+bind()

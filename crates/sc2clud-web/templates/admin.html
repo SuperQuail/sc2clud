@@ -41,21 +41,21 @@
         <tbody>
           {% for user in users %}
           <tr>
-            <td><span class="role-badge role-{{ user.role }}">{{ user.role_label }}</span></td>
+            <td><span class="role-badge role-{{ user.role }}" data-role-badge>{{ user.role_label }}</span></td>
             <td class="byline">
               {% if let Some(avatar) = user.avatar %}
               <img class="avatar" src="/avatar/{{ avatar }}" alt="" width="26" height="26" loading="lazy">
               {% else %}
               <img class="avatar" src="/static/art/miyin-chibi-80.webp" alt="" width="26" height="26" loading="lazy">
               {% endif %}
-              <span>{{ user.display_name }}</span>
+              <span data-display-name>{{ user.display_name }}</span>
               {% if user.activated %}<span class="dot on" title="已激活"></span>{% else %}<span class="dot off" title="未激活"></span>{% endif %}
               {% if user.is_self %}<span class="tag">我</span>{% endif %}
             </td>
             <td class="muted">{{ user.email }}</td>
             <td class="quota-cell">
-              <span class="muted">{{ user.quota_human }}</span>
-              <form class="inline-form" method="post" action="/admin/users/{{ user.id }}/quota">
+              <span class="quota-value" data-quota-value>{{ user.quota_human }}</span>
+              <form class="inline-form" method="post" data-async data-after="quota" action="/admin/users/{{ user.id }}/quota">
                 <input type="hidden" name="csrf" value="{{ csrf }}">
                 <input type="number" name="quota_gb" value="{{ user.quota_gb }}" min="0" max="10240" step="0.5" aria-label="预算（GB）">
                 <button class="icon-btn" type="submit" title="保存预算">
@@ -70,14 +70,14 @@
                 <svg viewBox="0 0 16 16" width="15" height="15"><path d="M1 8s2.6-4.5 7-4.5S15 8 15 8s-2.6 4.5-7 4.5S1 8 1 8z" fill="none" stroke="currentColor" stroke-width="1.4"/><circle cx="8" cy="8" r="1.8" fill="currentColor"/></svg>
               </a>
               {% if is_super %}
-              <form class="inline-form" method="post" action="/admin/users/{{ user.id }}/rename">
+              <form class="inline-form" method="post" data-async data-after="name" action="/admin/users/{{ user.id }}/rename">
                 <input type="hidden" name="csrf" value="{{ csrf }}">
                 <input type="text" name="display_name" value="{{ user.display_name }}" maxlength="20" aria-label="显示名">
                 <button class="icon-btn" type="submit" title="保存显示名">
                   <svg viewBox="0 0 16 16" width="15" height="15"><path d="M3 13h3l7-7-3-3-7 7v3z" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/></svg>
                 </button>
               </form>
-              <form class="inline-form" method="post" action="/admin/users/{{ user.id }}/role">
+              <form class="inline-form" method="post" data-async data-after="role" action="/admin/users/{{ user.id }}/role">
                 <input type="hidden" name="csrf" value="{{ csrf }}">
                 <select name="role" aria-label="权限等级">
                   {% for role in roles %}
@@ -90,7 +90,7 @@
               </form>
               {% endif %}
               {% if !user.is_self %}
-              <form class="inline-form" method="post" action="/admin/users/{{ user.id }}/{% if user.activated %}deactivate{% else %}activate{% endif %}">
+              <form class="inline-form" method="post" data-async data-after="refresh" action="/admin/users/{{ user.id }}/{% if user.activated %}deactivate{% else %}activate{% endif %}">
                 <input type="hidden" name="csrf" value="{{ csrf }}">
                 <button class="icon-btn" type="submit" title="{% if user.activated %}停用{% else %}激活{% endif %}">
                   <svg viewBox="0 0 16 16" width="15" height="15"><path d="M8 2v6" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/><path d="M4.6 4.4a5 5 0 106.8 0" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
@@ -108,7 +108,7 @@
     {% if is_super %}
     <section class="panel" id="create">
       <h2>添加用户</h2>
-      <form method="post" action="/admin/users" class="stack">
+      <form method="post" action="/admin/users" class="stack" data-async data-after="refresh">
         <input type="hidden" name="csrf" value="{{ csrf }}">
         <label>登录名<input type="text" name="handle" required minlength="3" maxlength="24" pattern="[A-Za-z0-9_-]+" autocomplete="off">
           <span class="hint">3–24 位字母、数字、下划线或连字符；账号标识，用于登录</span></label>
@@ -149,7 +149,7 @@
       <p class="hint">
         {% if require_activation %}新注册用户需要管理员激活后才能发帖与上传。{% else %}新注册用户注册完即可发帖与上传。{% endif %}
       </p>
-      <form method="post" action="/admin/settings/require-activation" class="actions-inline">
+      <form method="post" action="/admin/settings/require-activation" class="actions-inline" data-async data-after="refresh">
         <input type="hidden" name="csrf" value="{{ csrf }}">
         <button class="btn" type="submit">切换为{% if require_activation %}自动激活{% else %}人工激活{% endif %}</button>
       </form>
@@ -158,3 +158,5 @@
   </div>
 </div>
 {% endblock %}
+
+{% block scripts %}<script type="module" src="/static/islands/admin.js"></script>{% endblock %}

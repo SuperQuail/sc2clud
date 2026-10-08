@@ -6,7 +6,7 @@
 use axum::Form;
 use axum::extract::{Path, State};
 use axum::http::HeaderMap;
-use axum::response::{Redirect, Response};
+use axum::response::{IntoResponse, Redirect, Response};
 use serde::Deserialize;
 
 use sc2clud_core::auth::{Permission, Role};
@@ -15,7 +15,7 @@ use sc2clud_db::repo;
 
 use crate::AppState;
 use crate::error::{AppError, AppResult};
-use crate::routes::{require_user, wants_html};
+use crate::routes::require_user;
 use crate::session;
 use crate::templates::{
     AdminTemplate, AdminUserView, format_date, format_relative, human_bytes, render,
@@ -36,6 +36,33 @@ pub struct RoleForm {
 pub struct RenameForm {
     pub csrf: String,
     pub display_name: String,
+}
+
+/// 这个请求是前端 fetch 发来的吗？
+///
+/// 是就回 JSON（页面就地更新，不刷新）；否则回跳转（无 JS 也能用）。
+fn wants_json(headers: &HeaderMap) -> bool {
+    let by_flag = headers
+        .get("x-requested-with")
+        .and_then(|v| v.to_str().ok())
+        .is_some_and(|v| v.eq_ignore_ascii_case("fetch"));
+    let by_accept = headers
+        .get(axum::http::header::ACCEPT)
+        .and_then(|v| v.to_str().ok())
+        .is_some_and(|v| v.contains("application/json"));
+    by_flag || by_accept
+}
+
+fn done(headers: &HeaderMap, message: &str, redirect: &str) -> Response {
+    if wants_json(headers) {
+        (
+            axum::http::StatusCode::OK,
+            axum::Json(serde_json::json!({ "ok": true, "message": message })),
+        )
+            .into_response()
+    } else {
+        Redirect::to(redirect).into_response()
+    }
 }
 
 fn invalid(msg: impl Into<String>) -> AppError {
@@ -138,7 +165,7 @@ pub async fn activate(
     Path(id): Path<i64>,
     headers: HeaderMap,
     Form(form): Form<CsrfForm>,
-) -> AppResult<Redirect> {
+) -> AppResult<Response> {
     change_activation(state, id, headers, form, true).await
 }
 
@@ -147,7 +174,7 @@ pub async fn deactivate(
     Path(id): Path<i64>,
     headers: HeaderMap,
     Form(form): Form<CsrfForm>,
-) -> AppResult<Redirect> {
+) -> AppResult<Response> {
     change_activation(state, id, headers, form, false).await
 }
 
@@ -157,7 +184,7 @@ async fn change_activation(
     headers: HeaderMap,
     form: CsrfForm,
     activate: bool,
-) -> AppResult<Redirect> {
+) -> AppResult<Response> {
     let actor = require_user(&state, &headers).await?;
     session::guard(Some(&actor), Permission::ManageUsers)?;
     session::check_csrf(&actor, &form.csrf)?;
@@ -186,7 +213,7 @@ async fn change_activation(
         )
         .await;
     }
-    Ok(Redirect::to("/admin"))
+    Ok(done(&headers, "已保存", "/admin/users/overview"))
 }
 
 #[derive(Debug, Deserialize)]
@@ -209,7 +236,7 @@ pub async fn create_user(
     State(state): State<AppState>,
     headers: HeaderMap,
     Form(form): Form<CreateUserForm>,
-) -> AppResult<Redirect> {
+) -> AppResult<Response> {
     let actor = require_user(&state, &headers).await?;
     session::guard(Some(&actor), Permission::ManageUsers)?;
     if actor.role != Role::Super {
@@ -275,7 +302,7 @@ pub async fn create_user(
         actor.id = actor.id,
         "超级管理员新建账号"
     );
-    Ok(Redirect::to("/admin"))
+    Ok(done(&headers, "已保存", "/admin/users/overview"))
 }
 #[derive(Debug, Deserialize)]
 pub struct QuotaForm {
@@ -289,7 +316,7 @@ pub async fn set_quota(
     Path(id): Path<i64>,
     headers: HeaderMap,
     Form(form): Form<QuotaForm>,
-) -> AppResult<Redirect> {
+) -> AppResult<Response> {
     let actor = require_user(&state, &headers).await?;
     session::guard(Some(&actor), Permission::ManageUsers)?;
     session::check_csrf(&actor, &form.csrf)?;
@@ -321,7 +348,7 @@ pub async fn set_quota(
         )
         .await;
     }
-    Ok(Redirect::to("/admin/users/overview"))
+    Ok(done(&headers, "已保存", "/admin/users/overview"))
 }
 
 pub async fn set_role(
@@ -329,7 +356,7 @@ pub async fn set_role(
     Path(id): Path<i64>,
     headers: HeaderMap,
     Form(form): Form<RoleForm>,
-) -> AppResult<Redirect> {
+) -> AppResult<Response> {
     let actor = require_user(&state, &headers).await?;
     session::guard(Some(&actor), Permission::ManageUsers)?;
     if actor.role != Role::Super {
@@ -358,7 +385,7 @@ pub async fn set_role(
         )
         .await;
     }
-    Ok(Redirect::to("/admin"))
+    Ok(done(&headers, "已保存", "/admin/users/overview"))
 }
 
 pub async fn rename(
@@ -366,7 +393,7 @@ pub async fn rename(
     Path(id): Path<i64>,
     headers: HeaderMap,
     Form(form): Form<RenameForm>,
-) -> AppResult<Redirect> {
+) -> AppResult<Response> {
     let actor = require_user(&state, &headers).await?;
     session::guard(Some(&actor), Permission::ManageUsers)?;
     if actor.role != Role::Super {
@@ -387,14 +414,14 @@ pub async fn rename(
         )
         .await;
     }
-    Ok(Redirect::to("/admin"))
+    Ok(done(&headers, "已保存", "/admin/users/overview"))
 }
 
 pub async fn toggle_activation_policy(
     State(state): State<AppState>,
     headers: HeaderMap,
     Form(form): Form<CsrfForm>,
-) -> AppResult<Redirect> {
+) -> AppResult<Response> {
     let actor = require_user(&state, &headers).await?;
     session::guard(Some(&actor), Permission::ManageUsers)?;
     session::check_csrf(&actor, &form.csrf)?;
@@ -422,5 +449,5 @@ pub async fn toggle_activation_policy(
         require_activation = next,
         "切换注册策略"
     );
-    Ok(Redirect::to("/admin"))
+    Ok(done(&headers, "已保存", "/admin/users/overview"))
 }
