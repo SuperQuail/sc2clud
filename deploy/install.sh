@@ -172,7 +172,10 @@ fi
 log '安装并启动 systemd unit'
 install -m 644 "$REPO_ROOT/deploy/systemd/sc2clud.service" /etc/systemd/system/sc2clud.service
 systemctl daemon-reload
-systemctl enable --now sc2clud.service
+systemctl enable sc2clud.service
+# 升级场景务必显式 restart：enable --now 对**已在运行**的服务不会重启，
+# 结果就是二进制换了、进程还是老的（踩过一次）。
+systemctl restart sc2clud.service
 
 # ---------- 9. 内核网络调优 ----------
 log '应用 sysctl（BBR + fq）'
