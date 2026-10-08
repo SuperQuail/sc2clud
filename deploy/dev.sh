@@ -42,6 +42,5 @@ sleep 1
 systemctl is-active sc2clud-debug
 
 log "测试端点自检"
-curl -fsS -o /dev/null -w "  /dev/healthz -> %{http_code}\n" http://127.0.0.1:8081/healthz
-curl -fsS -o /dev/null -w "  经 nginx /dev/ -> %{http_code}\n" http://127.0.0.1/dev/ || true
+curl -fsS -o /dev/null -w "  /healthz（直连测试实例）-> %{http_code}\n" http://127.0.0.1:8081/healthz
 log "完成：去 http://<域名>/dev/ 验证；确认后再跑 deploy/promote.sh"
