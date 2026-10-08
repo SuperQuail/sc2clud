@@ -313,8 +313,6 @@ pub struct AdminUserView {
     pub is_self: bool,
 }
 
-/// 后台用户行（管理员页）。
-
 /// 发帖类型选项。
 pub struct KindOption {
     pub value: String,

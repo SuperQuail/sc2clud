@@ -409,13 +409,15 @@ pub async fn new_post_submit(
     for (position, (provider, url, code)) in sources.iter().enumerate() {
         if let Err(e) = repo::add_post_source(
             state.db.pool(),
-            id,
-            position as i64,
-            provider.as_str(),
-            None,
-            url,
-            code.as_deref(),
-            now,
+            repo::NewPostSource {
+                post_id: id,
+                position: position as i64,
+                provider: provider.as_str(),
+                label: None,
+                url,
+                extract_code: code.as_deref(),
+                now,
+            },
         )
         .await
         {

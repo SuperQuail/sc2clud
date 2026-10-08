@@ -541,28 +541,30 @@ pub async fn add_post_image(
     Ok(image_id)
 }
 
+/// 新增下载来源的入参。
+pub struct NewPostSource<'a> {
+    pub post_id: i64,
+    pub position: i64,
+    pub provider: &'a str,
+    pub label: Option<&'a str>,
+    pub url: &'a str,
+    pub extract_code: Option<&'a str>,
+    pub now: i64,
+}
+
 /// 追加一个下载来源。
-pub async fn add_post_source(
-    pool: &SqlitePool,
-    post_id: i64,
-    position: i64,
-    provider: &str,
-    label: Option<&str>,
-    url: &str,
-    extract_code: Option<&str>,
-    now: i64,
-) -> Result<i64> {
+pub async fn add_post_source(pool: &SqlitePool, source: NewPostSource<'_>) -> Result<i64> {
     let res = query(
         "INSERT INTO post_sources (post_id, position, provider, label, url, extract_code, created_at) \
          VALUES (?, ?, ?, ?, ?, ?, ?)",
     )
-    .bind(post_id)
-    .bind(position)
-    .bind(provider)
-    .bind(label)
-    .bind(url)
-    .bind(extract_code)
-    .bind(now)
+    .bind(source.post_id)
+    .bind(source.position)
+    .bind(source.provider)
+    .bind(source.label)
+    .bind(source.url)
+    .bind(source.extract_code)
+    .bind(source.now)
     .execute(pool)
     .await
     .map_err(db_err)?;
