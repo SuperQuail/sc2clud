@@ -20,7 +20,8 @@ pub mod models;
 pub mod repo;
 
 pub use models::{
-    AuditRow, BlobRow, CommentRow, FileRow, FileWithOwnerRow, ImageJobRow, PostImageRow, PostRow,
+    AuditRow, BlobRow, CommentRow, CommentWithAuthorRow, FileRow, FileWithOwnerRow, ImageJobRow,
+    PostImageRow, PostRow, PostWithAuthorRow, ReleaseAssetRow, ReleaseRow, SessionRow,
     UploadSessionRow, UserRow,
 };
 
@@ -505,12 +506,52 @@ mod tests {
         .await
         .expect("发帖");
 
-        let visible = repo::list_visible_posts(db.pool(), 10, 0)
+        // 游客视角：只看得到 approved
+        let guest = repo::list_feed(db.pool(), None, false, 10, 0)
             .await
-            .expect("列表");
-        let ids: Vec<i64> = visible.iter().map(|p| p.id).collect();
-        assert!(ids.contains(&approved) && ids.contains(&pending));
-        assert!(!ids.contains(&rejected), "被拒的帖子不应出现在列表");
+            .expect("游客列表");
+        let guest_ids: Vec<i64> = guest.iter().map(|p| p.id).collect();
+        assert!(guest_ids.contains(&approved));
+        assert!(!guest_ids.contains(&pending), "游客看不到审核中的帖子");
+        assert!(!guest_ids.contains(&rejected));
+
+        // 作者视角：能看到自己被审的帖子
+        let mine = repo::list_feed(db.pool(), Some(user), false, 10, 0)
+            .await
+            .expect("作者列表");
+        let mine_ids: Vec<i64> = mine.iter().map(|p| p.id).collect();
+        assert!(mine_ids.contains(&pending), "作者能看到自己的待审帖");
+        assert!(!mine_ids.contains(&rejected));
+
+        // 管理员视角：全部可见
+        let staff = repo::list_feed(db.pool(), None, true, 10, 0)
+            .await
+            .expect("管理员列表");
+        let staff_ids: Vec<i64> = staff.iter().map(|p| p.id).collect();
+        assert!(staff_ids.contains(&approved) && staff_ids.contains(&pending));
+        assert!(staff_ids.contains(&rejected), "管理员能复查被拒的帖子");
+
+        assert!(
+            repo::get_post_for(db.pool(), pending, None, false)
+                .await
+                .expect("查询")
+                .is_none(),
+            "游客取不到审核中的帖子"
+        );
+        assert!(
+            repo::get_post_for(db.pool(), pending, Some(user), false)
+                .await
+                .expect("查询")
+                .is_some(),
+            "作者取得到自己的待审帖"
+        );
+        assert!(
+            repo::get_post_for(db.pool(), pending, None, true)
+                .await
+                .expect("查询")
+                .is_some(),
+            "管理员取得到"
+        );
 
         let row = repo::get_post(db.pool(), pending)
             .await

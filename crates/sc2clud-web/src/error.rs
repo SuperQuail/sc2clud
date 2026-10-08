@@ -47,6 +47,8 @@ impl AppError {
                     DomainError::PathEscapesRoot { .. }
                     | DomainError::IllegalFileName { .. }
                     | DomainError::InvalidInput(_) => StatusCode::BAD_REQUEST,
+                    DomainError::Unauthorized(_) => StatusCode::UNAUTHORIZED,
+                    DomainError::Forbidden(_) => StatusCode::FORBIDDEN,
                     DomainError::NotFound(_) => StatusCode::NOT_FOUND,
                     DomainError::QuotaExceeded(_) => StatusCode::PAYLOAD_TOO_LARGE,
                     DomainError::RateLimited(_) => StatusCode::TOO_MANY_REQUESTS,

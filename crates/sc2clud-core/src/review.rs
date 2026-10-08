@@ -10,7 +10,7 @@
 //!
 //! 规则放在领域层而不是处理器里：能单测，也能被后台脚本复用。
 
-use crate::auth::Permission;
+use crate::auth::{Permission, Role};
 use crate::error::{Error, Result};
 
 /// 单帖图片上限：主帖最多 10 张；**回复不允许带图**（由 Web 层拒绝）。
@@ -103,9 +103,17 @@ impl ReviewState {
         }
     }
 
-    /// 是否对访客可见：只有被拒的才隐藏（审核中不卡发布）。
-    pub fn is_visible(self) -> bool {
-        !matches!(self, ReviewState::Rejected)
+    /// 对**当前查看者**是否可见。
+    ///
+    /// - `approved`：所有人可见；
+    /// - `pending`（审核中）：只有作者本人与管理员及以上可见；
+    /// - `rejected`：只有管理员及以上可见（便于复查与改判）。
+    pub fn visible_to(self, is_author: bool, is_staff: bool) -> bool {
+        match self {
+            ReviewState::Approved => true,
+            ReviewState::Pending => is_author || is_staff,
+            ReviewState::Rejected => is_staff,
+        }
     }
 }
 
@@ -123,6 +131,27 @@ const SUSPICIOUS_KEYWORDS: [&str; 6] = ["加微信", "刷单", "代充", "免费
 
 /// 外链数量上限：超过就转人工。
 const MAX_LINKS: usize = 5;
+
+/// 发帖时的审核入口：**管理员及以上直接放行，不走审核机**。
+///
+/// 其余角色一律过审核机（绝大多数会直接通过）。
+/// 返回的 `automatic: false` 表示这是「人（管理动作）」的决定，不是审核机的结论。
+pub fn review_for_author(
+    role: Option<Role>,
+    kind: PostKind,
+    title: &str,
+    body: &str,
+    image_count: usize,
+) -> ReviewOutcome {
+    if role.is_some_and(|role| role >= Role::Admin) {
+        return ReviewOutcome {
+            state: ReviewState::Approved,
+            note: Some("管理员直接发布，跳过审核机".to_string()),
+            automatic: false,
+        };
+    }
+    auto_review(kind, title, body, image_count)
+}
 
 /// 审核机：**绝大多数情况直接过**。
 pub fn auto_review(kind: PostKind, title: &str, body: &str, image_count: usize) -> ReviewOutcome {
@@ -224,10 +253,48 @@ mod tests {
         let out = auto_review(PostKind::Discussion, "好物分享", "想要的话加微信联系我", 0);
         assert_eq!(out.state, ReviewState::Pending);
         assert!(out.note.is_some());
+    }
+
+    #[test]
+    fn pending_is_visible_only_to_author_and_staff() {
+        let pending = ReviewState::Pending;
+        assert!(!pending.visible_to(false, false), "游客看不到审核中的帖子");
         assert!(
-            out.state.is_visible(),
-            "审核中的帖子必须仍然可见——当前阶段不卡审核"
+            pending.visible_to(true, false),
+            "作者本人可以看到自己的待审帖"
         );
+        assert!(pending.visible_to(false, true), "管理员可以看到");
+
+        assert!(ReviewState::Approved.visible_to(false, false));
+        assert!(!ReviewState::Rejected.visible_to(false, false));
+        assert!(
+            ReviewState::Rejected.visible_to(false, true),
+            "被拒的帖子管理员仍能复查"
+        );
+    }
+
+    #[test]
+    fn admins_publish_without_review() {
+        use crate::auth::Role;
+        // 命中硬规则的内容，管理员仍然直接发布
+        let out = review_for_author(Some(Role::Admin), PostKind::Discussion, "x", "y", 0);
+        assert_eq!(out.state, ReviewState::Approved);
+        assert!(!out.automatic, "管理动作不是审核机的结论");
+
+        let super_out = review_for_author(Some(Role::Super), PostKind::Resource, "x", "y", 0);
+        assert_eq!(super_out.state, ReviewState::Approved);
+
+        // 普通用户与开发者仍然走审核机
+        let member = review_for_author(Some(Role::Member), PostKind::Discussion, "x", "y", 0);
+        assert_eq!(member.state, ReviewState::Rejected);
+        let dev_sus = review_for_author(
+            Some(Role::Developer),
+            PostKind::Discussion,
+            "好物",
+            "加微信",
+            0,
+        );
+        assert_eq!(dev_sus.state, ReviewState::Pending);
     }
 
     #[test]
@@ -259,10 +326,10 @@ mod tests {
     }
 
     #[test]
-    fn only_rejected_is_hidden() {
-        assert!(!ReviewState::Rejected.is_visible());
-        assert!(ReviewState::Pending.is_visible());
-        assert!(ReviewState::Approved.is_visible());
+    fn approved_is_the_only_publicly_visible_state() {
+        assert!(ReviewState::Approved.visible_to(false, false));
+        assert!(!ReviewState::Pending.visible_to(false, false));
+        assert!(!ReviewState::Rejected.visible_to(false, false));
     }
 
     #[test]

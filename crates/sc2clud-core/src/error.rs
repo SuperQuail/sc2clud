@@ -26,6 +26,14 @@ pub enum Error {
     #[error("参数无效：{0}")]
     InvalidInput(String),
 
+    /// 未登录。
+    #[error("未登录：{0}")]
+    Unauthorized(String),
+
+    /// 已登录但权限不足。
+    #[error("权限不足：{0}")]
+    Forbidden(String),
+
     /// 目标不存在。
     #[error("未找到：{0}")]
     NotFound(String),
@@ -67,6 +75,8 @@ impl Error {
             Error::IllegalFileName { .. } => "illegal_file_name",
             Error::Config(_) => "config",
             Error::InvalidInput(_) => "invalid_input",
+            Error::Unauthorized(_) => "unauthorized",
+            Error::Forbidden(_) => "forbidden",
             Error::NotFound(_) => "not_found",
             Error::QuotaExceeded(_) => "quota_exceeded",
             Error::RateLimited(_) => "rate_limited",

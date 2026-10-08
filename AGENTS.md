@@ -90,6 +90,14 @@ cargo run -p sc2clud -- check                     # 配置与依赖自检
 5. **所有落盘路径必须过 `safety.rs`**：拼接后 `ensure_within` 白名单校验，用户文件名先过 `safe_file_name`。
 6. **页面体积是硬预算**（见 `docs/BUDGETS.md`）：列表页 HTML ≤ 30 KB、首屏 JS ≤ 60 KB（brotli 后）。
    不要为了「方便」引入整站 SPA、CSS-in-JS 或整套 UI 组件库。
+7. **发帖权限与可见性**（`core::review`，改动请同步 `AGENTS.md` 与测试）：
+   - 讨论 / 资源 / 转载三类帖子对**所有已激活用户**开放，不设发布门槛；
+   - **管理员及以上发帖跳过审核机**，直接发布（`review_for_author`，`automatic: false`）；
+   - 审核中（`pending`）**只有作者本人与管理员及以上可见**，被拒（`rejected`）只有管理员可见；
+   - 回复（`comments`）**没有图片列**——这是「回复不能带图」的数据层保证，不要在回复里加图。
+8. **本站不承载启动器产物的字节**。`releases` / `release_assets` 只存版本与**外部直链**，
+   下载走 `/api/v1/launcher/assets/{id}/go` 做 302 转链（便于统计与换镜像）。
+   10 Mbps 的单机小站拉安装包会把出口带宽吃光——这条是产品约束，不是实现细节。
 
 ## 7. 编码约定
 
@@ -117,7 +125,10 @@ pwsh -File scripts/smoke.ps1     # 改动触及上传/下载/存储/计数时必
 | 分片续传 | 建表与仓储函数已就绪（`upload_sessions`），HTTP 分片接口未接 | 提供 `POST/PATCH` 分片接口 + 合并 |
 | S3 后端 | `StorageBackend` 抽象已定，`S3Backend` 是返回 `Unsupported` 的占位 | 补 SigV4 预签名与分片上传 |
 | sqlx 编译期校验 | 当前用运行时查询（避免构建依赖数据库） | schema 稳定后切 `query!` + `cargo sqlx prepare` 离线缓存 |
-| 缩略图 / 转码 | 未实现 | 必须异步化（请求路径内同步转码会瞬间打满 2 核） |
+| 缩略图 / 转码 | 表与任务队列已就绪（`post_images` / `image_jobs`），**工作线程未实现** | 接 `image` crate 的异步压缩线程 + 原图保留 API |
+| 注册 / 登录 / 管理员页面 | `core::session` 与 `web/src/pages_auth.rs` 已写好，模板与路由未接 | 补模板 + 挂路由（下一步第一件事） |
+| 帖子页面 | 数据层与可见性规则已完成，页面仍是脚手架形态 | 接 feed / 详情 / 发帖 / 回复 |
+| 启动器下载页 | `releases` 索引与转链函数已就绪，页面与 API 未接 | 补 `/download` 与 `/api/v1/launcher/latest` |
 
 ## 10. 敏感数据
 

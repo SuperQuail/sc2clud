@@ -10,8 +10,8 @@ use sqlx::{SqlitePool, query, query_as};
 
 use crate::db_err;
 use crate::models::{
-    AuditRow, BlobRow, FileRow, FileWithOwnerRow, ImageJobRow, PostImageRow, PostRow,
-    UploadSessionRow, UserRow,
+    AuditRow, BlobRow, CommentWithAuthorRow, FileRow, FileWithOwnerRow, ImageJobRow, PostImageRow,
+    PostRow, PostWithAuthorRow, ReleaseAssetRow, ReleaseRow, SessionRow, UploadSessionRow, UserRow,
 };
 
 // ---------------------------------------------------------------- 用户
@@ -388,23 +388,6 @@ pub async fn create_post_reviewed(pool: &SqlitePool, post: NewPost<'_>) -> Resul
     Ok(res.last_insert_rowid())
 }
 
-/// feed：只排除被拒的帖子（审核中仍然可见——当前阶段不卡审核）。
-pub async fn list_visible_posts(
-    pool: &SqlitePool,
-    limit: i64,
-    offset: i64,
-) -> Result<Vec<PostRow>> {
-    query_as::<_, PostRow>(
-        "SELECT * FROM posts WHERE deleted_at IS NULL AND review_state <> 'rejected' \
-         ORDER BY created_at DESC, id DESC LIMIT ? OFFSET ?",
-    )
-    .bind(limit)
-    .bind(offset)
-    .fetch_all(pool)
-    .await
-    .map_err(db_err)
-}
-
 pub async fn get_post(pool: &SqlitePool, id: i64) -> Result<Option<PostRow>> {
     query_as::<_, PostRow>("SELECT * FROM posts WHERE id = ? AND deleted_at IS NULL")
         .bind(id)
@@ -596,6 +579,332 @@ pub async fn pending_image_jobs(pool: &SqlitePool) -> Result<i64> {
             .map_err(db_err)?;
     Ok(row.0)
 }
+// ---------------------------------------------------------------- 会话
+
+/// 建会话：库里存的是令牌摘要（`id_hash`），不是令牌本身。
+pub async fn create_session(
+    pool: &SqlitePool,
+    id_hash: &str,
+    user_id: i64,
+    csrf_token: &str,
+    now: i64,
+    expires_at: i64,
+    user_agent: Option<&str>,
+) -> Result<()> {
+    query(
+        "INSERT INTO sessions (id, user_id, csrf_token, created_at, expires_at, last_seen_at, user_agent) \
+         VALUES (?, ?, ?, ?, ?, ?, ?)",
+    )
+    .bind(id_hash)
+    .bind(user_id)
+    .bind(csrf_token)
+    .bind(now)
+    .bind(expires_at)
+    .bind(now)
+    .bind(user_agent)
+    .execute(pool)
+    .await
+    .map_err(db_err)?;
+    Ok(())
+}
+
+/// 取会话与用户；过期或被停用的账号直接当不存在。
+pub async fn load_session(
+    pool: &SqlitePool,
+    id_hash: &str,
+    now: i64,
+) -> Result<Option<(SessionRow, UserRow)>> {
+    let session = query_as::<_, SessionRow>("SELECT * FROM sessions WHERE id = ?")
+        .bind(id_hash)
+        .fetch_optional(pool)
+        .await
+        .map_err(db_err)?;
+    let Some(session) = session else {
+        return Ok(None);
+    };
+    if session.expires_at <= now {
+        let _ = delete_session(pool, id_hash).await;
+        return Ok(None);
+    }
+    let Some(user) = find_user_by_id_any(pool, session.user_id).await? else {
+        return Ok(None);
+    };
+    if user.disabled_at.is_some() {
+        return Ok(None);
+    }
+    Ok(Some((session, user)))
+}
+
+pub async fn touch_session(pool: &SqlitePool, id_hash: &str, now: i64) -> Result<()> {
+    query("UPDATE sessions SET last_seen_at = ? WHERE id = ?")
+        .bind(now)
+        .bind(id_hash)
+        .execute(pool)
+        .await
+        .map_err(db_err)?;
+    Ok(())
+}
+
+pub async fn delete_session(pool: &SqlitePool, id_hash: &str) -> Result<bool> {
+    let affected = query("DELETE FROM sessions WHERE id = ?")
+        .bind(id_hash)
+        .execute(pool)
+        .await
+        .map_err(db_err)?
+        .rows_affected();
+    Ok(affected == 1)
+}
+
+/// 清理过期会话（启动时与后台任务调用）。
+pub async fn purge_expired_sessions(pool: &SqlitePool, now: i64) -> Result<u64> {
+    let affected = query("DELETE FROM sessions WHERE expires_at <= ?")
+        .bind(now)
+        .execute(pool)
+        .await
+        .map_err(db_err)?
+        .rows_affected();
+    Ok(affected)
+}
+
+// ---------------------------------------------------------------- feed（按查看者过滤）
+
+/// 帖子流：**审核中的只有作者本人与管理员及以上可见**，被拒的只有管理员可见。
+///
+/// `viewer_id` 为 `None` 表示游客；`is_staff` 表示管理员及以上。
+pub async fn list_feed(
+    pool: &SqlitePool,
+    viewer_id: Option<i64>,
+    is_staff: bool,
+    limit: i64,
+    offset: i64,
+) -> Result<Vec<PostWithAuthorRow>> {
+    let viewer = viewer_id.unwrap_or(-1);
+    let staff = i64::from(is_staff);
+    query_as::<_, PostWithAuthorRow>(
+        "SELECT p.id, p.title, p.body, p.kind, p.review_state, p.review_note, p.image_count, \
+                p.created_at, p.author_id, u.handle AS author_handle, u.role AS author_role \
+         FROM posts p JOIN users u ON u.id = p.author_id \
+         WHERE p.deleted_at IS NULL \
+           AND (p.review_state = 'approved' \
+                OR ?2 = 1 \
+                OR (p.review_state = 'pending' AND p.author_id = ?1)) \
+         ORDER BY p.created_at DESC, p.id DESC LIMIT ?3 OFFSET ?4",
+    )
+    .bind(viewer)
+    .bind(staff)
+    .bind(limit)
+    .bind(offset)
+    .fetch_all(pool)
+    .await
+    .map_err(db_err)
+}
+
+/// 取单帖，并按查看者判定可见性（只有被拒/审核中的帖子会因身份不同而不同）。
+pub async fn get_post_for(
+    pool: &SqlitePool,
+    id: i64,
+    viewer_id: Option<i64>,
+    is_staff: bool,
+) -> Result<Option<PostRow>> {
+    let Some(row) = get_post(pool, id).await? else {
+        return Ok(None);
+    };
+    let state = sc2clud_core::review::ReviewState::parse(&row.review_state)?;
+    let is_author = viewer_id == Some(row.author_id);
+    if state.visible_to(is_author, is_staff) {
+        Ok(Some(row))
+    } else {
+        Ok(None)
+    }
+}
+
+// ---------------------------------------------------------------- 回复（不带图）
+
+pub async fn create_comment(
+    pool: &SqlitePool,
+    post_id: i64,
+    author_id: i64,
+    body: &str,
+    now: i64,
+) -> Result<i64> {
+    // 回复表没有图片列：这是数据层对「回复不能带图」的硬保证。
+    let res =
+        query("INSERT INTO comments (post_id, author_id, body, created_at) VALUES (?, ?, ?, ?)")
+            .bind(post_id)
+            .bind(author_id)
+            .bind(body)
+            .bind(now)
+            .execute(pool)
+            .await
+            .map_err(db_err)?;
+    Ok(res.last_insert_rowid())
+}
+
+pub async fn list_comments(
+    pool: &SqlitePool,
+    post_id: i64,
+    limit: i64,
+) -> Result<Vec<CommentWithAuthorRow>> {
+    query_as::<_, CommentWithAuthorRow>(
+        "SELECT c.id, c.post_id, c.author_id, u.handle AS author_handle, c.body, c.created_at \
+         FROM comments c JOIN users u ON u.id = c.author_id \
+         WHERE c.post_id = ? AND c.deleted_at IS NULL ORDER BY c.created_at, c.id LIMIT ?",
+    )
+    .bind(post_id)
+    .bind(limit)
+    .fetch_all(pool)
+    .await
+    .map_err(db_err)
+}
+
+// ---------------------------------------------------------------- 启动器发布
+
+/// 建一个（未发布的）release。
+pub async fn create_release(
+    pool: &SqlitePool,
+    version: &str,
+    channel: &str,
+    title: Option<&str>,
+    notes: Option<&str>,
+    by: Option<i64>,
+    now: i64,
+) -> Result<i64> {
+    let res = query(
+        "INSERT INTO releases (version, channel, title, notes, created_by, created_at) \
+         VALUES (?, ?, ?, ?, ?, ?)",
+    )
+    .bind(version)
+    .bind(channel)
+    .bind(title)
+    .bind(notes)
+    .bind(by)
+    .bind(now)
+    .execute(pool)
+    .await
+    .map_err(db_err)?;
+    Ok(res.last_insert_rowid())
+}
+
+pub async fn set_release_published(
+    pool: &SqlitePool,
+    release_id: i64,
+    published: bool,
+    now: i64,
+) -> Result<bool> {
+    let affected = query(
+        "UPDATE releases SET is_published = ?, published_at = ? WHERE id = ? AND is_published <> ?",
+    )
+    .bind(i64::from(published))
+    .bind(published.then_some(now))
+    .bind(release_id)
+    .bind(i64::from(published))
+    .execute(pool)
+    .await
+    .map_err(db_err)?
+    .rows_affected();
+    Ok(affected == 1)
+}
+
+/// 最新已发布版本（`channel` 为 `None` 时不限通道）。
+pub async fn latest_release(
+    pool: &SqlitePool,
+    channel: Option<&str>,
+) -> Result<Option<ReleaseRow>> {
+    match channel {
+        Some(channel) => query_as::<_, ReleaseRow>(
+            "SELECT * FROM releases WHERE is_published = 1 AND channel = ? \
+                 ORDER BY published_at DESC, id DESC LIMIT 1",
+        )
+        .bind(channel)
+        .fetch_optional(pool)
+        .await
+        .map_err(db_err),
+        None => query_as::<_, ReleaseRow>(
+            "SELECT * FROM releases WHERE is_published = 1 \
+                 ORDER BY published_at DESC, id DESC LIMIT 1",
+        )
+        .fetch_optional(pool)
+        .await
+        .map_err(db_err),
+    }
+}
+
+pub async fn list_releases(pool: &SqlitePool, limit: i64) -> Result<Vec<ReleaseRow>> {
+    query_as::<_, ReleaseRow>(
+        "SELECT * FROM releases WHERE is_published = 1 \
+         ORDER BY published_at DESC, id DESC LIMIT ?",
+    )
+    .bind(limit)
+    .fetch_all(pool)
+    .await
+    .map_err(db_err)
+}
+
+/// 登记发布直链的入参（字段多且同型，用具名结构体）。
+pub struct NewReleaseAsset<'a> {
+    pub release_id: i64,
+    pub platform: &'a str,
+    pub arch: &'a str,
+    pub filename: &'a str,
+    pub url: &'a str,
+    pub size: i64,
+    pub sha256: Option<&'a str>,
+    pub now: i64,
+}
+
+/// 登记一个分发直链。**只存地址，不下载、不落盘**。
+pub async fn add_release_asset(pool: &SqlitePool, asset: NewReleaseAsset<'_>) -> Result<i64> {
+    let res = query(
+        "INSERT INTO release_assets (release_id, platform, arch, filename, url, size, sha256, created_at) \
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+    )
+    .bind(asset.release_id)
+    .bind(asset.platform)
+    .bind(asset.arch)
+    .bind(asset.filename)
+    .bind(asset.url)
+    .bind(asset.size)
+    .bind(asset.sha256)
+    .bind(asset.now)
+    .execute(pool)
+    .await
+    .map_err(db_err)?;
+    Ok(res.last_insert_rowid())
+}
+
+pub async fn list_release_assets(
+    pool: &SqlitePool,
+    release_id: i64,
+) -> Result<Vec<ReleaseAssetRow>> {
+    query_as::<_, ReleaseAssetRow>(
+        "SELECT * FROM release_assets WHERE release_id = ? ORDER BY platform, id",
+    )
+    .bind(release_id)
+    .fetch_all(pool)
+    .await
+    .map_err(db_err)
+}
+
+pub async fn get_release_asset(
+    pool: &SqlitePool,
+    asset_id: i64,
+) -> Result<Option<ReleaseAssetRow>> {
+    query_as::<_, ReleaseAssetRow>("SELECT * FROM release_assets WHERE id = ?")
+        .bind(asset_id)
+        .fetch_optional(pool)
+        .await
+        .map_err(db_err)
+}
+
+pub async fn bump_release_asset_downloads(pool: &SqlitePool, asset_id: i64) -> Result<()> {
+    query("UPDATE release_assets SET download_count = download_count + 1 WHERE id = ?")
+        .bind(asset_id)
+        .execute(pool)
+        .await
+        .map_err(db_err)?;
+    Ok(())
+}
+
 // ---------------------------------------------------------------- 账号、激活与角色
 
 /// 注册：创建账号。`activated` 由调用方按站点设置决定（默认要求管理员激活）。

@@ -88,7 +88,10 @@ impl Permission {
             | Permission::CreateRepost
             | Permission::Comment
             | Permission::UploadFile => Some(Role::Member),
-            Permission::CreateResource | Permission::ReviewPost => Some(Role::Developer),
+            // 讨论 / 资源 / 转载三类帖子对**所有已激活用户**开放（产品决定：不设发布门槛）。
+            Permission::CreateResource => Some(Role::Member),
+            // 人工复核是管理动作，仍要求开发者及以上。
+            Permission::ReviewPost => Some(Role::Developer),
             Permission::ManageUsers => Some(Role::Admin),
             Permission::ManageRoles => Some(Role::Super),
         }
@@ -264,20 +267,12 @@ mod tests {
             Permission::CreateDiscussion
         ));
         assert!(allows(Some(Role::Member), true, Permission::CreateRepost));
-        assert!(!allows(
-            Some(Role::Member),
-            true,
-            Permission::CreateResource
-        ));
+        // 产品决定：三类帖子对所有已激活用户开放，不设发布门槛
+        assert!(allows(Some(Role::Member), true, Permission::CreateResource));
     }
 
     #[test]
     fn developer_and_admin_tiers() {
-        assert!(allows(
-            Some(Role::Developer),
-            true,
-            Permission::CreateResource
-        ));
         assert!(allows(Some(Role::Developer), true, Permission::ReviewPost));
         assert!(!allows(
             Some(Role::Developer),

@@ -6,7 +6,10 @@
 //! - 页面默认服务端渲染，前端只做局部增强。
 
 pub mod error;
+// TODO(下一页): pages_auth.rs 已写好注册/登录/登出处理器，但模板与路由尚未接入，
+// 因此暂不挂进模块树（避免半成品进构建）。接入顺序：templates/auth 页面 → routes 挂载。
 pub mod routes;
+pub mod session;
 pub mod templates;
 pub mod upload;
 
