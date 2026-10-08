@@ -97,8 +97,40 @@ server {
         access_log off;
     }
 
-# @@SECURELINK_BEGIN@@
     # ---------- 帖子图片：按类型分目录，给出正确的 Content-Type ----------
+    # 路由形如 /_img/<kind>/<ab>/<cd>/<hash>；alias 替换掉 location 前缀，
+    # 因此实际读的仍是 blobs/<ab>/<cd>/<hash>。blob 文件名是哈希、没有扩展名，
+    # 靠 mime.types 判不出类型，所以按目录给 default_type。
+    location /_img/webp/ {
+        internal;
+        alias /srv/sc2clud/data/blobs/;
+        default_type image/webp;
+        add_header Cache-Control "public, immutable";
+        access_log off;
+    }
+    location /_img/png/ {
+        internal;
+        alias /srv/sc2clud/data/blobs/;
+        default_type image/png;
+        add_header Cache-Control "public, immutable";
+        access_log off;
+    }
+    location /_img/jpeg/ {
+        internal;
+        alias /srv/sc2clud/data/blobs/;
+        default_type image/jpeg;
+        add_header Cache-Control "public, immutable";
+        access_log off;
+    }
+    location /_img/gif/ {
+        internal;
+        alias /srv/sc2clud/data/blobs/;
+        default_type image/gif;
+        add_header Cache-Control "public, immutable";
+        access_log off;
+    }
+# @@SECURELINK_BEGIN@@
+    # ---------- 文件下载（需要 --with-http_secure_link_module）----------
     # 表达式必须与 sc2clud-core::sign 逐字节一致：
     #     "{expires}{uri}{remote_addr} {secret}"
     # 若把 download.bind_client_ip 设为 false，这里必须同时删掉 $remote_addr。
