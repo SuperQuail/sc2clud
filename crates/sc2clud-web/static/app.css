@@ -319,7 +319,7 @@ footer { color: var(--muted); font-size: 12px; text-align: center; padding: 14px
 }
 
 /* 审核动作：一行对齐（通过 / 理由输入 / 拒绝 同高、同基线） */
-.review-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.review-actions { display: flex; flex-direction: row; align-items: center; gap: 8px; flex-wrap: wrap; }
 .review-actions .inline-form { display: inline-flex; align-items: center; gap: 8px; margin: 0; }
 .review-actions input[type='text'], .review-bar input[type='text'] {
   height: 34px; box-sizing: border-box; padding: 0 10px;
@@ -436,7 +436,7 @@ html[data-post-view='card'] .post-list { display: none; }
 .review-row { display: flex; gap: 14px; align-items: center; border: 1px solid var(--line); border-radius: 12px; padding: 12px 14px; }
 .review-main { min-width: 0; flex: 1 1 auto; }
 .review-main h3 { margin: 4px 0; font-size: 15px; }
-.review-actions { display: flex; flex-direction: column; gap: 8px; }
+.review-actions { display: flex; flex-direction: row; align-items: center; gap: 8px; flex-wrap: wrap; }
 .review-actions input[type='text'] { font: inherit; font-size: 13px; padding: 6px 8px; border: 1px solid var(--line); border-radius: 8px; background: var(--card); color: var(--ink); width: 150px; }
 .review-bar { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-top: 12px; padding: 10px 12px; border: 1px dashed var(--line); border-radius: 10px; background: #fffaf0; }
 [data-theme='dark'] .review-bar { background: #221d12; }
