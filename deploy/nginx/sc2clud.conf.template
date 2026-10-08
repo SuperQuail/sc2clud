@@ -195,6 +195,10 @@ server {
         proxy_buffering off;
         proxy_read_timeout 300s;
         proxy_send_timeout 300s;
+        # 服务端重定向（登录/登出/发帖后）返回的是绝对路径 Location: /xxx，
+        # sub_filter 只改 HTML 正文，改不了响应头 —— 必须用 proxy_redirect，
+        # 否则在 /dev 上一点跳转就跑到生产去了。
+        proxy_redirect ~^/(.*)$ /dev/$1;
         sub_filter_once off;
         sub_filter_types text/html text/css application/javascript;
         sub_filter 'href="/'   'href="/dev/';

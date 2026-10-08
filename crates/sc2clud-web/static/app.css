@@ -361,9 +361,18 @@ footer { color: var(--muted); font-size: 12px; text-align: center; padding: 14px
 .avatar-sm { width: 28px; height: 28px; border-radius: 50%; }
 .avatar-xl { width: 64px; height: 64px; border-radius: 50%; }
 .avatar-initial.avatar-lg { width: 64px; height: 64px; font-size: 24px; }
-.admin-table.users td.name-cell { display: flex; align-items: center; gap: 8px; }
+/* 名称列：**不要**把 td 设成 flex——那会让表格单元尺寸失控（徽标被挤掉、名字重叠）。
+   内层用 span 容器承载 flex 布局。 */
+.admin-table.users td.name-cell { white-space: nowrap; }
+.name-wrap { display: inline-flex; align-items: center; gap: 8px; vertical-align: middle; }
 .admin-table.users td.name-cell .user-name { font-weight: 600; }
 .admin-table.users td { padding: 12px 10px; }
+.admin-table.users th:nth-child(1) { width: 24%; }
+.admin-table.users th:nth-child(2) { width: 158px; }
+.admin-table.users th:nth-child(3) { width: 24%; }
+.admin-table.users th:nth-child(4) { width: 132px; }
+.admin-table.users th:nth-child(5) { width: 124px; }
+.admin-table.users th:nth-child(6) { width: 168px; text-align: right; }
 .admin-table.users .role-badge { background: #eef2f8; color: #46536b; }
 [data-theme='dark'] .admin-table.users .role-badge { background: #1e2937; color: #9fb0c8; }
 [data-theme='dark'] .admin-table.users .role-badge.role-super { background: #3a2122; color: #f0a9a4; }

@@ -140,6 +140,11 @@ function bind() {
 
 bind()
 
+// 站点可能挂在路径前缀下（测试实例是 /dev）。
+// nginx 会给 HTML 里的链接补前缀，但 JS 里硬拼的路径不会，
+// 所以这里按当前路径自己算一份。
+const PREFIX = location.pathname.startsWith('/dev') ? '/dev' : ''
+
 // ---------- 编辑用户弹窗（参考 Open WebUI 的 EditUserModal）----------
 // 列表里点铅笔打开：预填当前值 → 改完点保存（等级也就地切换，不用跳页）。
 const dialog = document.getElementById('user-dialog') as HTMLDialogElement | null
@@ -169,7 +174,7 @@ document.addEventListener('click', (event) => {
   const avatar = document.getElementById('modal-avatar') as HTMLImageElement | null
   if (avatar && initial) {
     if (data.avatar) {
-      avatar.src = '/avatar/' + data.avatar
+      avatar.src = PREFIX + '/avatar/' + data.avatar
       avatar.hidden = false
       initial.hidden = true
     } else {
@@ -194,13 +199,13 @@ document.addEventListener('click', (event) => {
   const password = field('modal-password')
   if (password) password.value = ''
   const more = document.getElementById('modal-more') as HTMLAnchorElement | null
-  if (more) more.href = '/admin/users/' + (data.id ?? '')
+  if (more) more.href = PREFIX + '/admin/users/' + (data.id ?? '')
   const hint = document.getElementById('modal-note')
   if (hint) {
     hint.textContent =
       data.isSelf === '1' ? '这是你自己的账号：不能改自己的等级，也不能停用。' : ''
   }
-  userForm.action = '/admin/users/' + (data.id ?? '') + '/update'
+  userForm.action = PREFIX + '/admin/users/' + (data.id ?? '') + '/update'
   dialog.showModal()
 })
 
