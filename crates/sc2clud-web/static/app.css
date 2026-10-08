@@ -19,6 +19,8 @@
   --line: #e6ebf2;
   --bg: #f4f7fb;
   --card: #fff;
+  /* 输入控件底色：深色主题里由下面覆盖，避免夜间出现白框 */
+  --field-bg: #fbfcfe;
   --ok: #2f9e6f;
   --warn: #d96a2b;
   --radius: 16px;
@@ -243,7 +245,7 @@ footer { color: var(--muted); font-size: 12px; text-align: center; padding: 14px
 .section-nav { display: flex; flex-wrap: wrap; gap: 8px; margin: 0 0 14px; }
 .section-nav a {
   padding: 6px 14px; border: 1px solid var(--line); border-radius: 999px;
-  font-size: 13px; color: var(--ink); background: #fbfcfe;
+  font-size: 13px; color: var(--ink); background: var(--field-bg);
 }
 .section-nav a:hover { border-color: var(--blue); text-decoration: none; }
 .section-nav a.active { background: var(--blue); border-color: var(--blue); color: #fff; }
@@ -268,7 +270,7 @@ footer { color: var(--muted); font-size: 12px; text-align: center; padding: 14px
 .mirrors .hint { flex: 1 1 100%; margin: 0; }
 .mirror {
   padding: 5px 12px; border: 1px solid var(--line); border-radius: 999px;
-  font-size: 13px; background: #fbfcfe; color: var(--ink);
+  font-size: 13px; background: var(--field-bg); color: var(--ink);
 }
 .mirror:hover { border-color: var(--blue); text-decoration: none; }
 .mirror-fastest { border-color: var(--blue); background: var(--blue-soft); color: var(--blue-deep); font-weight: 600; }
@@ -296,7 +298,7 @@ footer { color: var(--muted); font-size: 12px; text-align: center; padding: 14px
 .stack textarea,
 .stack select {
   font: inherit; font-weight: 400; padding: 10px 12px; border: 1px solid var(--line);
-  border-radius: 10px; background: #fbfcfe; color: var(--ink); width: 100%;
+  border-radius: 10px; background: var(--field-bg); color: var(--ink); width: 100%;
 }
 .stack input:focus, .stack textarea:focus, .stack select:focus {
   outline: 2px solid var(--blue-soft); border-color: var(--blue);
@@ -311,6 +313,46 @@ footer { color: var(--muted); font-size: 12px; text-align: center; padding: 14px
 .alert { background: #fdeceb; color: #b3261e; border-radius: 10px; padding: 10px 12px; font-size: 13px; }
 .actions-inline { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
 .title-line { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; font-weight: 600; }
+
+/* 管理表格：把编辑控件放回它该在的列，别全挤在「操作」里 */
+.admin-table.users th:nth-child(1), .admin-table.users td:nth-child(1) { width: 210px; }
+.admin-table.users th:nth-child(2), .admin-table.users td:nth-child(2) { width: 250px; }
+.admin-table.users th:nth-child(4), .admin-table.users td:nth-child(4) { width: 240px; }
+.admin-table.users th:nth-child(7), .admin-table.users td:nth-child(7) { width: 180px; }
+.role-cell { white-space: nowrap; }
+.role-cell .inline-form { display: inline-flex; align-items: center; gap: 6px; margin-left: 8px; vertical-align: middle; }
+.role-cell select { max-width: 132px; height: 32px; }
+.name-form { display: inline-flex; align-items: center; gap: 6px; margin-left: 8px; vertical-align: middle; }
+.name-form input[type='text'] { width: 118px; height: 32px; }
+.row-actions { gap: 8px; align-items: center; }
+.row-actions .btn { height: 32px; padding: 0 12px; font-size: 12.5px; }
+.row-actions .icon-btn { width: 32px; height: 32px; }
+@media (max-width: 1100px) { .admin-table.users { table-layout: auto; } }
+
+
+/* 深色主题下的输入控件兜底：
+ * 早先只写了 [data-theme=dark] input，特异性 (0,1,1) 压不过 .inline-form input[type=text] (0,2,1)，
+ * 所以管理面板的改名框在夜间仍是白底。这里逐个用同等或更高特异性覆盖。 */
+[data-theme='dark'] input:not([type='checkbox']):not([type='radio']):not([type='range']),
+[data-theme='dark'] select,
+[data-theme='dark'] textarea,
+[data-theme='dark'] .inline-form input,
+[data-theme='dark'] .inline-form select,
+[data-theme='dark'] .quota-cell input,
+[data-theme='dark'] .review-actions input,
+[data-theme='dark'] .review-bar input,
+[data-theme='dark'] .source-row input,
+[data-theme='dark'] .source-row select,
+[data-theme='dark'] .stack input,
+[data-theme='dark'] .stack select,
+[data-theme='dark'] .stack textarea,
+[data-theme='dark'] .search input,
+[data-theme='dark'] .mirror-select {
+  background: var(--field-bg);
+  color: var(--ink);
+  border-color: var(--line);
+}
+
 
 /* FAB 里的主题三态选择 */
 .fab-item.theme-picker { display: inline-flex; gap: 2px; background: var(--card); border: 1px solid var(--line); border-radius: 999px; padding: 3px; box-shadow: 0 10px 22px rgba(16,32,64,.18); }
@@ -793,6 +835,7 @@ html[data-post-view='card'] .post-list { display: none; }
   --line: #26313f;
   --bg: #0e141b;
   --card: #161e28;
+  --field-bg: #131a24;
 }
 [data-theme="dark"] body { color: var(--ink); }
 [data-theme="dark"] code { background: #1e2935; color: #cfe0f5; }
@@ -839,7 +882,7 @@ html[data-post-view='card'] .post-list { display: none; }
 .admin-table th, .admin-table td { text-align: left; padding: 10px 8px; border-bottom: 1px solid var(--line); vertical-align: middle; }
 .admin-table th { color: var(--muted); font-weight: 600; font-size: 13px; }
 .inline-form { display: flex; gap: 6px; align-items: center; margin: 0; }
-.inline-form input[type='text'], .inline-form select { font: inherit; padding: 6px 8px; border: 1px solid var(--line); border-radius: 8px; background: #fbfcfe; }
+.inline-form input[type='text'], .inline-form select { font: inherit; padding: 6px 8px; border: 1px solid var(--line); border-radius: 8px; background: var(--field-bg); color: var(--ink); }
 .inline-form input[type='text'] { width: 130px; }
 .tag.ok { background: #e8f7ef; color: #1c7a52; }
 .tag.warn { background: #fff4e5; color: #a35a17; }
