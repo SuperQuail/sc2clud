@@ -6,12 +6,20 @@
 <section class="card">
   <div class="hero">
     <div class="copy">
-      <p class="eyebrow">SC2CLUD · 社区站与轻量网盘</p>
+      <p class="eyebrow">SC2CLUD · 星际争霸 II 社区</p>
       <h1>{{ site_name }}</h1>
-      <p>发帖、评论、传文件。单机 2 核 2 G 上跑得动：页面服务端渲染，下载走 nginx 零拷贝直出。</p>
+      <p>讨论、资源与转载，都在这里。游客可以浏览；登录并激活后即可发帖与回复。</p>
       <div class="actions">
-        <a class="btn" href="#files">上传文件</a>
-        <a class="btn ghost" href="/api/v1/posts">帖子接口</a>
+        {% if user_label.is_none() %}
+        <a class="btn" href="/login">登录</a>
+        <a class="btn ghost" href="/register">注册</a>
+        {% else if needs_activation %}
+        <span class="tag gray">账号待激活</span>
+        <form method="post" action="/logout"><button class="btn ghost" type="submit">退出</button></form>
+        {% else %}
+        <a class="btn" href="#posts">去发帖</a>
+        <form method="post" action="/logout"><button class="btn ghost" type="submit">退出</button></form>
+        {% endif %}
       </div>
     </div>
     <div class="art">
@@ -21,32 +29,58 @@
     </div>
   </div>
   <div class="stats">
-    <div><div class="label">帖子</div><div class="value">{{ total_posts }}</div></div>
-    <div><div class="label">文件</div><div class="value">{{ total_files }}</div></div>
-    <div><div class="label">下载</div><div class="value">{{ total_downloads }}</div></div>
-    <div><div class="label">已用空间</div><div class="value">{{ total_bytes_human }}</div></div>
+    <div><div class="label">可见帖子</div><div class="value">{{ visible_posts }}</div></div>
+    {% if let Some(stats) = my_file_stats %}
+    <div><div class="label">我的文件</div><div class="value">{{ stats.files }}</div></div>
+    <div><div class="label">占用空间</div><div class="value">{{ stats.bytes_human }}</div></div>
+    <div><div class="label">被下载</div><div class="value">{{ stats.downloads }}</div></div>
+    {% endif %}
   </div>
 </section>
 
 <section class="card" id="posts">
-  <h2>最新帖子 <span class="count">{{ total_posts }}</span></h2>
+  <h2>帖子 <span class="count">{{ visible_posts }}</span>
+    <span class="spacer">
+      {% if can_post %}你可以发帖：讨论 / 资源 / 转载{% else if user_label.is_none() %}登录后可发帖{% else %}待激活后可发帖{% endif %}
+    </span>
+  </h2>
   {% if posts.is_empty() %}
-  <p class="empty">还没有帖子。POST /api/v1/posts 可以发第一篇。</p>
+  <p class="empty">还没有帖子。</p>
   {% else %}
   <ul class="list">
     {% for post in posts %}
     <li>
-      <div class="title">{{ post.title }}</div>
-      <p class="meta" style="margin:4px 0 0">{{ post.preview }}</p>
-      <time class="meta" datetime="{{ post.created_at }}">{{ post.created_at }}</time>
+      <div class="row">
+        <div class="grow">
+          <div class="title-line">
+            <span class="tag">{{ post.kind_label }}</span>
+            {% if post.state != "approved" %}
+            <span class="tag warn">{{ post.state_label }}</span>
+            {% endif %}
+            <span>{{ post.title }}</span>
+          </div>
+          <p class="meta" style="margin:6px 0 0">{{ post.preview }}</p>
+          <div class="meta">{{ post.author }} · {{ post.author_role_label }}
+            {% if post.image_count > 0 %} · {{ post.image_count }} 张图{% endif %}
+            {% if post.is_mine %} · <span class="tag gray">我的</span>{% endif %}
+          </div>
+        </div>
+        <time class="meta" datetime="{{ post.created_at }}">{{ post.created_at }}</time>
+      </div>
     </li>
     {% endfor %}
   </ul>
   {% endif %}
 </section>
 
+{% if user_label.is_some() %}
 <section class="card" id="files">
-  <h2>文件 <span class="count">{{ total_files }}</span><span class="spacer">单文件上限 {{ max_upload_human }}</span></h2>
+  <h2>我的文件 <span class="count">{% if let Some(stats) = my_file_stats %}{{ stats.files }}{% else %}0{% endif %}</span>
+    <span class="spacer">单文件上限 {{ max_upload_human }}</span>
+  </h2>
+  {% if !can_post %}
+  <p class="empty">账号激活后才能上传文件。</p>
+  {% else %}
   <div data-island="uploader">
     <form id="upload-form" class="uploader">
       <input id="upload-input" type="file" required>
@@ -54,11 +88,12 @@
       <p class="hint">选择文件后上传（启用 JavaScript 可看到进度与秒传提示）。</p>
     </form>
   </div>
-  {% if files.is_empty() %}
+  {% endif %}
+  {% if my_files.is_empty() %}
   <p class="empty">还没有文件。</p>
   {% else %}
   <ul class="list">
-    {% for file in files %}
+    {% for file in my_files %}
     <li>
       <div class="row">
         <div class="grow">
@@ -73,8 +108,11 @@
   </ul>
   {% endif %}
 </section>
+{% endif %}
 {% endblock %}
 
 {% block scripts %}
+{% if can_post %}
 <script type="module" src="/static/islands/uploader.js"></script>
+{% endif %}
 {% endblock %}

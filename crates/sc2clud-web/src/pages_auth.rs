@@ -3,10 +3,10 @@
 //! 未登录的 POST（注册、登录）没有会话 CSRF 令牌，改用 `Origin` 校验：
 //! 浏览器表单一定带 Origin/Referer，跨站伪造请求会被挡在门外，不需要额外下发匿名令牌。
 
+use axum::Form;
 use axum::extract::State;
 use axum::http::{HeaderMap, HeaderValue, header};
 use axum::response::{IntoResponse, Redirect, Response};
-use axum::Form;
 use serde::Deserialize;
 
 use sc2clud_core::auth::{
@@ -35,7 +35,12 @@ pub struct LoginForm {
 
 /// 校验请求来源：表单页与提交必须同源（挡 CSRF）。
 fn check_origin(state: &AppState, headers: &HeaderMap) -> AppResult<()> {
-    let expected = state.config.server.base_url.trim_end_matches('/').to_string();
+    let expected = state
+        .config
+        .server
+        .base_url
+        .trim_end_matches('/')
+        .to_string();
     let origin = headers
         .get(header::ORIGIN)
         .or_else(|| headers.get(header::REFERER))
@@ -45,7 +50,7 @@ fn check_origin(state: &AppState, headers: &HeaderMap) -> AppResult<()> {
         Some(origin) if origin.starts_with(&expected) => Ok(()),
         _ => Err(AppError::Domain(DomainError::Forbidden(
             "请求来源校验失败，请从站点页面重试".to_string(),
-        )))),
+        ))),
     }
 }
 
@@ -124,11 +129,20 @@ pub async fn register_submit(
         Err(e) => return AppError::from(e).into_response(),
     };
     let now = now_unix();
-    let user_id = match repo::register_user(pool, &handle, &email, &hash, !needs_activation, now).await {
-        Ok(id) => id,
-        Err(e) => return AppError::from(e).into_response(),
-    };
-    let _ = repo::record_audit(pool, Some(user_id), "user.register", Some(&format!("user:{user_id}")), None, now).await;
+    let user_id =
+        match repo::register_user(pool, &handle, &email, &hash, !needs_activation, now).await {
+            Ok(id) => id,
+            Err(e) => return AppError::from(e).into_response(),
+        };
+    let _ = repo::record_audit(
+        pool,
+        Some(user_id),
+        "user.register",
+        Some(&format!("user:{user_id}")),
+        None,
+        now,
+    )
+    .await;
     tracing::info!(user.id = user_id, %handle, needs_activation, "新用户注册");
 
     if needs_activation {

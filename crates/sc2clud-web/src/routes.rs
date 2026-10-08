@@ -15,7 +15,9 @@ use axum::http::{HeaderMap, StatusCode, header};
 use axum::response::{IntoResponse, Response};
 use axum::{Json, Router, middleware};
 use bytes::Bytes;
+use sc2clud_core::auth::Permission;
 use sc2clud_core::config::DownloadMode;
+use sc2clud_core::review::{PostKind, ReviewState, review_for_author};
 use sc2clud_core::{BlobHash, Error as DomainError, now_unix, safety};
 use sc2clud_db::repo;
 use sc2clud_storage::BlobReader;
@@ -26,9 +28,10 @@ use tokio_util::io::StreamReader;
 
 use crate::AppState;
 use crate::error::{AppError, AppResult};
+use crate::session::{self, CurrentUser};
 use crate::templates::{
-    ClaimRequest, FileDto, FilePageTemplate, FileView, IndexTemplate, PostCreateRequest, PostDto,
-    PostView, UploadQuery, format_date, human_bytes,
+    ClaimRequest, FeedView, FileDto, FilePageTemplate, FileView, IndexTemplate, MyFileStats,
+    PostCreateRequest, PostDto, UploadQuery, format_date, human_bytes,
 };
 use crate::upload::{DEFAULT_QUEUE_DEPTH, pump_body};
 
@@ -38,6 +41,16 @@ use crate::upload::{DEFAULT_QUEUE_DEPTH, pump_body};
 pub fn pages() -> Router<AppState> {
     Router::new()
         .route("/", axum::routing::get(index))
+        .route(
+            "/register",
+            axum::routing::get(crate::pages_auth::register_form)
+                .post(crate::pages_auth::register_submit),
+        )
+        .route(
+            "/login",
+            axum::routing::get(crate::pages_auth::login_form).post(crate::pages_auth::login_submit),
+        )
+        .route("/logout", axum::routing::post(crate::pages_auth::logout))
         .route("/f/{id}", axum::routing::get(file_page))
         .route("/healthz", axum::routing::get(healthz))
         .route("/readyz", axum::routing::get(readyz))
@@ -154,59 +167,116 @@ pub async fn readyz(State(state): State<AppState>) -> Response {
 
 // ------------------------------------------------------------ 页面
 
+/// 取当前登录者；文件与发帖相关操作都要求已登录。
+async fn require_user(state: &AppState, headers: &HeaderMap) -> AppResult<CurrentUser> {
+    session::current_user(state, headers)
+        .await?
+        .ok_or_else(|| AppError::Domain(DomainError::Unauthorized("请先登录".to_string())))
+}
+
 pub async fn index(State(state): State<AppState>, headers: HeaderMap) -> Response {
-    match build_index(&state).await {
+    let user = session::current_user(&state, &headers).await.ok().flatten();
+    match build_index(&state, user.as_ref()).await {
         Ok(template) => render_template(template),
         Err(e) => e.into_page_response(wants_html(&headers)),
     }
 }
 
-async fn build_index(state: &AppState) -> AppResult<IndexTemplate<'_>> {
-    let posts = repo::list_posts(state.db.pool(), 20, 0).await?;
-    let total_posts = repo::count_posts(state.db.pool()).await?;
-    let files = repo::list_files(state.db.pool(), state.demo_owner_id, 20).await?;
-    // 统计条用一次聚合查询拿全，避免首页多发 SQL。
-    let stats = repo::file_stats(state.db.pool(), state.demo_owner_id).await?;
+/// 首页：**按查看者过滤**，不把别人的东西摊给普通用户。
+///
+/// - 帖子流走 `repo::list_feed`（审核中只有作者与管理员可见）；
+/// - 网盘区块只显示**自己的**文件与统计，游客与未登录者完全看不到；
+/// - 发帖/上传入口按「是否已激活」显示，未激活只给提示。
+async fn build_index<'a>(
+    state: &'a AppState,
+    user: Option<&CurrentUser>,
+) -> AppResult<IndexTemplate<'a>> {
+    let viewer_id = user.map(|u| u.id);
+    let is_staff = user.is_some_and(CurrentUser::is_staff);
+    let feed = repo::list_feed(state.db.pool(), viewer_id, is_staff, 20, 0).await?;
+
+    let my_files = match viewer_id {
+        Some(id) => repo::list_files(state.db.pool(), id, 20).await?,
+        None => Vec::new(),
+    };
+    let my_file_stats = match viewer_id {
+        Some(id) => {
+            let stats = repo::file_stats(state.db.pool(), id).await?;
+            Some(MyFileStats {
+                files: stats.files,
+                bytes_human: human_bytes(stats.bytes.max(0) as u64),
+                downloads: stats.downloads,
+            })
+        }
+        None => None,
+    };
+
     Ok(IndexTemplate {
         site_name: &state.config.server.site_name,
-        posts: posts.into_iter().map(post_view).collect(),
-        files: files.iter().map(FileView::from_row).collect(),
-        total_posts,
-        total_files: stats.files,
-        total_downloads: stats.downloads,
-        total_bytes_human: human_bytes(stats.bytes.max(0) as u64),
+        user_label: user.map(|u| u.handle.clone()),
+        user_role_label: user.map(|u| u.role.label().to_string()).unwrap_or_default(),
+        can_post: user.is_some_and(|u| u.activated),
+        needs_activation: user.is_some_and(|u| !u.activated),
+        visible_posts: feed.len() as i64,
+        posts: feed.iter().map(|row| feed_view(row, viewer_id)).collect(),
+        my_files: my_files.iter().map(FileView::from_row).collect(),
+        my_file_stats,
         max_upload_human: human_bytes(state.config.limits.max_upload_bytes),
     })
 }
 
-fn post_view(row: sc2clud_db::PostRow) -> PostView {
-    let preview = row.body.replace('\n', " ").chars().take(120).collect();
-    PostView {
+/// 帖子卡片视图：状态解析失败时按「审核中」处理——宁可不显示，也不要误露。
+fn feed_view(row: &sc2clud_db::PostWithAuthorRow, viewer_id: Option<i64>) -> FeedView {
+    let state = ReviewState::parse(&row.review_state).unwrap_or(ReviewState::Pending);
+    let kind = PostKind::parse(&row.kind).unwrap_or(PostKind::Discussion);
+    let author_role = sc2clud_core::auth::Role::parse(&row.author_role)
+        .map(|role| role.label())
+        .unwrap_or("普通用户");
+    FeedView {
         id: row.id,
-        title: row.title,
-        preview,
+        title: row.title.clone(),
+        preview: row.body.replace('\n', " ").chars().take(120).collect(),
+        kind: kind.as_str().to_string(),
+        kind_label: kind.label().to_string(),
+        state: state.as_str().to_string(),
+        state_label: state.label().to_string(),
+        author: row.author_handle.clone(),
+        author_role_label: author_role.to_string(),
         created_at: format_date(row.created_at),
+        image_count: row.image_count,
+        is_mine: viewer_id == Some(row.author_id),
     }
 }
 
+/// 文件详情页：**只有所有者与管理员及以上**能看；其他人一律 404（不泄露「存在但无权」）。
 pub async fn file_page(
     State(state): State<AppState>,
     Path(id): Path<i64>,
     headers: HeaderMap,
 ) -> Response {
-    match build_file_page(&state, id).await {
+    let user = session::current_user(&state, &headers).await.ok().flatten();
+    match build_file_page(&state, id, user.as_ref()).await {
         Ok(template) => render_template(template),
         Err(e) => e.into_page_response(wants_html(&headers)),
     }
 }
 
-async fn build_file_page(state: &AppState, id: i64) -> AppResult<FilePageTemplate<'_>> {
+async fn build_file_page<'a>(
+    state: &'a AppState,
+    id: i64,
+    user: Option<&CurrentUser>,
+) -> AppResult<FilePageTemplate<'a>> {
+    let user = user.ok_or_else(|| AppError::not_found("文件不存在或已删除"))?;
     let row = repo::get_file_with_owner(state.db.pool(), id)
         .await?
         .ok_or_else(|| AppError::not_found("文件不存在或已删除"))?;
+    if row.owner_id != user.id && !user.is_staff() {
+        return Err(AppError::not_found("文件不存在或已删除"));
+    }
     let download_href = format!("/api/v1/files/{}/download", row.id);
     Ok(FilePageTemplate {
         site_name: &state.config.server.site_name,
+        user_label: Some(user.handle.clone()),
         file: FileView::from_owner_row(&row),
         owner_handle: row.owner_handle.clone(),
         download_href,
@@ -237,8 +307,11 @@ pub async fn list_posts(State(state): State<AppState>) -> AppResult<Json<Vec<Pos
 
 pub async fn create_post(
     State(state): State<AppState>,
+    headers: HeaderMap,
     Json(req): Json<PostCreateRequest>,
 ) -> AppResult<(StatusCode, Json<PostDto>)> {
+    let user = require_user(&state, &headers).await?;
+    session::guard(Some(&user), Permission::CreateDiscussion)?;
     let title = req.title.trim();
     let body = req.body.trim();
     if title.is_empty() || title.chars().count() > 200 {
@@ -248,10 +321,37 @@ pub async fn create_post(
         return Err(invalid("正文需为 1..20000 字"));
     }
 
+    // 三类帖子对所有已激活用户开放；管理员及以上跳过审核机直接发布。
+    let kind = PostKind::parse(req.kind.as_deref().unwrap_or("discussion"))?;
+    session::guard(Some(&user), kind.required_permission())?;
+    let outcome = review_for_author(Some(user.role), kind, title, body, 0);
+    if !outcome.state.visible_to(false, false) {
+        // 被拒的帖子不进 feed：这里先把结论记下来，由调用方看到 422 的说明。
+        tracing::info!(user.id = user.id, note = ?outcome.note, "帖子被审核机拒绝");
+    }
+
     let now = now_unix();
-    let id = repo::create_post(state.db.pool(), state.demo_owner_id, title, body, now).await?;
+    let id = repo::create_post_reviewed(
+        state.db.pool(),
+        repo::NewPost {
+            author_id: user.id,
+            kind: kind.as_str(),
+            title,
+            body,
+            image_count: 0,
+            review_state: outcome.state.as_str(),
+            review_note: outcome.note.as_deref(),
+            now,
+        },
+    )
+    .await?;
     state.counters.bump("post:created", 1);
-    tracing::info!(post.id = id, "发帖");
+    tracing::info!(
+        post.id = id,
+        kind = kind.as_str(),
+        state = outcome.state.as_str(),
+        "发帖"
+    );
     Ok((
         StatusCode::CREATED,
         Json(PostDto {
@@ -263,8 +363,13 @@ pub async fn create_post(
     ))
 }
 
-pub async fn list_files(State(state): State<AppState>) -> AppResult<Json<Vec<FileDto>>> {
-    let files = repo::list_files(state.db.pool(), state.demo_owner_id, 100).await?;
+/// 文件列表：**只返回调用者自己的文件**（原来会把别人的列表摊出去）。
+pub async fn list_files(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+) -> AppResult<Json<Vec<FileDto>>> {
+    let user = require_user(&state, &headers).await?;
+    let files = repo::list_files(state.db.pool(), user.id, 100).await?;
     Ok(Json(files.iter().map(|row| file_dto(row, false)).collect()))
 }
 
@@ -291,8 +396,11 @@ fn invalid(msg: impl Into<String>) -> AppError {
 /// 关键点：只信服务端自己的记录（`storage.stat`），绝不信客户端声明的体积。
 pub async fn claim_file(
     State(state): State<AppState>,
+    headers: HeaderMap,
     Json(req): Json<ClaimRequest>,
 ) -> AppResult<(StatusCode, Json<FileDto>)> {
+    let user = require_user(&state, &headers).await?;
+    session::guard(Some(&user), Permission::UploadFile)?;
     let hash = BlobHash::parse(&req.hash)?;
     let name = safety::safe_file_name(&req.name)?;
     if req.size <= 0 {
@@ -325,7 +433,7 @@ pub async fn claim_file(
     let id = repo::create_file(
         state.db.pool(),
         repo::NewFile {
-            owner_id: state.demo_owner_id,
+            owner_id: user.id,
             blob_hash: hash.as_str(),
             name: &name,
             mime: &mime,
@@ -334,7 +442,7 @@ pub async fn claim_file(
         },
     )
     .await?;
-    repo::add_used_bytes(state.db.pool(), state.demo_owner_id, req.size).await?;
+    repo::add_used_bytes(state.db.pool(), user.id, req.size).await?;
     state.counters.bump("upload:dedup_hits", 1);
     tracing::info!(file.id = id, blob = %hash, newly_registered = created, "秒传命中");
 
@@ -362,6 +470,8 @@ pub async fn upload_file(
     headers: HeaderMap,
     body: Body,
 ) -> AppResult<Json<FileDto>> {
+    let user = require_user(&state, &headers).await?;
+    session::guard(Some(&user), Permission::UploadFile)?;
     let name = safety::safe_file_name(&params.name)?;
     let declared = params.hash.as_deref().map(BlobHash::parse).transpose()?;
     let mime = params
@@ -377,7 +487,7 @@ pub async fn upload_file(
                 "单文件上限 {max_upload} 字节"
             ))));
         }
-        if let Some(user) = repo::find_user_by_id(state.db.pool(), state.demo_owner_id).await?
+        if let Some(user) = repo::find_user_by_id(state.db.pool(), user.id).await?
             && user.used_bytes + len as i64 > user.quota_bytes
         {
             return Err(AppError::Domain(DomainError::QuotaExceeded(format!(
@@ -432,7 +542,7 @@ pub async fn upload_file(
     let id = repo::create_file(
         state.db.pool(),
         repo::NewFile {
-            owner_id: state.demo_owner_id,
+            owner_id: user.id,
             blob_hash: hash.as_str(),
             name: &name,
             mime: &mime,
@@ -441,7 +551,7 @@ pub async fn upload_file(
         },
     )
     .await?;
-    repo::add_used_bytes(state.db.pool(), state.demo_owner_id, size).await?;
+    repo::add_used_bytes(state.db.pool(), user.id, size).await?;
     if outcome.deduplicated {
         state.counters.bump("upload:dedup_hits", 1);
     }
@@ -470,12 +580,14 @@ pub async fn upload_file(
 pub async fn delete_file(
     State(state): State<AppState>,
     Path(id): Path<i64>,
+    headers: HeaderMap,
 ) -> AppResult<StatusCode> {
+    let user = require_user(&state, &headers).await?;
     let row = repo::get_file(state.db.pool(), id)
         .await?
         .ok_or_else(|| AppError::not_found("文件不存在或已删除"))?;
 
-    if !repo::soft_delete_file(state.db.pool(), id, state.demo_owner_id, now_unix()).await? {
+    if !repo::soft_delete_file(state.db.pool(), id, user.id, now_unix()).await? {
         return Err(AppError::not_found("文件不存在或无权删除"));
     }
 
@@ -509,6 +621,10 @@ pub async fn download_file(
     let row = repo::get_file_with_owner(state.db.pool(), id)
         .await?
         .ok_or_else(|| AppError::not_found("文件不存在或已删除"))?;
+    let user = require_user(&state, &headers).await?;
+    if row.owner_id != user.id && !user.is_staff() {
+        return Err(AppError::not_found("文件不存在或已删除"));
+    }
     let hash = BlobHash::parse(&row.blob_hash)?;
 
     // 下载计数进内存聚合，后台批量落库（SQLite 单写者，禁止每请求 UPDATE）。

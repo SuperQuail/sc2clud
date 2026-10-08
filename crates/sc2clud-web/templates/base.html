@@ -15,7 +15,12 @@
     <a class="brand" href="/">{{ site_name }}<small>COMMUNITY &amp; CLOUD</small></a>
     <nav>
       <a href="/" class="{% block nav_home %}{% endblock %}">社区</a>
-      <a href="/api/v1/files">文件接口</a>
+      {% if let Some(name) = user_label %}
+      <a href="/">{{ name }}</a>
+      {% else %}
+      <a href="/login">登录</a>
+      <a href="/register">注册</a>
+      {% endif %}
     </nav>
   </header>
   <main>

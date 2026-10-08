@@ -972,6 +972,17 @@ pub async fn set_user_activated(
     Ok(affected == 1)
 }
 
+/// 重置口令（命令行运维工具用）。
+pub async fn set_user_password(pool: &SqlitePool, user_id: i64, password_hash: &str) -> Result<()> {
+    query("UPDATE users SET password_hash = ? WHERE id = ?")
+        .bind(password_hash)
+        .bind(user_id)
+        .execute(pool)
+        .await
+        .map_err(db_err)?;
+    Ok(())
+}
+
 pub async fn set_user_role(pool: &SqlitePool, user_id: i64, role: &str) -> Result<bool> {
     let affected = query("UPDATE users SET role = ? WHERE id = ? AND role <> ?")
         .bind(role)

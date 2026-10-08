@@ -36,6 +36,7 @@ async fn main() -> Result<()> {
     match command.as_str() {
         "serve" | "run" => serve().await,
         "check" => check().await,
+        "set-password" => set_password().await,
         "version" | "-V" | "--version" => {
             println!("sc2clud {}", env!("CARGO_PKG_VERSION"));
             Ok(())
@@ -58,6 +59,7 @@ fn print_help() {
          用法：\n\
            sc2clud serve     启动 HTTP 服务（默认）\n\
            sc2clud check     配置与依赖自检，不监听端口\n\
+           sc2clud set-password <用户名> <新口令>   重置口令（忘记管理员口令时用）\n\
            sc2clud version   打印版本\n\n\
          配置：<exe 同级>/sc2clud.toml，环境变量优先（见 .env.example）",
         env!("CARGO_PKG_VERSION")
@@ -103,6 +105,52 @@ async fn check() -> Result<()> {
     println!("  并发上传    {}", config.limits.max_concurrent_uploads);
     println!("  流式缓冲    {} 字节", config.limits.stream_chunk_bytes);
     println!("  下载 TTL    {} 秒", config.download.url_ttl_secs);
+    db.close().await;
+    Ok(())
+}
+
+/// 重置某个账号的口令，并确保它处于激活状态。
+///
+/// 这是**运维工具**：忘记管理员口令时用，需要在服务器上（有数据目录权限）执行。
+async fn set_password() -> Result<()> {
+    let mut args = std::env::args().skip(2);
+    let usage = "用法：sc2clud set-password <用户名> <新口令>";
+    let handle = args.next().context(usage)?;
+    let password = args.next().context(usage)?;
+
+    let config = Config::load().context("装载配置失败")?;
+    config.paths.ensure_dirs().context("创建数据目录失败")?;
+    let db = Db::connect(&config.paths.db_path())
+        .await
+        .context("打开数据库失败")?;
+    db.migrate().await.context("执行迁移失败")?;
+
+    let Some(user) = repo::find_user_by_handle(db.pool(), &handle)
+        .await
+        .context("查询用户失败")?
+    else {
+        anyhow::bail!("找不到用户名 {handle}");
+    };
+    let hash = sc2clud_core::auth::hash_password(&password).map_err(|e| anyhow::anyhow!("{e}"))?;
+    repo::set_user_password(db.pool(), user.id, &hash)
+        .await
+        .context("写入口令失败")?;
+
+    // 能登录才有意义：顺手激活（幂等）。
+    let now = sc2clud_core::now_unix();
+    let _ = repo::set_user_activated(db.pool(), user.id, true, user.id, now).await;
+    repo::record_audit(
+        db.pool(),
+        None,
+        "user.set_password",
+        Some(&format!("user:{}", user.id)),
+        Some("命令行重置口令"),
+        now,
+    )
+    .await
+    .ok();
+
+    println!("已重置 {handle} 的口令，并确保账号处于激活状态");
     db.close().await;
     Ok(())
 }

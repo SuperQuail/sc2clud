@@ -1,0 +1,26 @@
+{% extends "base.html" %}
+
+{% block title %}注册 · {{ site_name }}{% endblock %}
+
+{% block content %}
+<section class="card auth-card">
+  <h2>注册</h2>
+  {% if let Some(message) = error %}
+  <p class="alert">{{ message }}</p>
+  {% endif %}
+<form method="post" action="/register" class="stack">
+  <label>用户名<input type="text" name="handle" value="{{ handle }}" required minlength="3" maxlength="24" pattern="[A-Za-z0-9_-]+" autocomplete="username">
+    <span class="hint">3–24 位，字母、数字、下划线或连字符</span></label>
+  <label>邮箱<input type="email" name="email" value="{{ email }}" required autocomplete="email">
+    <span class="hint">当前不做邮箱验证，仅用于账号找回</span></label>
+  <label>口令<input type="password" name="password" required minlength="8" autocomplete="new-password">
+    <span class="hint">至少 8 位</span></label>
+  <button class="btn" type="submit">注册</button>
+</form>
+  {% if needs_activation %}
+  <p class="hint">本站开启了人工激活：注册后账号为「未激活」，可以登录，但需要管理员激活后才能发帖与上传。</p>
+  {% else %}
+  <p class="hint">本站当前**无需**人工激活：注册后即可发帖。</p>
+  {% endif %}
+</section>
+{% endblock %}

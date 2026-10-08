@@ -12,19 +12,52 @@ use serde::{Deserialize, Serialize};
 #[template(path = "index.html")]
 pub struct IndexTemplate<'a> {
     pub site_name: &'a str,
-    pub posts: Vec<PostView>,
-    pub files: Vec<FileView>,
-    pub total_posts: i64,
-    pub total_files: i64,
-    pub total_downloads: i64,
-    pub total_bytes_human: String,
+    /// 已登录用户名（游客为 None）。
+    pub user_label: Option<String>,
+    pub user_role_label: String,
+    /// 已激活：可以发帖。
+    pub can_post: bool,
+    /// 已登录但未激活。
+    pub needs_activation: bool,
+    /// 帖子流（已按查看者过滤：审核中的只有作者与管理员可见）。
+    pub posts: Vec<FeedView>,
+    pub visible_posts: i64,
+    /// **只显示自己的文件**——别人的文件不进首页。
+    pub my_files: Vec<FileView>,
+    /// 登录后才给的文件统计。
+    pub my_file_stats: Option<MyFileStats>,
     pub max_upload_human: String,
+}
+
+/// 首页帖子卡片。
+pub struct FeedView {
+    pub id: i64,
+    pub title: String,
+    pub preview: String,
+    pub kind: String,
+    pub kind_label: String,
+    /// 仅当不该公开时才有值（审核中/被拒，且查看者有资格看到）。
+    pub state: String,
+    pub state_label: String,
+    pub author: String,
+    pub author_role_label: String,
+    pub created_at: String,
+    pub image_count: i64,
+    pub is_mine: bool,
+}
+
+/// 自己的网盘统计（游客与未登录者看不到）。
+pub struct MyFileStats {
+    pub files: i64,
+    pub bytes_human: String,
+    pub downloads: i64,
 }
 
 #[derive(Template)]
 #[template(path = "file.html")]
 pub struct FilePageTemplate<'a> {
     pub site_name: &'a str,
+    pub user_label: Option<String>,
     pub file: FileView,
     pub owner_handle: String,
     pub download_href: String,
@@ -126,9 +159,51 @@ pub struct PostDto {
 pub struct PostCreateRequest {
     pub title: String,
     pub body: String,
+    /// discussion | resource | repost，缺省为讨论。
+    #[serde(default)]
+    pub kind: Option<String>,
 }
 
 // ------------------------------------------------------------ 展示辅助
+
+/// 登录页。
+#[derive(Template)]
+#[template(path = "login.html")]
+pub struct LoginTemplate<'a> {
+    pub site_name: &'a str,
+    pub user_label: Option<String>,
+    pub error: Option<String>,
+    pub account: &'a str,
+}
+
+/// 注册页。
+#[derive(Template)]
+#[template(path = "register.html")]
+pub struct RegisterTemplate<'a> {
+    pub site_name: &'a str,
+    pub user_label: Option<String>,
+    /// 站点当前是否要求管理员手动激活（决定页面文案）。
+    pub needs_activation: bool,
+    pub error: Option<String>,
+    pub handle: &'a str,
+    pub email: &'a str,
+}
+
+/// 统一的模板渲染出口：渲染失败只记日志、回 500。
+pub fn render<T: Template>(template: T) -> axum::response::Response {
+    use axum::response::IntoResponse;
+    match template.render() {
+        Ok(html) => (
+            [(axum::http::header::CONTENT_TYPE, "text/html; charset=utf-8")],
+            html,
+        )
+            .into_response(),
+        Err(e) => {
+            tracing::error!(error = %e, "模板渲染失败");
+            crate::error::AppError::internal(format!("模板渲染失败：{e}")).into_response()
+        }
+    }
+}
 
 /// 人类可读体积（1024 进制，保留一位小数）。
 pub fn human_bytes(bytes: u64) -> String {
