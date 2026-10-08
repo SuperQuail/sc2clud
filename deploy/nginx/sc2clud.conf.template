@@ -1,12 +1,17 @@
 # ============================================================
-# SC2clud —— nginx 站点配置（**模板**）
+# SC2clud —— nginx 站点配置（**模板**，由 deploy/install.sh 渲染）
 #
-# 安装脚本 deploy/install.sh 会把 __DOWNLOAD_SECRET__ 换成真实密钥，
-# 使 nginx 与应用侧的 secure_link 密钥完全一致；也会在缺少 brotli 模块时注释掉对应指令。
+# 安装脚本会按本机 nginx 的实际能力裁剪下面的标记区块：
+#   # @@REDIRECT_BEGIN@@ … @@REDIRECT_END@@      无 TLS 时删除（80 → 443 跳转）
+#   # @@TLS_LISTEN_BEGIN@@ … @@TLS_LISTEN_END@@  无 TLS 时删除
+#   # @@PLAIN_LISTEN_BEGIN@@ … @@PLAIN_LISTEN_END@@  有 TLS 时删除
+#   # @@TLS_ONLY_BEGIN@@ … @@TLS_ONLY_END@@      无 TLS 时删除（证书指令）
+#   # @@SECURELINK_BEGIN@@ … @@SECURELINK_END@@  nginx 无 secure_link 模块时删除
+# 并把 __DOWNLOAD_SECRET__ / __DOMAIN__ 替换成真实值。
 #
-# 依赖模块：http_secure_link_module / http_limit_conn_module / http_limit_req_module
-# 可选模块：http_brotli_static_module（没有则退回 gzip_static）
-# 版本要求：nginx ≥ 1.25.1（http2 on 语法）
+# 依赖模块：http_limit_conn_module / http_limit_req_module（官方包与宝塔均有）
+# 可选模块：http_secure_link_module（缺失则改用 X-Accel-Redirect）、http_brotli_static_module
+# 版本要求：nginx ≥ 1.25.1 用 `http2 on;`；更老的版本脚本会退回 `listen ... http2`
 # ============================================================
 
 # ---------- 限流与限连：2 核经不起爬虫 ----------
@@ -21,23 +26,32 @@ upstream sc2clud_app {
     keepalive 16;
 }
 
+# @@REDIRECT_BEGIN@@
+# TLS 终止在 nginx：80 只留跳转
 server {
     listen 80;
-    server_name example.com;
-    # TLS 终止在 nginx：80 只留跳转
+    server_name __DOMAIN__;
     return 301 https://$host$request_uri;
 }
+# @@REDIRECT_END@@
 
 server {
+# @@TLS_LISTEN_BEGIN@@
     listen 443 ssl;
     http2 on;
-    server_name example.com;
+# @@TLS_LISTEN_END@@
+# @@PLAIN_LISTEN_BEGIN@@
+    listen 80;
+# @@PLAIN_LISTEN_END@@
+    server_name __DOMAIN__;
 
-    ssl_certificate     /etc/letsencrypt/live/example.com/fullchain.pem;
-    ssl_certificate_key /etc/letsencrypt/live/example.com/privkey.pem;
+# @@TLS_ONLY_BEGIN@@
+    ssl_certificate     /etc/letsencrypt/live/__DOMAIN__/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/__DOMAIN__/privkey.pem;
     ssl_protocols TLSv1.2 TLSv1.3;
     ssl_session_cache shared:sc2clud_tls:10m;
     ssl_session_timeout 1d;
+# @@TLS_ONLY_END@@
 
     # ---------- 零拷贝与预压缩直发 ----------
     sendfile on;
@@ -70,7 +84,20 @@ server {
         try_files $uri =404;
     }
 
-    # ---------- 文件下载：应用只签名，字节由 nginx 直出 ----------
+    # ---------- 受保护内容：应用授权后由 nginx 直出（默认通道）----------
+    # 应用返回 X-Accel-Redirect: /_blob/<ab>/<cd>/<hash>；
+    # internal 表示客户端无法直接请求，只能由应用内部跳转触达。
+    location /_blob/ {
+        internal;
+        alias /srv/sc2clud/data/blobs/;
+        limit_rate_after 256k;
+        limit_rate 256k;
+        add_header Cache-Control "private, max-age=0";
+        access_log off;
+    }
+
+# @@SECURELINK_BEGIN@@
+    # ---------- 文件下载（需要 --with-http_secure_link_module）----------
     # 表达式必须与 sc2clud-core::sign 逐字节一致：
     #     "{expires}{uri}{remote_addr} {secret}"
     # 若把 download.bind_client_ip 设为 false，这里必须同时删掉 $remote_addr。
@@ -87,6 +114,7 @@ server {
         add_header Cache-Control "private, max-age=0";
         access_log off;
     }
+# @@SECURELINK_END@@
 
     # ---------- 探针 ----------
     location = /healthz { proxy_pass http://sc2clud_app; access_log off; }

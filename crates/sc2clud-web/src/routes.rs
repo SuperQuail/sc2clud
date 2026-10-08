@@ -15,6 +15,7 @@ use axum::http::{HeaderMap, StatusCode, header};
 use axum::response::{IntoResponse, Response};
 use axum::{Json, Router, middleware};
 use bytes::Bytes;
+use sc2clud_core::config::DownloadMode;
 use sc2clud_core::{BlobHash, Error as DomainError, now_unix, safety};
 use sc2clud_db::repo;
 use sc2clud_storage::BlobReader;
@@ -488,7 +489,12 @@ pub async fn delete_file(
     Ok(StatusCode::NO_CONTENT)
 }
 
-/// 下载：应用只做一次 DB 读 + 一次签名，**字节由 nginx 直出**。
+/// 下载：应用只做一次 DB 读 + 一次授权，**字节由 nginx 直出**。
+///
+/// 两种下发方式都满足硬约束「文件字节不经过应用进程」：
+/// - `secure_link`：应用 302 到带签名 URL，nginx 自行校验签名与过期时间；
+/// - `x_accel`：应用回 `X-Accel-Redirect`，nginx 从 `internal` location 直出
+///   （宝塔自编译的 nginx 通常没有 secure_link 模块，这是本机的默认通道）。
 pub async fn download_file(
     State(state): State<AppState>,
     Path(id): Path<i64>,
@@ -499,6 +505,28 @@ pub async fn download_file(
         .await?
         .ok_or_else(|| AppError::not_found("文件不存在或已删除"))?;
     let hash = BlobHash::parse(&row.blob_hash)?;
+
+    // 下载计数进内存聚合，后台批量落库（SQLite 单写者，禁止每请求 UPDATE）。
+    state.counters.bump(format!("file:{}:downloads", row.id), 1);
+
+    if state.config.download.mode == DownloadMode::XAccel {
+        // 授权已在上面完成；nginx 侧的 internal location 客户端无法直接访问。
+        let location = format!(
+            "{}/{}",
+            state.config.download.internal_prefix.trim_end_matches('/'),
+            hash.relative_path()
+        );
+        tracing::info!(file.id = row.id, blob = %hash, location = %location, "X-Accel-Redirect 下发");
+        return Ok((
+            StatusCode::OK,
+            [(
+                header::HeaderName::from_static("x-accel-redirect"),
+                location,
+            )],
+        )
+            .into_response());
+    }
+
     let client = client_ip(&headers, Some(peer));
     let signed = state
         .storage
@@ -508,9 +536,6 @@ pub async fn download_file(
             client.as_deref(),
         )
         .await?;
-
-    // 下载计数进内存聚合，后台批量落库（SQLite 单写者，禁止每请求 UPDATE）。
-    state.counters.bump(format!("file:{}:downloads", row.id), 1);
 
     let location = if signed.url.starts_with("http") {
         signed.url

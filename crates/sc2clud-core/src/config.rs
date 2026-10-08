@@ -155,20 +155,44 @@ impl Default for LimitsConfig {
     }
 }
 
+/// 下载下发方式。两种都满足硬约束「文件字节不经过应用进程」，区别只在谁来校验授权。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum DownloadMode {
+    /// 应用 302 到带签名的 URL，由 nginx `secure_link` 自行校验签名与过期时间。
+    /// 需要 nginx 编译了 `--with-http_secure_link_module`（官方包有，宝塔自编译常常没有）。
+    SecureLink,
+    /// 应用返回 `X-Accel-Redirect`，nginx 从 `internal` location 直接 sendfile。
+    /// 任何 nginx 都支持；授权由应用在请求时判定。
+    XAccel,
+}
+
+impl Default for DownloadMode {
+    fn default() -> Self {
+        Self::SecureLink
+    }
+}
+
 #[derive(Debug, Clone, Deserialize)]
 #[serde(default, deny_unknown_fields)]
 pub struct DownloadConfig {
+    /// 下发方式；部署脚本会按 nginx 是否带 secure_link 模块自动写入。
+    pub mode: DownloadMode,
     /// 签名 URL 的 TTL（秒）：短 TTL 抗重放与盗链。
     pub url_ttl_secs: u64,
     /// 是否把客户端 IP 绑进签名；必须与 nginx 表达式是否含 `$remote_addr` 一致。
     pub bind_client_ip: bool,
+    /// `x_accel` 模式下 nginx 内部 location 的前缀（对应 `internal` + `alias`）。
+    pub internal_prefix: String,
 }
 
 impl Default for DownloadConfig {
     fn default() -> Self {
         Self {
+            mode: DownloadMode::default(),
             url_ttl_secs: 300,
             bind_client_ip: true,
+            internal_prefix: "/_blob".to_string(),
         }
     }
 }
@@ -232,6 +256,20 @@ impl Config {
         if let Some(v) = env_var("SC2CLUD_URL_TTL_SECS").and_then(|s| s.parse().ok()) {
             self.download.url_ttl_secs = v;
         }
+        // 部署脚本按 nginx 能力写入：secure_link / x_accel
+        if let Some(v) = env_var("SC2CLUD_DOWNLOAD_MODE") {
+            self.download.mode = match v.to_ascii_lowercase().as_str() {
+                "secure_link" => DownloadMode::SecureLink,
+                "x_accel" => DownloadMode::XAccel,
+                other => {
+                    tracing::warn!(value = other, "未知的 SC2CLUD_DOWNLOAD_MODE，已忽略");
+                    self.download.mode
+                }
+            };
+        }
+        if let Some(v) = env_var("SC2CLUD_INTERNAL_PREFIX") {
+            self.download.internal_prefix = v;
+        }
         if let Some(v) = env_var("SC2CLUD_MAX_UPLOAD_BYTES").and_then(|s| s.parse().ok()) {
             self.limits.max_upload_bytes = v;
         }
@@ -281,6 +319,12 @@ impl Config {
                 self.download.url_ttl_secs
             )));
         }
+        let internal = &self.download.internal_prefix;
+        if !internal.starts_with('/') || internal.ends_with('/') || internal.len() < 2 {
+            return Err(Error::Config(format!(
+                "download.internal_prefix 必须形如 /_blob（当前 {internal:?}）"
+            )));
+        }
         let prefix = &self.server.download_prefix;
         if !prefix.starts_with('/') || prefix.ends_with('/') || prefix.len() < 2 {
             return Err(Error::Config(format!(
@@ -312,6 +356,8 @@ mod tests {
         assert_eq!(cfg.limits.max_concurrent_uploads, 5);
         assert_eq!(cfg.limits.stream_chunk_bytes, crate::STREAM_CHUNK_BYTES);
         assert!(cfg.download.bind_client_ip);
+        assert_eq!(cfg.download.mode, DownloadMode::SecureLink);
+        assert_eq!(cfg.download.internal_prefix, "/_blob");
         assert!(!cfg.secret.is_configured(), "默认密钥必须是未配置状态");
         assert!(cfg.bind_addr().is_ok());
     }
@@ -377,6 +423,9 @@ mod tests {
         cfg.limits.stream_chunk_bytes = 8 * 1024 * 1024;
         assert!(cfg.validate().is_err());
         cfg.limits.stream_chunk_bytes = crate::STREAM_CHUNK_BYTES;
+        cfg.download.internal_prefix = "_blob".to_string();
+        assert!(cfg.validate().is_err(), "内部前缀必须以 / 开头");
+        cfg.download.internal_prefix = "/_blob".to_string();
         cfg.validate().expect("修正后应通过");
     }
 
