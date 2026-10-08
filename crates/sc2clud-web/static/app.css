@@ -313,6 +313,21 @@ footer { color: var(--muted); font-size: 12px; text-align: center; padding: 14px
 .title-line { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; font-weight: 600; }
 
 /* ============================================================
+ * 整卡可点：覆盖式链接 + 作者栏单独跳主页
+ * ============================================================ */
+.post-card, .post-row { position: relative; cursor: pointer; }
+.card-link { position: absolute; inset: 0; z-index: 1; border-radius: inherit; }
+.card-link:hover { text-decoration: none; }
+/* 作者栏浮在覆盖层之上，点它是进作者主页，不是进帖子 */
+.post-card .foot, .post-row .row-stats, .post-row .row-thumb { position: relative; z-index: 2; }
+.author-link { color: inherit; }
+.author-link:hover { color: var(--blue); text-decoration: none; }
+.post-card h3 a, .post-row h3 a { position: relative; z-index: 2; }
+/* 键盘可达：覆盖链接获得焦点时给整卡描边 */
+.post-card:focus-within, .post-row:focus-within { border-color: var(--blue); box-shadow: 0 0 0 2px var(--blue-soft); }
+
+
+/* ============================================================
  * 帖子页三栏（参考贴吧）：左=分区/我的，中=正文与回复，右=作者/资源/数据
  * ============================================================ */
 .post-layout { display: grid; grid-template-columns: 176px minmax(0, 1fr) 292px; gap: 16px; align-items: start; }

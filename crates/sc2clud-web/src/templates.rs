@@ -56,6 +56,8 @@ pub struct FeedView {
     pub archived: bool,
     /// 「多久以前」（列表视图统计条）。
     pub time_ago: String,
+    /// 作者登录名（卡片作者栏跳主页用）。
+    pub author_handle: String,
     pub title: String,
     pub preview: String,
     /// 封面图（该帖第一张图）；卡片用它铺底。

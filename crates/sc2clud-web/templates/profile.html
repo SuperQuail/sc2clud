@@ -53,6 +53,7 @@
   <div class="post-grid">
     {% for post in posts %}
     <article class="post-card">
+      <a class="card-link" href="/p/{{ post.id }}" aria-label="{{ post.title }}"></a>
       {% if let Some(cover) = post.cover_hash %}
       <div class="post-cover" style="background-image:url('/img/{{ cover }}')"></div>
       {% else %}

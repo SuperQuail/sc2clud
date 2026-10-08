@@ -452,6 +452,7 @@ pub(crate) fn feed_view(row: &sc2clud_db::PostWithAuthorRow, viewer_id: Option<i
         state: state.as_str().to_string(),
         state_label: state.label().to_string(),
         author: row.author_display_name.clone(),
+        author_handle: row.author_handle.clone(),
         author_role_label: author_role.to_string(),
         created_at: format_date(row.created_at),
         image_count: row.image_count,
