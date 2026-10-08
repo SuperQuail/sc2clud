@@ -105,6 +105,24 @@ pub struct ReleaseAssetRow {
     pub created_at: i64,
 }
 
+/// 管理页的用户行：比 `UserRow` 多带「最后在线」（取该用户最近一次会话）。
+#[derive(Debug, Clone, FromRow)]
+pub struct AdminUserRow {
+    pub id: i64,
+    pub handle: String,
+    pub display_name: String,
+    pub email: Option<String>,
+    pub role: String,
+    pub created_at: i64,
+    pub activated_at: Option<i64>,
+    pub avatar_hash: Option<String>,
+    pub last_seen_at: Option<i64>,
+    /// 分配给该账号的磁盘预算（字节）。默认 0 = 不分配。
+    pub quota_bytes: i64,
+    /// 已占用（消费逻辑之后再做，现在恒为 0）。
+    pub used_bytes: i64,
+}
+
 /// 资源帖的下载来源（网盘 / GitHub / 直链）。
 #[derive(Debug, Clone, FromRow)]
 pub struct PostSourceRow {

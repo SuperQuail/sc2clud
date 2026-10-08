@@ -20,8 +20,8 @@ pub mod models;
 pub mod repo;
 
 pub use models::{
-    AuditRow, BlobRow, CommentRow, CommentWithAuthorRow, FileRow, FileWithOwnerRow, ImageJobRow,
-    PostImageRow, PostRow, PostWithAuthorRow, ReleaseAssetRow, ReleaseRow, SessionRow,
+    AdminUserRow, AuditRow, BlobRow, CommentRow, CommentWithAuthorRow, FileRow, FileWithOwnerRow,
+    ImageJobRow, PostImageRow, PostRow, PostWithAuthorRow, ReleaseAssetRow, ReleaseRow, SessionRow,
     UploadSessionRow, UserRow,
 };
 

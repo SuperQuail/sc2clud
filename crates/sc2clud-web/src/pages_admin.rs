@@ -15,9 +15,11 @@ use sc2clud_db::repo;
 
 use crate::AppState;
 use crate::error::{AppError, AppResult};
-use crate::routes::require_user;
+use crate::routes::{require_user, wants_html};
 use crate::session;
-use crate::templates::{AdminTemplate, AdminUserView, format_date, render};
+use crate::templates::{
+    AdminTemplate, AdminUserView, format_date, format_relative, human_bytes, render,
+};
 
 #[derive(Debug, Deserialize)]
 pub struct CsrfForm {
@@ -36,14 +38,41 @@ pub struct RenameForm {
     pub display_name: String,
 }
 
+fn invalid(msg: impl Into<String>) -> AppError {
+    AppError::Domain(DomainError::InvalidInput(msg.into()))
+}
+
+/// `/admin` → 用户管理首页。
+pub async fn index() -> Redirect {
+    Redirect::to("/admin/users/overview")
+}
+
 fn forbidden(msg: &str) -> AppError {
     AppError::Domain(DomainError::Forbidden(msg.to_string()))
 }
 
-async fn build_panel<'a>(state: &'a AppState, headers: &HeaderMap) -> AppResult<AdminTemplate<'a>> {
+#[derive(Debug, Deserialize)]
+pub struct AdminQuery {
+    #[serde(default)]
+    pub q: Option<String>,
+}
+
+async fn build_panel<'a>(
+    state: &'a AppState,
+    headers: &HeaderMap,
+    query: &str,
+) -> AppResult<AdminTemplate<'a>> {
     let user = require_user(state, headers).await?;
     session::guard(Some(&user), Permission::ManageUsers)?;
-    let rows = repo::list_users(state.db.pool(), 200, 0).await?;
+    let now = now_unix();
+    let rows = repo::admin_list_users(state.db.pool(), query, 200).await?;
+    let total_users = repo::count_users(state.db.pool()).await?;
+    // 磁盘预算总览：服务器还剩多少、已经承诺出去多少、其中还没被用掉多少
+    let (allocated, used) = repo::quota_totals(state.db.pool()).await?;
+    let free_bytes = state.storage.available_bytes().await.unwrap_or(0);
+    let unused = (allocated - used).max(0);
+    let quota_over_committed =
+        allocated.max(0) as u64 > free_bytes.saturating_add(used.max(0) as u64);
     let users = rows
         .into_iter()
         .map(|row| AdminUserView {
@@ -57,10 +86,27 @@ async fn build_panel<'a>(state: &'a AppState, headers: &HeaderMap) -> AppResult<
             role: row.role,
             activated: row.activated_at.is_some(),
             created_at: format_date(row.created_at),
+            created_from_now: format_relative(row.created_at, now),
+            last_seen: row
+                .last_seen_at
+                .map(|ts| format_relative(ts, now))
+                .unwrap_or_else(|| "从未登录".to_string()),
+            email: row.email.clone().unwrap_or_default(),
+            quota_human: human_bytes(row.quota_bytes.max(0) as u64),
+            quota_gb: format!("{:.1}", row.quota_bytes.max(0) as f64 / 1_073_741_824.0),
+            used_human: human_bytes(row.used_bytes.max(0) as u64),
             is_self: row.id == user.id,
         })
         .collect();
     Ok(AdminTemplate {
+        server_free_human: human_bytes(free_bytes),
+        quota_allocated_human: human_bytes(allocated.max(0) as u64),
+        quota_used_human: human_bytes(used.max(0) as u64),
+        quota_unused_human: human_bytes(unused as u64),
+        quota_over_committed,
+        query: query.to_string(),
+        total_users,
+        now,
         site_name: &state.config.server.site_name,
         user_label: Some(user.display_name.clone()),
         is_staff: true,
@@ -75,8 +121,13 @@ async fn build_panel<'a>(state: &'a AppState, headers: &HeaderMap) -> AppResult<
     })
 }
 
-pub async fn panel(State(state): State<AppState>, headers: HeaderMap) -> Response {
-    match build_panel(&state, &headers).await {
+pub async fn panel(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    axum::extract::Query(query): axum::extract::Query<AdminQuery>,
+) -> Response {
+    let q = query.q.unwrap_or_default();
+    match build_panel(&state, &headers, &q).await {
         Ok(template) => render(template),
         Err(e) => e.into_page_response(true),
     }
@@ -226,6 +277,53 @@ pub async fn create_user(
     );
     Ok(Redirect::to("/admin"))
 }
+#[derive(Debug, Deserialize)]
+pub struct QuotaForm {
+    pub csrf: String,
+    pub quota_gb: String,
+}
+
+/// 分配磁盘预算：管理员即可。0 = 不分配。
+pub async fn set_quota(
+    State(state): State<AppState>,
+    Path(id): Path<i64>,
+    headers: HeaderMap,
+    Form(form): Form<QuotaForm>,
+) -> AppResult<Redirect> {
+    let actor = require_user(&state, &headers).await?;
+    session::guard(Some(&actor), Permission::ManageUsers)?;
+    session::check_csrf(&actor, &form.csrf)?;
+
+    let gb: f64 = form
+        .quota_gb
+        .trim()
+        .parse()
+        .map_err(|_| invalid("预算要填数字（单位 GB）"))?;
+    if !(0.0..=10_240.0).contains(&gb) {
+        return Err(invalid("预算范围 0–10240 GB"));
+    }
+    let bytes = (gb * 1_073_741_824.0).round() as i64;
+    let now = now_unix();
+    if repo::set_user_quota(state.db.pool(), id, bytes).await? {
+        tracing::info!(
+            user.id = id,
+            quota_bytes = bytes,
+            actor.id = actor.id,
+            "管理员分配磁盘预算"
+        );
+        let _ = repo::record_audit(
+            state.db.pool(),
+            Some(actor.id),
+            "user.set_quota",
+            Some(&format!("user:{id}")),
+            Some(&format!("{gb:.1} GB")),
+            now,
+        )
+        .await;
+    }
+    Ok(Redirect::to("/admin/users/overview"))
+}
+
 pub async fn set_role(
     State(state): State<AppState>,
     Path(id): Path<i64>,

@@ -72,7 +72,15 @@ pub fn pages() -> Router<AppState> {
             "/avatar/{hash}",
             axum::routing::get(crate::pages_profile::serve_avatar),
         )
-        .route("/admin", axum::routing::get(crate::pages_admin::panel))
+        .route("/admin", axum::routing::get(crate::pages_admin::index))
+        .route(
+            "/admin/users/overview",
+            axum::routing::get(crate::pages_admin::panel),
+        )
+        .route(
+            "/admin/users/{id}/quota",
+            axum::routing::post(crate::pages_admin::set_quota),
+        )
         .route(
             "/admin/users",
             axum::routing::post(crate::pages_admin::create_user),

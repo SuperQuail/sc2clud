@@ -309,6 +309,71 @@ footer { color: var(--muted); font-size: 12px; text-align: center; padding: 14px
 .title-line { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; font-weight: 600; }
 
 /* ============================================================
+ * 管理页（参考云控制台的用户管理） + 夜间模式输入框收口
+ * ============================================================ */
+.home-btn {
+  display: inline-flex; align-items: center; gap: 6px; margin-left: 14px;
+  font-size: 13px; font-weight: 600; color: #fff; text-decoration: none;
+  background: rgba(255,255,255,.14); border: 1px solid rgba(255,255,255,.24);
+  border-radius: 999px; padding: 6px 14px; transition: background .18s ease, transform .18s ease;
+}
+.home-btn:hover { background: rgba(255,255,255,.26); transform: translateY(-1px); text-decoration: none; color: #fff; }
+
+.admin { display: grid; grid-template-columns: 210px 1fr; gap: 18px; align-items: start; }
+.admin-side { position: sticky; top: 20px; background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 10px; box-shadow: 0 6px 18px rgba(29,60,116,.08); }
+.admin-side nav { display: flex; flex-direction: column; gap: 2px; }
+.admin-side nav a { padding: 10px 12px; border-radius: 10px; font-size: 14px; color: var(--ink); transition: background .15s ease, padding-left .15s ease; }
+.admin-side nav a:hover { background: var(--blue-soft); color: var(--blue-deep); padding-left: 16px; text-decoration: none; }
+.admin-side nav a.active { background: var(--blue-soft); color: var(--blue-deep); font-weight: 600; }
+.admin-body { display: flex; flex-direction: column; gap: 14px; }
+.admin-tabs { display: flex; gap: 22px; border-bottom: 1px solid var(--line); padding: 0 4px; }
+.admin-tabs a { padding: 10px 2px; font-size: 14.5px; color: var(--muted); border-bottom: 2px solid transparent; transition: color .15s ease, border-color .15s ease; }
+.admin-tabs a:hover { color: var(--ink); text-decoration: none; }
+.admin-tabs a.active { color: var(--ink); font-weight: 600; border-bottom-color: var(--blue); }
+.admin-head { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; }
+.admin-head h1 { margin: 0; font-size: 22px; }
+.search { display: flex; align-items: center; gap: 8px; margin-left: auto; background: var(--card); border: 1px solid var(--line); border-radius: 999px; padding: 7px 14px; color: var(--muted); }
+.search input { border: 0; background: transparent; font: inherit; font-size: 14px; color: var(--ink); outline: none; width: 230px; }
+.panel { background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 16px; box-shadow: 0 6px 18px rgba(29,60,116,.08); }
+.panel h2 { margin: 0 0 10px; font-size: 16px; }
+.role-badge { display: inline-block; border-radius: 999px; padding: 3px 12px; font-size: 12.5px; font-weight: 600; background: #eef2f8; color: #33415c; }
+.role-badge.role-super { background: #fdeceb; color: #b3261e; }
+.role-badge.role-admin { background: #eaf1fd; color: #1f57bd; }
+.role-badge.role-developer { background: #e8f7ef; color: #1c7a52; }
+.dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; margin-left: 6px; }
+.dot.on { background: #2f9e6f; box-shadow: 0 0 0 3px rgba(47,158,111,.18); }
+.dot.off { background: #c9d2df; }
+.row-actions { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.icon-btn {
+  display: inline-grid; place-items: center; width: 30px; height: 30px; border-radius: 8px;
+  border: 1px solid var(--line); background: var(--card); color: var(--muted); cursor: pointer;
+  transition: color .15s ease, border-color .15s ease, background .15s ease, transform .15s ease;
+}
+.icon-btn:hover { color: var(--blue); border-color: var(--blue); transform: translateY(-1px); text-decoration: none; }
+.row-actions .inline-form input[type='text'] { width: 110px; }
+.row-actions .inline-form select { max-width: 120px; }
+@media (max-width: 900px) { .admin { grid-template-columns: 1fr; } .admin-side { position: static; } .search { margin-left: 0; width: 100%; } .search input { width: 100%; } }
+
+/* 夜间模式：所有输入类控件统一深色，别留白块 */
+[data-theme='dark'] input, [data-theme='dark'] select, [data-theme='dark'] textarea {
+  background: #131a24; color: var(--ink); border-color: var(--line);
+}
+[data-theme='dark'] input::placeholder, [data-theme='dark'] textarea::placeholder { color: #6b7a8d; }
+[data-theme='dark'] input[type='search'] { background: transparent; }
+[data-theme='dark'] input[type='checkbox'], [data-theme='dark'] input[type='radio'] { accent-color: var(--blue); }
+[data-theme='dark'] input[type='range'] { accent-color: var(--blue); }
+[data-theme='dark'] button, [data-theme='dark'] .btn { color: var(--ink); }
+[data-theme='dark'] .btn:not(.ghost) { color: #08101c; }
+[data-theme='dark'] .search { background: #131a24; }
+[data-theme='dark'] .role-badge { background: #1b2431; color: #c7d4e6; }
+[data-theme='dark'] .role-badge.role-super { background: #3a1d1b; color: #f3b4ae; }
+[data-theme='dark'] .role-badge.role-admin { background: #1b2740; color: #9dbdf5; }
+[data-theme='dark'] .role-badge.role-developer { background: #14301f; color: #86d6ab; }
+[data-theme='dark'] .icon-btn { background: #1b2431; }
+[data-theme='dark'] .avatar-crop canvas { background: #131a24; }
+
+
+/* ============================================================
  * 顶栏用户菜单 / 右下角快捷按钮 / 账户设置
  * 形态参考云服务控制台：头像下拉 + 右下角悬浮按钮 + 左侧分栏设置页。
  * ============================================================ */

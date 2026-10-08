@@ -1,111 +1,160 @@
 {% extends "base.html" %}
 
-{% block title %}管理面板 · {{ site_name }}{% endblock %}
+{% block title %}用户管理 · {{ site_name }}{% endblock %}
 
 {% block content %}
-<section class="card">
-  <h2>管理菜单</h2>
-  <nav class="section-nav">
-    {% if is_super %}<a href="#create">新建账号</a>{% endif %}
-    <a href="#users">用户管理</a>
-    <a href="#settings">站点设置</a>
-    <a href="/debug">自检面板</a>
-  </nav>
-  <p class="hint">
-    {% if is_super %}你是超级管理员：可以新建账号、改权限等级与显示名。{% else %}你是网站管理员：可以激活/停用用户与切换注册策略；改等级与显示名需要超级管理员。{% endif %}
-  </p>
-</section>
+<div class="admin">
+  <aside class="admin-side">
+    <nav>
+      <a href="/admin/users/overview" class="active">概述</a>
+      <a href="#users">用户</a>
+      {% if is_super %}<a href="#create">添加用户</a>{% endif %}
+      <a href="#settings">站点设置</a>
+      <a href="/debug">自检面板</a>
+    </nav>
+  </aside>
 
-{% if is_super %}
-<section class="card" id="create">
-  <h2>新建账号</h2>
-  <form method="post" action="/admin/users" class="stack">
-    <input type="hidden" name="csrf" value="{{ csrf }}">
-    <label>登录名<input type="text" name="handle" required minlength="3" maxlength="24" pattern="[A-Za-z0-9_-]+" autocomplete="off">
-      <span class="hint">3–24 位字母、数字、下划线或连字符；这是账号标识，注册后不建议改</span></label>
-    <label>显示名<input type="text" name="display_name" required maxlength="20" autocomplete="off">
-      <span class="hint">最多 20 个字符；帖子里显示的就是它</span></label>
-    <label>初始口令<input type="text" name="password" required minlength="8" autocomplete="off">
-      <span class="hint">至少 8 位；把账号交给对方后建议让他自己改</span></label>
-    <label>权限等级
-      <select name="role">
-        {% for role in roles %}
-        <option value="{{ role.0 }}"{% if role.0 == "member" %} selected{% endif %}>{{ role.1 }}</option>
-        {% endfor %}
-      </select>
-    </label>
-    <label class="kind-picker"><input type="checkbox" name="activated" value="1" checked> 创建后立即激活</label>
-    <button class="btn" type="submit">创建账号</button>
-  </form>
-</section>
-{% endif %}
+  <div class="admin-body">
+    <nav class="admin-tabs">
+      <a href="/admin/users/overview" class="active">用户</a>
+      <a href="#settings">站点</a>
+      <a href="#audit-note">安全</a>
+    </nav>
 
-<section class="card" id="settings">
-  <h2>注册策略</h2>
-  <p class="hint">
-    当前：{% if require_activation %}新注册用户需要管理员激活{% else %}新注册用户自动激活{% endif %}
-  </p>
-  <form method="post" action="/admin/settings/require-activation" class="actions-inline">
-    <input type="hidden" name="csrf" value="{{ csrf }}">
-    <button class="btn" type="submit">切换为{% if require_activation %}自动激活{% else %}人工激活{% endif %}</button>
-  </form>
-</section>
+    <div class="admin-head">
+      <h1>用户 <span class="count">{{ total_users }}</span></h1>
+      <form class="search" method="get" action="/admin/users/overview" role="search">
+        <svg viewBox="0 0 16 16" width="15" height="15" aria-hidden="true"><circle cx="7" cy="7" r="5" fill="none" stroke="currentColor" stroke-width="1.6"/><path d="M11 11l4 4" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
+        <input type="search" name="q" value="{{ query }}" placeholder="搜索登录名 / 显示名 / 邮箱" aria-label="搜索用户">
+      </form>
+      {% if is_super %}<a class="btn" href="#create">添加用户</a>{% endif %}
+    </div>
 
-<section class="card" id="users">
-  <h2>用户 <span class="count">{{ users.len() }}</span>
-    <span class="spacer">{% if is_super %}超级管理员：可改等级与显示名{% else %}改等级与显示名需要超级管理员{% endif %}</span>
-  </h2>
-  <table class="admin-table">
-    <thead>
-      <tr><th>#</th><th>登录名</th><th>显示名</th><th>等级</th><th>状态</th><th>注册时间</th><th>操作</th></tr>
-    </thead>
-    <tbody>
-      {% for user in users %}
-      <tr>
-        <td>{{ user.id }}</td>
-        <td class="byline">
-          {% if let Some(avatar) = user.avatar %}
-          <img class="avatar" src="/avatar/{{ avatar }}" alt="" width="22" height="22" loading="lazy">
-          {% else %}
-          <img class="avatar" src="/static/art/miyin-chibi-80.webp" alt="" width="22" height="22" loading="lazy">
-          {% endif %}
-          {{ user.handle }}{% if user.is_self %} <span class="tag">我</span>{% endif %}
-        </td>
-        <td>
-          {% if is_super %}
-          <form method="post" action="/admin/users/{{ user.id }}/rename" class="inline-form">
-            <input type="hidden" name="csrf" value="{{ csrf }}">
-            <input type="text" name="display_name" value="{{ user.display_name }}" maxlength="20" required>
-            <button class="btn ghost" type="submit">改名</button>
-          </form>
-          {% else %}{{ user.display_name }}{% endif %}
-        </td>
-        <td>
-          {% if is_super && !user.is_self %}
-          <form method="post" action="/admin/users/{{ user.id }}/role" class="inline-form">
-            <input type="hidden" name="csrf" value="{{ csrf }}">
-            <select name="role">
-              {% for role in roles %}
-              <option value="{{ role.0 }}"{% if role.0 == user.role %} selected{% endif %}>{{ role.1 }}</option>
-              {% endfor %}
-            </select>
-            <button class="btn ghost" type="submit">保存</button>
-          </form>
-          {% else %}{{ user.role_label }}{% endif %}
-        </td>
-        <td>{% if user.activated %}<span class="tag ok">已激活</span>{% else %}<span class="tag warn">未激活</span>{% endif %}</td>
-        <td>{{ user.created_at }}</td>
-        <td>
-          {% if !user.is_self %}
-          <form method="post" action="/admin/users/{{ user.id }}/{% if user.activated %}deactivate{% else %}activate{% endif %}" class="inline-form">
-            <input type="hidden" name="csrf" value="{{ csrf }}">
-            <button class="btn ghost" type="submit">{% if user.activated %}停用{% else %}激活{% endif %}</button>
-          </form>
-          {% else %}—{% endif %}
-        </td>
-      </tr>
-      {% endfor %}
-    </tbody>
-  </table>
-</section>
+    <section class="panel" id="users">
+      {% if users.is_empty() %}
+      <p class="empty">没有匹配的用户。</p>
+      {% else %}
+      <table class="admin-table users">
+        <thead>
+          <tr><th>角色</th><th>名称</th><th>电子邮箱</th><th>磁盘预算</th><th>最后在线</th><th>创建于</th><th>操作</th></tr>
+        </thead>
+        <tbody>
+          {% for user in users %}
+          <tr>
+            <td><span class="role-badge role-{{ user.role }}">{{ user.role_label }}</span></td>
+            <td class="byline">
+              {% if let Some(avatar) = user.avatar %}
+              <img class="avatar" src="/avatar/{{ avatar }}" alt="" width="26" height="26" loading="lazy">
+              {% else %}
+              <img class="avatar" src="/static/art/miyin-chibi-80.webp" alt="" width="26" height="26" loading="lazy">
+              {% endif %}
+              <span>{{ user.display_name }}</span>
+              {% if user.activated %}<span class="dot on" title="已激活"></span>{% else %}<span class="dot off" title="未激活"></span>{% endif %}
+              {% if user.is_self %}<span class="tag">我</span>{% endif %}
+            </td>
+            <td class="muted">{{ user.email }}</td>
+            <td class="quota-cell">
+              <span class="muted">{{ user.quota_human }}</span>
+              <form class="inline-form" method="post" action="/admin/users/{{ user.id }}/quota">
+                <input type="hidden" name="csrf" value="{{ csrf }}">
+                <input type="number" name="quota_gb" value="{{ user.quota_gb }}" min="0" max="10240" step="0.5" aria-label="预算（GB）">
+                <button class="icon-btn" type="submit" title="保存预算">
+                  <svg viewBox="0 0 16 16" width="15" height="15"><path d="M3 8.5l3.2 3.2L13 5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
+                </button>
+              </form>
+            </td>
+            <td class="muted">{{ user.last_seen }}</td>
+            <td class="muted">{{ user.created_from_now }}</td>
+            <td class="row-actions">
+              <a class="icon-btn" href="/u/{{ user.handle }}" title="查看主页" aria-label="查看主页">
+                <svg viewBox="0 0 16 16" width="15" height="15"><path d="M1 8s2.6-4.5 7-4.5S15 8 15 8s-2.6 4.5-7 4.5S1 8 1 8z" fill="none" stroke="currentColor" stroke-width="1.4"/><circle cx="8" cy="8" r="1.8" fill="currentColor"/></svg>
+              </a>
+              {% if is_super %}
+              <form class="inline-form" method="post" action="/admin/users/{{ user.id }}/rename">
+                <input type="hidden" name="csrf" value="{{ csrf }}">
+                <input type="text" name="display_name" value="{{ user.display_name }}" maxlength="20" aria-label="显示名">
+                <button class="icon-btn" type="submit" title="保存显示名">
+                  <svg viewBox="0 0 16 16" width="15" height="15"><path d="M3 13h3l7-7-3-3-7 7v3z" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/></svg>
+                </button>
+              </form>
+              <form class="inline-form" method="post" action="/admin/users/{{ user.id }}/role">
+                <input type="hidden" name="csrf" value="{{ csrf }}">
+                <select name="role" aria-label="权限等级">
+                  {% for role in roles %}
+                  <option value="{{ role.0 }}"{% if role.0 == user.role %} selected{% endif %}>{{ role.1 }}</option>
+                  {% endfor %}
+                </select>
+                <button class="icon-btn" type="submit" title="保存等级">
+                  <svg viewBox="0 0 16 16" width="15" height="15"><path d="M3 8.5l3.2 3.2L13 5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
+                </button>
+              </form>
+              {% endif %}
+              {% if !user.is_self %}
+              <form class="inline-form" method="post" action="/admin/users/{{ user.id }}/{% if user.activated %}deactivate{% else %}activate{% endif %}">
+                <input type="hidden" name="csrf" value="{{ csrf }}">
+                <button class="icon-btn" type="submit" title="{% if user.activated %}停用{% else %}激活{% endif %}">
+                  <svg viewBox="0 0 16 16" width="15" height="15"><path d="M8 2v6" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/><path d="M4.6 4.4a5 5 0 106.8 0" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
+                </button>
+              </form>
+              {% endif %}
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      {% endif %}
+    </section>
+
+    {% if is_super %}
+    <section class="panel" id="create">
+      <h2>添加用户</h2>
+      <form method="post" action="/admin/users" class="stack">
+        <input type="hidden" name="csrf" value="{{ csrf }}">
+        <label>登录名<input type="text" name="handle" required minlength="3" maxlength="24" pattern="[A-Za-z0-9_-]+" autocomplete="off">
+          <span class="hint">3–24 位字母、数字、下划线或连字符；账号标识，用于登录</span></label>
+        <label>显示名<input type="text" name="display_name" required maxlength="20" autocomplete="off"></label>
+        <label>初始口令<input type="text" name="password" required minlength="8" autocomplete="off">
+          <span class="hint">至少 8 位；交给对方后建议让他自己在账户设置里改</span></label>
+        <label>权限等级
+          <select name="role">
+            {% for role in roles %}
+            <option value="{{ role.0 }}"{% if role.0 == "member" %} selected{% endif %}>{{ role.1 }}</option>
+            {% endfor %}
+          </select>
+        </label>
+        <label class="kind-picker"><input type="checkbox" name="activated" value="1" checked> 创建后立即激活</label>
+        <button class="btn" type="submit">创建账号</button>
+      </form>
+    </section>
+    {% endif %}
+
+    {% if is_super %}
+    <section class="panel" id="quota">
+      <h2>磁盘预算总览 <span class="spacer">仅超级管理员可见</span></h2>
+      <div class="stats">
+        <div><div class="label">服务器可用</div><div class="value">{{ server_free_human }}</div></div>
+        <div><div class="label">已分配</div><div class="value">{{ quota_allocated_human }}</div></div>
+        <div><div class="label">其中已使用</div><div class="value">{{ quota_used_human }}</div></div>
+        <div><div class="label">已分配未使用</div><div class="value">{{ quota_unused_human }}</div></div>
+      </div>
+      {% if quota_over_committed %}
+      <p class="alert">已分配的总量超过了服务器可用空间，请下调部分账号的预算。</p>
+      {% endif %}
+      <p class="hint">每个账号的预算默认 0（不分配），在用户表里逐个填写。实际占用统计之后再做，因此「已使用」现在恒为 0。</p>
+    </section>
+    {% endif %}
+
+    <section class="panel" id="settings">
+      <h2>注册策略 <span class="count">{% if require_activation %}人工激活{% else %}自动激活{% endif %}</span></h2>
+      <p class="hint">
+        {% if require_activation %}新注册用户需要管理员激活后才能发帖与上传。{% else %}新注册用户注册完即可发帖与上传。{% endif %}
+      </p>
+      <form method="post" action="/admin/settings/require-activation" class="actions-inline">
+        <input type="hidden" name="csrf" value="{{ csrf }}">
+        <button class="btn" type="submit">切换为{% if require_activation %}自动激活{% else %}人工激活{% endif %}</button>
+      </form>
+      <p class="hint" id="audit-note">所有管理动作都会写入审计日志（可在自检面板查看）。</p>
+    </section>
+  </div>
+</div>
 {% endblock %}

@@ -25,6 +25,10 @@
            sizes="40px" width="40" height="40" alt="弥音" fetchpriority="high">
       <span>{{ site_name }}<small>COMMUNITY &amp; CLOUD</small></span>
     </a>
+    <a class="home-btn" href="/" title="回到社区首页">
+      <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><path d="M2 7.2L8 2l6 5.2V14H9.8v-4H6.2v4H2z" fill="currentColor"/></svg>
+      社区
+    </a>
     <div class="bar-stats">{% block bar_stats %}{% endblock %}</div>
     <div class="bar-user">
       {% if let Some(name) = user_label %}

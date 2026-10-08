@@ -372,6 +372,19 @@ pub struct DebugAuditView {
 #[template(path = "admin.html")]
 pub struct AdminTemplate<'a> {
     pub is_staff: bool,
+    /// 磁盘预算总览（仅超级管理员可见）。
+    pub server_free_human: String,
+    pub quota_allocated_human: String,
+    pub quota_used_human: String,
+    pub quota_unused_human: String,
+    /// 是否还有未分配的可用空间（分配总量超过服务器空闲时给出提示）。
+    pub quota_over_committed: bool,
+    /// 当前搜索词（回填到搜索框）。
+    pub query: String,
+    /// 用户总数（不受搜索影响）。
+    pub total_users: i64,
+    /// 页面上算「多久以前」用的时间基准。
+    pub now: i64,
     pub site_name: &'a str,
     pub user_label: Option<String>,
     pub csrf: String,
@@ -386,6 +399,15 @@ pub struct AdminTemplate<'a> {
 /// 管理员面板里的用户行。
 pub struct AdminUserView {
     pub id: i64,
+    pub email: String,
+    /// 已分配预算（可读文本，如「1 GB」）。
+    pub quota_human: String,
+    /// 分配给该账号的 GB 数（表单回填用，保留一位小数）。
+    pub quota_gb: String,
+    /// 已占用（可读文本）。
+    pub used_human: String,
+    pub last_seen: String,
+    pub created_from_now: String,
     pub avatar: Option<String>,
     pub handle: String,
     pub display_name: String,
@@ -464,6 +486,19 @@ pub fn human_bytes(bytes: u64) -> String {
 }
 
 /// Unix 秒 → `YYYY-MM-DD`（不引日期库：只需要一个稳定的展示格式）。
+/// 相对时间（「几秒前 / 3 小时前 / 2 年前」）。管理页用它，比绝对时间直观。
+pub fn format_relative(ts: i64, now: i64) -> String {
+    let delta = (now - ts).max(0);
+    match delta {
+        0..=59 => "几秒前".to_string(),
+        60..=3599 => format!("{} 分钟前", delta / 60),
+        3600..=86_399 => format!("{} 小时前", delta / 3600),
+        86_400..=2_591_999 => format!("{} 天前", delta / 86_400),
+        2_592_000..=31_535_999 => format!("{} 个月前", delta / 2_592_000),
+        _ => format!("{} 年前", delta / 31_536_000),
+    }
+}
+
 pub fn format_date(unix_seconds: i64) -> String {
     let days = unix_seconds.div_euclid(86_400);
     let (year, month, day) = civil_from_days(days);

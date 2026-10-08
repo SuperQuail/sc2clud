@@ -10,9 +10,9 @@ use sqlx::{SqlitePool, query, query_as};
 
 use crate::db_err;
 use crate::models::{
-    AuditRow, BlobRow, CommentWithAuthorRow, FileRow, FileWithOwnerRow, ImageJobRow, PostImageRow,
-    PostRow, PostSourceRow, PostWithAuthorRow, ReleaseAssetRow, ReleaseRow, SessionRow,
-    UploadSessionRow, UserRow,
+    AdminUserRow, AuditRow, BlobRow, CommentWithAuthorRow, FileRow, FileWithOwnerRow, ImageJobRow,
+    PostImageRow, PostRow, PostSourceRow, PostWithAuthorRow, ReleaseAssetRow, ReleaseRow,
+    SessionRow, UploadSessionRow, UserRow,
 };
 
 // ---------------------------------------------------------------- 用户
@@ -1136,7 +1136,7 @@ pub async fn register_user(pool: &SqlitePool, user: NewUser<'_>) -> Result<i64> 
     let activated_at: Option<i64> = user.activated.then_some(user.now);
     let res = query(
         "INSERT INTO users (handle, display_name, email, password_hash, role, quota_bytes, used_bytes, created_at, activated_at, activated_by) \
-         VALUES (?, ?, ?, ?, 'member', 1073741824, 0, ?, ?, NULL)",
+         VALUES (?, ?, ?, ?, 'member', 0, 0, ?, ?, NULL)",
     )
     .bind(user.handle)
     .bind(user.display_name)
@@ -1284,6 +1284,53 @@ pub async fn list_users(pool: &SqlitePool, limit: i64, offset: i64) -> Result<Ve
         .fetch_all(pool)
         .await
         .map_err(db_err)
+}
+
+/// 管理页用户列表：支持按登录名 / 显示名 / 邮箱模糊搜索，并带上最后在线时间。
+pub async fn admin_list_users(
+    pool: &SqlitePool,
+    query: &str,
+    limit: i64,
+) -> Result<Vec<AdminUserRow>> {
+    let needle = format!("%{}%", query.trim());
+    query_as::<_, AdminUserRow>(
+        "SELECT u.id, u.handle, u.display_name, u.email, u.role, u.created_at, \
+                u.activated_at, u.avatar_hash, u.quota_bytes, u.used_bytes, \
+                (SELECT MAX(s.last_seen_at) FROM sessions s WHERE s.user_id = u.id) AS last_seen_at \
+         FROM users u \
+         WHERE ?1 = '' OR u.handle LIKE ?2 OR u.display_name LIKE ?2 \
+               OR COALESCE(u.email, '') LIKE ?2 \
+         ORDER BY u.created_at DESC, u.id DESC LIMIT ?3",
+    )
+    .bind(query.trim())
+    .bind(needle)
+    .bind(limit)
+    .fetch_all(pool)
+    .await
+    .map_err(db_err)
+}
+
+/// 设置某个账号的磁盘预算（字节）。管理员可改；0 = 不分配。
+pub async fn set_user_quota(pool: &SqlitePool, user_id: i64, quota_bytes: i64) -> Result<bool> {
+    let affected = query("UPDATE users SET quota_bytes = ? WHERE id = ? AND quota_bytes <> ?")
+        .bind(quota_bytes)
+        .bind(user_id)
+        .bind(quota_bytes)
+        .execute(pool)
+        .await
+        .map_err(db_err)?
+        .rows_affected();
+    Ok(affected == 1)
+}
+
+/// 磁盘预算总览：`(已分配, 已占用)`。
+pub async fn quota_totals(pool: &SqlitePool) -> Result<(i64, i64)> {
+    let row: (i64, i64) =
+        query_as("SELECT COALESCE(SUM(quota_bytes), 0), COALESCE(SUM(used_bytes), 0) FROM users")
+            .fetch_one(pool)
+            .await
+            .map_err(db_err)?;
+    Ok(row)
 }
 
 pub async fn count_comments(pool: &SqlitePool) -> Result<i64> {
