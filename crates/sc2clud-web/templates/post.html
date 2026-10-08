@@ -30,21 +30,29 @@
 
   {% if is_staff %}
   <div class="review-bar">
-    <span class="hint">此帖当前状态「{{ post.state_label }}」，只有你与作者看得到：</span>
+    {% if post.state == "approved" %}
+    <span class="hint">此帖已通过审核{% if post.archived %}，且处于归档状态{% endif %}。</span>
+    {% else %}
+    <span class="hint">此帖当前状态「{{ post.state_label }}」：只有作者与管理员看得到。</span>
+    {% endif %}
+    {% if post.state != "approved" %}
     <form method="post" action="/admin/posts/{{ post.id }}/approve" data-async data-after="refresh" class="inline-form">
       <input type="hidden" name="csrf" value="{{ csrf }}">
       <button class="btn sm" type="submit">通过</button>
     </form>
+    {% endif %}
     <form method="post" action="/admin/posts/{{ post.id }}/revision" data-async data-after="refresh" class="inline-form">
       <input type="hidden" name="csrf" value="{{ csrf }}">
       <button class="btn ghost sm" type="submit">打回修改</button>
       <input type="text" name="note" placeholder="修改意见" maxlength="80">
     </form>
+    {% if post.state != "approved" %}
     <form method="post" action="/admin/posts/{{ post.id }}/reject" data-async data-after="refresh" class="inline-form">
       <input type="hidden" name="csrf" value="{{ csrf }}">
       <button class="btn ghost sm" type="submit">拒绝</button>
       <input type="text" name="note" placeholder="拒绝理由" maxlength="80">
     </form>
+    {% endif %}
     {% if post.archived %}
     <form method="post" action="/admin/posts/{{ post.id }}/unarchive" data-async data-after="refresh" class="inline-form">
       <input type="hidden" name="csrf" value="{{ csrf }}">
@@ -59,11 +67,10 @@
   </div>
   {% endif %}
 
+  {# 审核意见只在「还没通过」时有意义：通过后的说明文案对读者是噪音 #}
   {% if let Some(note) = post.review_note %}
-  {% if post.state == "approved" %}
-  <p class="hint" style="margin-top:12px">发布说明：{{ note }}</p>
-  {% else %}
-  <p class="alert" style="margin-top:12px">审核备注：{{ note }}</p>
+  {% if post.state != "approved" %}
+  <p class="alert" style="margin-top:12px">审核意见：{{ note }}</p>
   {% endif %}
   {% endif %}
   <p class="post-body">{{ post.body }}</p>
@@ -119,8 +126,8 @@
 
   <div class="actions-inline" style="margin-top:18px">
     <a class="btn ghost" href="/">返回首页</a>
-    {% if is_staff %}
-    <span class="hint">你是管理员：可见审核状态「{{ post.state_label }}」</span>
+    {% if is_staff && post.state != "approved" %}
+    <span class="hint">你是管理员：此帖状态「{{ post.state_label }}」，普通用户看不到</span>
     {% endif %}
   </div>
 </section>
