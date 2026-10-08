@@ -1,0 +1,18 @@
+{% extends "base.html" %}
+
+{% block title %}{{ file.name }} · {{ site_name }}{% endblock %}
+
+{% block content %}
+<section class="panel">
+  <h1>{{ file.name }}</h1>
+  <dl class="file-meta">
+    <dt>体积</dt><dd>{{ file.size_human }}</dd>
+    <dt>类型</dt><dd>{{ file.mime }}</dd>
+    <dt>上传者</dt><dd>{{ owner_handle }}</dd>
+    <dt>下载次数</dt><dd>{{ file.download_count }}</dd>
+    <dt>上传时间</dt><dd>{{ file.created_at }}</dd>
+  </dl>
+  <p><a class="button" href="{{ download_href }}">下载</a></p>
+  <p class="hint">下载会 302 到一条短时有效的签名地址，字节由 nginx 通过 sendfile 直出，不经过应用进程。</p>
+</section>
+{% endblock %}

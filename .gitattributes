@@ -1,0 +1,15 @@
+# 统一换行符，避免 Windows 本地与 Linux 服务器互相污染。
+* text=auto eol=lf
+
+*.png binary
+*.jpg binary
+*.webp binary
+*.woff2 binary
+*.sqlite binary
+
+# 部署脚本必须保持 LF，否则 Linux 上 shebang 会失效。
+*.sh text eol=lf
+deploy/** text eol=lf
+
+# Cargo.lock 参与合并（应用而非库），避免默认的 union 合并策略。
+Cargo.lock merge=union

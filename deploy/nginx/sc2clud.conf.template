@@ -1,0 +1,114 @@
+# ============================================================
+# SC2clud —— nginx 站点配置（**模板**）
+#
+# 安装脚本 deploy/install.sh 会把 __DOWNLOAD_SECRET__ 换成真实密钥，
+# 使 nginx 与应用侧的 secure_link 密钥完全一致；也会在缺少 brotli 模块时注释掉对应指令。
+#
+# 依赖模块：http_secure_link_module / http_limit_conn_module / http_limit_req_module
+# 可选模块：http_brotli_static_module（没有则退回 gzip_static）
+# 版本要求：nginx ≥ 1.25.1（http2 on 语法）
+# ============================================================
+
+# ---------- 限流与限连：2 核经不起爬虫 ----------
+limit_req_zone  $binary_remote_addr zone=sc2clud_req:10m rate=8r/s;
+limit_conn_zone $binary_remote_addr zone=sc2clud_per_ip:10m;
+limit_conn_zone $server_name        zone=sc2clud_total:1m;
+
+# 10 Mbps 全站 ≈ 1.25 MB/s：5 条 256 KB/s 的下载就能打满，
+# 所以 limit_conn 与 limit_rate 必须一起用，否则单个 IP 能把全站带宽吃干。
+upstream sc2clud_app {
+    server 127.0.0.1:8080;
+    keepalive 16;
+}
+
+server {
+    listen 80;
+    server_name example.com;
+    # TLS 终止在 nginx：80 只留跳转
+    return 301 https://$host$request_uri;
+}
+
+server {
+    listen 443 ssl;
+    http2 on;
+    server_name example.com;
+
+    ssl_certificate     /etc/letsencrypt/live/example.com/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/example.com/privkey.pem;
+    ssl_protocols TLSv1.2 TLSv1.3;
+    ssl_session_cache shared:sc2clud_tls:10m;
+    ssl_session_timeout 1d;
+
+    # ---------- 零拷贝与预压缩直发 ----------
+    sendfile on;
+    sendfile_max_chunk 512k;
+    tcp_nopush on;
+    tcp_nodelay on;
+    brotli_static on;   # 直接发预生成的 .br，运行时零 CPU（缺模块时安装脚本会注释掉）
+    gzip_static on;     # 兜底：发预生成的 .gz
+
+    # ---------- 请求体与超时 ----------
+    client_max_body_size 52m;       # 与 limits.max_request_body_bytes 对齐
+    client_body_timeout 60s;
+    client_body_buffer_size 128k;   # 超出部分落磁盘临时文件，不占应用内存
+    keepalive_timeout 65;
+
+    # ---------- 限流与限连 ----------
+    limit_req  zone=sc2clud_req burst=16 nodelay;
+    limit_conn sc2clud_per_ip 12;
+    limit_conn sc2clud_total 40;
+    limit_req_status 429;
+    limit_conn_status 429;
+
+    root /srv/sc2clud/static;
+
+    # ---------- 静态资源直出 ----------
+    location /static/ {
+        expires 30d;
+        add_header Cache-Control "public, immutable";
+        access_log off;
+        try_files $uri =404;
+    }
+
+    # ---------- 文件下载：应用只签名，字节由 nginx 直出 ----------
+    # 表达式必须与 sc2clud-core::sign 逐字节一致：
+    #     "{expires}{uri}{remote_addr} {secret}"
+    # 若把 download.bind_client_ip 设为 false，这里必须同时删掉 $remote_addr。
+    location /dl/ {
+        secure_link $arg_e,$arg_s;
+        secure_link_md5 "$secure_link_expires$uri$remote_addr __DOWNLOAD_SECRET__";
+
+        if ($secure_link = "") { return 403; }
+        if ($secure_link = "0") { return 410; }
+
+        alias /srv/sc2clud/data/blobs/;
+        limit_rate_after 256k;
+        limit_rate 256k;
+        add_header Cache-Control "private, max-age=0";
+        access_log off;
+    }
+
+    # ---------- 探针 ----------
+    location = /healthz { proxy_pass http://sc2clud_app; access_log off; }
+    location = /readyz  { proxy_pass http://sc2clud_app; access_log off; allow 127.0.0.1; deny all; }
+
+    # ---------- 其余请求交给应用 ----------
+    location / {
+        proxy_pass http://sc2clud_app;
+        proxy_http_version 1.1;
+        proxy_set_header Connection "";
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+
+        # 上传边收边转：不落 nginx 临时文件，也不在 nginx 侧聚合成内存
+        proxy_request_buffering off;
+        proxy_buffering off;
+        proxy_read_timeout 300s;
+        proxy_send_timeout 300s;
+    }
+
+    # 点文件一律拒绝（ACME 校验除外）
+    location ~ /\.(?!well-known) { deny all; }
+}

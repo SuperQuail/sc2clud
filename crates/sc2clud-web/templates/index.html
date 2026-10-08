@@ -1,0 +1,48 @@
+{% extends "base.html" %}
+
+{% block content %}
+<section class="panel">
+  <h1>帖子 <small>共 {{ total_posts }} 篇</small></h1>
+  {% if posts.is_empty() %}
+  <p class="empty">还没有帖子。POST /api/v1/posts 可以发第一篇。</p>
+  {% else %}
+  <ul class="post-list">
+    {% for post in posts %}
+    <li>
+      <h2>{{ post.title }}</h2>
+      <p>{{ post.preview }}</p>
+      <time datetime="{{ post.created_at }}">{{ post.created_at }}</time>
+    </li>
+    {% endfor %}
+  </ul>
+  {% endif %}
+</section>
+
+<section class="panel">
+  <h1>文件 <small>单文件上限 {{ max_upload_human }}</small></h1>
+  {# 前端岛容器：挂载时会替换其中的静态回退表单，文件列表仍由服务端渲染 #}
+  <div data-island="uploader">
+    <form id="upload-form" class="uploader">
+      <input id="upload-input" type="file" required>
+      <button id="upload-submit" type="submit">上传</button>
+      <p class="hint">选择文件后上传（启用 JavaScript 可看到进度与秒传提示）。</p>
+    </form>
+  </div>
+  {% if files.is_empty() %}
+  <p class="empty">还没有文件。</p>
+  {% else %}
+  <ul class="file-list">
+    {% for file in files %}
+    <li>
+      <a href="/f/{{ file.id }}">{{ file.name }}</a>
+      <span class="meta">{{ file.size_human }} · {{ file.mime }} · 下载 {{ file.download_count }} 次 · {{ file.created_at }}</span>
+    </li>
+    {% endfor %}
+  </ul>
+  {% endif %}
+</section>
+{% endblock %}
+
+{% block scripts %}
+<script type="module" src="/static/islands/uploader.js"></script>
+{% endblock %}

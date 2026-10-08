@@ -1,0 +1,25 @@
+[package]
+name = "sc2clud-storage"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+description = "存储后端抽象：StorageBackend trait + 本地内容寻址实现（附 S3 实现位）"
+
+[dependencies]
+async-trait = "0.1.92"
+bytes = "1.12.1"
+futures-util = "0.3.34"
+sc2clud-core.workspace = true
+tokio = { version = "1.53.2", features = ["fs", "io-util", "rt", "sync", "macros"] }
+tokio-util = { version = "0.7.19", features = ["io"] }
+tracing = "0.1.44"
+
+[dev-dependencies]
+tempfile = "3.27.0"
+tokio = { version = "1.53.2", features = ["rt-multi-thread", "macros", "test-util"] }
+
+[features]
+default = []
+# 对象存储后端（Cloudflare R2 / OSS / COS / Garage / MinIO）：默认不编译，避免为大依赖买单。
+s3 = []

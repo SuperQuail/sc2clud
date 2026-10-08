@@ -1,0 +1,20 @@
+{
+  "name": "sc2clud-web",
+  "private": true,
+  "type": "module",
+  "description": "SC2clud 前端岛：交互密集模块局部挂载 Vue 3（整站仍是服务端渲染）",
+  "scripts": {
+    "build": "vite build",
+    "watch": "vite build --watch",
+    "typecheck": "vue-tsc --noEmit"
+  },
+  "dependencies": {
+    "vue": "^3.5.13"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-vue": "^5.2.1",
+    "typescript": "^5.7.3",
+    "vite": "^6.0.11",
+    "vue-tsc": "^2.2.0"
+  }
+}

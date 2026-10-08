@@ -1,0 +1,28 @@
+[package]
+name = "sc2clud-web"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+description = "HTTP 层：axum 路由、askama 服务端渲染、流式上传与签名下载"
+
+[dependencies]
+sc2clud-core.workspace = true
+sc2clud-storage.workspace = true
+sc2clud-db.workspace = true
+axum = "0.8.9"
+askama = "0.14.0"
+tokio = { version = "1.53.2", features = ["rt", "net", "macros", "time", "fs", "io-util"] }
+tower-http = { version = "0.7.1", features = ["trace", "timeout", "limit", "catch-panic", "request-id", "fs"] }
+tower = "0.5.3"
+futures-util = "0.3.34"
+bytes = "1.12.1"
+serde = "1.0.229"
+serde_json = "1.0.151"
+tracing = "0.1.44"
+thiserror = "2.0.21"
+tokio-stream = "0.1.19"
+tokio-util = { version = "0.7.19", features = ["io"] }
+
+[dev-dependencies]
+tokio = { version = "1.53.2", features = ["rt-multi-thread", "macros"] }

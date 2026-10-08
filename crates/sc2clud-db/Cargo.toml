@@ -1,0 +1,15 @@
+[package]
+name = "sc2clud-db"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+description = "SQLite（WAL）元数据库访问层：连接参数、迁移与仓储函数"
+
+[dependencies]
+sc2clud-core.workspace = true
+sqlx = { version = "0.8.6", default-features = false, features = ["runtime-tokio", "sqlite", "migrate", "macros"] }
+
+[dev-dependencies]
+tempfile = "3.27.0"
+tokio = { version = "1.53.2", features = ["rt-multi-thread", "macros"] }

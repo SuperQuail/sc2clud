@@ -1,0 +1,60 @@
+# ============================================================
+# SC2clud —— Git 忽略规则
+# 原则：构建产物、依赖、运行数据、本地配置、敏感文件一律不入库
+# 注意：Cargo.lock **需要**提交（本项目是应用程序而非库）
+# ============================================================
+
+# ---------- Rust ----------
+/target/
+**/target/
+**/*.rs.bk
+*.pdb
+*.profraw
+*.profdata
+
+# ---------- 前端 ----------
+node_modules/
+/web/dist/
+**/dist/
+dist-ssr/
+.vite/
+*.tsbuildinfo
+pnpm-debug.log*
+npm-debug.log*
+package-lock.json
+yarn.lock
+
+# ---------- 前端岛构建产物（发布时先构建前端，再编译后端）----------
+crates/sc2clud-web/static/islands/
+
+# ---------- 运行数据（同级 data 目录约定）----------
+/data/
+/blobs/
+*.sqlite
+*.sqlite3
+*.sqlite-wal
+*.sqlite-shm
+*.db
+/logs/
+*.log
+
+# ---------- 本地配置与环境变量 ----------
+.env
+.env.*
+!.env.example
+*.local
+
+# ---------- 敏感文件兜底（仓库内本就不该出现）----------
+/secrets/
+*.pem
+*.key
+id_rsa*
+id_ed25519*
+known_hosts
+
+# ---------- 编辑器 / 系统 ----------
+.idea/
+.vscode/
+*.swp
+Thumbs.db
+desktop.ini
