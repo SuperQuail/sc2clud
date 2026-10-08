@@ -407,6 +407,14 @@ async fn build_edit<'a>(
         kinds: kind_options(kind.as_str()),
         sections: section_options(section.as_str(), Some(&user)),
         providers: provider_options(),
+        images: repo::list_post_images(state.db.pool(), id)
+            .await?
+            .into_iter()
+            .map(|img| ImageView {
+                href: format!("/img/{}", img.display_hash.unwrap_or(img.original_hash)),
+            })
+            .collect(),
+        image_count: row.image_count,
         sources: repo::list_post_sources(state.db.pool(), id)
             .await?
             .into_iter()

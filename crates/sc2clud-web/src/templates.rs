@@ -346,6 +346,9 @@ pub struct EditPostTemplate<'a> {
     pub kinds: Vec<KindOption>,
     pub sections: Vec<SectionOption>,
     pub providers: Vec<ProviderOption>,
+    /// 已有的配图（编辑页展示 + 继续追加）。
+    pub images: Vec<ImageView>,
+    pub image_count: i64,
     /// 已有的下载来源（**必须回填**：编辑保存会整体重写来源，漏了就全丢了）。
     pub sources: Vec<SourceSlot>,
     // 用 String 而不是借用：模板结构体要能独立于调用方的局部变量返回

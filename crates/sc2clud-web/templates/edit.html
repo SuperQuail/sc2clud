@@ -55,6 +55,21 @@
         <span class="hint">留空的整行会被忽略；保存后按这里的顺序重写</span>
       </div>
     </fieldset>
+    <fieldset style="border:0;padding:0;margin:0">
+      <legend style="font-size:14px;font-weight:600;margin-bottom:8px">配图 <span class="hint">{{ image_count }} / 10</span></legend>
+      {% if !images.is_empty() %}
+      <div class="gallery">
+        {% for image in images %}
+        <a href="{{ image.href }}" target="_blank" rel="noopener"><img src="{{ image.href }}" loading="lazy" alt="配图"></a>
+        {% endfor %}
+      </div>
+      {% endif %}
+      <div class="upload-row" data-post-upload data-post-id="{{ id }}" data-csrf="{{ csrf }}">
+        <input type="file" accept="image/*" id="post-image-input" multiple hidden>
+        <button class="btn ghost sm" type="button" id="post-image-add">添加配图</button>
+        <span class="hint" data-post-image-status>最多 10 张，单张 50 MB 以内；保存前上传也会立即生效</span>
+      </div>
+    </fieldset>
     <label>正文<textarea name="body" required minlength="2" maxlength="20000">{{ body }}</textarea></label>
     <div class="actions-inline">
       <button class="btn" type="submit">保存</button>
@@ -62,6 +77,8 @@
     </div>
   </form>
 </section>
+{% endblock %}
+
 {% block scripts %}
 <script>
   (function () {
@@ -87,5 +104,40 @@
     });
   })();
 </script>
-{% endblock %}
+<script>
+  // 编辑页也能加配图：直接传文件本体，走同一个接口
+  (function () {
+    var box = document.querySelector('[data-post-upload]');
+    if (!box) return;
+    var input = document.getElementById('post-image-input');
+    var button = document.getElementById('post-image-add');
+    var status = box.querySelector('[data-post-image-status]');
+    if (!input || !button) return;
+    var csrf = box.dataset.csrf;
+    var id = box.dataset.postId;
+    button.addEventListener('click', function () { input.click(); });
+    input.addEventListener('change', function () {
+      var files = Array.prototype.slice.call(input.files || []);
+      if (!files.length) return;
+      var send = function (index) {
+        if (index >= files.length) {
+          if (status) status.textContent = '已上传，刷新中…';
+          location.reload();
+          return;
+        }
+        if (status) status.textContent = '上传中 ' + (index + 1) + '/' + files.length + '…';
+        fetch('/api/v1/posts/' + id + '/images', {
+          method: 'POST',
+          headers: { 'x-csrf-token': csrf },
+          body: files[index],
+          credentials: 'same-origin',
+        })
+          .then(function (r) { return r.ok ? r.json() : r.json().then(function (d) { return Promise.reject(d.message || r.status); }); })
+          .then(function () { send(index + 1); })
+          .catch(function (message) { if (status) status.textContent = '上传失败：' + message; });
+      };
+      send(0);
+    });
+  })();
+</script>
 {% endblock %}
