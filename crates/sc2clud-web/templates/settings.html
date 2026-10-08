@@ -96,7 +96,7 @@
           <span class="meta">拉黑于 {{ b.when }}</span>
           <form method="post" action="/u/{{ b.handle }}/unblock" class="inline-form" data-async data-after="refresh">
             <input type="hidden" name="csrf" value="{{ csrf }}">
-            <button class="btn ghost" type="submit">解除</button>
+            <button class="btn ghost ok" type="submit">解除</button>
           </form>
         </li>
         {% endfor %}

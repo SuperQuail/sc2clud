@@ -81,7 +81,7 @@
         <form method="post" data-async data-after="refresh" action="/admin/users/{{ user.id }}/trusted">
           <input type="hidden" name="csrf" value="{{ csrf }}">
           <input type="hidden" name="trusted" value="{% if user.trusted %}0{% else %}1{% endif %}">
-          <button class="btn ghost sm" type="submit">{% if user.trusted %}取消信任{% else %}设为信任{% endif %}</button>
+          <button class="btn ghost {% if user.trusted %}danger{% else %}ok{% endif %} sm" type="submit">{% if user.trusted %}取消信任{% else %}设为信任{% endif %}</button>
         </form>
         {% if !user.is_self %}
         <form method="post" data-async data-after="refresh" action="/admin/users/{{ user.id }}/{% if user.activated %}deactivate{% else %}activate{% endif %}">

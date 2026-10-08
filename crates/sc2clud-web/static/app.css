@@ -315,6 +315,21 @@ footer { color: var(--muted); font-size: 12px; text-align: center; padding: 14px
 .title-line { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; font-weight: 600; }
 
 /* 危险 / 正向图标按钮：停用账号是红色，激活是绿色——一眼能分清账号状态 */
+/* ============================================================
+ * 两态按钮统一约定：**授予 / 恢复 / 通过 = 绿，撤销 / 停用 / 拒绝 / 拉黑 = 红**
+ * （凡是能在两种状态间来回切的按钮，颜色必须能区分当前是哪一态）
+ * ============================================================ */
+.btn.ok { background: #1c7a52; color: #fff; box-shadow: 0 3px 10px rgba(28,122,82,.22); }
+.btn.ok:hover { background: #14603f; }
+.btn.ghost.ok { color: #1c7a52; border-color: rgba(28,122,82,.45); }
+.btn.ghost.ok:hover { background: #e8f7ef; color: #14603f; border-color: #1c7a52; }
+.btn.ghost.danger { color: #b3261e; border-color: rgba(179,38,30,.45); }
+.btn.ghost.danger:hover { background: #fdeceb; color: #8f1e17; border-color: #b3261e; }
+[data-theme='dark'] .btn.ghost.ok { color: #8ee0b8; border-color: rgba(142,224,184,.4); }
+[data-theme='dark'] .btn.ghost.ok:hover { background: #17342a; }
+[data-theme='dark'] .btn.ghost.danger { color: #f0a9a4; border-color: rgba(240,169,164,.4); }
+[data-theme='dark'] .btn.ghost.danger:hover { background: #3a2122; }
+
 .icon-btn.danger { color: #b3261e; border-color: rgba(179,38,30,.4); }
 .icon-btn.danger:hover { color: #fff; background: #b3261e; border-color: #b3261e; }
 .icon-btn.ok { color: #1c7a52; border-color: rgba(28,122,82,.4); }
