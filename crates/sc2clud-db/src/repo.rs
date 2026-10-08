@@ -88,7 +88,8 @@ pub async fn ensure_super_admin(
         None => {
             let email = format!("{handle}@localhost");
             let id = register_user(pool, handle, &email, "!", true, now).await?;
-            query("UPDATE users SET role = 'super' WHERE id = ?")
+            query("UPDATE users SET role = 'super', quota_bytes = ? WHERE id = ?")
+                .bind(quota_bytes)
                 .bind(id)
                 .execute(pool)
                 .await

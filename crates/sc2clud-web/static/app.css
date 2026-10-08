@@ -1,10 +1,14 @@
-# ============================================================
-# SC2clud 首屏样式
-# 美术风格对齐既有启动器（弥音）：蓝白配色、圆角卡片、柔和投影；
-# 但布局按「社区站 + 网盘」重新组织，不照搬启动器界面。
-# 预算：brotli 后 ≤ 20 KB（见 docs/BUDGETS.md）。
-# 只用系统字体栈：1.25 MB/s 的链路上，字体文件是纯负担。
-# ============================================================
+/* ============================================================
+ * SC2clud 首屏样式
+ * 美术风格对齐既有启动器（弥音）：蓝白配色、圆角卡片、柔和投影；
+ * 布局按「社区站 + 网盘」重新组织，不照搬启动器界面。
+ * 预算：brotli 后 ≤ 20 KB（见 docs/BUDGETS.md）。
+ * 只用系统字体栈：1.25 MB/s 的链路上，字体文件是纯负担。
+ *
+ * 注意：这里**只能**用 CSS 注释。曾用 # 开头写注释，导致紧随其后的
+ *       :root 变量块被当成无效声明吞掉，全站 var() 失效（按钮全白、
+ *       active 导航白底白字）。改注释语法时务必确认变量仍生效。
+ * ============================================================ */
 
 :root {
   --blue: #2f6fe4;
@@ -54,7 +58,7 @@ a:hover { text-decoration: underline; }
 .topbar nav a:hover { background: rgba(255,255,255,.16); text-decoration: none; }
 .topbar nav a.active { background: #fff; color: var(--blue-deep); }
 
-main { max-width: 980px; margin: 0 auto; padding: 20px; }
+main { max-width: 1080px; margin: 0 auto; padding: 22px 20px 8px; }
 
 /* ---------- 卡片 ---------- */
 .card {
@@ -72,12 +76,12 @@ main { max-width: 980px; margin: 0 auto; padding: 20px; }
 .card > h2 .spacer { margin-left: auto; font-size: 12px; color: var(--muted); font-weight: 400; }
 
 /* ---------- 首屏 hero ---------- */
-.hero { display: flex; gap: 24px; align-items: center; padding: 4px 0 8px; }
+.hero { display: flex; gap: 18px; align-items: center; padding: 2px 0 4px; }
 .hero .copy { flex: 1 1 auto; min-width: 0; }
 .hero .eyebrow { color: var(--blue); font-size: 13px; font-weight: 700; letter-spacing: .5px; }
-.hero h1 { font-size: 30px; margin: 6px 0 8px; letter-spacing: -.5px; }
+.hero h1 { font-size: 27px; margin: 4px 0 6px; letter-spacing: -.4px; }
 .hero p { color: var(--muted); margin: 0 0 16px; }
-.hero .art { flex: 0 0 auto; width: 260px; max-width: 40%; }
+.hero .art { flex: 0 0 auto; width: 200px; max-width: 32%; }
 .hero .art img { width: 100%; height: auto; display: block; filter: drop-shadow(0 10px 20px rgba(47,111,228,.18)); }
 
 .actions { display: flex; flex-wrap: wrap; gap: 10px; }
@@ -93,7 +97,7 @@ main { max-width: 980px; margin: 0 auto; padding: 20px; }
 .btn:disabled { opacity: .55; cursor: progress; }
 
 /* ---------- 统计条（对齐启动器的「官方战役/已导入/已切换」那排数字）---------- */
-.stats { display: flex; flex-wrap: wrap; gap: 30px; border-top: 1px solid var(--line); margin-top: 18px; padding-top: 16px; }
+.stats { display: flex; flex-wrap: wrap; gap: 34px; border-top: 1px solid var(--line); margin-top: 12px; padding-top: 12px; }
 .stats div { min-width: 84px; }
 .stats .label { color: var(--muted); font-size: 13px; }
 .stats .value { color: var(--blue); font-size: 24px; font-weight: 700; line-height: 1.2; }
@@ -139,11 +143,11 @@ ul.list .row .name { font-weight: 600; word-break: break-all; }
 .oops h1 { font-size: 40px; margin: 0; color: var(--blue); }
 code { background: #f1f4f9; padding: 1px 6px; border-radius: 6px; font-size: 13px; }
 
-footer { color: var(--muted); font-size: 12px; text-align: center; padding: 26px 20px 40px; }
+footer { color: var(--muted); font-size: 12px; text-align: center; padding: 14px 20px 22px; }
 
 @media (max-width: 640px) {
   .hero { flex-direction: column-reverse; text-align: left; }
-  .hero .art { width: 180px; max-width: 60%; align-self: flex-end; }
+  .hero .art { width: 140px; max-width: 55%; align-self: flex-end; }
   .hero h1 { font-size: 24px; }
   .detail { flex-direction: column; }
   .detail .art { width: 110px; }
@@ -165,6 +169,7 @@ footer { color: var(--muted); font-size: 12px; text-align: center; padding: 26px
 .post-card {
   display: flex;
   flex-direction: column;
+  height: 100%;
   gap: 8px;
   background: #fff;
   border: 1px solid var(--line);

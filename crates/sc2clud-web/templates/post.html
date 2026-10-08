@@ -12,7 +12,11 @@
   <div class="meta">{{ post.author }} · {{ post.author_role_label }} · {{ post.created_at }}
     {% if post.image_count > 0 %} · {{ post.image_count }} 张图{% endif %}</div>
   {% if let Some(note) = post.review_note %}
+  {% if post.state == "approved" %}
+  <p class="hint" style="margin-top:12px">发布说明：{{ note }}</p>
+  {% else %}
   <p class="alert" style="margin-top:12px">审核备注：{{ note }}</p>
+  {% endif %}
   {% endif %}
   <p class="post-body">{{ post.body }}</p>
   <div class="actions-inline" style="margin-top:18px">

@@ -24,6 +24,9 @@ npm-debug.log*
 package-lock.json
 yarn.lock
 
+# ---------- 截图产物（scripts/shot.ps1 的输出）----------
+/shots/
+
 # ---------- 前端岛构建产物（发布时先构建前端，再编译后端）----------
 crates/sc2clud-web/static/islands/
 
