@@ -33,6 +33,28 @@ pub struct Config {
     pub secret: SecretConfig,
     pub limits: LimitsConfig,
     pub download: DownloadConfig,
+    pub resources: ResourcesConfig,
+}
+
+/// 资源分发相关的站点配置。
+#[derive(Debug, Clone, Deserialize)]
+#[serde(default, deny_unknown_fields)]
+pub struct ResourcesConfig {
+    /// GitHub 镜像模板，`{url}` 会被替换成原始地址。
+    ///
+    /// 公共服务挂掉是常态，因此做成配置：改配置即可，不必重新编译。
+    pub github_mirrors: Vec<String>,
+}
+
+impl Default for ResourcesConfig {
+    fn default() -> Self {
+        Self {
+            github_mirrors: crate::resource::DEFAULT_GITHUB_MIRRORS
+                .iter()
+                .map(|s| s.to_string())
+                .collect(),
+        }
+    }
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -350,6 +372,13 @@ impl Config {
                 "download.url_ttl_secs 应在 10..86400 秒之间（当前 {}）",
                 self.download.url_ttl_secs
             )));
+        }
+        for template in &self.resources.github_mirrors {
+            if !template.contains("{url}") {
+                return Err(Error::Config(format!(
+                    "resources.github_mirrors 的每一项都必须含 {{url}} 占位符（当前 {template:?}）"
+                )));
+            }
         }
         let image_prefix = &self.download.image_prefix;
         if !image_prefix.starts_with('/') || image_prefix.ends_with('/') || image_prefix.len() < 2 {

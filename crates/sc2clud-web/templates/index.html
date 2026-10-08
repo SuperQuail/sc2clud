@@ -37,6 +37,12 @@
 </section>
 
 <section class="card" id="posts">
+  <nav class="section-nav">
+    <a href="/" class="{% if sections_all_active %}active{% endif %}">全部</a>
+    {% for section in sections %}
+    <a href="/?section={{ section.value }}" class="{% if section.checked %}active{% endif %}">{{ section.label }}</a>
+    {% endfor %}
+  </nav>
   <h2>帖子 <span class="count">{{ visible_posts }}</span>
     <span class="spacer">
       {% if can_post %}<a href="/new">发新帖</a>{% else if user_label.is_none() %}<a href="/login">登录后可发帖</a>{% else %}待激活后可发帖{% endif %}
@@ -54,6 +60,7 @@
       <div class="post-cover post-cover-empty"></div>
       {% endif %}
       <div class="head">
+        <span class="tag">{{ post.section_label }}</span>
         <span class="kind kind-{{ post.kind }}">{{ post.kind_label }}</span>
         {% if post.state != "approved" %}<span class="kind state-{{ post.state }}">{{ post.state_label }}</span>{% endif %}
         {% if post.is_mine %}<span class="kind" style="background:#f1f4f9;color:#7b8798">我的</span>{% endif %}

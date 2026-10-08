@@ -42,6 +42,7 @@ pub struct PostWithAuthorRow {
     pub title: String,
     pub body: String,
     pub kind: String,
+    pub section: String,
     pub review_state: String,
     pub review_note: Option<String>,
     pub image_count: i64,
@@ -94,6 +95,20 @@ pub struct ReleaseAssetRow {
     pub size: i64,
     pub sha256: Option<String>,
     pub download_count: i64,
+    pub created_at: i64,
+}
+
+/// 资源帖的下载来源（网盘 / GitHub / 直链）。
+#[derive(Debug, Clone, FromRow)]
+pub struct PostSourceRow {
+    pub id: i64,
+    pub post_id: i64,
+    pub position: i64,
+    /// baidu | quark | aliyun | lanzou | 123pan | weiyun | github | direct
+    pub provider: String,
+    pub label: Option<String>,
+    pub url: String,
+    pub extract_code: Option<String>,
     pub created_at: i64,
 }
 
@@ -154,6 +169,8 @@ pub struct PostRow {
     pub deleted_at: Option<i64>,
     /// discussion | resource | repost
     pub kind: String,
+    /// 分区（vanilla_mod | custom_campaign | tool_player | tool_dev）
+    pub section: String,
     /// pending | approved | rejected（只有 rejected 不可见）
     pub review_state: String,
     pub review_note: Option<String>,

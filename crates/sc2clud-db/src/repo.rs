@@ -11,7 +11,8 @@ use sqlx::{SqlitePool, query, query_as};
 use crate::db_err;
 use crate::models::{
     AuditRow, BlobRow, CommentWithAuthorRow, FileRow, FileWithOwnerRow, ImageJobRow, PostImageRow,
-    PostRow, PostWithAuthorRow, ReleaseAssetRow, ReleaseRow, SessionRow, UploadSessionRow, UserRow,
+    PostRow, PostSourceRow, PostWithAuthorRow, ReleaseAssetRow, ReleaseRow, SessionRow,
+    UploadSessionRow, UserRow,
 };
 
 // ---------------------------------------------------------------- 用户
@@ -422,6 +423,7 @@ pub async fn file_stats(pool: &SqlitePool, owner_id: i64) -> Result<FileStats> {
 pub struct NewPost<'a> {
     pub author_id: i64,
     pub kind: &'a str,
+    pub section: &'a str,
     pub title: &'a str,
     pub body: &'a str,
     pub image_count: i64,
@@ -433,9 +435,9 @@ pub struct NewPost<'a> {
 /// 新建帖子并写入审核结论。返回帖子 id。
 pub async fn create_post_reviewed(pool: &SqlitePool, post: NewPost<'_>) -> Result<i64> {
     let res = query(
-        "INSERT INTO posts (author_id, title, body, created_at, updated_at, kind, review_state, \
-                            review_note, auto_reviewed, image_count) \
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1, ?)",
+        "INSERT INTO posts (author_id, title, body, created_at, updated_at, kind, section, \
+                            review_state, review_note, auto_reviewed, image_count) \
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?)",
     )
     .bind(post.author_id)
     .bind(post.title)
@@ -443,6 +445,7 @@ pub async fn create_post_reviewed(pool: &SqlitePool, post: NewPost<'_>) -> Resul
     .bind(post.now)
     .bind(post.now)
     .bind(post.kind)
+    .bind(post.section)
     .bind(post.review_state)
     .bind(post.review_note)
     .bind(post.image_count)
@@ -536,6 +539,44 @@ pub async fn add_post_image(
 
     tx.commit().await.map_err(db_err)?;
     Ok(image_id)
+}
+
+/// 追加一个下载来源。
+pub async fn add_post_source(
+    pool: &SqlitePool,
+    post_id: i64,
+    position: i64,
+    provider: &str,
+    label: Option<&str>,
+    url: &str,
+    extract_code: Option<&str>,
+    now: i64,
+) -> Result<i64> {
+    let res = query(
+        "INSERT INTO post_sources (post_id, position, provider, label, url, extract_code, created_at) \
+         VALUES (?, ?, ?, ?, ?, ?, ?)",
+    )
+    .bind(post_id)
+    .bind(position)
+    .bind(provider)
+    .bind(label)
+    .bind(url)
+    .bind(extract_code)
+    .bind(now)
+    .execute(pool)
+    .await
+    .map_err(db_err)?;
+    Ok(res.last_insert_rowid())
+}
+
+pub async fn list_post_sources(pool: &SqlitePool, post_id: i64) -> Result<Vec<PostSourceRow>> {
+    query_as::<_, PostSourceRow>(
+        "SELECT * FROM post_sources WHERE post_id = ? ORDER BY position, id",
+    )
+    .bind(post_id)
+    .fetch_all(pool)
+    .await
+    .map_err(db_err)
 }
 
 pub async fn count_post_images(pool: &SqlitePool, post_id: i64) -> Result<i64> {
@@ -772,7 +813,7 @@ pub async fn list_feed(
     let viewer = viewer_id.unwrap_or(-1);
     let staff = i64::from(is_staff);
     query_as::<_, PostWithAuthorRow>(
-        "SELECT p.id, p.title, p.body, p.kind, p.review_state, p.review_note, p.image_count, \
+        "SELECT p.id, p.title, p.body, p.kind, p.section, p.review_state, p.review_note, p.image_count, \
                 p.created_at, p.author_id, u.handle AS author_handle, \
                 u.display_name AS author_display_name, u.role AS author_role, \
                 (SELECT COALESCE(pi.display_hash, pi.original_hash) \
@@ -790,6 +831,44 @@ pub async fn list_feed(
     .bind(staff)
     .bind(limit)
     .bind(offset)
+    .fetch_all(pool)
+    .await
+    .map_err(db_err)
+}
+
+/// 帖子流（可按分区过滤）。`section` 为 `None` 时返回全部分区。
+pub async fn list_feed_by_section(
+    pool: &SqlitePool,
+    viewer_id: Option<i64>,
+    is_staff: bool,
+    section: Option<&str>,
+    limit: i64,
+    offset: i64,
+) -> Result<Vec<PostWithAuthorRow>> {
+    let viewer = viewer_id.unwrap_or(-1);
+    let staff = i64::from(is_staff);
+    let section = section.unwrap_or("");
+    query_as::<_, PostWithAuthorRow>(
+        "SELECT p.id, p.title, p.body, p.kind, p.section, p.review_state, p.review_note, \
+                p.image_count, p.created_at, p.author_id, u.handle AS author_handle, \
+                u.display_name AS author_display_name, u.role AS author_role, \
+                (SELECT COALESCE(pi.display_hash, pi.original_hash) \
+                 FROM post_images pi \
+                 WHERE pi.post_id = p.id AND pi.state <> 'failed' \
+                 ORDER BY pi.position, pi.id LIMIT 1) AS cover_hash \
+         FROM posts p JOIN users u ON u.id = p.author_id \
+         WHERE p.deleted_at IS NULL \
+           AND (?5 = '' OR p.section = ?5) \
+           AND (p.review_state = 'approved' \
+                OR ?2 = 1 \
+                OR (p.review_state = 'pending' AND p.author_id = ?1)) \
+         ORDER BY p.created_at DESC, p.id DESC LIMIT ?3 OFFSET ?4",
+    )
+    .bind(viewer)
+    .bind(staff)
+    .bind(limit)
+    .bind(offset)
+    .bind(section)
     .fetch_all(pool)
     .await
     .map_err(db_err)

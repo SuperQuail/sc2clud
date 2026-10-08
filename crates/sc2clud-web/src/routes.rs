@@ -19,6 +19,7 @@ use futures_util::StreamExt;
 use sc2clud_core::auth::Permission;
 use sc2clud_core::capacity::ensure_free_space;
 use sc2clud_core::config::DownloadMode;
+use sc2clud_core::resource::PostSection;
 use sc2clud_core::review::{PostKind, ReviewState, review_for_author};
 use sc2clud_core::{BlobHash, Error as DomainError, now_unix, safety};
 use sc2clud_db::repo;
@@ -33,7 +34,7 @@ use crate::error::{AppError, AppResult};
 use crate::session::{self, CurrentUser};
 use crate::templates::{
     ClaimRequest, FeedView, FileDto, FilePageTemplate, FileView, IndexTemplate, MyFileStats,
-    PostCreateRequest, PostDto, UploadQuery, format_date, human_bytes,
+    PostCreateRequest, PostDto, SectionOption, UploadQuery, format_date, human_bytes,
 };
 use crate::upload::{DEFAULT_QUEUE_DEPTH, pump_body};
 
@@ -96,6 +97,12 @@ pub fn api_upload() -> Router<AppState> {
 }
 
 // ------------------------------------------------------------ 工具
+
+#[derive(Debug, serde::Deserialize)]
+pub struct IndexQuery {
+    #[serde(default)]
+    pub section: Option<String>,
+}
 
 pub(crate) fn wants_html(headers: &HeaderMap) -> bool {
     headers
@@ -192,9 +199,17 @@ pub(crate) async fn require_user(state: &AppState, headers: &HeaderMap) -> AppRe
         .ok_or_else(|| AppError::Domain(DomainError::Unauthorized("请先登录".to_string())))
 }
 
-pub async fn index(State(state): State<AppState>, headers: HeaderMap) -> Response {
+pub async fn index(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Query(query): Query<IndexQuery>,
+) -> Response {
     let user = session::current_user(&state, &headers).await.ok().flatten();
-    match build_index(&state, user.as_ref()).await {
+    let section = query
+        .section
+        .as_deref()
+        .and_then(|raw| PostSection::parse(raw).ok());
+    match build_index(&state, user.as_ref(), section).await {
         Ok(template) => render_template(template),
         Err(e) => e.into_page_response(wants_html(&headers)),
     }
@@ -208,10 +223,19 @@ pub async fn index(State(state): State<AppState>, headers: HeaderMap) -> Respons
 async fn build_index<'a>(
     state: &'a AppState,
     user: Option<&CurrentUser>,
+    section: Option<PostSection>,
 ) -> AppResult<IndexTemplate<'a>> {
     let viewer_id = user.map(|u| u.id);
     let is_staff = user.is_some_and(CurrentUser::is_staff);
-    let feed = repo::list_feed(state.db.pool(), viewer_id, is_staff, 20, 0).await?;
+    let feed = repo::list_feed_by_section(
+        state.db.pool(),
+        viewer_id,
+        is_staff,
+        section.map(PostSection::as_str),
+        20,
+        0,
+    )
+    .await?;
 
     // 网盘是后续施工内容：**只对网站管理员及以上**开放，普通用户与游客都看不到这一块。
     let netdisk_visible = user.is_some_and(CurrentUser::is_staff);
@@ -237,6 +261,15 @@ async fn build_index<'a>(
         user_role_label: user.map(|u| u.role.label().to_string()).unwrap_or_default(),
         can_post: user.is_some_and(|u| u.activated),
         needs_activation: user.is_some_and(|u| !u.activated),
+        sections_all_active: section.is_none(),
+        sections: PostSection::ALL
+            .iter()
+            .map(|s| SectionOption {
+                value: s.as_str().to_string(),
+                label: s.label().to_string(),
+                checked: section == Some(*s),
+            })
+            .collect(),
         visible_posts: feed.len() as i64,
         posts: feed.iter().map(|row| feed_view(row, viewer_id)).collect(),
         netdisk_visible,
@@ -253,9 +286,12 @@ fn feed_view(row: &sc2clud_db::PostWithAuthorRow, viewer_id: Option<i64>) -> Fee
     let author_role = sc2clud_core::auth::Role::parse(&row.author_role)
         .map(|role| role.label())
         .unwrap_or("普通用户");
+    let section = PostSection::parse(&row.section).unwrap_or(PostSection::default_section());
     FeedView {
         id: row.id,
         title: row.title.clone(),
+        section: section.as_str().to_string(),
+        section_label: section.label().to_string(),
         preview: row.body.replace('\n', " ").chars().take(120).collect(),
         kind: kind.as_str().to_string(),
         kind_label: kind.label().to_string(),
@@ -544,6 +580,7 @@ pub async fn create_post(
         repo::NewPost {
             author_id: user.id,
             kind: kind.as_str(),
+            section: PostSection::default_section().as_str(),
             title,
             body,
             image_count: 0,

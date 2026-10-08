@@ -407,6 +407,7 @@ mod tests {
             repo::NewPost {
                 author_id: user,
                 kind: "discussion",
+                section: "custom_campaign",
                 title: "显示名测试",
                 body: "看卡片上显示的是哪个名字。",
                 image_count: 0,
@@ -569,6 +570,7 @@ mod tests {
             repo::NewPost {
                 author_id: user,
                 kind: "resource",
+                section: "custom_campaign",
                 title: "地图包",
                 body: "看 http://x.example",
                 image_count: 0,
@@ -584,6 +586,7 @@ mod tests {
             repo::NewPost {
                 author_id: user,
                 kind: "discussion",
+                section: "custom_campaign",
                 title: "好物",
                 body: "加微信",
                 image_count: 0,
@@ -599,6 +602,7 @@ mod tests {
             repo::NewPost {
                 author_id: user,
                 kind: "discussion",
+                section: "custom_campaign",
                 title: "x",
                 body: "y",
                 image_count: 0,
@@ -700,6 +704,7 @@ mod tests {
             repo::NewPost {
                 author_id: user,
                 kind: "resource",
+                section: "custom_campaign",
                 title: "图集",
                 body: "看图",
                 image_count: 0,

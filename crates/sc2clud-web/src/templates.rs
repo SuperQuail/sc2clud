@@ -19,6 +19,10 @@ pub struct IndexTemplate<'a> {
     pub can_post: bool,
     /// 已登录但未激活。
     pub needs_activation: bool,
+    /// 分区导航：当前选中项 + 各分区。
+    pub sections: Vec<SectionOption>,
+    /// 「全部」是否处于选中态（没有指定分区时）。
+    pub sections_all_active: bool,
     /// 帖子流（已按查看者过滤：审核中的只有作者与管理员可见）。
     pub posts: Vec<FeedView>,
     pub visible_posts: i64,
@@ -40,6 +44,8 @@ pub struct FeedView {
     pub cover_hash: Option<String>,
     pub kind: String,
     pub kind_label: String,
+    pub section: String,
+    pub section_label: String,
     /// 仅当不该公开时才有值（审核中/被拒，且查看者有资格看到）。
     pub state: String,
     pub state_label: String,
@@ -181,6 +187,10 @@ pub struct PostPageTemplate<'a> {
     pub post: PostDetailView,
     /// 配图（原图或压缩图，按 position 顺序）。
     pub images: Vec<ImageView>,
+    /// 下载来源（资源帖；仅这些帖子有）。
+    pub sources: Vec<SourceView>,
+    /// 是否值得显示「资源来源」区块（有来源，或本来就是资源帖）。
+    pub show_sources: bool,
     pub comments: Vec<CommentView>,
     /// 已登录且已激活才能回复（回复不带图）。
     pub can_reply: bool,
@@ -191,6 +201,8 @@ pub struct PostPageTemplate<'a> {
 pub struct PostDetailView {
     pub id: i64,
     pub title: String,
+    pub section: String,
+    pub section_label: String,
     pub body: String,
     pub kind: String,
     pub kind_label: String,
@@ -202,6 +214,24 @@ pub struct PostDetailView {
     pub created_at: String,
     pub image_count: i64,
     pub is_mine: bool,
+}
+
+/// 下载来源视图（资源帖专用）。
+pub struct SourceView {
+    pub provider: String,
+    pub provider_label: String,
+    pub label: Option<String>,
+    pub url: String,
+    pub extract_code: Option<String>,
+    /// GitHub 来源：给出镜像候选（原链排第一，最快的由前端实测后置顶）。
+    pub mirrors: Vec<MirrorView>,
+}
+
+/// GitHub 镜像候选。
+pub struct MirrorView {
+    pub label: String,
+    pub url: String,
+    pub is_original: bool,
 }
 
 /// 配图视图。
@@ -225,9 +255,36 @@ pub struct NewPostTemplate<'a> {
     pub csrf: String,
     pub error: Option<String>,
     pub kinds: Vec<KindOption>,
+    pub sections: Vec<SectionOption>,
+    pub providers: Vec<ProviderOption>,
     pub title: &'a str,
     pub body: &'a str,
+    /// 三个下载来源槽位（资源帖用；留空即忽略）。
+    pub source_slots: Vec<SourceSlot>,
 }
+
+/// 发帖页的分区选项。
+pub struct SectionOption {
+    pub value: String,
+    pub label: String,
+    pub checked: bool,
+}
+
+/// 发帖页的来源下拉项。
+pub struct ProviderOption {
+    pub value: String,
+    pub label: String,
+}
+
+/// 发帖页的一个来源槽位。
+pub struct SourceSlot {
+    pub index: usize,
+    pub url: String,
+    pub code: String,
+    pub provider: String,
+}
+
+/// 后台用户行（管理员页）。
 
 /// 发帖类型选项。
 pub struct KindOption {

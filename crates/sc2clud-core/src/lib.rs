@@ -13,6 +13,7 @@ pub mod counter;
 pub mod error;
 pub mod hash;
 pub mod ratelimit;
+pub mod resource;
 pub mod review;
 pub mod safety;
 pub mod sign;

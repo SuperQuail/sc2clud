@@ -5,6 +5,7 @@
 {% block content %}
 <section class="card">
   <div class="head" style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px">
+    <span class="tag">{{ post.section_label }}</span>
     <span class="kind kind-{{ post.kind }}">{{ post.kind_label }}</span>
     {% if post.state != "approved" %}<span class="kind state-{{ post.state }}">{{ post.state_label }}</span>{% endif %}
   </div>
@@ -19,6 +20,31 @@
   {% endif %}
   {% endif %}
   <p class="post-body">{{ post.body }}</p>
+  {% if show_sources %}
+  <section class="sources">
+    <h3>下载来源</h3>
+    {% for source in sources %}
+    <div class="source-item">
+      <div class="source-head">
+        <span class="provider provider-{{ source.provider }}">{{ source.provider_label }}</span>
+        {% if let Some(label) = source.label %}<span class="meta">{{ label }}</span>{% endif %}
+        <a class="btn" href="{{ source.url }}" target="_blank" rel="noopener nofollow">打开下载</a>
+        {% if let Some(code) = source.extract_code %}<span class="meta">提取码 <code>{{ code }}</code></span>{% endif %}
+      </div>
+      {% if !source.mirrors.is_empty() %}
+      <div class="mirrors">
+        <p class="hint">GitHub 镜像（页面会实测延迟，最快的排在最前）：</p>
+        {% for mirror in source.mirrors %}
+        <a class="mirror" href="{{ mirror.url }}" target="_blank" rel="noopener nofollow" data-mirror-url="{{ mirror.url }}" data-mirror-original="{{ mirror.is_original }}">{{ mirror.label }}</a>
+        {% endfor %}
+        <button class="btn ghost" type="button" data-copy-github="{{ source.url }}">复制 GitHub 原链</button>
+      </div>
+      {% endif %}
+    </div>
+    {% endfor %}
+  </section>
+  {% endif %}
+
   {% if !images.is_empty() %}
   <div class="gallery">
     {% for image in images %}
@@ -61,4 +87,40 @@
   <p class="hint" style="margin-top:16px">账号激活后才能回复。</p>
   {% endif %}
 </section>
+{% endblock %}
+
+{% block scripts %}
+<script type="module">
+  // 镜像实测：HEAD 探一次，按耗时把最快的排到最前（用户仍可点任何一个）。
+  for (const group of document.querySelectorAll('.mirrors')) {
+    const links = Array.from(group.querySelectorAll('a[data-mirror-url]'));
+    const mirrors = links.filter((a) => a.dataset.mirrorOriginal === 'false');
+    if (mirrors.length > 0) {
+      const probe = async (a) => {
+        const started = performance.now();
+        try {
+          await fetch(a.dataset.mirrorUrl, { method: 'HEAD', mode: 'no-cors', cache: 'no-store' });
+        } catch (_) {}
+        return [a, performance.now() - started];
+      };
+      const results = await Promise.all(mirrors.map(probe));
+      results.sort((x, y) => x[1] - y[1]);
+      const fastest = results[0][0];
+      fastest.classList.add('mirror-fastest');
+      fastest.insertAdjacentHTML('beforeend', ' <span class="tag">最快</span>');
+      for (const entry of results) group.appendChild(entry[0]);
+    }
+  }
+  // 复制 GitHub 原链
+  for (const button of document.querySelectorAll('[data-copy-github]')) {
+    button.addEventListener('click', async () => {
+      try {
+        await navigator.clipboard.writeText(button.dataset.copyGithub);
+        button.textContent = '已复制 ✓';
+      } catch (_) {
+        button.textContent = '复制失败，请手动选择';
+      }
+    });
+  }
+</script>
 {% endblock %}
