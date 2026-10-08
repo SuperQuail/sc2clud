@@ -1,4 +1,4 @@
-# 前端岛产物在 .gitignore 里（服务器没有 Node，不能在那边构建），
+﻿# 前端岛产物在 .gitignore 里（服务器没有 Node，不能在那边构建），
 # 所以每次发布都要在本机构建后同步过去。
 # 用法：pwsh -File scripts/push-islands.ps1
 param(
