@@ -117,6 +117,9 @@
       {% if users.is_empty() %}
       <p class="empty">没有匹配的用户。</p>
       {% else %}
+    {# 参考 Open WebUI：外层横向滚动容器 + table-auto，表格放不下时整体横向滚动，
+       而不是压缩列宽把按钮挤重叠。 #}
+    <div class="table-wrap">
     <table class="admin-table users">
       <thead>
         <tr><th>名称</th><th>角色</th><th>电子邮箱</th><th>最后在线时间</th><th>创建于</th><th></th></tr>
@@ -198,6 +201,7 @@
         {% endfor %}
       </tbody>
     </table>
+    </div>
     {% endif %}
     {% if is_super %}
         <label>初始口令<input type="text" name="password" required minlength="8" autocomplete="off">

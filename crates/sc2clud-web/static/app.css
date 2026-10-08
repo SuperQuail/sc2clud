@@ -409,17 +409,21 @@ footer { color: var(--muted); font-size: 12px; text-align: center; padding: 14px
 .name-wrap { display: inline-flex; align-items: center; gap: 8px; vertical-align: middle; max-width: 100%; }
 .admin-table.users td.name-cell { overflow: hidden; }
 .admin-table.users td.name-cell .user-name { font-weight: 600; }
-/* 列宽用「固定表格布局」精确分配：
- * 操作列要塞下 5 个 32px 按钮（5×32 + 4×8 = 192px），168px 装不下就会重叠、
- * 表格总宽还会超出面板导致最右边被裁掉（踩过）。 */
-.admin-table.users { table-layout: fixed; width: 100%; }
+/* 自适应列宽（照 Open WebUI 的做法，见其 UserList.svelte：
+ *   <div class="whitespace-nowrap overflow-x-auto max-w-full"><table class="w-full table-auto">
+ * 思路：**不固定表格布局**，单元格给 min-width + nowrap，列宽由内容自己撑；
+ * 总宽超出面板时由外层容器横向滚动，不会压缩列宽把按钮挤重叠、也不会被裁掉。 */
+.table-wrap { overflow-x: auto; max-width: 100%; white-space: nowrap; }
+.table-wrap::-webkit-scrollbar { height: 0; }
+.admin-table.users { table-layout: auto; width: 100%; max-width: 100%; }
 .admin-table.users td { padding: 12px 10px; }
-.admin-table.users th:nth-child(1) { width: 24%; }
-.admin-table.users th:nth-child(2) { width: 152px; }
-.admin-table.users th:nth-child(3) { width: 24%; }
-.admin-table.users th:nth-child(4) { width: 124px; }
-.admin-table.users th:nth-child(5) { width: 112px; }
-.admin-table.users th:nth-child(6) { width: 208px; text-align: right; }
+.admin-table.users th { font-weight: 400; }
+.admin-table.users th:last-child { text-align: right; }
+/* 各列的最小宽度：装得下就自适应，装不下就滚动 */
+.admin-table.users td.name-cell { min-width: 15rem; }
+.admin-table.users td.role-cell { min-width: 7rem; }
+.admin-table.users td.email-cell { min-width: 12rem; }
+.admin-table.users td.row-actions { min-width: 12rem; }
 .admin-table.users .role-badge { background: #eef2f8; color: #46536b; }
 [data-theme='dark'] .admin-table.users .role-badge { background: #1e2937; color: #9fb0c8; }
 [data-theme='dark'] .admin-table.users .role-badge.role-super { background: #3a2122; color: #f0a9a4; }
