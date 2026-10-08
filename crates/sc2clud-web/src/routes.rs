@@ -65,6 +65,10 @@ pub fn pages() -> Router<AppState> {
         )
         .route("/admin", axum::routing::get(crate::pages_admin::panel))
         .route(
+            "/admin/users",
+            axum::routing::post(crate::pages_admin::create_user),
+        )
+        .route(
             "/admin/users/{id}/activate",
             axum::routing::post(crate::pages_admin::activate),
         )
@@ -369,6 +373,7 @@ async fn build_file_page<'a>(
     Ok(FilePageTemplate {
         site_name: &state.config.server.site_name,
         user_label: Some(user.display_name.clone()),
+        is_staff: user.is_staff(),
         file: FileView::from_owner_row(&row),
         owner_handle: row.owner_handle.clone(),
         download_href,

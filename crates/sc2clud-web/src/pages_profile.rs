@@ -55,6 +55,7 @@ async fn build_profile<'a>(
     Ok(ProfileTemplate {
         site_name: &state.config.server.site_name,
         user_label: viewer.as_ref().map(|v| v.display_name.clone()),
+        is_staff,
         csrf: viewer
             .as_ref()
             .map(|v| v.csrf_token.clone())

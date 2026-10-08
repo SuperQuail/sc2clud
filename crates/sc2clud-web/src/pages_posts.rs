@@ -314,7 +314,8 @@ pub async fn new_post_form(State(state): State<AppState>, headers: HeaderMap) ->
     };
     render(NewPostTemplate {
         site_name: &state.config.server.site_name,
-        user_label: Some(user.handle.clone()),
+        user_label: Some(user.display_name.clone()),
+        is_staff: user.is_staff(),
         csrf: user.csrf_token.clone(),
         error,
         kinds: kind_options("discussion"),
@@ -357,6 +358,7 @@ pub async fn new_post_submit(
             return render(NewPostTemplate {
                 site_name: &state.config.server.site_name,
                 user_label: Some(user.display_name.clone()),
+                is_staff: user.is_staff(),
                 csrf: user.csrf_token.clone(),
                 error: Some(e.parts().2),
                 kinds: kind_options(kind.as_str()),
@@ -372,6 +374,7 @@ pub async fn new_post_submit(
         return render(NewPostTemplate {
             site_name: &state.config.server.site_name,
             user_label: Some(user.display_name.clone()),
+            is_staff: user.is_staff(),
             csrf: user.csrf_token.clone(),
             error: Some(format!(
                 "审核未通过：{}",

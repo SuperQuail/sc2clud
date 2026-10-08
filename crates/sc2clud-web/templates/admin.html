@@ -4,6 +4,43 @@
 
 {% block content %}
 <section class="card">
+  <h2>管理菜单</h2>
+  <nav class="section-nav">
+    {% if is_super %}<a href="#create">新建账号</a>{% endif %}
+    <a href="#users">用户管理</a>
+    <a href="#settings">站点设置</a>
+    <a href="/debug">自检面板</a>
+  </nav>
+  <p class="hint">
+    {% if is_super %}你是超级管理员：可以新建账号、改权限等级与显示名。{% else %}你是网站管理员：可以激活/停用用户与切换注册策略；改等级与显示名需要超级管理员。{% endif %}
+  </p>
+</section>
+
+{% if is_super %}
+<section class="card" id="create">
+  <h2>新建账号</h2>
+  <form method="post" action="/admin/users" class="stack">
+    <input type="hidden" name="csrf" value="{{ csrf }}">
+    <label>登录名<input type="text" name="handle" required minlength="3" maxlength="24" pattern="[A-Za-z0-9_-]+" autocomplete="off">
+      <span class="hint">3–24 位字母、数字、下划线或连字符；这是账号标识，注册后不建议改</span></label>
+    <label>显示名<input type="text" name="display_name" required maxlength="20" autocomplete="off">
+      <span class="hint">最多 20 个字符；帖子里显示的就是它</span></label>
+    <label>初始口令<input type="text" name="password" required minlength="8" autocomplete="off">
+      <span class="hint">至少 8 位；把账号交给对方后建议让他自己改</span></label>
+    <label>权限等级
+      <select name="role">
+        {% for role in roles %}
+        <option value="{{ role.0 }}"{% if role.0 == "member" %} selected{% endif %}>{{ role.1 }}</option>
+        {% endfor %}
+      </select>
+    </label>
+    <label class="kind-picker"><input type="checkbox" name="activated" value="1" checked> 创建后立即激活</label>
+    <button class="btn" type="submit">创建账号</button>
+  </form>
+</section>
+{% endif %}
+
+<section class="card" id="settings">
   <h2>注册策略</h2>
   <p class="hint">
     当前：{% if require_activation %}新注册用户需要管理员激活{% else %}新注册用户自动激活{% endif %}
@@ -14,7 +51,7 @@
   </form>
 </section>
 
-<section class="card">
+<section class="card" id="users">
   <h2>用户 <span class="count">{{ users.len() }}</span>
     <span class="spacer">{% if is_super %}超级管理员：可改等级与显示名{% else %}改等级与显示名需要超级管理员{% endif %}</span>
   </h2>

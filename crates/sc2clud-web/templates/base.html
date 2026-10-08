@@ -49,6 +49,7 @@
       {% if let Some(name) = user_label %}
       <a href="/?section=announcement">公告</a>
       {% endif %}
+      {% if is_staff %}<a href="/admin">管理面板</a>{% endif %}
       {% block dock_extra %}{% endblock %}
       <a href="/">社区首页</a>
       <button class="dock-theme" type="button" id="theme-toggle" aria-label="切换夜间模式">夜间</button>

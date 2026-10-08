@@ -72,6 +72,8 @@ pub struct MyFileStats {
 #[derive(Template)]
 #[template(path = "file.html")]
 pub struct FilePageTemplate<'a> {
+    /// 管理入口是否可见。
+    pub is_staff: bool,
     pub site_name: &'a str,
     pub user_label: Option<String>,
     pub file: FileView,
@@ -258,6 +260,7 @@ pub struct CommentView {
 #[derive(Template)]
 #[template(path = "new.html")]
 pub struct NewPostTemplate<'a> {
+    pub is_staff: bool,
     pub site_name: &'a str,
     pub user_label: Option<String>,
     pub csrf: String,
@@ -296,6 +299,7 @@ pub struct SourceSlot {
 #[derive(Template)]
 #[template(path = "profile.html")]
 pub struct ProfileTemplate<'a> {
+    pub is_staff: bool,
     pub site_name: &'a str,
     pub user_label: Option<String>,
     pub csrf: String,
@@ -315,6 +319,7 @@ pub struct ProfileTemplate<'a> {
 #[derive(Template)]
 #[template(path = "debug.html")]
 pub struct DebugTemplate<'a> {
+    pub is_staff: bool,
     pub site_name: &'a str,
     pub user_label: Option<String>,
     pub version: &'a str,
@@ -343,6 +348,7 @@ pub struct DebugAuditView {
 #[derive(Template)]
 #[template(path = "admin.html")]
 pub struct AdminTemplate<'a> {
+    pub is_staff: bool,
     pub site_name: &'a str,
     pub user_label: Option<String>,
     pub csrf: String,
@@ -379,6 +385,7 @@ pub struct KindOption {
 #[derive(Template)]
 #[template(path = "login.html")]
 pub struct LoginTemplate<'a> {
+    pub is_staff: bool,
     pub site_name: &'a str,
     pub user_label: Option<String>,
     pub error: Option<String>,
@@ -389,6 +396,7 @@ pub struct LoginTemplate<'a> {
 #[derive(Template)]
 #[template(path = "register.html")]
 pub struct RegisterTemplate<'a> {
+    pub is_staff: bool,
     pub site_name: &'a str,
     pub user_label: Option<String>,
     /// 站点当前是否要求管理员手动激活（决定页面文案）。

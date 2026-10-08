@@ -37,6 +37,7 @@ async fn build<'a>(state: &'a AppState, headers: &HeaderMap) -> AppResult<DebugT
     Ok(DebugTemplate {
         site_name: &state.config.server.site_name,
         user_label: Some(user.display_name.clone()),
+        is_staff: true,
         version: env!("CARGO_PKG_VERSION"),
         bind: state.config.server.bind.clone(),
         data_dir: state.config.paths.data_dir.display().to_string(),

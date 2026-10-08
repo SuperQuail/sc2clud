@@ -63,6 +63,7 @@ async fn build_panel<'a>(state: &'a AppState, headers: &HeaderMap) -> AppResult<
     Ok(AdminTemplate {
         site_name: &state.config.server.site_name,
         user_label: Some(user.display_name.clone()),
+        is_staff: true,
         csrf: user.csrf_token.clone(),
         is_super: user.role == Role::Super,
         require_activation: repo::registration_requires_activation(state.db.pool()).await?,
@@ -137,6 +138,94 @@ async fn change_activation(
     Ok(Redirect::to("/admin"))
 }
 
+#[derive(Debug, Deserialize)]
+pub struct CreateUserForm {
+    pub csrf: String,
+    pub handle: String,
+    pub display_name: String,
+    pub password: String,
+    #[serde(default)]
+    pub role: Option<String>,
+    #[serde(default)]
+    pub activated: Option<String>,
+}
+
+/// 新建账号：只有超级管理员。
+///
+/// 口令用 argon2id 现算；邮箱自动给 `<登录名>@local`（users.email 有唯一约束，
+/// 不能一堆空串撞在一起）。命中唯一约束时给一句人话，不暴露 SQL。
+pub async fn create_user(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Form(form): Form<CreateUserForm>,
+) -> AppResult<Redirect> {
+    let actor = require_user(&state, &headers).await?;
+    session::guard(Some(&actor), Permission::ManageUsers)?;
+    if actor.role != Role::Super {
+        return Err(forbidden("只有超级管理员可以新建账号"));
+    }
+    session::check_csrf(&actor, &form.csrf)?;
+
+    let handle = sc2clud_core::auth::validate_handle(&form.handle)?;
+    let display_name = sc2clud_core::auth::validate_display_name(&form.display_name)?;
+    let password = form.password.clone();
+    sc2clud_core::auth::validate_password(&password)?;
+    let role = match form.role.as_deref() {
+        Some(raw) if !raw.is_empty() => Role::parse(raw)?,
+        _ => Role::Member,
+    };
+    let activated = matches!(form.activated.as_deref(), Some("1") | Some("on"));
+    let email = format!("{handle}@local");
+    let hash = sc2clud_core::auth::hash_password(&password)?;
+    let now = now_unix();
+
+    let user_id = match repo::register_user(
+        state.db.pool(),
+        repo::NewUser {
+            handle: &handle,
+            display_name: &display_name,
+            email: &email,
+            password_hash: &hash,
+            activated,
+            now,
+        },
+    )
+    .await
+    {
+        Ok(id) => id,
+        Err(e) => {
+            let text = e.to_string().to_uppercase();
+            return Err(AppError::Domain(DomainError::InvalidInput(
+                if text.contains("UNIQUE") {
+                    format!("登录名「{handle}」已被占用")
+                } else {
+                    "创建账号失败，请稍后再试".to_string()
+                },
+            )));
+        }
+    };
+    if role != Role::Member {
+        repo::set_user_role(state.db.pool(), user_id, role.as_str()).await?;
+    }
+    let _ = repo::record_audit(
+        state.db.pool(),
+        Some(actor.id),
+        "user.create",
+        Some(&format!("user:{user_id}")),
+        Some(role.as_str()),
+        now,
+    )
+    .await;
+    tracing::info!(
+        user.id = user_id,
+        %handle,
+        role = role.as_str(),
+        activated,
+        actor.id = actor.id,
+        "超级管理员新建账号"
+    );
+    Ok(Redirect::to("/admin"))
+}
 pub async fn set_role(
     State(state): State<AppState>,
     Path(id): Path<i64>,
