@@ -7,6 +7,7 @@
 //! `sc2clud-core` ← `sc2clud-storage` / `sc2clud-db` ← `sc2clud-web` ← `sc2clud-app`
 
 pub mod auth;
+pub mod capacity;
 pub mod config;
 pub mod counter;
 pub mod error;

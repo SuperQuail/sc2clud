@@ -45,6 +45,10 @@ export SC2CLUD_BIND="127.0.0.1:$PORT"
 export SC2CLUD_BASE_URL="$BASE"
 export SC2CLUD_LOG=warn
 export SC2CLUD_MAX_UPLOAD_BYTES=65536
+# 冒烟实例在本地跑，没有 nginx：让应用自己回图片字节（生产由 nginx 直出）。
+export SC2CLUD_SERVE_BLOBS_LOCALLY=1
+# 显式设定阈值，避免继承外部会话里的残值
+export SC2CLUD_MIN_FREE_BYTES=5242880000
 JAR="$WORK/cookies.txt"
 SERVER_LOG="$WORK/server.log"
 
@@ -129,6 +133,37 @@ check "$( [ "$COUNT" = '1' ] && echo 1 || echo 0 )" '仍有引用时内容保留
 check "$( [ "$(code -b "$JAR" -X DELETE "$BASE/api/v1/files/$CLAIM_ID")" = '204' ] && echo 1 || echo 0 )" '删除第二个引用 204'
 COUNT=$(find "$WORK/blobs" -type f | wc -l | tr -d ' ')
 check "$( [ "$COUNT" = '0' ] && echo 1 || echo 0 )" '引用归零后回收物理内容'
+
+# ---------- 帖子图片 ----------
+printf '%s' '{"title":"带图帖","body":"配图与封面测试","kind":"discussion"}' > "$WORK/post.json"
+POST_BODY=$(curl -s -b "$JAR" -H 'content-type: application/json' --data-binary "@$WORK/post.json" "$BASE/api/v1/posts")
+POST_ID=$(number "$POST_BODY" id)
+IMG_SRC='crates/sc2clud-web/static/art/miyin-chibi-160.webp'
+IMG_UP=$(curl -s -b "$JAR" -X POST --data-binary "@$IMG_SRC" "$BASE/api/v1/posts/$POST_ID/images")
+IMG_HASH=$(field "$IMG_UP" hash)
+check "$( [ -n "$IMG_HASH" ] && echo 1 || echo 0 )" '帖子配图上传成功'
+IMG_CODE=$(curl -s -o "$WORK/back.webp" -w '%{http_code}' "$BASE/img/$IMG_HASH")
+check "$( [ "$IMG_CODE" = '200' ] && echo 1 || echo 0 )" "图片可按内容摘要读取（$IMG_CODE）"
+printf 'plain text' > "$WORK/not-image.txt"
+BAD_IMG=$(curl -s -o /dev/null -w '%{http_code}' -b "$JAR" -X POST --data-binary "@$WORK/not-image.txt" "$BASE/api/v1/posts/$POST_ID/images")
+check "$( [ "$BAD_IMG" = '400' ] && echo 1 || echo 0 )" "非图片按魔数被拒（$BAD_IMG）"
+curl -s "$BASE/" | grep -q 'post-cover' && check 1 '首页卡片渲染了封面' || check 0 '首页卡片渲染了封面'
+
+# ---------- 磁盘闸门：可用空间低于阈值时拒绝写入 ----------
+GUARD_PORT=$((PORT + 1))
+GUARD_DIR="$WORK/guard"
+mkdir -p "$GUARD_DIR"
+SC2CLUD_DATA_DIR="$GUARD_DIR" SC2CLUD_BIND="127.0.0.1:$GUARD_PORT" \
+  SC2CLUD_BASE_URL="http://127.0.0.1:$GUARD_PORT" SC2CLUD_MIN_FREE_BYTES=1099511627776 \
+  "$EXE" serve >"$GUARD_DIR/server.log" 2>&1 &
+GUARD_PID=$!
+for _ in $(seq 1 60); do sleep 0.2; if [ "$(curl -s -o /dev/null -w '%{http_code}' "http://127.0.0.1:$GUARD_PORT/readyz")" = '200' ]; then break; fi; done
+SC2CLUD_DATA_DIR="$GUARD_DIR" "$EXE" set-password demo "$PASSWORD" >/dev/null 2>&1
+curl -s -c "$GUARD_DIR/c.txt" -o /dev/null -H "Origin: http://127.0.0.1:$GUARD_PORT" -X POST -d 'account=demo' -d "password=$PASSWORD" "http://127.0.0.1:$GUARD_PORT/login"
+LOW_CODE=$(curl -s -o "$GUARD_DIR/low.json" -w '%{http_code}' -b "$GUARD_DIR/c.txt" -X PUT --data-binary '' "http://127.0.0.1:$GUARD_PORT/api/v1/files?name=x.txt")
+check "$( [ "$LOW_CODE" = '507' ] && echo 1 || echo 0 )" "可用空间不足时上传被拒（507，实际 $LOW_CODE）"
+grep -q '可用空间不足' "$GUARD_DIR/low.json" && check 1 '错误信息说明了原因' || check 0 '错误信息说明了原因'
+kill "$GUARD_PID" 2>/dev/null || true
 
 if [ "$FAILURES" -gt 0 ]; then echo "冒烟测试失败：$FAILURES 项" >&2; exit 1; fi
 echo '冒烟测试全部通过'

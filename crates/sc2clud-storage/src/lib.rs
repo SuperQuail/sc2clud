@@ -79,6 +79,14 @@ pub trait StorageBackend: Send + Sync + 'static {
     /// 删除对象；不存在视为成功（幂等）。
     async fn delete(&self, hash: &BlobHash) -> Result<()>;
 
+    /// 后端可用空间（字节）。对象存储不受本机磁盘约束，默认返回极大值。
+    ///
+    /// 写入入口用它做「可用空间闸门」：剩余空间低于阈值就拒绝上传，
+    /// 避免磁盘写满后连 SQLite 与日志都写不进去。
+    async fn available_bytes(&self) -> Result<u64> {
+        Ok(u64::MAX)
+    }
+
     /// 就绪探针：默认不做事，本地后端会检查根目录是否可用。
     async fn health(&self) -> Result<()> {
         Ok(())

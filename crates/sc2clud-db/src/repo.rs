@@ -538,6 +538,33 @@ pub async fn add_post_image(
     Ok(image_id)
 }
 
+pub async fn count_post_images(pool: &SqlitePool, post_id: i64) -> Result<i64> {
+    let row: (i64,) =
+        query_as("SELECT COUNT(*) FROM post_images WHERE post_id = ? AND state <> 'failed'")
+            .bind(post_id)
+            .fetch_one(pool)
+            .await
+            .map_err(db_err)?;
+    Ok(row.0)
+}
+
+/// 按内容摘要找图片记录：`/img/{hash}` 只服务**确实登记为帖子图片**的内容，
+/// 避免把接口变成任意 blob 的公开读入口。
+pub async fn find_post_image_by_hash(
+    pool: &SqlitePool,
+    hash: &str,
+) -> Result<Option<PostImageRow>> {
+    query_as::<_, PostImageRow>(
+        "SELECT * FROM post_images \
+         WHERE (original_hash = ?1 OR display_hash = ?1 OR thumb_hash = ?1) \
+           AND state <> 'failed' LIMIT 1",
+    )
+    .bind(hash)
+    .fetch_optional(pool)
+    .await
+    .map_err(db_err)
+}
+
 pub async fn list_post_images(pool: &SqlitePool, post_id: i64) -> Result<Vec<PostImageRow>> {
     query_as::<_, PostImageRow>("SELECT * FROM post_images WHERE post_id = ? ORDER BY position, id")
         .bind(post_id)
@@ -747,7 +774,11 @@ pub async fn list_feed(
     query_as::<_, PostWithAuthorRow>(
         "SELECT p.id, p.title, p.body, p.kind, p.review_state, p.review_note, p.image_count, \
                 p.created_at, p.author_id, u.handle AS author_handle, \
-                u.display_name AS author_display_name, u.role AS author_role \
+                u.display_name AS author_display_name, u.role AS author_role, \
+                (SELECT COALESCE(pi.display_hash, pi.original_hash) \
+                 FROM post_images pi \
+                 WHERE pi.post_id = p.id AND pi.state <> 'failed' \
+                 ORDER BY pi.position, pi.id LIMIT 1) AS cover_hash \
          FROM posts p JOIN users u ON u.id = p.author_id \
          WHERE p.deleted_at IS NULL \
            AND (p.review_state = 'approved' \

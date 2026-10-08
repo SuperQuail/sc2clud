@@ -34,6 +34,8 @@ pub struct FeedView {
     pub id: i64,
     pub title: String,
     pub preview: String,
+    /// 封面图（该帖第一张图）；卡片用它铺底。
+    pub cover_hash: Option<String>,
     pub kind: String,
     pub kind_label: String,
     /// 仅当不该公开时才有值（审核中/被拒，且查看者有资格看到）。
@@ -175,6 +177,8 @@ pub struct PostPageTemplate<'a> {
     /// CSRF 令牌（表单隐藏字段）；用 String 以免模板结构体借用调用方的局部变量。
     pub csrf: String,
     pub post: PostDetailView,
+    /// 配图（原图或压缩图，按 position 顺序）。
+    pub images: Vec<ImageView>,
     pub comments: Vec<CommentView>,
     /// 已登录且已激活才能回复（回复不带图）。
     pub can_reply: bool,
@@ -196,6 +200,11 @@ pub struct PostDetailView {
     pub created_at: String,
     pub image_count: i64,
     pub is_mine: bool,
+}
+
+/// 配图视图。
+pub struct ImageView {
+    pub href: String,
 }
 
 /// 回复视图。

@@ -22,6 +22,9 @@ pub const SECRET_PLACEHOLDER: &str = "change-me";
 /// 单文件上限的默认值：本地存储 50 MB（对象存储后端可放宽到 2 GB）。
 pub const DEFAULT_MAX_UPLOAD_BYTES: u64 = 50 * 1024 * 1024;
 
+/// 可用空间安全阈值默认值：5 GiB。
+pub const DEFAULT_MIN_FREE_BYTES: u64 = 5 * 1024 * 1024 * 1024;
+
 #[derive(Debug, Clone, Default, Deserialize)]
 #[serde(default, deny_unknown_fields)]
 pub struct Config {
@@ -43,6 +46,11 @@ pub struct ServerConfig {
     pub download_prefix: String,
     /// 站点名（页面标题用）。
     pub site_name: String,
+    /// **仅供本地开发/截图**：由应用进程直接回图片字节。
+    ///
+    /// 生产环境必须保持 false——字节应由 nginx 直出，不经过应用进程。
+    /// 开启时若监听地址不是回环，`validate` 会直接拒绝启动。
+    pub serve_blobs_locally: bool,
 }
 
 impl Default for ServerConfig {
@@ -52,6 +60,7 @@ impl Default for ServerConfig {
             base_url: "http://127.0.0.1:8080".to_string(),
             download_prefix: "/dl".to_string(),
             site_name: "SC2clud".to_string(),
+            serve_blobs_locally: false,
         }
     }
 }
@@ -141,6 +150,11 @@ pub struct LimitsConfig {
     pub stream_chunk_bytes: usize,
     /// 请求体上限，应略大于 `max_upload_bytes`。
     pub max_request_body_bytes: u64,
+    /// 可用空间安全阈值：低于它就拒绝新的写入（默认 5 GiB）。
+    ///
+    /// 磁盘写满会连锁影响 SQLite、日志与系统本身，因此在写入入口提前拒绝，
+    /// 而不是等 ENOSPC。可用 `SC2CLUD_MIN_FREE_BYTES` 覆盖。
+    pub min_free_bytes: u64,
 }
 
 impl Default for LimitsConfig {
@@ -151,6 +165,7 @@ impl Default for LimitsConfig {
             max_concurrent_uploads: 5,
             stream_chunk_bytes: crate::STREAM_CHUNK_BYTES,
             max_request_body_bytes: DEFAULT_MAX_UPLOAD_BYTES + 2 * 1024 * 1024,
+            min_free_bytes: DEFAULT_MIN_FREE_BYTES,
         }
     }
 }
@@ -242,6 +257,9 @@ impl Config {
         if let Some(v) = env_var("SC2CLUD_DOWNLOAD_PREFIX") {
             self.server.download_prefix = v;
         }
+        if let Some(v) = env_var("SC2CLUD_SERVE_BLOBS_LOCALLY") {
+            self.server.serve_blobs_locally = matches!(v.as_str(), "1" | "true" | "yes");
+        }
         if let Some(v) = env_var("SC2CLUD_DATA_DIR") {
             self.paths.data_dir = PathBuf::from(v);
         }
@@ -268,6 +286,9 @@ impl Config {
         if let Some(v) = env_var("SC2CLUD_MAX_UPLOAD_BYTES").and_then(|s| s.parse().ok()) {
             self.limits.max_upload_bytes = v;
         }
+        if let Some(v) = env_var("SC2CLUD_MIN_FREE_BYTES").and_then(|s| s.parse().ok()) {
+            self.limits.min_free_bytes = v;
+        }
     }
 
     pub fn bind_addr(&self) -> Result<SocketAddr> {
@@ -286,7 +307,13 @@ impl Config {
                     .to_string(),
             ));
         }
-        self.bind_addr()?;
+        let addr = self.bind_addr()?;
+        if self.server.serve_blobs_locally && !addr.ip().is_loopback() {
+            return Err(Error::Config(
+                "server.serve_blobs_locally 只允许在回环监听时开启（生产必须由 nginx 直出字节）"
+                    .to_string(),
+            ));
+        }
         let l = &self.limits;
         if l.max_upload_bytes == 0 || l.max_upload_bytes > 2 * 1024 * 1024 * 1024 {
             return Err(Error::Config(format!(
@@ -298,6 +325,12 @@ impl Config {
             return Err(Error::Config(
                 "max_request_body_bytes 不能小于 max_upload_bytes".to_string(),
             ));
+        }
+        if l.min_free_bytes < 1024 * 1024 {
+            return Err(Error::Config(format!(
+                "limits.min_free_bytes 太小（当前 {}，至少 1 MiB）",
+                l.min_free_bytes
+            )));
         }
         if l.upload_bytes_per_sec == 0 || l.max_concurrent_uploads == 0 {
             return Err(Error::Config("上传限速与并发上限必须大于 0".to_string()));

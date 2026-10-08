@@ -51,6 +51,8 @@ impl AppError {
                     DomainError::Forbidden(_) => StatusCode::FORBIDDEN,
                     DomainError::NotFound(_) => StatusCode::NOT_FOUND,
                     DomainError::QuotaExceeded(_) => StatusCode::PAYLOAD_TOO_LARGE,
+                    // 507：磁盘没有空间继续存了（区别于「你超出配额」的 413）
+                    DomainError::StorageLow { .. } => StatusCode::INSUFFICIENT_STORAGE,
                     DomainError::RateLimited(_) => StatusCode::TOO_MANY_REQUESTS,
                     DomainError::HashMismatch { .. } => StatusCode::UNPROCESSABLE_ENTITY,
                     DomainError::Unsupported(_) => StatusCode::NOT_IMPLEMENTED,

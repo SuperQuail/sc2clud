@@ -19,7 +19,8 @@ use crate::error::{AppError, AppResult};
 use crate::routes::{require_user, wants_html};
 use crate::session::{self, CurrentUser};
 use crate::templates::{
-    CommentView, KindOption, NewPostTemplate, PostDetailView, PostPageTemplate, format_date, render,
+    CommentView, ImageView, KindOption, NewPostTemplate, PostDetailView, PostPageTemplate,
+    format_date, render,
 };
 
 #[derive(Debug, Deserialize)]
@@ -85,6 +86,14 @@ async fn build_post_page<'a>(
         .as_ref()
         .and_then(|u| Role::parse(&u.role).ok())
         .unwrap_or(Role::Member);
+    let images = repo::list_post_images(state.db.pool(), id)
+        .await?
+        .into_iter()
+        .map(|img| ImageView {
+            // 压缩图就绪就用它，否则先用原图（两者都在内容寻址存储里）。
+            href: format!("/img/{}", img.display_hash.unwrap_or(img.original_hash)),
+        })
+        .collect();
     let comments = repo::list_comments(state.db.pool(), id, 200).await?;
 
     let state_ = ReviewState::parse(&row.review_state).unwrap_or(ReviewState::Pending);
@@ -99,6 +108,7 @@ async fn build_post_page<'a>(
             .unwrap_or_default(),
         can_reply: user.as_ref().is_some_and(|u| u.activated),
         is_staff,
+        images,
         post: PostDetailView {
             id: row.id,
             title: row.title.clone(),

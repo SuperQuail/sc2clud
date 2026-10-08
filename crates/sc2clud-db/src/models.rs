@@ -51,6 +51,8 @@ pub struct PostWithAuthorRow {
     /// 对外展示用：帖子卡片与详情页显示它。
     pub author_display_name: String,
     pub author_role: String,
+    /// 封面图：该帖第一张图（压缩图优先，未处理时用原图）；没有图则为 NULL。
+    pub cover_hash: Option<String>,
 }
 
 /// 回复 + 作者。

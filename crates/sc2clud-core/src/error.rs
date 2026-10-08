@@ -42,6 +42,10 @@ pub enum Error {
     #[error("超出配额：{0}")]
     QuotaExceeded(String),
 
+    /// 磁盘可用空间低于安全阈值：拒绝新的写入，避免把服务器写爆。
+    #[error("服务器可用空间不足：剩余 {free_mb} MB，低于安全阈值 {threshold_mb} MB")]
+    StorageLow { free_mb: u64, threshold_mb: u64 },
+
     /// 触发限速（令牌桶 / 并发闸门）。
     #[error("请求过于频繁：{0}")]
     RateLimited(String),
@@ -79,6 +83,7 @@ impl Error {
             Error::Forbidden(_) => "forbidden",
             Error::NotFound(_) => "not_found",
             Error::QuotaExceeded(_) => "quota_exceeded",
+            Error::StorageLow { .. } => "storage_low",
             Error::RateLimited(_) => "rate_limited",
             Error::HashMismatch { .. } => "hash_mismatch",
             Error::Unsupported(_) => "unsupported",

@@ -15,7 +15,9 @@ use axum::http::{HeaderMap, StatusCode, header};
 use axum::response::{IntoResponse, Response};
 use axum::{Json, Router, middleware};
 use bytes::Bytes;
+use futures_util::StreamExt;
 use sc2clud_core::auth::Permission;
+use sc2clud_core::capacity::ensure_free_space;
 use sc2clud_core::config::DownloadMode;
 use sc2clud_core::review::{PostKind, ReviewState, review_for_author};
 use sc2clud_core::{BlobHash, Error as DomainError, now_unix, safety};
@@ -74,6 +76,7 @@ pub fn api_read() -> Router<AppState> {
             axum::routing::get(list_posts).post(create_post),
         )
         .route("/api/v1/files", axum::routing::get(list_files))
+        .route("/img/{hash}", axum::routing::get(serve_image))
         .route("/api/v1/files/claim", axum::routing::post(claim_file))
         .route("/api/v1/files/{id}", axum::routing::delete(delete_file))
         .route(
@@ -84,7 +87,12 @@ pub fn api_read() -> Router<AppState> {
 
 /// 上传接口：**不加超时层**——慢速上传是常态，超时交给 nginx 的 client_body_timeout。
 pub fn api_upload() -> Router<AppState> {
-    Router::new().route("/api/v1/files", axum::routing::put(upload_file))
+    Router::new()
+        .route("/api/v1/files", axum::routing::put(upload_file))
+        .route(
+            "/api/v1/posts/{post_id}/images",
+            axum::routing::post(upload_post_image),
+        )
 }
 
 // ------------------------------------------------------------ 工具
@@ -255,6 +263,7 @@ fn feed_view(row: &sc2clud_db::PostWithAuthorRow, viewer_id: Option<i64>) -> Fee
         created_at: format_date(row.created_at),
         image_count: row.image_count,
         is_mine: viewer_id == Some(row.author_id),
+        cover_hash: row.cover_hash.clone(),
     }
 }
 
@@ -296,6 +305,183 @@ async fn build_file_page<'a>(
 /// 兜底 404：HTML 请求给错误页，接口请求给 JSON。
 pub async fn not_found(headers: HeaderMap) -> Response {
     AppError::not_found("页面或接口不存在").into_page_response(wants_html(&headers))
+}
+
+// ------------------------------------------------------------ 帖子图片
+
+/// 认图片格式只看魔数，不信客户端声明的 Content-Type。
+fn sniff_image_mime(head: &[u8]) -> Option<&'static str> {
+    if head.starts_with(&[0x89, b'P', b'N', b'G']) {
+        Some("image/png")
+    } else if head.starts_with(&[0xFF, 0xD8, 0xFF]) {
+        Some("image/jpeg")
+    } else if head.starts_with(b"GIF8") {
+        Some("image/gif")
+    } else if head.len() >= 12 && &head[0..4] == b"RIFF" && &head[8..12] == b"WEBP" {
+        Some("image/webp")
+    } else {
+        None
+    }
+}
+
+/// 给某篇帖子加一张图（主帖最多 10 张；回复不带图）。
+///
+/// 原图直接落内容寻址存储并**永久保留**；压缩与缩略图由后台任务补齐
+/// （见 `image_jobs`）。上传同样要过「登录 + 已激活 + 磁盘闸门」。
+pub async fn upload_post_image(
+    State(state): State<AppState>,
+    Path(post_id): Path<i64>,
+    headers: HeaderMap,
+    body: Body,
+) -> AppResult<Json<serde_json::Value>> {
+    let user = require_user(&state, &headers).await?;
+    session::guard(Some(&user), Permission::UploadFile)?;
+    ensure_free_space(
+        state.storage.available_bytes().await?,
+        state.config.limits.min_free_bytes,
+    )?;
+
+    // 只能给自己的帖子加图，且帖子必须对自己可见。
+    let post = repo::get_post_for(state.db.pool(), post_id, Some(user.id), user.is_staff())
+        .await?
+        .ok_or_else(|| AppError::not_found("帖子不存在或不可见"))?;
+    if post.author_id != user.id {
+        return Err(AppError::Domain(DomainError::Forbidden(
+            "只能给自己的帖子加图".to_string(),
+        )));
+    }
+    let count = repo::count_post_images(state.db.pool(), post_id).await?;
+    if count >= sc2clud_core::review::MAX_IMAGES_PER_POST as i64 {
+        return Err(invalid(format!(
+            "主帖最多 {} 张图",
+            sc2clud_core::review::MAX_IMAGES_PER_POST
+        )));
+    }
+
+    // 先读一小块判类型，再把它接回流的头部——恒定内存，不整份读入。
+    let mut stream = body.into_data_stream();
+    let first = stream.next().await;
+    let head_bytes = match &first {
+        Some(Ok(chunk)) => chunk.clone(),
+        Some(Err(e)) => return Err(AppError::internal(format!("读取请求体失败：{e}"))),
+        None => Bytes::new(),
+    };
+    let Some(mime) = sniff_image_mime(&head_bytes) else {
+        return Err(invalid("只接受 PNG / JPEG / GIF / WebP 图片"));
+    };
+
+    // `stream::iter(Option)` 恰好产出 0 或 1 项：把用于判类型的头一块拼回流的开头，
+    // 类型与后续一致，且全程只多留一个 chunk 的内存。
+    let chained = futures_util::stream::iter(first).chain(stream);
+    let body_stream: std::pin::Pin<
+        Box<dyn futures_util::Stream<Item = Result<Bytes, axum::Error>> + Send>,
+    > = Box::pin(chained);
+
+    let (tx, rx) = mpsc::channel::<Result<Bytes, std::io::Error>>(DEFAULT_QUEUE_DEPTH);
+    let reader: BlobReader = Box::pin(StreamReader::new(ReceiverStream::new(rx)));
+    let subject = client_subject(&headers, None);
+    let pump = tokio::spawn(pump_body(
+        body_stream,
+        tx,
+        Arc::clone(&state.upload_gate),
+        subject,
+        state.config.limits.max_upload_bytes,
+    ));
+
+    let stored = state.storage.put_stream(reader, None).await;
+    let pumped = match pump.await {
+        Ok(result) => result,
+        Err(join) => Err(AppError::internal(format!("上传任务异常：{join}"))),
+    };
+    let outcome = match (stored, pumped) {
+        (Ok(outcome), Ok(_)) => outcome,
+        (Ok(_), Err(client_err)) => return Err(client_err),
+        (Err(storage_err), Err(client_err)) => {
+            let (status, _, _) = client_err.parts();
+            return if status.is_client_error() {
+                Err(client_err)
+            } else {
+                Err(storage_err.into())
+            };
+        }
+        (Err(storage_err), Ok(_)) => return Err(storage_err.into()),
+    };
+
+    let hash = outcome.stat.hash.clone();
+    let size = outcome.stat.size as i64;
+    repo::ensure_blob(state.db.pool(), hash.as_str(), size, now_unix()).await?;
+    let image_id = repo::add_post_image(
+        state.db.pool(),
+        post_id,
+        count,
+        hash.as_str(),
+        size,
+        mime,
+        now_unix(),
+    )
+    .await?;
+    state.counters.bump("post:image", 1);
+    tracing::info!(post.id = post_id, image.id = image_id, blob = %hash, size, %mime, "帖子配图已入库");
+
+    Ok(Json(json!({
+        "id": image_id,
+        "hash": hash.to_string(),
+        "url": format!("/img/{hash}"),
+        "size": size,
+        "mime": mime,
+        "count": count + 1,
+    })))
+}
+
+/// 图片读取：内容寻址，因此可以长缓存。
+///
+/// 只服务**登记为帖子图片**的内容（不开放任意 blob）；生产由 nginx 直出字节，
+/// 本地开发（`serve_blobs_locally`）时由应用补齐，方便本机与截图。
+pub async fn serve_image(
+    State(state): State<AppState>,
+    Path(raw_hash): Path<String>,
+) -> AppResult<Response> {
+    let hash = BlobHash::parse(&raw_hash)?;
+    let Some(image) = repo::find_post_image_by_hash(state.db.pool(), hash.as_str()).await? else {
+        return Err(AppError::not_found("图片不存在"));
+    };
+    if state.storage.stat(&hash).await?.is_none() {
+        return Err(AppError::not_found("图片不存在"));
+    }
+    let mime = image.mime.clone();
+    let cache = [(header::CACHE_CONTROL, "public, max-age=31536000, immutable")];
+
+    if !state.config.server.serve_blobs_locally {
+        let location = format!(
+            "{}/{}",
+            state.config.download.internal_prefix.trim_end_matches('/'),
+            hash.relative_path()
+        );
+        return Ok((
+            StatusCode::OK,
+            [(
+                header::HeaderName::from_static("x-accel-redirect"),
+                location.as_str(),
+            )],
+        )
+            .into_response());
+    }
+
+    // 本地开发：直接把字节流给出去（生产走不到这里，配置校验也会拦住非回环监听）。
+    let reader = state.storage.get_stream(&hash).await?;
+    let stream = tokio_util::io::ReaderStream::new(reader);
+    let mut response = Response::new(Body::from_stream(stream));
+    response.headers_mut().insert(
+        header::CONTENT_TYPE,
+        header::HeaderValue::from_str(&mime)
+            .unwrap_or_else(|_| header::HeaderValue::from_static("application/octet-stream")),
+    );
+    response.headers_mut().insert(
+        header::CACHE_CONTROL,
+        header::HeaderValue::from_static("public, max-age=31536000, immutable"),
+    );
+    let _ = cache;
+    Ok(response)
 }
 
 // ------------------------------------------------------------ 社区接口
@@ -482,6 +668,11 @@ pub async fn upload_file(
 ) -> AppResult<Json<FileDto>> {
     let user = require_user(&state, &headers).await?;
     session::guard(Some(&user), Permission::UploadFile)?;
+    // 磁盘闸门：可用空间低于阈值就拒绝，避免把服务器写爆（507）。
+    ensure_free_space(
+        state.storage.available_bytes().await?,
+        state.config.limits.min_free_bytes,
+    )?;
     let name = safety::safe_file_name(&params.name)?;
     let declared = params.hash.as_deref().map(BlobHash::parse).transpose()?;
     let mime = params

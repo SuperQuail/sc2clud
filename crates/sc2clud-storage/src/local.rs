@@ -204,6 +204,11 @@ impl StorageBackend for LocalFs {
         }
     }
 
+    async fn available_bytes(&self) -> Result<u64> {
+        fs4::available_space(&self.root)
+            .map_err(|e| Error::Storage(format!("读取 {} 可用空间失败：{e}", self.root.display())))
+    }
+
     async fn health(&self) -> Result<()> {
         let meta = tokio::fs::metadata(&self.root).await.map_err(|e| {
             Error::Storage(format!("blob 根目录 {} 不可用：{e}", self.root.display()))

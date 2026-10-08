@@ -19,6 +19,13 @@
   {% endif %}
   {% endif %}
   <p class="post-body">{{ post.body }}</p>
+  {% if !images.is_empty() %}
+  <div class="gallery">
+    {% for image in images %}
+    <a href="{{ image.href }}" target="_blank" rel="noopener"><img src="{{ image.href }}" loading="lazy" alt="配图"></a>
+    {% endfor %}
+  </div>
+  {% endif %}
   <div class="actions-inline" style="margin-top:18px">
     <a class="btn ghost" href="/">返回首页</a>
     {% if is_staff %}

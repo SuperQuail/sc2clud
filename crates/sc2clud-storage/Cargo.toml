@@ -9,6 +9,7 @@ description = "存储后端抽象：StorageBackend trait + 本地内容寻址实
 [dependencies]
 async-trait = "0.1.92"
 bytes = "1.12.1"
+fs4 = "1.1.0"
 futures-util = "0.3.34"
 sc2clud-core.workspace = true
 tokio = { version = "1.53.2", features = ["fs", "io-util", "rt", "sync", "macros"] }

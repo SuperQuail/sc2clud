@@ -42,6 +42,8 @@ $env:SC2CLUD_DOWNLOAD_SECRET = 'shot-secret'
 $env:SC2CLUD_BIND = "127.0.0.1:$Port"
 $env:SC2CLUD_BASE_URL = $base
 $env:SC2CLUD_LOG = 'warn'
+# 本地截图必须让应用自己回图片字节（生产由 nginx 直出；该开关在非回环监听时会被配置校验拒绝）。
+$env:SC2CLUD_SERVE_BLOBS_LOCALLY = '1'
 $proc = Start-Process -FilePath $exe -ArgumentList 'serve' -PassThru -NoNewWindow -RedirectStandardOutput "$work\o.log" -RedirectStandardError "$work\e.log"
 
 function Snap([string]$path, [string]$name, [int]$height = 1500) {
@@ -69,16 +71,31 @@ try {
     @{ kind = 'repost';     title = '转载：战役安装排错指南'; body = '整理自社区的常见问题与排查顺序，原文见 https://example.com/guide 。' },
     @{ kind = 'discussion'; title = '卡片四：图集与排版测试'; body = '这一条用来检查卡片在标题较长、正文较长时的排版与等高效果。' }
   )
+  $ids = @()
   foreach ($p in $posts) {
     $json = @{ title = $p.title; body = $p.body; kind = $p.kind } | ConvertTo-Json -Compress
     $file = Join-Path $work 'p.json'
     [System.IO.File]::WriteAllText($file, $json, (New-Object System.Text.UTF8Encoding $false))
-    & curl.exe -s -b $jar -o NUL -H 'content-type: application/json' --data-binary "@$file" "$base/api/v1/posts" | Out-Null
+    $resp = & curl.exe -s -b $jar -H 'content-type: application/json' --data-binary "@$file" "$base/api/v1/posts"
+    $ids += [int][regex]::Match($resp, '"id":(\d+)').Groups[1].Value
   }
-  & curl.exe -s -b $jar -o NUL -H "Origin: $base" -H 'content-type: application/json' --data-binary '{"body":"第一条回复，用来检查详情页排版。"}' "$base/p/1/comments" | Out-Null
+
+  # 给前两篇配图（直接拿站内美术资源当测试图），卡片封面就来自这里。
+  $artDir = Join-Path $PSScriptRoot '..\crates\sc2clud-web\static\art'
+  $artFiles = @('miyin-wink-520.webp', 'miyin-portrait-320.webp')
+  for ($i = 0; $i -lt $artFiles.Count -and $i -lt $ids.Count; $i++) {
+    $img = Join-Path $artDir $artFiles[$i]
+    if (Test-Path $img) {
+      $up = & curl.exe -s -b $jar -X POST --data-binary "@$img" "$base/api/v1/posts/$($ids[$i])/images"
+      Write-Host ("  配图 {0} -> {1}" -f $artFiles[$i], $up.Trim())
+    }
+  }
+  if ($ids.Count -gt 0) {
+    & curl.exe -s -b $jar -o NUL -H "Origin: $base" -H 'content-type: application/json' --data-binary '{"body":"第一条回复，用来检查详情页排版。"}' "$base/p/$($ids[0])/comments" | Out-Null
+  }
 
   Snap '/' 'home' 1500
-  Snap '/p/1' 'post' 1200
+  if ($ids.Count -gt 0) { Snap "/p/$($ids[0])" 'post' 1400 }
   Snap '/login' 'login' 900
   Snap '/register' 'register' 1000
   Write-Host "截图输出：$OutDir"

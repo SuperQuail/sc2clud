@@ -48,6 +48,9 @@
   <div class="post-grid">
     {% for post in posts %}
     <article class="post-card">
+      {% if let Some(cover) = post.cover_hash %}
+      <div class="post-cover" style="background-image:url('/img/{{ cover }}')"></div>
+      {% endif %}
       <div class="head">
         <span class="kind kind-{{ post.kind }}">{{ post.kind_label }}</span>
         {% if post.state != "approved" %}<span class="kind state-{{ post.state }}">{{ post.state_label }}</span>{% endif %}

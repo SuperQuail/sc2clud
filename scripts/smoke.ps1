@@ -30,6 +30,10 @@ $env:SC2CLUD_BIND = "127.0.0.1:$Port"
 $env:SC2CLUD_BASE_URL = $base
 $env:SC2CLUD_LOG = 'warn'
 $env:SC2CLUD_MAX_UPLOAD_BYTES = '65536'
+# 冒烟实例在本地跑，没有 nginx：让应用自己回图片字节（生产由 nginx 直出）。
+$env:SC2CLUD_SERVE_BLOBS_LOCALLY = '1'
+# 显式设定阈值：若外部会话残留了别的值，会静默改变本脚本的行为。
+$env:SC2CLUD_MIN_FREE_BYTES = '5242880000'
 
 $proc = Start-Process -FilePath $exe -ArgumentList 'serve' -PassThru -NoNewWindow -RedirectStandardOutput "$work\out.log" -RedirectStandardError "$work\err.log"
 try {
@@ -94,6 +98,55 @@ try {
     Assert (@(Get-ChildItem (Join-Path $work 'blobs') -Recurse -File -ErrorAction SilentlyContinue).Count -eq 1) '仍有引用时内容保留'
     Assert ((& curl.exe -s -b $jar -o NUL -w '%{http_code}' -X DELETE "$base/api/v1/files/$($claim.id)") -eq '204') '删除第二个引用 204'
     Assert (@(Get-ChildItem (Join-Path $work 'blobs') -Recurse -File -ErrorAction SilentlyContinue).Count -eq 0) '引用归零后回收物理内容'
+
+    # ---------- 帖子图片：上传 → 读取 → 非图片被拒 ----------
+    $postFile = Join-Path $work 'post.json'
+    [System.IO.File]::WriteAllText($postFile, '{"title":"带图帖","body":"配图与封面测试","kind":"discussion"}', (New-Object System.Text.UTF8Encoding $false))
+    $created = & curl.exe -s -b $jar -H 'content-type: application/json' --data-binary "@$postFile" "$base/api/v1/posts" | ConvertFrom-Json
+    $imgSrc = Join-Path $PSScriptRoot '..\crates\sc2clud-web\static\art\miyin-chibi-160.webp'
+    $imgUp = & curl.exe -s -b $jar -X POST --data-binary "@$imgSrc" "$base/api/v1/posts/$($created.id)/images" | ConvertFrom-Json
+    Assert ($imgUp.count -eq 1) '帖子配图上传并计数为 1'
+    $imgHash = $imgUp.hash
+    $imgBack = Join-Path $work 'back.webp'
+    Assert ((& curl.exe -s -o $imgBack -w '%{http_code}' "$base/img/$imgHash") -eq '200') '图片可按内容摘要读取'
+    Assert ((Get-FileHash $imgBack -Algorithm MD5).Hash -eq (Get-FileHash $imgSrc -Algorithm MD5).Hash) '图片字节与上传一致'
+    $textFile = Join-Path $work 'not-image.txt'
+    Set-Content -Path $textFile -Value 'plain text' -NoNewline
+    $badCode = & curl.exe -s -o NUL -w '%{http_code}' -b $jar -X POST --data-binary "@$textFile" "$base/api/v1/posts/$($created.id)/images"
+    Assert ($badCode -eq '400') "非图片按魔数被拒（实际 $badCode）"
+    $feed = & curl.exe -s "$base/"
+    Assert ($feed -match 'post-cover') '首页卡片渲染了封面'
+
+    # ---------- 磁盘闸门：可用空间低于阈值时拒绝写入 ----------
+    $guardPort = $Port + 1
+    $guardBase = "http://127.0.0.1:$guardPort"
+    $guardDir = Join-Path $work 'guard'
+    New-Item -ItemType Directory -Force $guardDir | Out-Null
+    $env:SC2CLUD_DATA_DIR = $guardDir
+    $env:SC2CLUD_BIND = "127.0.0.1:$guardPort"
+    $env:SC2CLUD_BASE_URL = $guardBase
+    $env:SC2CLUD_MIN_FREE_BYTES = '1099511627776'   # 1 TiB：任何真实磁盘都低于它
+    $guardJar = Join-Path $guardDir 'c.txt'
+    $guardProc = Start-Process -FilePath $exe -ArgumentList 'serve' -PassThru -NoNewWindow -RedirectStandardOutput "$guardDir\o.log" -RedirectStandardError "$guardDir\e.log"
+    try {
+      $ok = $false
+      for ($i = 0; $i -lt 60; $i++) { Start-Sleep -Milliseconds 200; if ((& curl.exe -s -o NUL -w '%{http_code}' "$guardBase/readyz") -eq '200') { $ok = $true; break } }
+      Assert $ok '闸门实例就绪'
+      & $exe set-password demo $Password | Out-Null
+      & curl.exe -s -c $guardJar -o NUL -H "Origin: $guardBase" -X POST -d 'account=demo' -d "password=$Password" "$guardBase/login" | Out-Null
+      $tiny = Join-Path $guardDir 'tiny.txt'
+      Set-Content -Path $tiny -Value 'x' -NoNewline
+      $lowCode = & curl.exe -s -o "$guardDir\low.json" -w '%{http_code}' -b $guardJar -X PUT --data-binary "@$tiny" "$guardBase/api/v1/files?name=x.txt"
+      Assert ($lowCode -eq '507') "可用空间不足时上传被拒（507，实际 $lowCode）"
+      $lowBody = if (Test-Path "$guardDir\low.json") {
+        [System.IO.File]::ReadAllText("$guardDir\low.json", [System.Text.Encoding]::UTF8)
+      } else { '' }
+      Assert ($lowBody -match '可用空间不足') '错误信息说明了原因（可用空间不足）'
+    } finally {
+      if ($guardProc -and -not $guardProc.HasExited) { Stop-Process -Id $guardProc.Id -Force -ErrorAction SilentlyContinue }
+      # 还原阈值：否则同会话后续命令会继承 1 TiB，行为诡异（踩过一次）。
+      $env:SC2CLUD_MIN_FREE_BYTES = '5242880000'
+    }
 
     if ($script:failures -gt 0) { Write-Host "冒烟测试失败：$($script:failures) 项" -ForegroundColor Red; Write-Host "工作目录：$work"; exit 1 }
     Write-Host '冒烟测试全部通过' -ForegroundColor Green
