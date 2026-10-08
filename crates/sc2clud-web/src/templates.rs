@@ -52,6 +52,8 @@ pub struct FeedView {
     pub comment_count: i64,
     pub like_count: i64,
     pub bookmark_count: i64,
+    /// 已归档（不再展示，但作者/管理员可直链打开）。
+    pub archived: bool,
     /// 「多久以前」（列表视图统计条）。
     pub time_ago: String,
     pub title: String,
@@ -231,6 +233,9 @@ pub struct PostDetailView {
     pub state_label: String,
     pub review_note: Option<String>,
     /// 当前查看者是否已点赞 / 收藏，以及计数。
+    pub archived: bool,
+    /// 当前查看者能否编辑（作者本人或管理员及以上）。
+    pub can_edit: bool,
     pub liked: bool,
     pub bookmarked: bool,
     pub like_count: i64,
@@ -310,6 +315,25 @@ pub struct SourceSlot {
     pub url: String,
     pub code: String,
     pub provider: String,
+}
+
+/// 编辑帖子（作者本人或管理员）。
+#[derive(Template)]
+#[template(path = "edit.html")]
+pub struct EditPostTemplate<'a> {
+    pub site_name: &'a str,
+    pub user_label: Option<String>,
+    pub is_staff: bool,
+    pub csrf: String,
+    pub id: i64,
+    pub error: Option<String>,
+    pub state_label: String,
+    pub review_note: Option<String>,
+    pub kinds: Vec<KindOption>,
+    pub sections: Vec<SectionOption>,
+    // 用 String 而不是借用：模板结构体要能独立于调用方的局部变量返回
+    pub title: String,
+    pub body: String,
 }
 
 /// 数据备份页（仅超级管理员）。

@@ -18,18 +18,44 @@
     {% endif %}
     {{ post.author }} · {{ post.author_role_label }} · {{ post.created_at }}
     {% if post.image_count > 0 %} · {{ post.image_count }} 张图{% endif %}</div>
-  {% if is_staff && post.state != "approved" %}
+  {% if post.archived %}
+  <p class="alert" style="margin-top:12px">此帖已归档：列表里不再展示，只有作者与管理员能通过直链打开。</p>
+  {% endif %}
+
+  {% if post.can_edit %}
+  <div class="actions-inline" style="margin-top:14px">
+    <a class="btn ghost" href="/p/{{ post.id }}/edit">编辑帖子</a>
+  </div>
+  {% endif %}
+
+  {% if is_staff %}
   <div class="review-bar">
     <span class="hint">此帖当前状态「{{ post.state_label }}」，只有你与作者看得到：</span>
     <form method="post" action="/admin/posts/{{ post.id }}/approve" data-async data-after="refresh" class="inline-form">
       <input type="hidden" name="csrf" value="{{ csrf }}">
       <button class="btn sm" type="submit">通过</button>
     </form>
+    <form method="post" action="/admin/posts/{{ post.id }}/revision" data-async data-after="refresh" class="inline-form">
+      <input type="hidden" name="csrf" value="{{ csrf }}">
+      <button class="btn ghost sm" type="submit">打回修改</button>
+      <input type="text" name="note" placeholder="修改意见" maxlength="80">
+    </form>
     <form method="post" action="/admin/posts/{{ post.id }}/reject" data-async data-after="refresh" class="inline-form">
       <input type="hidden" name="csrf" value="{{ csrf }}">
       <button class="btn ghost sm" type="submit">拒绝</button>
       <input type="text" name="note" placeholder="拒绝理由" maxlength="80">
     </form>
+    {% if post.archived %}
+    <form method="post" action="/admin/posts/{{ post.id }}/unarchive" data-async data-after="refresh" class="inline-form">
+      <input type="hidden" name="csrf" value="{{ csrf }}">
+      <button class="btn ghost sm" type="submit">取消归档</button>
+    </form>
+    {% else %}
+    <form method="post" action="/admin/posts/{{ post.id }}/archive" data-async data-after="refresh" class="inline-form">
+      <input type="hidden" name="csrf" value="{{ csrf }}">
+      <button class="btn ghost sm" type="submit">归档</button>
+    </form>
+    {% endif %}
   </div>
   {% endif %}
 

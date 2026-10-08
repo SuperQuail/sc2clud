@@ -431,6 +431,117 @@ async fn review(
         "/admin/users/overview",
     ))
 }
+#[derive(Debug, Deserialize)]
+pub struct ArchiveForm {
+    pub csrf: String,
+}
+
+pub async fn archive(
+    State(state): State<AppState>,
+    Path(id): Path<i64>,
+    headers: HeaderMap,
+    Form(form): Form<ArchiveForm>,
+) -> AppResult<Response> {
+    set_archived(state, id, headers, form, true).await
+}
+
+pub async fn unarchive(
+    State(state): State<AppState>,
+    Path(id): Path<i64>,
+    headers: HeaderMap,
+    Form(form): Form<ArchiveForm>,
+) -> AppResult<Response> {
+    set_archived(state, id, headers, form, false).await
+}
+
+/// 归档 = 不删除、不再展示（列表里消失，直链仍可打开）。
+async fn set_archived(
+    state: AppState,
+    id: i64,
+    headers: HeaderMap,
+    form: ArchiveForm,
+    archived: bool,
+) -> AppResult<Response> {
+    let actor = require_user(&state, &headers).await?;
+    session::guard(Some(&actor), Permission::ReviewPost)?;
+    session::check_csrf(&actor, &form.csrf)?;
+    let now = now_unix();
+    if !repo::set_post_archived(state.db.pool(), id, archived, now).await? {
+        return Ok(done(&headers, "已是最新状态", "/admin/users/overview"));
+    }
+    tracing::info!(post.id = id, archived, actor.id = actor.id, "归档变更");
+    let _ = repo::record_audit(
+        state.db.pool(),
+        Some(actor.id),
+        if archived {
+            "post.archive"
+        } else {
+            "post.unarchive"
+        },
+        Some(&format!("post:{id}")),
+        None,
+        now,
+    )
+    .await;
+    Ok(done(
+        &headers,
+        if archived {
+            "已归档"
+        } else {
+            "已取消归档"
+        },
+        "/admin/users/overview",
+    ))
+}
+
+/// 打回：让作者改完再提交（状态置为 `revision`，并通知作者）。
+pub async fn request_revision(
+    State(state): State<AppState>,
+    Path(id): Path<i64>,
+    headers: HeaderMap,
+    Form(form): Form<ReviewForm>,
+) -> AppResult<Response> {
+    let actor = require_user(&state, &headers).await?;
+    session::guard(Some(&actor), Permission::ReviewPost)?;
+    session::check_csrf(&actor, &form.csrf)?;
+    let typed = form
+        .note
+        .as_deref()
+        .map(str::trim)
+        .filter(|s| !s.is_empty());
+    let note = typed.unwrap_or("请按审核意见修改后重新提交");
+    let now = now_unix();
+    let Some(post) = repo::get_post_for(state.db.pool(), id, Some(actor.id), true).await? else {
+        return Err(AppError::not_found("帖子不存在"));
+    };
+    if !repo::set_post_review_state(state.db.pool(), id, "revision", Some(note), actor.id, now)
+        .await?
+    {
+        return Err(AppError::not_found("帖子不存在"));
+    }
+    let _ = repo::notify(
+        state.db.pool(),
+        post.author_id,
+        "review",
+        &format!("你的帖子「{}」需要修改", post.title),
+        Some(note),
+        Some(&format!("/p/{id}/edit")),
+        now,
+    )
+    .await;
+    tracing::info!(post.id = id, actor.id = actor.id, "打回修改");
+    let _ = repo::record_audit(
+        state.db.pool(),
+        Some(actor.id),
+        "post.request_revision",
+        Some(&format!("post:{id}")),
+        Some(note),
+        now,
+    )
+    .await;
+    Ok(done(&headers, "已打回", "/admin/users/overview"))
+}
+
 pub async fn set_role(
     State(state): State<AppState>,
     Path(id): Path<i64>,

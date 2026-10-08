@@ -62,6 +62,8 @@ pub struct PostWithAuthorRow {
     pub cover_hash: Option<String>,
     /// 回复数（列表视图的统计条用）。
     pub comment_count: i64,
+    /// 归档时间（NULL = 未归档）。
+    pub archived_at: Option<i64>,
     /// 点赞数。
     pub like_count: i64,
     /// 收藏数。
@@ -255,6 +257,8 @@ pub struct FileWithOwnerRow {
 
 #[derive(Debug, Clone, FromRow)]
 pub struct PostRow {
+    /// 归档时间（NULL = 未归档）。`SELECT *` 会带上这一列。
+    pub archived_at: Option<i64>,
     pub id: i64,
     pub author_id: i64,
     pub title: String,

@@ -49,6 +49,11 @@
               <input type="hidden" name="csrf" value="{{ csrf }}">
               <button class="btn sm" type="submit">通过</button>
             </form>
+            <form method="post" action="/admin/posts/{{ post.id }}/revision" data-async data-after="refresh" class="inline-form">
+              <input type="hidden" name="csrf" value="{{ csrf }}">
+              <button class="btn ghost sm" type="submit">打回修改</button>
+              <input type="text" name="note" placeholder="修改意见（可选）" maxlength="80" aria-label="修改意见">
+            </form>
             <form method="post" action="/admin/posts/{{ post.id }}/reject" data-async data-after="refresh" class="inline-form">
               <input type="hidden" name="csrf" value="{{ csrf }}">
               <button class="btn ghost sm" type="submit">拒绝</button>

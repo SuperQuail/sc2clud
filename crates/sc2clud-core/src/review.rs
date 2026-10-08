@@ -68,13 +68,16 @@ impl PostKind {
 pub enum ReviewState {
     Pending,
     Approved,
+    /// 打回：作者需要修改后重新提交（作者与管理员可见）。
+    Revision,
     Rejected,
 }
 
 impl ReviewState {
-    pub const ALL: [ReviewState; 3] = [
+    pub const ALL: [ReviewState; 4] = [
         ReviewState::Pending,
         ReviewState::Approved,
+        ReviewState::Revision,
         ReviewState::Rejected,
     ];
 
@@ -82,6 +85,7 @@ impl ReviewState {
         match self {
             ReviewState::Pending => "pending",
             ReviewState::Approved => "approved",
+            ReviewState::Revision => "revision",
             ReviewState::Rejected => "rejected",
         }
     }
@@ -90,6 +94,7 @@ impl ReviewState {
         match self {
             ReviewState::Pending => "审核中",
             ReviewState::Approved => "已通过",
+            ReviewState::Revision => "需修改",
             ReviewState::Rejected => "已拒绝",
         }
     }
@@ -98,6 +103,7 @@ impl ReviewState {
         match raw {
             "pending" => Ok(ReviewState::Pending),
             "approved" => Ok(ReviewState::Approved),
+            "revision" => Ok(ReviewState::Revision),
             "rejected" => Ok(ReviewState::Rejected),
             other => Err(Error::InvalidInput(format!("未知审核状态：{other}"))),
         }
@@ -106,12 +112,12 @@ impl ReviewState {
     /// 对**当前查看者**是否可见。
     ///
     /// - `approved`：所有人可见；
-    /// - `pending`（审核中）：只有作者本人与管理员及以上可见；
+    /// - `pending`（审核中）/ `revision`（打回待改）：只有作者本人与管理员及以上可见；
     /// - `rejected`：只有管理员及以上可见（便于复查与改判）。
     pub fn visible_to(self, is_author: bool, is_staff: bool) -> bool {
         match self {
             ReviewState::Approved => true,
-            ReviewState::Pending => is_author || is_staff,
+            ReviewState::Pending | ReviewState::Revision => is_author || is_staff,
             ReviewState::Rejected => is_staff,
         }
     }

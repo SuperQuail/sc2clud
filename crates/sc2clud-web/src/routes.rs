@@ -161,6 +161,22 @@ pub fn pages() -> Router<AppState> {
         )
         .route("/p/{id}", axum::routing::get(crate::pages_posts::post_page))
         .route(
+            "/p/{id}/edit",
+            axum::routing::get(crate::pages_posts::edit_form).post(crate::pages_posts::edit_submit),
+        )
+        .route(
+            "/admin/posts/{id}/archive",
+            axum::routing::post(crate::pages_admin::archive),
+        )
+        .route(
+            "/admin/posts/{id}/unarchive",
+            axum::routing::post(crate::pages_admin::unarchive),
+        )
+        .route(
+            "/admin/posts/{id}/revision",
+            axum::routing::post(crate::pages_admin::request_revision),
+        )
+        .route(
             "/p/{id}/like",
             axum::routing::post(crate::pages_social::toggle_like),
         )
@@ -423,6 +439,7 @@ pub(crate) fn feed_view(row: &sc2clud_db::PostWithAuthorRow, viewer_id: Option<i
         created_at: format_date(row.created_at),
         image_count: row.image_count,
         comment_count: row.comment_count,
+        archived: row.archived_at.is_some(),
         like_count: row.like_count,
         bookmark_count: row.bookmark_count,
         time_ago: format_relative(row.created_at, sc2clud_core::now_unix()),

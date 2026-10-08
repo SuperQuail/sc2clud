@@ -22,8 +22,9 @@ use crate::error::{AppError, AppResult};
 use crate::routes::{require_user, wants_html};
 use crate::session::{self, CurrentUser};
 use crate::templates::{
-    CommentView, ImageView, KindOption, MirrorView, NewPostTemplate, PostDetailView,
-    PostPageTemplate, ProviderOption, SectionOption, SourceSlot, SourceView, format_date, render,
+    CommentView, EditPostTemplate, ImageView, KindOption, MirrorView, NewPostTemplate,
+    PostDetailView, PostPageTemplate, ProviderOption, SectionOption, SourceSlot, SourceView,
+    format_date, render,
 };
 
 #[derive(Debug, Deserialize)]
@@ -252,6 +253,8 @@ async fn build_post_page<'a>(
             created_at: format_date(row.created_at),
             image_count: row.image_count,
             is_mine: viewer_id == Some(row.author_id),
+            archived: row.archived_at.is_some(),
+            can_edit: viewer_id == Some(row.author_id) || is_staff,
             liked: flags.0,
             bookmarked: flags.1,
             like_count: like_count as i64,
@@ -278,6 +281,136 @@ pub async fn post_page(
         Ok(template) => render(template),
         Err(e) => e.into_page_response(wants_html(&headers)),
     }
+}
+
+// ------------------------------------------------------------ 作者编辑
+
+/// 编辑帖子：**作者本人或管理员及以上**。
+pub async fn edit_form(
+    State(state): State<AppState>,
+    Path(id): Path<i64>,
+    headers: HeaderMap,
+) -> Response {
+    match build_edit(&state, id, &headers).await {
+        Ok(template) => render(template),
+        Err(e) => e.into_page_response(true),
+    }
+}
+
+async fn build_edit<'a>(
+    state: &'a AppState,
+    id: i64,
+    headers: &HeaderMap,
+) -> AppResult<EditPostTemplate<'a>> {
+    let user = require_user(state, headers).await?;
+    let row = repo::get_post_for(state.db.pool(), id, Some(user.id), user.is_staff())
+        .await?
+        .ok_or_else(|| AppError::not_found("帖子不存在或不可见"))?;
+    if row.author_id != user.id && !user.is_staff() {
+        return Err(AppError::Domain(DomainError::Forbidden(
+            "只能编辑自己的帖子".to_string(),
+        )));
+    }
+    let kind = PostKind::parse(&row.kind).unwrap_or(PostKind::Discussion);
+    let section = PostSection::parse(&row.section).unwrap_or(PostSection::default_section());
+    let state_ = ReviewState::parse(&row.review_state).unwrap_or(ReviewState::Pending);
+    Ok(EditPostTemplate {
+        site_name: &state.config.server.site_name,
+        user_label: Some(user.display_name.clone()),
+        is_staff: user.is_staff(),
+        csrf: user.csrf_token.clone(),
+        id,
+        error: None,
+        state_label: state_.label().to_string(),
+        review_note: row.review_note.clone(),
+        kinds: kind_options(kind.as_str()),
+        sections: section_options(section.as_str(), Some(&user)),
+        title: row.title.clone(),
+        body: row.body.clone(),
+    })
+}
+
+/// 保存编辑：改完**重新过一遍审核机**（内容变了，结论自然要重算）。
+pub async fn edit_submit(
+    State(state): State<AppState>,
+    Path(id): Path<i64>,
+    headers: HeaderMap,
+    Form(form): Form<NewPostForm>,
+) -> Response {
+    let user = match session::current_user(&state, &headers).await {
+        Ok(Some(user)) => user,
+        Ok(None) => return Redirect::to("/login").into_response(),
+        Err(e) => return e.into_response(),
+    };
+    if let Err(e) = save_edit(&state, id, &user, &form).await {
+        return e.into_page_response(true);
+    }
+    Redirect::to(&format!("/p/{id}")).into_response()
+}
+
+async fn save_edit(
+    state: &AppState,
+    id: i64,
+    user: &CurrentUser,
+    form: &NewPostForm,
+) -> AppResult<()> {
+    let row = repo::get_post_for(state.db.pool(), id, Some(user.id), user.is_staff())
+        .await?
+        .ok_or_else(|| AppError::not_found("帖子不存在或不可见"))?;
+    if row.author_id != user.id && !user.is_staff() {
+        return Err(AppError::Domain(DomainError::Forbidden(
+            "只能编辑自己的帖子".to_string(),
+        )));
+    }
+    session::check_csrf(user, &form.csrf)?;
+    let kind = PostKind::parse(form.kind.as_deref().unwrap_or("discussion"))
+        .unwrap_or(PostKind::Discussion);
+    let section = form
+        .section
+        .as_deref()
+        .and_then(|raw| PostSection::parse(raw).ok())
+        .unwrap_or(PostSection::default_section());
+    let title = form.title.trim().to_string();
+    let body = form.body.trim().to_string();
+    let outcome = review_for_author(
+        Some(user.role),
+        kind,
+        &title,
+        &body,
+        row.image_count.max(0) as usize,
+    );
+    let now = now_unix();
+    if !repo::update_post(
+        state.db.pool(),
+        id,
+        &title,
+        &body,
+        kind.as_str(),
+        section.as_str(),
+        outcome.state.as_str(),
+        outcome.note.as_deref(),
+        now,
+    )
+    .await?
+    {
+        return Err(AppError::not_found("帖子不存在"));
+    }
+    tracing::info!(
+        post.id = id,
+        state = outcome.state.as_str(),
+        editor.id = user.id,
+        "编辑帖子"
+    );
+    let _ = repo::record_audit(
+        state.db.pool(),
+        Some(user.id),
+        "post.edit",
+        Some(&format!("post:{id}")),
+        Some(outcome.state.as_str()),
+        now,
+    )
+    .await;
+    Ok(())
 }
 
 pub async fn comment_submit(

@@ -59,10 +59,14 @@ async function refreshRegions() {
   if (!res.ok) return
   const html = await res.text()
   const doc = new DOMParser().parseFromString(html, 'text/html')
-  for (const id of ['users', 'quota']) {
+  for (const id of ['pending', 'users', 'quota', 'backups']) {
     const fresh = doc.getElementById(id)
     const current = document.getElementById(id)
-    if (fresh && current) current.replaceWith(fresh)
+    if (fresh && current) {
+      current.replaceWith(fresh)
+    } else if (!fresh && current) {
+      current.remove()
+    }
   }
   bind()
 }

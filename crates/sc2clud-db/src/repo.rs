@@ -826,6 +826,7 @@ pub async fn list_feed(
                  ORDER BY pi.position, pi.id LIMIT 1) AS cover_hash, \
                 (SELECT COUNT(*) FROM comments c \
                  WHERE c.post_id = p.id AND c.deleted_at IS NULL) AS comment_count, \
+                p.archived_at AS archived_at, \
                 (SELECT COUNT(*) FROM post_likes pl WHERE pl.post_id = p.id) AS like_count, \
                 (SELECT COUNT(*) FROM post_bookmarks pb WHERE pb.post_id = p.id) AS bookmark_count \
          FROM posts p JOIN users u ON u.id = p.author_id \
@@ -867,10 +868,11 @@ pub async fn list_feed_by_section(
                  ORDER BY pi.position, pi.id LIMIT 1) AS cover_hash, \
                 (SELECT COUNT(*) FROM comments c \
                  WHERE c.post_id = p.id AND c.deleted_at IS NULL) AS comment_count, \
+                p.archived_at AS archived_at, \
                 (SELECT COUNT(*) FROM post_likes pl WHERE pl.post_id = p.id) AS like_count, \
                 (SELECT COUNT(*) FROM post_bookmarks pb WHERE pb.post_id = p.id) AS bookmark_count \
          FROM posts p JOIN users u ON u.id = p.author_id \
-         WHERE p.deleted_at IS NULL \
+         WHERE p.deleted_at IS NULL AND p.archived_at IS NULL \
            AND (?5 = '' OR p.section = ?5) \
            AND (p.review_state = 'approved' \
                 OR ?2 = 1 \
@@ -907,10 +909,11 @@ pub async fn list_posts_by_author(
                  ORDER BY pi.position, pi.id LIMIT 1) AS cover_hash, \
                 (SELECT COUNT(*) FROM comments c \
                  WHERE c.post_id = p.id AND c.deleted_at IS NULL) AS comment_count, \
+                p.archived_at AS archived_at, \
                 (SELECT COUNT(*) FROM post_likes pl WHERE pl.post_id = p.id) AS like_count, \
                 (SELECT COUNT(*) FROM post_bookmarks pb WHERE pb.post_id = p.id) AS bookmark_count \
          FROM posts p JOIN users u ON u.id = p.author_id \
-         WHERE p.deleted_at IS NULL AND p.author_id = ?1 \
+         WHERE p.deleted_at IS NULL AND p.archived_at IS NULL AND p.author_id = ?1 \
            AND (p.review_state = 'approved' OR ?2 = 1) \
          ORDER BY p.created_at DESC, p.id DESC LIMIT ?3",
     )
@@ -1541,16 +1544,68 @@ pub async fn list_pending_posts(pool: &SqlitePool, limit: i64) -> Result<Vec<Pos
                  ORDER BY pi.position, pi.id LIMIT 1) AS cover_hash, \
                 (SELECT COUNT(*) FROM comments c \
                  WHERE c.post_id = p.id AND c.deleted_at IS NULL) AS comment_count, \
+                p.archived_at AS archived_at, \
                 (SELECT COUNT(*) FROM post_likes pl WHERE pl.post_id = p.id) AS like_count, \
                 (SELECT COUNT(*) FROM post_bookmarks pb WHERE pb.post_id = p.id) AS bookmark_count \
          FROM posts p JOIN users u ON u.id = p.author_id \
-         WHERE p.deleted_at IS NULL AND p.review_state = 'pending' \
+         WHERE p.deleted_at IS NULL AND p.archived_at IS NULL AND p.review_state = 'pending' \
          ORDER BY p.created_at ASC LIMIT ?",
     )
     .bind(limit)
     .fetch_all(pool)
     .await
     .map_err(db_err)
+}
+
+/// 更新帖子内容（作者或管理员编辑后调用），并把新的审核结果写回。
+pub async fn update_post(
+    pool: &SqlitePool,
+    id: i64,
+    title: &str,
+    body: &str,
+    kind: &str,
+    section: &str,
+    review_state: &str,
+    review_note: Option<&str>,
+    now: i64,
+) -> Result<bool> {
+    let affected = query(
+        "UPDATE posts SET title = ?, body = ?, kind = ?, section = ?, \
+                           review_state = ?, review_note = ?, auto_reviewed = 1, updated_at = ? \
+         WHERE id = ? AND deleted_at IS NULL",
+    )
+    .bind(title)
+    .bind(body)
+    .bind(kind)
+    .bind(section)
+    .bind(review_state)
+    .bind(review_note)
+    .bind(now)
+    .bind(id)
+    .execute(pool)
+    .await
+    .map_err(db_err)?
+    .rows_affected();
+    Ok(affected == 1)
+}
+
+/// 归档 / 取消归档：归档只是不再展示，不删数据。
+pub async fn set_post_archived(
+    pool: &SqlitePool,
+    id: i64,
+    archived: bool,
+    now: i64,
+) -> Result<bool> {
+    let affected =
+        query("UPDATE posts SET archived_at = ? WHERE id = ? AND COALESCE(archived_at, 0) <> ?")
+            .bind(if archived { Some(now) } else { None })
+            .bind(id)
+            .bind(if archived { now } else { 0 })
+            .execute(pool)
+            .await
+            .map_err(db_err)?
+            .rows_affected();
+    Ok(affected == 1)
 }
 
 // ------------------------------------------------------------ 点赞 / 收藏 / 通知 / 公告

@@ -91,14 +91,18 @@ main { max-width: min(1720px, 94vw); margin: 0 auto; padding: 22px 20px 8px; }
 .hero .art img { width: 100%; height: auto; display: block; filter: drop-shadow(0 10px 20px rgba(47,111,228,.18)); }
 
 .actions { display: flex; flex-wrap: wrap; gap: 10px; }
+/* 全站统一按钮：8px 圆角 + 固定高度，与用户管理页行内控件同一套观感 */
 .btn {
-  display: inline-flex; align-items: center; gap: 6px;
-  border: 0; border-radius: 999px; padding: 10px 22px;
-  font: inherit; font-weight: 600; cursor: pointer; text-decoration: none;
-  background: var(--blue); color: #fff; box-shadow: 0 6px 14px rgba(47,111,228,.28);
+  display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+  height: 36px; padding: 0 18px;
+  border: 0; border-radius: 8px; box-sizing: border-box;
+  font: inherit; font-size: 14px; font-weight: 600; line-height: 1;
+  cursor: pointer; text-decoration: none;
+  background: var(--blue); color: #fff; box-shadow: 0 3px 10px rgba(47,111,228,.22);
+  transition: background .15s ease, transform .15s ease, box-shadow .15s ease;
 }
-.btn:hover { background: var(--blue-deep); text-decoration: none; }
-.btn.ghost { background: #fff; color: var(--ink); border: 1px solid var(--line); box-shadow: none; }
+.btn:hover { background: var(--blue-deep); text-decoration: none; transform: translateY(-1px); }
+.btn.ghost { background: var(--card); color: var(--ink); border: 1px solid var(--line); box-shadow: none; }
 .btn.ghost:hover { background: #f7f9fd; }
 .btn:disabled { opacity: .55; cursor: progress; }
 
