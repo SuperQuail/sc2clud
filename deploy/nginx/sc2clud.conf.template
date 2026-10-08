@@ -78,6 +78,15 @@ server {
     root /srv/sc2clud;
 
     # ---------- 静态资源直出 ----------
+    # app.css 改动频繁：单独给短缓存，否则「改了样式但用户看不到」
+    # （30 天 immutable 的静态缓存会把新样式挡在门外）。
+    location = /static/app.css {
+        expires 5m;
+        add_header Cache-Control "public, max-age=300";
+        access_log off;
+        try_files $uri =404;
+    }
+
     location /static/ {
         expires 30d;
         add_header Cache-Control "public, immutable";

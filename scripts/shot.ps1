@@ -1,4 +1,4 @@
-﻿# ============================================================
+# ============================================================
 # 截图工具：本地起一个临时实例，把关键页面渲染成 PNG
 #
 # 为什么不用 agent-browser：本机环境里它对公网 IP 报 ERR_BLOCKED_BY_CLIENT，
@@ -11,7 +11,8 @@
 param(
   [int]$Port = 18110,
   [string]$OutDir = (Join-Path $PSScriptRoot '..\..\shots'),
-  [string]$Password = 'shot-pass'
+  [string]$Password = 'shot-pass',
+  [int]$Width = 1440
 )
 
 $ErrorActionPreference = 'Continue'
@@ -50,7 +51,7 @@ function Snap([string]$path, [string]$name, [int]$height = 1500) {
   $out = Join-Path $OutDir "$name.png"
   $profile = Join-Path $work "profile-$name"
   & $browser --headless=new --disable-gpu --disable-extensions --no-first-run --hide-scrollbars `
-    --user-data-dir="$profile" --force-device-scale-factor=1 --window-size=1440,$height `
+    --user-data-dir="$profile" --force-device-scale-factor=1 --window-size=$Width,$height `
     --virtual-time-budget=2500 --screenshot="$out" "$base$path" 2>&1 | Out-Null
   if (Test-Path $out) { Write-Host ("  ok  {0,-12} {1} KB" -f $name, [math]::Round((Get-Item $out).Length / 1KB)) -ForegroundColor Green }
   else { Write-Host "  FAIL $name" -ForegroundColor Red }

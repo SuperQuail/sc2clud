@@ -58,7 +58,8 @@ a:hover { text-decoration: underline; }
 .topbar nav a:hover { background: rgba(255,255,255,.16); text-decoration: none; }
 .topbar nav a.active { background: #fff; color: var(--blue-deep); }
 
-main { max-width: 1080px; margin: 0 auto; padding: 22px 20px 8px; }
+/* 大屏利用率：跟随视口放宽到 1720px，窄屏仍是原来的居中单列。 */
+main { max-width: min(1720px, 94vw); margin: 0 auto; padding: 22px 20px 8px; }
 
 /* ---------- 卡片 ---------- */
 .card {
@@ -77,11 +78,15 @@ main { max-width: 1080px; margin: 0 auto; padding: 22px 20px 8px; }
 
 /* ---------- 首屏 hero ---------- */
 .hero { display: flex; gap: 18px; align-items: center; padding: 2px 0 4px; }
-.hero .copy { flex: 1 1 auto; min-width: 0; }
+.hero .copy { flex: 1 1 auto; min-width: 0; max-width: 760px; }
 .hero .eyebrow { color: var(--blue); font-size: 13px; font-weight: 700; letter-spacing: .5px; }
 .hero h1 { font-size: 27px; margin: 4px 0 6px; letter-spacing: -.4px; }
 .hero p { color: var(--muted); margin: 0 0 16px; }
 .hero .art { flex: 0 0 auto; width: 200px; max-width: 32%; }
+@media (min-width: 1400px) {
+  .hero .art { width: 240px; }
+  .hero h1 { font-size: 32px; }
+}
 .hero .art img { width: 100%; height: auto; display: block; filter: drop-shadow(0 10px 20px rgba(47,111,228,.18)); }
 
 .actions { display: flex; flex-wrap: wrap; gap: 10px; }
@@ -162,7 +167,7 @@ footer { color: var(--muted); font-size: 12px; text-align: center; padding: 14px
 
 .post-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
   /* 统一尺寸：同一行卡片等高（封面高度固定，留白由摘要区吸收） */
   align-items: stretch;
   gap: 14px;
