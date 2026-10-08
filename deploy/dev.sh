@@ -26,6 +26,16 @@ CARGO_BUILD_JOBS=2 nice -n 10 "$CARGO" build --release -p sc2clud-app
 log "安装二进制（生产进程仍持有旧 inode，不受影响）"
 install -m 0755 "$REPO/target/release/sc2clud" "$PREFIX/sc2clud"
 
+log "同步静态资源到独立目录（生产那份不动）"
+# 不能共用 /srv/sc2clud/static：那样改了 CSS 会立刻影响生产，就不是隔离了。
+DEV_STATIC="$PREFIX/static-dev"
+rm -rf "$DEV_STATIC"
+cp -a "$REPO/crates/sc2clud-web/static" "$DEV_STATIC"
+# 前端岛不在 git 里（服务器没有 Node），从生产那份拷过来
+if [ -d "$PREFIX/static/islands" ]; then
+  cp -a "$PREFIX/static/islands" "$DEV_STATIC/islands"
+fi
+
 log "重启测试实例"
 systemctl restart sc2clud-debug
 sleep 1

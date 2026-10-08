@@ -175,7 +175,8 @@ server {
     # 这样同一份代码不用为「路径前缀」做任何改动。
     location = /dev { return 301 /dev/; }
     location /dev/static/ {
-        alias /srv/sc2clud/static/;
+        # 测试实例用自己那份静态资源：改了 CSS/JS 只影响 /dev，不影响生产
+        alias /srv/sc2clud/static-dev/;
         expires 2m;
         add_header Cache-Control "public, max-age=120";
         access_log off;
