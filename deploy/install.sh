@@ -123,22 +123,26 @@ if command -v nginx >/dev/null 2>&1; then
   sed -e "s|__DOWNLOAD_SECRET__|$SECRET|g" -e "s|__DOMAIN__|$DOMAIN|g" \
       "$REPO_ROOT/deploy/nginx/sc2clud.conf.template" > "$VHOST"
 
+  # 裁剪「标记区块」：按标记名匹配整行（允许缩进），因此模板注释里提到标记名也不会误伤。
   strip_region() {
-    awk -v b="$2" -v e="$3" 'index($0,b){skip=1;next} index($0,e){skip=0;next} !skip' "$1" > "$1.tmp"
-    mv "$1.tmp" "$1"
+    local file="$1" name="$2"
+    awk -v b="^[[:space:]]*# @@${name}_BEGIN@@[[:space:]]*$" \
+        -v e="^[[:space:]]*# @@${name}_END@@[[:space:]]*$" \
+        '$0 ~ b { skip = 1; next } $0 ~ e { skip = 0; next } !skip' "$file" > "$file.tmp"
+    mv "$file.tmp" "$file"
   }
 
   if [ "$TLS" = 'off' ]; then
-    strip_region "$VHOST" '# @@REDIRECT_BEGIN@@' '# @@REDIRECT_END@@'
-    strip_region "$VHOST" '# @@TLS_LISTEN_BEGIN@@' '# @@TLS_LISTEN_END@@'
-    strip_region "$VHOST" '# @@TLS_ONLY_BEGIN@@' '# @@TLS_ONLY_END@@'
+    strip_region "$VHOST" REDIRECT
+    strip_region "$VHOST" TLS_LISTEN
+    strip_region "$VHOST" TLS_ONLY
   else
-    strip_region "$VHOST" '# @@PLAIN_LISTEN_BEGIN@@' '# @@PLAIN_LISTEN_END@@'
+    strip_region "$VHOST" PLAIN_LISTEN
   fi
 
   if [ "$DOWNLOAD_MODE" = 'x_accel' ]; then
     warn 'nginx 无 secure_link 模块：删除 /dl 区块，改用 X-Accel-Redirect（安全等价，字节同样不走应用）'
-    strip_region "$VHOST" '# @@SECURELINK_BEGIN@@' '# @@SECURELINK_END@@'
+    strip_region "$VHOST" SECURELINK
   else
     log 'nginx 带 secure_link：保留 /dl 签名直出通道'
   fi

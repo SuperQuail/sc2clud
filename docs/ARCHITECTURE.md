@@ -42,6 +42,17 @@ nginx: secure_link_md5 "$secure_link_expires$uri$remote_addr <secret>";
 冒烟测试用 **Windows CNG / openssl 独立复算**同一表达式，逐字节比对签名——
 两侧任何一侧被改动而另一侧没跟，测试就会红。
 
+### 3.1 两种下发方式（`download.mode`）
+
+| 模式 | 应用返回 | nginx 侧 | 前提 |
+| --- | --- | --- | --- |
+| `secure_link` | 302 + 签名查询串 | `location /dl/` 用 `secure_link_md5` 校验后直出 | 需要 `--with-http_secure_link_module` |
+| `x_accel` | 200 + `X-Accel-Redirect: /_blob/<ab>/<cd>/<hash>` | `location /_blob/ { internal; alias …; }` | 任何 nginx |
+
+两者都保证**字节不经过应用进程**，差别只是「谁来校验授权」：前者由 nginx 校验签名，
+后者由应用在请求时判定（`internal` 保证客户端无法直接访问该路径）。
+`deploy/install.sh` 会读 `nginx -V` 并自动选择，同时把 `SC2CLUD_DOWNLOAD_MODE` 写进环境文件。
+
 ## 4. 存储抽象
 
 ```rust

@@ -60,6 +60,20 @@ sudo SC2CLUD_DOMAIN=example.com deploy/install.sh
 | 上传透传 | `proxy_request_buffering off`（不落 nginx 临时文件，边收边转） |
 | TLS | 终止于此，`X-Real-IP` / `X-Forwarded-For` 传给应用 |
 
+### 4.1 nginx 能力自适应
+
+`install.sh` 会读 `nginx -V` 与证书目录，按实际情况裁剪同一份模板：
+
+| 探测项 | 结果 → 动作 |
+| --- | --- |
+| 证书是否存在（或 `SC2CLUD_TLS`） | 无证书 → 删掉 443 与跳转区块，只留 `listen 80` |
+| `http_secure_link_module` | 有 → 保留 `/dl` 签名通道；无 → 删掉该区块，改用 `X-Accel-Redirect` + `location /_blob/ { internal; }` |
+| `http_brotli_static_module` | 无 → 注释 `brotli_static`（退回 `gzip_static`） |
+| nginx 版本 < 1.25.1 | 退回 `listen 443 ssl http2;` 写法 |
+| `/www/server/panel/vhost/nginx` 存在 | 判定为宝塔面板，vhost 写入面板目录并 reload |
+
+两种下载方式都满足「字节不进应用进程」，选择结果会写进 `SC2CLUD_DOWNLOAD_MODE`。
+
 ## 5. 内核参数
 
 `deploy/sysctl/99-sc2clud.conf`：`tcp_congestion_control=bbr`、`default_qdisc=fq`、`somaxconn=4096`、

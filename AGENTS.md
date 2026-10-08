@@ -78,8 +78,12 @@ cargo run -p sc2clud -- check                     # 配置与依赖自检
 
 1. **文件字节不进应用进程**。上传是固定缓冲的流式转发；下载只签发 URL，由 nginx `sendfile` 直出。
    任何「先把文件读进 `Vec<u8>`」的写法都违反 §2 的硬约束。
-2. **下载签名与 nginx 表达式必须逐字节一致**：`"{expires}{uri}{remote_addr} {secret}"`（见 `sc2clud-core/src/sign.rs`）。
-   改动其中一侧必须同步另一侧；`download.bind_client_ip=false` 时 nginx 侧必须同时删掉 `$remote_addr`。
+2. **下载有两种下发方式，都满足「字节不进应用进程」**（`download.mode`）：
+   - `secure_link`：应用 302 到签名 URL，nginx 自校验。表达式 `"{expires}{uri}{remote_addr} {secret}"`
+     必须与 `sc2clud-core/src/sign.rs` 逐字节一致；`bind_client_ip=false` 时 nginx 侧要同时删掉 `$remote_addr`。
+     需要 nginx 带 `--with-http_secure_link_module`（官方包有，**宝塔自编译的常常没有**）。
+   - `x_accel`：应用回 `X-Accel-Redirect`，nginx 从 `internal` location 直出（任何 nginx 都行，
+     授权在请求时由应用判定）。`deploy/install.sh` 会探测能力并自动选择。
    stock nginx 只有 MD5（无 SHA-256 变体），「HMAC」是靠把密钥拼进被哈希表达式实现的带密钥 MAC。
 3. **内容寻址 + 引用计数**：同一份内容只落一份盘；`files` 软删除、`blobs.refcount` 归零才真删盘。
 4. **写热点禁止每请求 UPDATE**：浏览数、下载数先进 `Counters` 内存聚合，由后台任务批量落库。

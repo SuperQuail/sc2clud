@@ -1,12 +1,12 @@
 # ============================================================
 # SC2clud —— nginx 站点配置（**模板**，由 deploy/install.sh 渲染）
 #
-# 安装脚本会按本机 nginx 的实际能力裁剪下面的标记区块：
-#   # @@REDIRECT_BEGIN@@ … @@REDIRECT_END@@      无 TLS 时删除（80 → 443 跳转）
-#   # @@TLS_LISTEN_BEGIN@@ … @@TLS_LISTEN_END@@  无 TLS 时删除
-#   # @@PLAIN_LISTEN_BEGIN@@ … @@PLAIN_LISTEN_END@@  有 TLS 时删除
-#   # @@TLS_ONLY_BEGIN@@ … @@TLS_ONLY_END@@      无 TLS 时删除（证书指令）
-#   # @@SECURELINK_BEGIN@@ … @@SECURELINK_END@@  nginx 无 secure_link 模块时删除
+# 安装脚本按本机 nginx 的实际能力裁剪标记区块（标记名不在本注释里复述，避免误伤）：
+#   REDIRECT_BEGIN/END     无 TLS 时删除（80 → 443 跳转）
+#   TLS_LISTEN_BEGIN/END   无 TLS 时删除（listen 443 + http2）
+#   PLAIN_LISTEN_BEGIN/END 有 TLS 时删除（listen 80）
+#   TLS_ONLY_BEGIN/END     无 TLS 时删除（证书指令）
+#   SECURELINK_BEGIN/END   nginx 无 secure_link 模块时删除（/dl 签名直出）
 # 并把 __DOWNLOAD_SECRET__ / __DOMAIN__ 替换成真实值。
 #
 # 依赖模块：http_limit_conn_module / http_limit_req_module（官方包与宝塔均有）
@@ -74,7 +74,8 @@ server {
     limit_req_status 429;
     limit_conn_status 429;
 
-    root /srv/sc2clud/static;
+    # root 指向安装根目录：URI /static/app.css → /srv/sc2clud/static/app.css
+    root /srv/sc2clud;
 
     # ---------- 静态资源直出 ----------
     location /static/ {
