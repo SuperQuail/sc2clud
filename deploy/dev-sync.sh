@@ -17,11 +17,15 @@ log() { printf '\033[1;32m==>\033[0m %s\n' "$*"; }
 [ -f "$PROD_DB" ] || { echo "找不到生产库 $PROD_DB" >&2; exit 1; }
 mkdir -p "$DEV_DIR"
 
+# 中途失败也要把测试实例拉起来，否则 /dev/ 会一直 502
+trap 'systemctl start sc2clud-debug >/dev/null 2>&1 || true' EXIT
+
 log "停测试实例（避免写一半）"
 systemctl stop sc2clud-debug
 
 log "快照生产库 → 测试库"
-rm -f "$DEV_DB-wal" "$DEV_DB-shm"
+# VACUUM INTO 要求目标文件不存在，必须先把旧库删掉
+rm -f "$DEV_DB" "$DEV_DB-wal" "$DEV_DB-shm"
 sqlite3 "$PROD_DB" "VACUUM INTO '$DEV_DB'"
 chown --reference="$PROD_DB" "$DEV_DB" 2>/dev/null || true
 

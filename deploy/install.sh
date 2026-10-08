@@ -43,17 +43,21 @@ DOMAIN_NAMES=""
 for name in $DOMAIN; do
   ascii="$(to_ascii "$name")"
   DOMAIN_NAMES="$DOMAIN_NAMES $ascii"
-  # 裸域名再补一个 www（反过来则不加）
+  # 裸域名再补一个 www（反过来则不加）；IP 不加 www——
+  # 否则会渲染出 `191.40.41.97 191.40.41.97 www.191.40.41.97` 这种垃圾，
+  # 还会把真实域名挤掉（踩过一次：域名访问又变 404）。
   case "$ascii" in
     www.*) ;;
-    *) DOMAIN_NAMES="$DOMAIN_NAMES www.$ascii" ;;
+    *[!0-9.]*) DOMAIN_NAMES="$DOMAIN_NAMES www.$ascii" ;;
+    *) ;;
   esac
 done
 # 证书路径用「用户给的主域名」（转 punycode 后的第一个），不能用 IP，否则
 # __DOMAIN__ 会变成 /etc/letsencrypt/live/<IP>/ 这种不存在的目录。
 PRIMARY="$(for n in $DOMAIN; do to_ascii "$n"; break; done)"
 [ -n "$PRIMARY" ] && DOMAIN="$PRIMARY"
-DOMAIN_NAMES="$(printf '%s' "$DOMAIN_NAMES" | tr -s ' ' | sed 's/^ //;s/ $//')"
+# 去重（同一个名字只留一次），保持顺序
+DOMAIN_NAMES="$(printf '%s' "$DOMAIN_NAMES" | tr -s ' ' | tr ' ' '\n' | awk '!seen[$0]++' | paste -sd' ' -)"
 # 本机 IP 也写进去：用 IP 访问同样要能打开
 HOST_IP="$(hostname -I 2>/dev/null | awk '{print $1}')"
 [ -n "$HOST_IP" ] && DOMAIN_NAMES="$HOST_IP $DOMAIN_NAMES"
