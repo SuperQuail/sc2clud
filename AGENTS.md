@@ -131,9 +131,10 @@ pwsh -File scripts/smoke.ps1     # 改动触及上传/下载/存储/计数时必
 | 夜间模式 | ✅ 已完成（跟随系统 + 手动切换，记在 localStorage） | — |
 | 调试页 | ✅ 已完成（`/debug`，默认关闭；独立实例见 `deploy/systemd/sc2clud-debug.service`） | — |
 | 启动器下载页 | `releases` 索引与转链函数已就绪，页面与 API 未接 | 补 `/download` 与 `/api/v1/launcher/latest` |
-| **用户头像**（新任务） | 未开始 | 见下方「头像任务规格」 |
+| **用户头像** | ✅ 已完成（浏览器侧裁剪压缩 ≤64KB；`/u/{handle}` 主页里换） | — |
+| 前端岛发布 | 产物在 .gitignore 里，服务器无 Node | `pwsh -File scripts/push-islands.ps1`（构建 + 同步） |
 
-### 头像任务规格（下一批施工）
+### 头像实现（已完成，留档）
 
 | 项 | 决定 |
 | --- | --- |
