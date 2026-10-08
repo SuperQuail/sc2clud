@@ -108,6 +108,17 @@ async fn build_panel<'a>(
         .map(|row| AdminUserView {
             id: row.id,
             trusted: row.trusted != 0,
+            initial: row
+                .display_name
+                .chars()
+                .next()
+                .map(|c| c.to_uppercase().to_string())
+                .unwrap_or_else(|| "?".to_string()),
+            color_index: row.id % 6,
+            online: row
+                .last_seen_at
+                .map(|ts| now.saturating_sub(ts) < 300)
+                .unwrap_or(false),
             avatar: row.avatar_hash.clone(),
             handle: row.handle,
             display_name: row.display_name,
@@ -209,6 +220,17 @@ async fn build_user_edit<'a>(
         user: AdminUserView {
             id: row.id,
             trusted: row.trusted != 0,
+            initial: row
+                .display_name
+                .chars()
+                .next()
+                .map(|c| c.to_uppercase().to_string())
+                .unwrap_or_else(|| "?".to_string()),
+            color_index: row.id % 6,
+            online: row
+                .last_seen_at
+                .map(|ts| now.saturating_sub(ts) < 300)
+                .unwrap_or(false),
             email: row.email.clone().unwrap_or_default(),
             quota_human: human_bytes(row.quota_bytes.max(0) as u64),
             quota_gb: format!("{:.1}", row.quota_bytes.max(0) as f64 / 1_073_741_824.0),
@@ -388,6 +410,118 @@ pub async fn create_user(
     );
     Ok(done(&headers, "已保存", "/admin/users/overview"))
 }
+#[derive(Debug, Deserialize)]
+pub struct EditUserForm {
+    pub csrf: String,
+    pub display_name: String,
+    pub role: String,
+    pub quota_gb: String,
+    pub trusted: Option<String>,
+    pub activated: Option<String>,
+    pub new_password: Option<String>,
+}
+
+/// 管理面板「编辑用户」弹窗的保存：一次把资料改完（等级也就地切换）。
+pub async fn update_user(
+    State(state): State<AppState>,
+    Path(id): Path<i64>,
+    headers: HeaderMap,
+    Form(form): Form<EditUserForm>,
+) -> AppResult<Response> {
+    let actor = require_user(&state, &headers).await?;
+    session::guard(Some(&actor), Permission::ManageUsers)?;
+    session::check_csrf(&actor, &form.csrf)?;
+    let Some(target) = repo::admin_get_user(state.db.pool(), id).await? else {
+        return Err(AppError::not_found("没有这个用户"));
+    };
+
+    // 等级：只有超级管理员能动，且不能改自己（避免把自己锁在门外）
+    let mut role = target.role.clone();
+    // 权限不足时前端可能压根不提交 role（字段被禁用），空值表示「不改等级」
+    if !form.role.trim().is_empty() && form.role != target.role {
+        session::guard(Some(&actor), Permission::ManageRoles)?;
+        if id == actor.id {
+            return Err(AppError::Domain(DomainError::Forbidden(
+                "不能修改自己的权限等级".to_string(),
+            )));
+        }
+        role = Role::parse(form.role.trim())?.as_str().to_string();
+    }
+
+    // 显示名：管理员及以上可改（与旧行为一致）
+    let display_name = if form.display_name.trim() == target.display_name {
+        target.display_name.clone()
+    } else {
+        session::guard(Some(&actor), Permission::ManageUsers)?;
+        sc2clud_core::auth::validate_display_name(form.display_name.trim())?
+    };
+
+    let gb: f64 = form
+        .quota_gb
+        .trim()
+        .parse()
+        .map_err(|_| AppError::Domain(DomainError::InvalidInput("预算要填数字".to_string())))?;
+    if !(0.0..=10240.0).contains(&gb) {
+        return Err(AppError::Domain(DomainError::InvalidInput(
+            "预算范围是 0 ~ 10240 GB".to_string(),
+        )));
+    }
+    let quota_bytes = (gb * 1_073_741_824.0).round() as i64;
+
+    let trusted = form
+        .trusted
+        .as_deref()
+        .is_some_and(|v| v == "1" || v == "on");
+    // 自己不能被停用
+    let activated = if id == actor.id {
+        true
+    } else {
+        form.activated
+            .as_deref()
+            .is_some_and(|v| v == "1" || v == "on")
+    };
+
+    let password_hash = match form.new_password.as_deref().map(str::trim) {
+        Some(pw) if !pw.is_empty() => {
+            sc2clud_core::auth::validate_password(pw)?;
+            Some(sc2clud_core::auth::hash_password(pw)?)
+        }
+        _ => None,
+    };
+
+    let now = now_unix();
+    repo::admin_update_user(
+        state.db.pool(),
+        repo::AdminUserUpdate {
+            id,
+            display_name: &display_name,
+            role: &role,
+            quota_bytes,
+            trusted,
+            activated,
+            password_hash: password_hash.as_deref(),
+        },
+    )
+    .await?;
+    if password_hash.is_some() {
+        // 改了口令就把该用户的会话全踢掉
+        let _ = repo::delete_user_sessions(state.db.pool(), id).await;
+    }
+    tracing::info!(user.id = id, actor.id = actor.id, %role, "管理端更新用户");
+    let _ = repo::record_audit(
+        state.db.pool(),
+        Some(actor.id),
+        "user.update",
+        Some(&format!("user:{id}")),
+        Some(&format!(
+            "role={role} trusted={trusted} activated={activated}"
+        )),
+        now,
+    )
+    .await;
+    Ok(done(&headers, "已保存", "/admin/users/overview"))
+}
+
 #[derive(Debug, Deserialize)]
 pub struct TrustForm {
     pub csrf: String,

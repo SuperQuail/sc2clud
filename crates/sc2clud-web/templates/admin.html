@@ -31,6 +31,53 @@
       {% if is_super %}<a class="btn" href="#create">添加用户</a>{% endif %}
     </div>
 
+
+    {# 编辑用户弹窗：列表里点铅笔打开，改完直接保存（等级也就地切换，不用跳页） #}
+    <dialog class="modal" id="user-dialog">
+      <form class="modal-form" method="post" data-async data-after="refresh" id="user-form" action="/admin/users/0/update">
+        <input type="hidden" name="csrf" value="{{ csrf }}">
+        <header class="modal-head">
+          <div class="modal-who">
+            <span class="avatar-initial avatar-lg c0" id="modal-initial" hidden>?</span>
+            <img class="avatar avatar-xl" id="modal-avatar" src="/static/art/miyin-chibi-160.webp" alt="" width="64" height="64" hidden>
+            <div>
+              <strong id="modal-name">—</strong>
+              <div class="meta"><span id="modal-handle"></span></div>
+            </div>
+          </div>
+          <button class="icon-btn" type="button" data-modal-close aria-label="关闭">
+            <svg viewBox="0 0 16 16" width="15" height="15"><path d="M4 4l8 8M12 4l-8 8" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg>
+          </button>
+        </header>
+        <div class="modal-body">
+          <label>角色<select name="role" id="modal-role">
+            {% for role in roles %}
+            <option value="{{ role.0 }}">{{ role.1 }}</option>
+            {% endfor %}
+          </select></label>
+          <label>显示名<input type="text" name="display_name" id="modal-display" maxlength="20"></label>
+          <label>电子邮箱<input type="text" id="modal-email" disabled></label>
+          <label>磁盘预算（GB）<input type="number" name="quota_gb" id="modal-quota" min="0" max="10240" step="0.5"></label>
+          <label class="check"><input type="checkbox" name="trusted" value="1" id="modal-trusted"> 信任（发帖只走自动审核）</label>
+          <label class="check"><input type="checkbox" name="activated" value="1" id="modal-activated"> 账号已激活</label>
+          <label>新密码（留空表示不改）<input type="password" name="new_password" id="modal-password" minlength="8" placeholder="至少 8 位"></label>
+          <p class="hint" id="modal-note"></p>
+        </div>
+        <footer class="modal-foot">
+          <a class="btn ghost sm" id="modal-more" href="#">更多设置</a>
+          <button class="btn sm" type="submit">保存</button>
+        </footer>
+      </form>
+    </dialog>
+
+    <section class="panel" id="create">
+      <h2>添加用户</h2>
+      <form method="post" action="/admin/users" class="stack" data-async data-after="refresh">
+        <input type="hidden" name="csrf" value="{{ csrf }}">
+        <label>登录名<input type="text" name="handle" required minlength="3" maxlength="24" pattern="[A-Za-z0-9_-]+" autocomplete="off">
+          <span class="hint">3–24 位字母、数字、下划线或连字符；账号标识，用于登录</span></label>
+        <label>显示名<input type="text" name="display_name" required maxlength="20" autocomplete="off"></label>
+
     {% if !pending.is_empty() %}
     <section class="panel" id="pending">
       <h2>待审核 <span class="count">{{ pending.len() }}</span></h2>
@@ -72,52 +119,73 @@
       {% else %}
     <table class="admin-table users">
       <thead>
-        <tr><th>角色</th><th>名称</th><th>电子邮箱</th><th>磁盘预算</th><th>最后在线</th><th>创建于</th><th>操作</th></tr>
+        <tr><th>名称</th><th>角色</th><th>电子邮箱</th><th>最后在线时间</th><th>创建于</th><th></th></tr>
       </thead>
       <tbody>
         {% for user in users %}
-        <tr>
-          <td><span class="role-badge role-{{ user.role }}">{{ user.role_label }}</span></td>
-          <td class="byline name-cell">
+        <tr data-user-row
+            data-id="{{ user.id }}"
+            data-handle="{{ user.handle }}"
+            data-name="{{ user.display_name }}"
+            data-role="{{ user.role }}"
+            data-email="{{ user.email }}"
+            data-quota="{{ user.quota_gb }}"
+            data-trusted="{% if user.trusted %}1{% else %}0{% endif %}"
+            data-activated="{% if user.activated %}1{% else %}0{% endif %}"
+            data-is-self="{% if user.is_self %}1{% else %}0{% endif %}"
+            data-avatar="{% if let Some(avatar) = user.avatar %}{{ avatar }}{% endif %}"
+            data-initial="{{ user.initial }}"
+            data-color="{{ user.color_index }}">
+          <td class="name-cell">
             {% if let Some(avatar) = user.avatar %}
-            <img class="avatar" src="/avatar/{{ avatar }}" alt="" width="26" height="26" loading="lazy">
+            <img class="avatar avatar-sm" src="/avatar/{{ avatar }}" alt="" width="28" height="28" loading="lazy">
             {% else %}
-            <img class="avatar" src="/static/art/miyin-chibi-80.webp" alt="" width="26" height="26" loading="lazy">
+            <span class="avatar-initial c{{ user.color_index }}" aria-hidden="true">{{ user.initial }}</span>
             {% endif %}
-            <span>{{ user.display_name }}</span>
-            {% if user.activated %}<span class="dot on" title="已激活"></span>{% else %}<span class="dot off" title="未激活"></span>{% endif %}
+            <span class="user-name">{{ user.display_name }}</span>
+            {% if user.online %}<span class="dot on" title="最近 5 分钟有活动"></span>{% endif %}
             {% if user.trusted %}<span class="tag ok" title="发帖只走自动审核">信任</span>{% endif %}
             {% if user.is_self %}<span class="tag">我</span>{% endif %}
           </td>
-          <td class="muted email-cell">{{ user.email }}</td>
-          <td class="quota-cell">
-            <span class="quota-value" data-quota-value>{{ user.quota_human }}</span>
-            <form class="inline-form" method="post" data-async data-after="quota" action="/admin/users/{{ user.id }}/quota">
-              <input type="hidden" name="csrf" value="{{ csrf }}">
-              <input type="number" name="quota_gb" value="{{ user.quota_gb }}" min="0" max="10240" step="0.5" aria-label="预算（GB）">
-              <button class="icon-btn" type="submit" title="保存预算">
-                <svg viewBox="0 0 16 16" width="15" height="15"><path d="M3 8.5l3.2 3.2L13 5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
-              </button>
-            </form>
+          <td class="role-cell">
+            {# 参考 Open WebUI：角色本身是个按钮，点开直接改等级（这就是「快捷切换」） #}
+            <details class="role-menu">
+              <summary class="role-badge role-{{ user.role }}">{{ user.role_label }}</summary>
+              <div class="role-menu-panel">
+                {% for role in roles %}
+                <form method="post" data-async data-after="refresh" action="/admin/users/{{ user.id }}/role">
+                  <input type="hidden" name="csrf" value="{{ csrf }}">
+                  <input type="hidden" name="role" value="{{ role.0 }}">
+                  <button class="role-option{% if role.0 == user.role %} active{% endif %}" type="submit">{{ role.1 }}</button>
+                </form>
+                {% endfor %}
+              </div>
+            </details>
           </td>
+          <td class="muted email-cell">{{ user.email }}</td>
           <td class="muted">{{ user.last_seen }}</td>
-          <td class="muted">{{ user.created_from_now }}</td>
+          <td class="muted">{{ user.created_at }}</td>
           <td class="row-actions">
+            <button class="icon-btn" type="button" data-edit-user title="编辑用户">
+              <svg viewBox="0 0 16 16" width="15" height="15"><path d="M3 13h3l7-7-3-3-7 7v3z" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/></svg>
+            </button>
             <a class="icon-btn" href="/u/{{ user.handle }}" title="查看主页" aria-label="查看主页">
               <svg viewBox="0 0 16 16" width="15" height="15"><path d="M1 8s2.6-4.5 7-4.5S15 8 15 8s-2.6 4.5-7 4.5S1 8 1 8z" fill="none" stroke="currentColor" stroke-width="1.4"/><circle cx="8" cy="8" r="1.8" fill="currentColor"/></svg>
             </a>
-            <a class="icon-btn" href="/admin/users/{{ user.id }}" title="编辑用户" aria-label="编辑用户">
-              <svg viewBox="0 0 16 16" width="15" height="15"><path d="M3 13h3l7-7-3-3-7 7v3z" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/></svg>
+            <a class="icon-btn" href="/admin/users/{{ user.id }}" title="更多设置" aria-label="更多设置">
+              <svg viewBox="0 0 16 16" width="15" height="15"><path d="M3 8h10M8 3v10" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
             </a>
             <form class="inline-form" method="post" data-async data-after="refresh" action="/admin/users/{{ user.id }}/trusted">
               <input type="hidden" name="csrf" value="{{ csrf }}">
               <input type="hidden" name="trusted" value="{% if user.trusted %}0{% else %}1{% endif %}">
-              <button class="btn ghost sm" type="submit">{% if user.trusted %}取消信任{% else %}设为信任{% endif %}</button>
+              <button class="icon-btn" type="submit" title="{% if user.trusted %}取消信任{% else %}设为信任{% endif %}">
+                <svg viewBox="0 0 16 16" width="15" height="15"><path d="M8 2l1.8 3.9 4.2.5-3.1 2.9.8 4.2L8 11.6 4.3 13.5l.8-4.2L2 6.4l4.2-.5z" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/></svg>
+              </button>
             </form>
             {% if !user.is_self %}
             <form class="inline-form" method="post" data-async data-after="refresh" action="/admin/users/{{ user.id }}/{% if user.activated %}deactivate{% else %}activate{% endif %}">
               <input type="hidden" name="csrf" value="{{ csrf }}">
-              <button class="icon-btn" type="submit" title="{% if user.activated %}停用{% else %}激活{% endif %}">
+              <button class="icon-btn" type="submit" title="{% if user.activated %}停用账号{% else %}激活账号{% endif %}">
                 <svg viewBox="0 0 16 16" width="15" height="15"><path d="M8 2v6" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/><path d="M4.6 4.4a5 5 0 106.8 0" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
               </button>
             </form>
@@ -127,17 +195,8 @@
         {% endfor %}
       </tbody>
     </table>
-      {% endif %}
-    </section>
-
+    {% endif %}
     {% if is_super %}
-    <section class="panel" id="create">
-      <h2>添加用户</h2>
-      <form method="post" action="/admin/users" class="stack" data-async data-after="refresh">
-        <input type="hidden" name="csrf" value="{{ csrf }}">
-        <label>登录名<input type="text" name="handle" required minlength="3" maxlength="24" pattern="[A-Za-z0-9_-]+" autocomplete="off">
-          <span class="hint">3–24 位字母、数字、下划线或连字符；账号标识，用于登录</span></label>
-        <label>显示名<input type="text" name="display_name" required maxlength="20" autocomplete="off"></label>
         <label>初始口令<input type="text" name="password" required minlength="8" autocomplete="off">
           <span class="hint">至少 8 位；交给对方后建议让他自己在账户设置里改</span></label>
         <label>权限等级

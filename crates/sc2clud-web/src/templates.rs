@@ -633,6 +633,12 @@ pub struct AdminUserView {
     pub avatar: Option<String>,
     pub handle: String,
     pub display_name: String,
+    /// 无头像时圆形底上显示的首字符。
+    pub initial: String,
+    /// 无头像时的配色序号（0..5），对应 CSS 里的 c0..c5。
+    pub color_index: i64,
+    /// 最近 5 分钟内有活动（列表上的绿点）。
+    pub online: bool,
     pub role: String,
     pub role_label: String,
     pub activated: bool,

@@ -314,6 +314,85 @@ footer { color: var(--muted); font-size: 12px; text-align: center; padding: 14px
 .actions-inline { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
 .title-line { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; font-weight: 600; }
 
+/* 角色列：参考 Open WebUI，角色本身是个可点按钮（点开直接改等级） */
+.role-cell { white-space: nowrap; }
+.role-menu { position: relative; display: inline-block; }
+.role-menu > summary { list-style: none; cursor: pointer; user-select: none; }
+.role-menu > summary::-webkit-details-marker { display: none; }
+.role-menu > summary::after { content: ' ⌄'; opacity: .55; font-size: 11px; }
+.role-menu[open] > summary { outline: 2px solid var(--blue-soft); }
+.role-menu-panel {
+  position: absolute; z-index: 30; top: calc(100% + 6px); left: 0; min-width: 148px;
+  background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 4px;
+  box-shadow: 0 14px 34px rgba(8,20,40,.22); display: flex; flex-direction: column; gap: 2px;
+}
+.role-menu-panel form { display: block; }
+.role-option {
+  width: 100%; text-align: left; border: 0; background: transparent; color: var(--ink);
+  font: inherit; font-size: 13px; padding: 8px 10px; border-radius: 7px; cursor: pointer;
+}
+.role-option:hover { background: var(--blue-soft); color: var(--blue-deep); }
+.role-option.active { font-weight: 700; color: var(--blue-deep); }
+/* 在线小绿点（参考里带 ping 动画） */
+.dot.on::after {
+  content: ''; position: absolute; inset: 0; border-radius: 50%; background: #2f9e6f;
+  animation: ping 1.6s cubic-bezier(0,0,.2,1) infinite; opacity: .5;
+}
+.dot { position: relative; }
+@keyframes ping { 75%, 100% { transform: scale(2.1); opacity: 0; } }
+/* 弹窗字段：小号灰色标签在控件上方（与参考一致） */
+.modal-body .field { display: flex; flex-direction: column; gap: 6px; }
+.modal-body .field > span { font-size: 12px; color: var(--muted); }
+
+
+/* ============================================================
+ * 管理面板用户列表（参考控制台风格）+ 编辑弹窗
+ * ============================================================ */
+.avatar-initial {
+  display: inline-grid; place-items: center; width: 28px; height: 28px; border-radius: 50%;
+  font-size: 13px; font-weight: 700; color: #fff; flex: 0 0 auto;
+}
+.avatar-initial.c0 { background: #4f7cf0; }
+.avatar-initial.c1 { background: #3fa47a; }
+.avatar-initial.c2 { background: #d98b2b; }
+.avatar-initial.c3 { background: #8a6bf0; }
+.avatar-initial.c4 { background: #cf5f7a; }
+.avatar-initial.c5 { background: #4aa3c7; }
+.avatar-sm { width: 28px; height: 28px; border-radius: 50%; }
+.avatar-xl { width: 64px; height: 64px; border-radius: 50%; }
+.avatar-initial.avatar-lg { width: 64px; height: 64px; font-size: 24px; }
+.admin-table.users td.name-cell { display: flex; align-items: center; gap: 8px; }
+.admin-table.users td.name-cell .user-name { font-weight: 600; }
+.admin-table.users td { padding: 12px 10px; }
+.admin-table.users .role-badge { background: #eef2f8; color: #46536b; }
+[data-theme='dark'] .admin-table.users .role-badge { background: #1e2937; color: #9fb0c8; }
+[data-theme='dark'] .admin-table.users .role-badge.role-super { background: #3a2122; color: #f0a9a4; }
+[data-theme='dark'] .admin-table.users .role-badge.role-admin { background: #1d2c48; color: #9dc0ff; }
+[data-theme='dark'] .admin-table.users .role-badge.role-developer { background: #17342a; color: #8ee0b8; }
+.admin-table.users tbody tr:hover { background: rgba(47,111,228,.05); }
+
+/* 弹窗 */
+.modal { border: 0; padding: 0; background: transparent; max-width: 92vw; }
+.modal::backdrop { background: rgba(8,14,24,.55); backdrop-filter: blur(2px); }
+.modal-form {
+  width: 460px; max-width: 92vw; background: var(--card); color: var(--ink);
+  border: 1px solid var(--line); border-radius: 16px; box-shadow: 0 24px 60px rgba(8,20,40,.32);
+  padding: 18px 20px 16px; display: flex; flex-direction: column; gap: 14px;
+}
+.modal-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
+.modal-who { display: flex; align-items: center; gap: 12px; }
+.modal-head strong { font-size: 17px; }
+.modal-body { display: flex; flex-direction: column; gap: 12px; }
+.modal-body label { display: flex; flex-direction: column; gap: 6px; font-size: 13px; color: var(--muted); }
+.modal-body label.check { flex-direction: row; align-items: center; gap: 8px; color: var(--ink); }
+.modal-body input[type='text'], .modal-body input[type='number'], .modal-body input[type='password'], .modal-body select {
+  height: 38px; padding: 0 10px; font: inherit; font-size: 14px; border: 1px solid var(--line);
+  border-radius: 8px; background: var(--field-bg); color: var(--ink); box-sizing: border-box; width: 100%;
+}
+.modal-body input:disabled { opacity: .6; }
+.modal-foot { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+
+
 /* 帖子配图：读者视角要看得清，别做成一排小方块 */
 .gallery { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 12px; margin-top: 16px; }
 .gallery img { width: 100%; height: 210px; object-fit: cover; border-radius: 12px; border: 1px solid var(--line); display: block; }

@@ -923,6 +923,17 @@ pub async fn delete_session(pool: &SqlitePool, id_hash: &str) -> Result<bool> {
     Ok(affected == 1)
 }
 
+/// 踢掉某个用户的所有会话（改口令、停用、封禁时用）。
+pub async fn delete_user_sessions(pool: &SqlitePool, user_id: i64) -> Result<u64> {
+    let affected = query("DELETE FROM sessions WHERE user_id = ?")
+        .bind(user_id)
+        .execute(pool)
+        .await
+        .map_err(db_err)?
+        .rows_affected();
+    Ok(affected)
+}
+
 /// 清理过期会话（启动时与后台任务调用）。
 pub async fn purge_expired_sessions(pool: &SqlitePool, now: i64) -> Result<u64> {
     let affected = query("DELETE FROM sessions WHERE expires_at <= ?")
@@ -1754,6 +1765,46 @@ pub async fn set_post_archived(
             .await
             .map_err(db_err)?
             .rows_affected();
+    Ok(affected == 1)
+}
+
+/// 管理端「编辑用户」弹窗的入参（一次性把资料改完）。
+pub struct AdminUserUpdate<'a> {
+    pub id: i64,
+    pub display_name: &'a str,
+    pub role: &'a str,
+    pub quota_bytes: i64,
+    pub trusted: bool,
+    pub activated: bool,
+    /// `None` = 不改口令。
+    pub password_hash: Option<&'a str>,
+}
+
+/// 一次 UPDATE 改完弹窗里的所有字段（省得前端为每个字段各提交一次）。
+///
+/// 激活时写入激活时间，停用时清空；口令用 `COALESCE` 保持原值。
+pub async fn admin_update_user(pool: &SqlitePool, update: AdminUserUpdate<'_>) -> Result<bool> {
+    let trusted: i64 = i64::from(update.trusted);
+    let activated: i64 = i64::from(update.activated);
+    let now = sc2clud_core::now_unix();
+    let affected = query(
+        "UPDATE users SET display_name = ?, role = ?, quota_bytes = ?, trusted = ?, \
+                activated_at = CASE WHEN ? = 1 THEN COALESCE(activated_at, ?) ELSE NULL END, \
+                password_hash = COALESCE(?, password_hash) \
+         WHERE id = ?",
+    )
+    .bind(update.display_name)
+    .bind(update.role)
+    .bind(update.quota_bytes)
+    .bind(trusted)
+    .bind(activated)
+    .bind(now)
+    .bind(update.password_hash)
+    .bind(update.id)
+    .execute(pool)
+    .await
+    .map_err(db_err)?
+    .rows_affected();
     Ok(affected == 1)
 }
 

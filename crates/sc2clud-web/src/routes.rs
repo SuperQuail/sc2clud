@@ -132,6 +132,10 @@ pub fn pages() -> Router<AppState> {
             axum::routing::get(crate::pages_admin::panel),
         )
         .route(
+            "/admin/users/{id}/update",
+            axum::routing::post(crate::pages_admin::update_user),
+        )
+        .route(
             "/admin/users/{id}",
             axum::routing::get(crate::pages_admin::user_edit),
         )
