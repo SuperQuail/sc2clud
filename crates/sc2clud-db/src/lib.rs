@@ -124,6 +124,9 @@ pub(crate) fn db_err(e: sqlx::Error) -> Error {
 }
 
 #[cfg(test)]
+mod community_tests;
+
+#[cfg(test)]
 mod tests {
     use super::*;
     use crate::repo;

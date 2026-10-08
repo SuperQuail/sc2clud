@@ -562,6 +562,49 @@ pub struct MoveImageForm {
     pub dir: String,
 }
 
+/// 分区级发言判定：**库里的分区记录** + 用户组白名单。
+///
+/// 硬编码枚举只作为初始种子；真正说了算的是 `sections` 表，
+/// 所以管理员改门槛 / 归档分区后，这里立刻生效。
+async fn ensure_section_action(
+    state: &AppState,
+    user: &CurrentUser,
+    section: &str,
+    want_post: bool,
+) -> AppResult<()> {
+    let Some(record) = repo::get_section(state.db.pool(), section).await? else {
+        return Err(AppError::Domain(DomainError::InvalidInput(
+            "这个分区不存在".to_string(),
+        )));
+    };
+    let role = Some(user.role);
+    let allowed_by_role = if want_post {
+        record.can_post(role)
+    } else {
+        record.can_reply(role)
+    };
+    if allowed_by_role {
+        return Ok(());
+    }
+    // 用户组白名单：任一组给了允许就算允许（组是加成，不是限制）
+    let rules = repo::group_rules_for_user_section(state.db.pool(), user.id, section).await?;
+    let allowed_by_group = rules.iter().any(|rule| {
+        if want_post {
+            rule.can_post == 1
+        } else {
+            rule.can_reply == 1
+        }
+    });
+    if allowed_by_group {
+        return Ok(());
+    }
+    let what = if want_post { "发帖" } else { "回帖" };
+    Err(AppError::Domain(DomainError::Forbidden(format!(
+        "你在「{}」没有{what}权限",
+        record.label
+    ))))
+}
+
 /// 取出帖子并确认当前用户有权编辑它（作者本人或管理员及以上）。
 async fn require_post_editor(
     state: &AppState,
@@ -664,6 +707,12 @@ async fn add_comment(
 ) -> AppResult<()> {
     let user = require_user(state, headers).await?;
     session::guard(Some(&user), Permission::Comment)?;
+    // 回帖同样受分区门槛约束（与发帖分开判定）
+    if let Ok(Some(post_row)) =
+        repo::get_post_for(state.db.pool(), post_id, Some(user.id), user.is_staff()).await
+    {
+        ensure_section_action(&state, &user, &post_row.section, false).await?;
+    }
     session::check_csrf(&user, &form.csrf)?;
 
     let body = form.body.trim();
@@ -736,6 +785,12 @@ pub async fn new_post_submit(
     let checked = session::guard(Some(&user), section.required_permission())
         .and_then(|()| session::check_csrf(&user, &form.csrf))
         .and_then(|()| form_sources(&form).map(|_| ()));
+    // 分区级判定要走库（管理员可能归档了分区或抬高了门槛），是异步的，
+    // 所以放在同步守卫之后单独 await。
+    let checked = match checked {
+        Ok(()) => ensure_section_action(&state, &user, section.as_str(), true).await,
+        Err(e) => Err(e),
+    };
     let outcome = match checked {
         Ok(()) => review_for_author(Some(user.role), user.trusted, kind, &title, &body, 0),
         Err(e) => {

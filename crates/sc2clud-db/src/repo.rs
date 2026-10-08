@@ -11,9 +11,10 @@ use sqlx::{SqlitePool, query, query_as};
 use crate::db_err;
 use crate::models::{
     AdminUserRow, AnnouncementRow, AuditRow, BlobRow, BlockRow, BookmarkRow, CommentWithAuthorRow,
-    ConversationRow, FileRow, FileWithOwnerRow, ImageJobRow, MessageRow, NotificationRow,
-    PostImageRow, PostRow, PostSourceRow, PostWithAuthorRow, ReleaseAssetRow, ReleaseRow,
-    SessionRow, UploadSessionRow, UserRow,
+    ConversationRow, ExpEventRow, FileRow, FileWithOwnerRow, GroupSectionRuleRow, ImageJobRow,
+    MessageRow, NotificationRow, PostImageRow, PostRow, PostSearchRow, PostSourceRow,
+    PostWithAuthorRow, ReleaseAssetRow, ReleaseRow, SectionModeratorRow, SectionRow, SessionRow,
+    TitleRow, UploadSessionRow, UserGroupRow, UserRow, UserTitleRow,
 };
 
 // ---------------------------------------------------------------- 用户
@@ -978,7 +979,7 @@ pub async fn list_feed(
            AND (p.review_state = 'approved' \
                 OR ?2 = 1 \
                 OR (p.review_state = 'pending' AND p.author_id = ?1)) \
-         ORDER BY p.created_at DESC, p.id DESC LIMIT ?3 OFFSET ?4",
+         ORDER BY p.pinned_rank DESC, p.created_at DESC, p.id DESC LIMIT ?3 OFFSET ?4",
     )
     .bind(viewer)
     .bind(staff)
@@ -1021,7 +1022,7 @@ pub async fn list_feed_by_section(
            AND (p.review_state = 'approved' \
                 OR ?2 = 1 \
                 OR (p.review_state = 'pending' AND p.author_id = ?1)) \
-         ORDER BY p.created_at DESC, p.id DESC LIMIT ?3 OFFSET ?4",
+         ORDER BY p.pinned_rank DESC, p.created_at DESC, p.id DESC LIMIT ?3 OFFSET ?4",
     )
     .bind(viewer)
     .bind(staff)
@@ -2207,6 +2208,769 @@ pub async fn recent_audit(pool: &SqlitePool, limit: i64) -> Result<Vec<AuditRow>
         .fetch_all(pool)
         .await
         .map_err(db_err)
+}
+
+// ============================================================
+// 社区结构：分区 / 分区管理员 / 用户组 / 头衔 / 等级经验 / 帖子置顶精华
+// 说明：全部只做**加法**，与既有查询解耦（搜索结果用独立的瘦行结构）。
+// ============================================================
+
+fn section_from_row(row: SectionRow) -> sc2clud_core::community::SectionRecord {
+    use sc2clud_core::auth::Role;
+    sc2clud_core::community::SectionRecord {
+        key: row.key,
+        label: row.label,
+        description: row.description,
+        position: row.position,
+        archived: row.archived_at.is_some(),
+        post_min_role: Role::parse(&row.post_min_role).unwrap_or(Role::Member),
+        reply_min_role: Role::parse(&row.reply_min_role).unwrap_or(Role::Member),
+    }
+}
+
+/// 列分区；`include_archived = false` 时只给在用的（前台用）。
+pub async fn list_sections(
+    pool: &SqlitePool,
+    include_archived: bool,
+) -> Result<Vec<sc2clud_core::community::SectionRecord>> {
+    let sql = if include_archived {
+        "SELECT * FROM sections ORDER BY position, key"
+    } else {
+        "SELECT * FROM sections WHERE archived_at IS NULL ORDER BY position, key"
+    };
+    let rows: Vec<SectionRow> = query_as(sql).fetch_all(pool).await.map_err(db_err)?;
+    Ok(rows.into_iter().map(section_from_row).collect())
+}
+
+/// 取单个分区（含归档的：归档后仍要能打开里面的内容）。
+pub async fn get_section(
+    pool: &SqlitePool,
+    key: &str,
+) -> Result<Option<sc2clud_core::community::SectionRecord>> {
+    let row: Option<SectionRow> = query_as("SELECT * FROM sections WHERE key = ?")
+        .bind(key)
+        .fetch_optional(pool)
+        .await
+        .map_err(db_err)?;
+    Ok(row.map(section_from_row))
+}
+
+/// 新建分区；key 已存在返回 `false`。
+pub async fn create_section(
+    pool: &SqlitePool,
+    key: &str,
+    label: &str,
+    description: &str,
+    position: i64,
+    post_min_role: &str,
+    reply_min_role: &str,
+    now: i64,
+) -> Result<bool> {
+    let affected = query(
+        "INSERT OR IGNORE INTO sections (key, label, description, position, post_min_role, reply_min_role, created_at, updated_at) \
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+    )
+    .bind(key)
+    .bind(label)
+    .bind(description)
+    .bind(position)
+    .bind(post_min_role)
+    .bind(reply_min_role)
+    .bind(now)
+    .bind(now)
+    .execute(pool)
+    .await
+    .map_err(db_err)?
+    .rows_affected();
+    Ok(affected == 1)
+}
+
+/// 改分区资料与权限门槛。
+pub async fn update_section(
+    pool: &SqlitePool,
+    key: &str,
+    label: &str,
+    description: &str,
+    post_min_role: &str,
+    reply_min_role: &str,
+    now: i64,
+) -> Result<bool> {
+    let affected = query(
+        "UPDATE sections SET label = ?, description = ?, post_min_role = ?, reply_min_role = ?, updated_at = ? \
+         WHERE key = ?",
+    )
+    .bind(label)
+    .bind(description)
+    .bind(post_min_role)
+    .bind(reply_min_role)
+    .bind(now)
+    .bind(key)
+    .execute(pool)
+    .await
+    .map_err(db_err)?
+    .rows_affected();
+    Ok(affected == 1)
+}
+
+/// 归档 / 取回分区。**只标记，不删内容**——取回后帖子原样回来。
+pub async fn set_section_archived(
+    pool: &SqlitePool,
+    key: &str,
+    archived: bool,
+    now: i64,
+) -> Result<bool> {
+    let affected = query(
+        "UPDATE sections SET archived_at = ?, updated_at = ? \
+         WHERE key = ? AND ((archived_at IS NULL) = ?)",
+    )
+    .bind(if archived { Some(now) } else { None })
+    .bind(now)
+    .bind(key)
+    // 归档要求「当前没归档」，恢复要求「当前已归档」；绑定值与 archived 同向
+    .bind(archived)
+    .execute(pool)
+    .await
+    .map_err(db_err)?
+    .rows_affected();
+    Ok(affected == 1)
+}
+
+/// 按给定的 key 顺序重排分区。
+///
+/// 只排**列出的**那几个，剩下的按原有顺序接在后面——
+/// 否则「部分排序」会让没列出的分区与列出的撞在同一个 position 上（测试抓到过）。
+pub async fn reorder_sections(pool: &SqlitePool, keys: &[String], now: i64) -> Result<u64> {
+    let mut tx = pool.begin().await.map_err(db_err)?;
+    let existing: Vec<(String,)> = query_as("SELECT key FROM sections ORDER BY position, key")
+        .fetch_all(&mut *tx)
+        .await
+        .map_err(db_err)?;
+    let mut ordered: Vec<String> = keys
+        .iter()
+        .filter(|key| existing.iter().any(|(k,)| k == *key))
+        .cloned()
+        .collect();
+    for (key,) in existing {
+        if !ordered.contains(&key) {
+            ordered.push(key);
+        }
+    }
+    let mut moved = 0u64;
+    for (position, key) in ordered.iter().enumerate() {
+        moved += query("UPDATE sections SET position = ?, updated_at = ? WHERE key = ?")
+            .bind(position as i64)
+            .bind(now)
+            .bind(key)
+            .execute(&mut *tx)
+            .await
+            .map_err(db_err)?
+            .rows_affected();
+    }
+    tx.commit().await.map_err(db_err)?;
+    Ok(moved)
+}
+
+/// 追加分区时用：当前最大 position + 1。
+pub async fn next_section_position(pool: &SqlitePool) -> Result<i64> {
+    let row: Option<(i64,)> = query_as("SELECT COALESCE(MAX(position), -1) + 1 FROM sections")
+        .fetch_optional(pool)
+        .await
+        .map_err(db_err)?;
+    Ok(row.map(|r| r.0).unwrap_or(0))
+}
+
+/// 分区管理员列表。
+pub async fn list_section_moderators(
+    pool: &SqlitePool,
+    section: &str,
+) -> Result<Vec<SectionModeratorRow>> {
+    let rows = query_as::<_, SectionModeratorRow>(
+        "SELECT m.user_id, u.handle, u.display_name, m.created_at \
+         FROM section_moderators m JOIN users u ON u.id = m.user_id \
+         WHERE m.section = ? ORDER BY m.created_at",
+    )
+    .bind(section)
+    .fetch_all(pool)
+    .await
+    .map_err(db_err)?;
+    Ok(rows)
+}
+
+/// 指定分区管理员（当前不附带额外权限，位置先留出来）。
+pub async fn add_section_moderator(
+    pool: &SqlitePool,
+    section: &str,
+    user_id: i64,
+    by: Option<i64>,
+    now: i64,
+) -> Result<bool> {
+    let affected = query(
+        "INSERT OR IGNORE INTO section_moderators (section, user_id, created_at, created_by) \
+         VALUES (?, ?, ?, ?)",
+    )
+    .bind(section)
+    .bind(user_id)
+    .bind(now)
+    .bind(by)
+    .execute(pool)
+    .await
+    .map_err(db_err)?
+    .rows_affected();
+    Ok(affected == 1)
+}
+
+pub async fn remove_section_moderator(
+    pool: &SqlitePool,
+    section: &str,
+    user_id: i64,
+) -> Result<bool> {
+    let affected = query("DELETE FROM section_moderators WHERE section = ? AND user_id = ?")
+        .bind(section)
+        .bind(user_id)
+        .execute(pool)
+        .await
+        .map_err(db_err)?
+        .rows_affected();
+    Ok(affected == 1)
+}
+
+pub async fn is_section_moderator(pool: &SqlitePool, section: &str, user_id: i64) -> Result<bool> {
+    let row: Option<(i64,)> =
+        query_as("SELECT 1 FROM section_moderators WHERE section = ? AND user_id = ?")
+            .bind(section)
+            .bind(user_id)
+            .fetch_optional(pool)
+            .await
+            .map_err(db_err)?;
+    Ok(row.is_some())
+}
+// ---------------------------------------------------------------- 用户组
+
+pub async fn list_user_groups(
+    pool: &SqlitePool,
+    include_archived: bool,
+) -> Result<Vec<UserGroupRow>> {
+    let sql = if include_archived {
+        "SELECT * FROM user_groups ORDER BY id"
+    } else {
+        "SELECT * FROM user_groups WHERE archived_at IS NULL ORDER BY id"
+    };
+    query_as::<_, UserGroupRow>(sql)
+        .fetch_all(pool)
+        .await
+        .map_err(db_err)
+}
+
+/// 新建用户组，返回 id；key 已存在则返回已存在的 id。
+pub async fn create_user_group(
+    pool: &SqlitePool,
+    key: &str,
+    name: &str,
+    description: &str,
+    now: i64,
+) -> Result<i64> {
+    query("INSERT OR IGNORE INTO user_groups (key, name, description, created_at) VALUES (?, ?, ?, ?)")
+        .bind(key)
+        .bind(name)
+        .bind(description)
+        .bind(now)
+        .execute(pool)
+        .await
+        .map_err(db_err)?;
+    let row: (i64,) = query_as("SELECT id FROM user_groups WHERE key = ?")
+        .bind(key)
+        .fetch_one(pool)
+        .await
+        .map_err(db_err)?;
+    Ok(row.0)
+}
+
+pub async fn set_user_group_archived(
+    pool: &SqlitePool,
+    id: i64,
+    archived: bool,
+    now: i64,
+) -> Result<bool> {
+    let affected = query(
+        "UPDATE user_groups SET archived_at = ? WHERE id = ? AND ((archived_at IS NULL) = ?)",
+    )
+    .bind(if archived { Some(now) } else { None })
+    .bind(id)
+    .bind(archived)
+    .execute(pool)
+    .await
+    .map_err(db_err)?
+    .rows_affected();
+    Ok(affected == 1)
+}
+
+pub async fn add_group_member(
+    pool: &SqlitePool,
+    group_id: i64,
+    user_id: i64,
+    now: i64,
+) -> Result<bool> {
+    let affected = query(
+        "INSERT OR IGNORE INTO user_group_members (group_id, user_id, created_at) VALUES (?, ?, ?)",
+    )
+    .bind(group_id)
+    .bind(user_id)
+    .bind(now)
+    .execute(pool)
+    .await
+    .map_err(db_err)?
+    .rows_affected();
+    Ok(affected == 1)
+}
+
+pub async fn remove_group_member(pool: &SqlitePool, group_id: i64, user_id: i64) -> Result<bool> {
+    let affected = query("DELETE FROM user_group_members WHERE group_id = ? AND user_id = ?")
+        .bind(group_id)
+        .bind(user_id)
+        .execute(pool)
+        .await
+        .map_err(db_err)?
+        .rows_affected();
+    Ok(affected == 1)
+}
+
+/// 组成员：`(user_id, handle, display_name)`。
+pub async fn list_group_members(
+    pool: &SqlitePool,
+    group_id: i64,
+) -> Result<Vec<(i64, String, String)>> {
+    let rows: Vec<(i64, String, String)> = query_as(
+        "SELECT u.id, u.handle, u.display_name FROM user_group_members m \
+         JOIN users u ON u.id = m.user_id WHERE m.group_id = ? ORDER BY m.created_at",
+    )
+    .bind(group_id)
+    .fetch_all(pool)
+    .await
+    .map_err(db_err)?;
+    Ok(rows)
+}
+
+/// 某人所在的（未归档）组。
+pub async fn list_user_groups_for(pool: &SqlitePool, user_id: i64) -> Result<Vec<UserGroupRow>> {
+    let rows = query_as::<_, UserGroupRow>(
+        "SELECT g.* FROM user_groups g JOIN user_group_members m ON m.group_id = g.id \
+         WHERE m.user_id = ? AND g.archived_at IS NULL ORDER BY g.id",
+    )
+    .bind(user_id)
+    .fetch_all(pool)
+    .await
+    .map_err(db_err)?;
+    Ok(rows)
+}
+
+/// 设置「组 × 分区」的发言规则（有行 = 该组在该分区可以发/回）。
+pub async fn set_group_section_rule(
+    pool: &SqlitePool,
+    group_id: i64,
+    section: &str,
+    can_post: bool,
+    can_reply: bool,
+) -> Result<()> {
+    query(
+        "INSERT INTO group_section_rules (group_id, section, can_post, can_reply) VALUES (?, ?, ?, ?) \
+         ON CONFLICT(group_id, section) DO UPDATE SET can_post = excluded.can_post, can_reply = excluded.can_reply",
+    )
+    .bind(group_id)
+    .bind(section)
+    .bind(i64::from(can_post))
+    .bind(i64::from(can_reply))
+    .execute(pool)
+    .await
+    .map_err(db_err)?;
+    Ok(())
+}
+
+pub async fn remove_group_section_rule(
+    pool: &SqlitePool,
+    group_id: i64,
+    section: &str,
+) -> Result<bool> {
+    let affected = query("DELETE FROM group_section_rules WHERE group_id = ? AND section = ?")
+        .bind(group_id)
+        .bind(section)
+        .execute(pool)
+        .await
+        .map_err(db_err)?
+        .rows_affected();
+    Ok(affected == 1)
+}
+
+pub async fn list_group_section_rules(
+    pool: &SqlitePool,
+    group_id: i64,
+) -> Result<Vec<GroupSectionRuleRow>> {
+    query_as::<_, GroupSectionRuleRow>(
+        "SELECT * FROM group_section_rules WHERE group_id = ? ORDER BY section",
+    )
+    .bind(group_id)
+    .fetch_all(pool)
+    .await
+    .map_err(db_err)
+}
+
+/// 影响「某人在某分区」的组规则（只取未归档的组）。
+///
+/// 判定策略：**任一组给了允许就算允许**（组是加成，不是限制）。
+pub async fn group_rules_for_user_section(
+    pool: &SqlitePool,
+    user_id: i64,
+    section: &str,
+) -> Result<Vec<GroupSectionRuleRow>> {
+    query_as::<_, GroupSectionRuleRow>(
+        "SELECT r.* FROM group_section_rules r \
+         JOIN user_group_members m ON m.group_id = r.group_id \
+         JOIN user_groups g ON g.id = r.group_id \
+         WHERE m.user_id = ? AND r.section = ? AND g.archived_at IS NULL",
+    )
+    .bind(user_id)
+    .bind(section)
+    .fetch_all(pool)
+    .await
+    .map_err(db_err)
+}
+
+// ---------------------------------------------------------------- 头衔
+
+pub async fn list_titles(pool: &SqlitePool, include_archived: bool) -> Result<Vec<TitleRow>> {
+    let sql = if include_archived {
+        "SELECT * FROM titles ORDER BY id"
+    } else {
+        "SELECT * FROM titles WHERE archived_at IS NULL ORDER BY id"
+    };
+    query_as::<_, TitleRow>(sql)
+        .fetch_all(pool)
+        .await
+        .map_err(db_err)
+}
+
+pub async fn create_title(
+    pool: &SqlitePool,
+    key: &str,
+    name: &str,
+    color: &str,
+    description: &str,
+    now: i64,
+) -> Result<i64> {
+    query("INSERT OR IGNORE INTO titles (key, name, color, description, created_at) VALUES (?, ?, ?, ?, ?)")
+        .bind(key)
+        .bind(name)
+        .bind(color)
+        .bind(description)
+        .bind(now)
+        .execute(pool)
+        .await
+        .map_err(db_err)?;
+    let row: (i64,) = query_as("SELECT id FROM titles WHERE key = ?")
+        .bind(key)
+        .fetch_one(pool)
+        .await
+        .map_err(db_err)?;
+    Ok(row.0)
+}
+
+pub async fn set_title_archived(
+    pool: &SqlitePool,
+    id: i64,
+    archived: bool,
+    now: i64,
+) -> Result<bool> {
+    let affected =
+        query("UPDATE titles SET archived_at = ? WHERE id = ? AND ((archived_at IS NULL) = ?)")
+            .bind(if archived { Some(now) } else { None })
+            .bind(id)
+            .bind(archived)
+            .execute(pool)
+            .await
+            .map_err(db_err)?
+            .rows_affected();
+    Ok(affected == 1)
+}
+
+/// 授予头衔（同一个头衔重复授予是幂等的）。
+pub async fn grant_title(
+    pool: &SqlitePool,
+    user_id: i64,
+    title_id: i64,
+    by: Option<i64>,
+    now: i64,
+) -> Result<bool> {
+    let affected = query(
+        "INSERT OR IGNORE INTO user_titles (user_id, title_id, granted_at, granted_by) \
+         VALUES (?, ?, ?, ?)",
+    )
+    .bind(user_id)
+    .bind(title_id)
+    .bind(now)
+    .bind(by)
+    .execute(pool)
+    .await
+    .map_err(db_err)?
+    .rows_affected();
+    Ok(affected == 1)
+}
+
+/// 收回头衔；如果正戴着它，顺带摘掉。
+pub async fn revoke_title(pool: &SqlitePool, user_id: i64, title_id: i64) -> Result<bool> {
+    let mut tx = pool.begin().await.map_err(db_err)?;
+    query("DELETE FROM user_titles WHERE user_id = ? AND title_id = ?")
+        .bind(user_id)
+        .bind(title_id)
+        .execute(&mut *tx)
+        .await
+        .map_err(db_err)?;
+    query("UPDATE users SET equipped_title_id = NULL WHERE id = ? AND equipped_title_id = ?")
+        .bind(user_id)
+        .bind(title_id)
+        .execute(&mut *tx)
+        .await
+        .map_err(db_err)?;
+    tx.commit().await.map_err(db_err)?;
+    Ok(true)
+}
+
+/// 某人持有的全部头衔（带「是否正在佩戴」标记）。
+pub async fn list_user_titles(pool: &SqlitePool, user_id: i64) -> Result<Vec<UserTitleRow>> {
+    query_as::<_, UserTitleRow>(
+        "SELECT t.id AS title_id, t.key, t.name, t.color, ut.granted_at, \
+                CASE WHEN u.equipped_title_id = t.id THEN 1 ELSE 0 END AS equipped \
+         FROM user_titles ut \
+         JOIN titles t ON t.id = ut.title_id \
+         JOIN users u ON u.id = ut.user_id \
+         WHERE ut.user_id = ? ORDER BY ut.granted_at DESC, t.id",
+    )
+    .bind(user_id)
+    .fetch_all(pool)
+    .await
+    .map_err(db_err)
+}
+
+/// 佩戴某个头衔；传 `None` 表示都不戴。**必须持有该头衔**，否则返回 `false`。
+pub async fn set_equipped_title(
+    pool: &SqlitePool,
+    user_id: i64,
+    title_id: Option<i64>,
+) -> Result<bool> {
+    if let Some(id) = title_id {
+        let owns: Option<(i64,)> =
+            query_as("SELECT 1 FROM user_titles WHERE user_id = ? AND title_id = ?")
+                .bind(user_id)
+                .bind(id)
+                .fetch_optional(pool)
+                .await
+                .map_err(db_err)?;
+        if owns.is_none() {
+            return Ok(false);
+        }
+    }
+    query("UPDATE users SET equipped_title_id = ? WHERE id = ?")
+        .bind(title_id)
+        .bind(user_id)
+        .execute(pool)
+        .await
+        .map_err(db_err)?;
+    Ok(true)
+}
+
+// ---------------------------------------------------------------- 等级 / 经验
+
+/// 记一笔经验并重算等级，返回 `(exp, level)`。
+///
+/// 当前**只记账**：增长规则与前端之后再接（用户要求「先做数据库注册」）。
+pub async fn add_exp(
+    pool: &SqlitePool,
+    user_id: i64,
+    delta: i64,
+    reason: &str,
+    reference: Option<&str>,
+    now: i64,
+) -> Result<(i64, i64)> {
+    let mut tx = pool.begin().await.map_err(db_err)?;
+    query(
+        "INSERT INTO exp_events (user_id, delta, reason, ref, created_at) VALUES (?, ?, ?, ?, ?)",
+    )
+    .bind(user_id)
+    .bind(delta)
+    .bind(reason)
+    .bind(reference)
+    .bind(now)
+    .execute(&mut *tx)
+    .await
+    .map_err(db_err)?;
+    let row: (i64,) = query_as("SELECT exp FROM users WHERE id = ?")
+        .bind(user_id)
+        .fetch_one(&mut *tx)
+        .await
+        .map_err(db_err)?;
+    let exp = (row.0 + delta).max(0);
+    let level = sc2clud_core::community::level_for_exp(exp);
+    query("UPDATE users SET exp = ?, level = ? WHERE id = ?")
+        .bind(exp)
+        .bind(level)
+        .bind(user_id)
+        .execute(&mut *tx)
+        .await
+        .map_err(db_err)?;
+    tx.commit().await.map_err(db_err)?;
+    Ok((exp, level))
+}
+
+pub async fn list_exp_events(
+    pool: &SqlitePool,
+    user_id: i64,
+    limit: i64,
+) -> Result<Vec<ExpEventRow>> {
+    query_as::<_, ExpEventRow>(
+        "SELECT id, delta, reason, created_at FROM exp_events \
+         WHERE user_id = ? ORDER BY created_at DESC, id DESC LIMIT ?",
+    )
+    .bind(user_id)
+    .bind(limit.clamp(1, 200))
+    .fetch_all(pool)
+    .await
+    .map_err(db_err)
+}
+// ---------------------------------------------------------------- 帖子：置顶 / 精华 / 推送 / 搜索
+
+/// 置顶：`rank` 越大越靠前，0 = 取消置顶。
+pub async fn set_post_pinned(
+    pool: &SqlitePool,
+    post_id: i64,
+    rank: i64,
+    by: Option<i64>,
+    now: i64,
+) -> Result<bool> {
+    let affected = query(
+        "UPDATE posts SET pinned_rank = ?, \
+                pinned_at = CASE WHEN ? > 0 THEN ? ELSE NULL END, \
+                pinned_by = CASE WHEN ? > 0 THEN ? ELSE NULL END \
+         WHERE id = ? AND deleted_at IS NULL",
+    )
+    .bind(rank.max(0))
+    .bind(rank.max(0))
+    .bind(now)
+    .bind(rank.max(0))
+    .bind(by)
+    .bind(post_id)
+    .execute(pool)
+    .await
+    .map_err(db_err)?
+    .rows_affected();
+    Ok(affected == 1)
+}
+
+/// 精华：标记 / 取消。
+pub async fn set_post_featured(
+    pool: &SqlitePool,
+    post_id: i64,
+    featured: bool,
+    by: Option<i64>,
+    now: i64,
+) -> Result<bool> {
+    let affected = query(
+        "UPDATE posts SET featured_at = CASE WHEN ? = 1 THEN ? ELSE NULL END, \
+                featured_by = CASE WHEN ? = 1 THEN ? ELSE NULL END \
+         WHERE id = ? AND deleted_at IS NULL",
+    )
+    .bind(i64::from(featured))
+    .bind(now)
+    .bind(i64::from(featured))
+    .bind(by)
+    .bind(post_id)
+    .execute(pool)
+    .await
+    .map_err(db_err)?
+    .rows_affected();
+    Ok(affected == 1)
+}
+
+/// 记一次「推送」（发系统通知的动作由 Web 层做，这里只落时间戳）。
+pub async fn mark_post_pushed(pool: &SqlitePool, post_id: i64, now: i64) -> Result<bool> {
+    let affected = query("UPDATE posts SET pushed_at = ? WHERE id = ?")
+        .bind(now)
+        .bind(post_id)
+        .execute(pool)
+        .await
+        .map_err(db_err)?
+        .rows_affected();
+    Ok(affected == 1)
+}
+
+/// 把 LIKE 的通配符转义掉（用户输入里的 % 和 _ 不该当通配符）。
+fn like_pattern(term: &str) -> String {
+    let escaped = term
+        .replace('\\', "\\\\")
+        .replace('%', "\\%")
+        .replace('_', "\\_");
+    format!("%{escaped}%")
+}
+
+/// 帖子搜索：标题优先于正文（标题命中排前面），再按置顶、时间。
+///
+/// 用 LIKE 而不是 FTS5：迁移不能失败——线上 SQLite 是否编译了 FTS5 不确定，
+/// 而帖子量级（几千条）下 LIKE + 索引已经够用。
+pub async fn search_posts(
+    pool: &SqlitePool,
+    term: &str,
+    section: Option<&str>,
+    limit: i64,
+    offset: i64,
+) -> Result<Vec<PostSearchRow>> {
+    let pattern = like_pattern(term);
+    let section = section.unwrap_or_default();
+    let rows = query_as::<_, PostSearchRow>(
+        "SELECT p.id, p.title, p.section, p.created_at, p.pinned_rank, p.featured_at, \
+                p.author_id, u.handle AS author_handle, \
+                COALESCE(NULLIF(u.display_name, ''), u.handle) AS author_display_name, \
+                (SELECT COUNT(*) FROM comments c WHERE c.post_id = p.id AND c.deleted_at IS NULL) AS comment_count \
+         FROM posts p JOIN users u ON u.id = p.author_id \
+         WHERE p.deleted_at IS NULL AND p.archived_at IS NULL AND p.review_state = 'approved' \
+           AND (? = '' OR p.section = ?) \
+           AND (p.title LIKE ? ESCAPE '\\' OR p.body LIKE ? ESCAPE '\\') \
+         ORDER BY (p.title LIKE ? ESCAPE '\\') DESC, p.pinned_rank DESC, p.created_at DESC \
+         LIMIT ? OFFSET ?",
+    )
+    .bind(section)
+    .bind(section)
+    .bind(&pattern)
+    .bind(&pattern)
+    .bind(&pattern)
+    .bind(limit.clamp(1, 100))
+    .bind(offset.max(0))
+    .fetch_all(pool)
+    .await
+    .map_err(db_err)?;
+    Ok(rows)
+}
+
+/// 精华帖列表（可按分区过滤）。
+pub async fn list_featured_posts(
+    pool: &SqlitePool,
+    section: Option<&str>,
+    limit: i64,
+) -> Result<Vec<PostSearchRow>> {
+    let section = section.unwrap_or_default();
+    let rows = query_as::<_, PostSearchRow>(
+        "SELECT p.id, p.title, p.section, p.created_at, p.pinned_rank, p.featured_at, \
+                p.author_id, u.handle AS author_handle, \
+                COALESCE(NULLIF(u.display_name, ''), u.handle) AS author_display_name, \
+                (SELECT COUNT(*) FROM comments c WHERE c.post_id = p.id AND c.deleted_at IS NULL) AS comment_count \
+         FROM posts p JOIN users u ON u.id = p.author_id \
+         WHERE p.deleted_at IS NULL AND p.archived_at IS NULL AND p.review_state = 'approved' \
+           AND p.featured_at IS NOT NULL AND (? = '' OR p.section = ?) \
+         ORDER BY p.featured_at DESC LIMIT ?",
+    )
+    .bind(section)
+    .bind(section)
+    .bind(limit.clamp(1, 100))
+    .fetch_all(pool)
+    .await
+    .map_err(db_err)?;
+    Ok(rows)
 }
 
 pub async fn counter_value(pool: &SqlitePool, key: &str) -> Result<i64> {

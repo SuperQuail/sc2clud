@@ -72,6 +72,92 @@ pub struct PostWithAuthorRow {
     pub bookmark_count: i64,
 }
 
+/// 分区（管理员可增删 / 归档 / 排序，所以不写死在枚举里）。
+#[derive(Debug, Clone, FromRow)]
+pub struct SectionRow {
+    pub key: String,
+    pub label: String,
+    pub description: String,
+    pub position: i64,
+    pub archived_at: Option<i64>,
+    pub post_min_role: String,
+    pub reply_min_role: String,
+}
+
+/// 分区管理员（当前不给额外权限，先把人记下来）。
+#[derive(Debug, Clone, FromRow)]
+pub struct SectionModeratorRow {
+    pub user_id: i64,
+    pub handle: String,
+    pub display_name: String,
+    pub created_at: i64,
+}
+
+/// 用户组。
+#[derive(Debug, Clone, FromRow)]
+pub struct UserGroupRow {
+    pub id: i64,
+    pub key: String,
+    pub name: String,
+    pub description: String,
+    pub archived_at: Option<i64>,
+}
+
+/// 组 × 分区的发言规则。
+#[derive(Debug, Clone, FromRow)]
+pub struct GroupSectionRuleRow {
+    pub group_id: i64,
+    pub section: String,
+    pub can_post: i64,
+    pub can_reply: i64,
+}
+
+/// 头衔。
+#[derive(Debug, Clone, FromRow)]
+pub struct TitleRow {
+    pub id: i64,
+    pub key: String,
+    pub name: String,
+    pub color: String,
+    pub description: String,
+    pub archived_at: Option<i64>,
+}
+
+/// 用户持有的头衔（`equipped` = 当前佩戴的那个）。
+#[derive(Debug, Clone, FromRow)]
+pub struct UserTitleRow {
+    pub title_id: i64,
+    pub key: String,
+    pub name: String,
+    pub color: String,
+    pub granted_at: i64,
+    pub equipped: i64,
+}
+
+/// 经验事件（等级增长的流水，当前只记账）。
+#[derive(Debug, Clone, FromRow)]
+pub struct ExpEventRow {
+    pub id: i64,
+    pub delta: i64,
+    pub reason: String,
+    pub created_at: i64,
+}
+
+/// 搜索结果用的一行（**故意比 [`PostWithAuthorRow`] 瘦**：不动既有查询）。
+#[derive(Debug, Clone, FromRow)]
+pub struct PostSearchRow {
+    pub id: i64,
+    pub title: String,
+    pub section: String,
+    pub created_at: i64,
+    pub pinned_rank: i64,
+    pub featured_at: Option<i64>,
+    pub author_id: i64,
+    pub author_handle: String,
+    pub author_display_name: String,
+    pub comment_count: i64,
+}
+
 /// 回复 + 作者。
 #[derive(Debug, Clone, FromRow)]
 pub struct CommentWithAuthorRow {
