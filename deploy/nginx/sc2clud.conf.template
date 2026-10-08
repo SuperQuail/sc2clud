@@ -7,7 +7,8 @@
 #   PLAIN_LISTEN_BEGIN/END 有 TLS 时删除（listen 80）
 #   TLS_ONLY_BEGIN/END     无 TLS 时删除（证书指令）
 #   SECURELINK_BEGIN/END   nginx 无 secure_link 模块时删除（/dl 签名直出）
-# 并把 __DOWNLOAD_SECRET__ / __DOMAIN__ 替换成真实值。
+# 并把 __DOWNLOAD_SECRET__ / __DOMAIN_NAMES__ / __DEFAULT_SERVER__ 替换成真实值。
+# __DOMAIN_NAMES__ 是空格分隔的完整列表（含 IP 与各域名，nginx 只认 punycode）。
 #
 # 依赖模块：http_limit_conn_module / http_limit_req_module（官方包与宝塔均有）
 # 可选模块：http_secure_link_module（缺失则改用 X-Accel-Redirect）、http_brotli_static_module
@@ -30,7 +31,7 @@ upstream sc2clud_app {
 # TLS 终止在 nginx：80 只留跳转
 server {
     listen 80;
-    server_name __DOMAIN__;
+    server_name __DOMAIN_NAMES__;
     return 301 https://$host$request_uri;
 }
 # @@REDIRECT_END@@
@@ -41,9 +42,9 @@ server {
     http2 on;
 # @@TLS_LISTEN_END@@
 # @@PLAIN_LISTEN_BEGIN@@
-    listen 80;
+    listen 80__DEFAULT_SERVER__;
 # @@PLAIN_LISTEN_END@@
-    server_name __DOMAIN__;
+    server_name __DOMAIN_NAMES__;
 
 # @@TLS_ONLY_BEGIN@@
     ssl_certificate     /etc/letsencrypt/live/__DOMAIN__/fullchain.pem;

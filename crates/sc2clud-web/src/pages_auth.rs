@@ -35,24 +35,91 @@ pub struct LoginForm {
     pub password: String,
 }
 
+/// 从 URL 里抠出 host（含端口，去掉默认端口）。
+fn host_of(url: &str) -> Option<String> {
+    let rest = url.split("://").nth(1).unwrap_or(url);
+    let host = rest.split('/').next()?.trim().to_ascii_lowercase();
+    if host.is_empty() {
+        return None;
+    }
+    Some(
+        host.strip_suffix(":80")
+            .or_else(|| host.strip_suffix(":443"))
+            .unwrap_or(&host)
+            .to_string(),
+    )
+}
+
+/// 判断某个 Origin 是否算「本站」。
+///
+/// **优先比请求自己的 Host 头**：站点会被域名、www、IP 等多种方式访问，
+/// 把 base_url 写死会导致换域名后登录直接被 403（踩过一次）。
+/// base_url 只作为兜底（例如反向代理没透传 Host 时）。
+fn origin_is_same_site(origin: &str, host_header: Option<&str>, base_url: &str) -> bool {
+    let Some(origin_host) = host_of(origin) else {
+        return false;
+    };
+    if let Some(host) = host_header.and_then(host_of) {
+        if host == origin_host {
+            return true;
+        }
+    }
+    host_of(base_url).as_deref() == Some(origin_host.as_str())
+}
+
 /// 校验请求来源：表单页与提交必须同源（挡 CSRF）。
 fn check_origin(state: &AppState, headers: &HeaderMap) -> AppResult<()> {
-    let expected = state
-        .config
-        .server
-        .base_url
-        .trim_end_matches('/')
-        .to_string();
     let origin = headers
         .get(header::ORIGIN)
         .or_else(|| headers.get(header::REFERER))
-        .and_then(|value| value.to_str().ok())
-        .map(|value| value.trim_end_matches('/').to_string());
+        .and_then(|value| value.to_str().ok());
+    let host = headers
+        .get(header::HOST)
+        .and_then(|value| value.to_str().ok());
     match origin {
-        Some(origin) if origin.starts_with(&expected) => Ok(()),
+        Some(origin) if origin_is_same_site(origin, host, &state.config.server.base_url) => Ok(()),
         _ => Err(AppError::Domain(DomainError::Forbidden(
             "请求来源校验失败，请从站点页面重试".to_string(),
         ))),
+    }
+}
+
+#[cfg(test)]
+mod origin_tests {
+    use super::*;
+
+    #[test]
+    fn same_host_passes() {
+        // 域名访问：Host 头就是域名，Origin 也是域名 → 同源
+        assert!(origin_is_same_site(
+            "http://www.xn--xpra07ba.fun",
+            Some("www.xn--xpra07ba.fun"),
+            "http://191.40.41.97"
+        ));
+        // 默认端口应当被抹平
+        assert!(origin_is_same_site(
+            "http://example.com:80",
+            Some("example.com"),
+            "http://191.40.41.97"
+        ));
+    }
+
+    #[test]
+    fn base_url_still_works_as_fallback() {
+        assert!(origin_is_same_site(
+            "http://191.40.41.97",
+            None,
+            "http://191.40.41.97"
+        ));
+    }
+
+    #[test]
+    fn foreign_origin_is_rejected() {
+        assert!(!origin_is_same_site(
+            "http://evil.example",
+            Some("www.xn--xpra07ba.fun"),
+            "http://191.40.41.97"
+        ));
     }
 }
 
