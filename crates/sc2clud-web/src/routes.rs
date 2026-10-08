@@ -140,6 +140,14 @@ pub fn pages() -> Router<AppState> {
             axum::routing::post(crate::pages_admin::create_user),
         )
         .route(
+            "/admin/users/{id}/trusted",
+            axum::routing::post(crate::pages_admin::set_trusted),
+        )
+        .route(
+            "/admin/sections/{section}/cover",
+            axum::routing::post(crate::pages_admin::set_section_cover),
+        )
+        .route(
             "/admin/users/{id}/activate",
             axum::routing::post(crate::pages_admin::activate),
         )
@@ -395,14 +403,23 @@ async fn build_index<'a>(
         announcement: repo::latest_announcement(state.db.pool())
             .await?
             .map(|row| (row.title, row.body)),
-        sections: PostSection::ALL
-            .iter()
-            .map(|s| SectionOption {
-                value: s.as_str().to_string(),
-                label: s.label().to_string(),
-                checked: section == Some(*s),
-            })
-            .collect(),
+        sections: {
+            let covers: std::collections::HashMap<String, String> =
+                repo::list_section_covers(state.db.pool())
+                    .await?
+                    .into_iter()
+                    .map(|(section, hash, _mime)| (section, hash))
+                    .collect();
+            PostSection::ALL
+                .iter()
+                .map(|s| SectionOption {
+                    value: s.as_str().to_string(),
+                    label: s.label().to_string(),
+                    checked: section == Some(*s),
+                    cover: covers.get(s.as_str()).cloned(),
+                })
+                .collect()
+        },
         visible_posts: feed.len() as i64,
         posts: feed.iter().map(|row| feed_view(row, viewer_id)).collect(),
         is_staff,
@@ -802,7 +819,7 @@ pub async fn create_post(
     // 三类帖子对所有已激活用户开放；管理员及以上跳过审核机直接发布。
     let kind = PostKind::parse(req.kind.as_deref().unwrap_or("discussion"))?;
     session::guard(Some(&user), kind.required_permission())?;
-    let outcome = review_for_author(Some(user.role), kind, title, body, 0);
+    let outcome = review_for_author(Some(user.role), user.trusted, kind, title, body, 0);
     if !outcome.state.visible_to(false, false) {
         // 被拒的帖子不进 feed：这里先把结论记下来，由调用方看到 422 的说明。
         tracing::info!(user.id = user.id, note = ?outcome.note, "帖子被审核机拒绝");

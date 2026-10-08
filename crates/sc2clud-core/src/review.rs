@@ -138,12 +138,18 @@ const SUSPICIOUS_KEYWORDS: [&str; 6] = ["加微信", "刷单", "代充", "免费
 /// 外链数量上限：超过就转人工。
 const MAX_LINKS: usize = 5;
 
-/// 发帖时的审核入口：**管理员及以上直接放行，不走审核机**。
+/// 发帖时的审核入口。
 ///
-/// 其余角色一律过审核机（绝大多数会直接通过）。
-/// 返回的 `automatic: false` 表示这是「人（管理动作）」的决定，不是审核机的结论。
+/// 三种情况：
+///
+/// | 身份 | 行为 |
+/// | --- | --- |
+/// | 管理员及以上 | 直接放行（`automatic: false`，是「人」的决定） |
+/// | **被信任的账号** | **只走自动审核**：审核机说行就行，不进人工队列 |
+/// | 其它 | 过审核机；审核机拿不准的进人工队列（`pending`） |
 pub fn review_for_author(
     role: Option<Role>,
+    trusted: bool,
     kind: PostKind,
     title: &str,
     body: &str,
@@ -156,7 +162,19 @@ pub fn review_for_author(
             automatic: false,
         };
     }
-    auto_review(kind, title, body, image_count)
+    let outcome = auto_review(kind, title, body, image_count);
+    if !trusted {
+        return outcome;
+    }
+    // 信任账号：把「审核机拿不准」直接当作放行——信任的意义就在于此。
+    match outcome.state {
+        ReviewState::Pending => ReviewOutcome {
+            state: ReviewState::Approved,
+            note: Some("信任账号：仅走自动审核".to_string()),
+            automatic: true,
+        },
+        _ => outcome,
+    }
 }
 
 /// 审核机：**绝大多数情况直接过**。
@@ -283,24 +301,44 @@ mod tests {
     fn admins_publish_without_review() {
         use crate::auth::Role;
         // 命中硬规则的内容，管理员仍然直接发布
-        let out = review_for_author(Some(Role::Admin), PostKind::Discussion, "x", "y", 0);
+        let out = review_for_author(Some(Role::Admin), false, PostKind::Discussion, "x", "y", 0);
         assert_eq!(out.state, ReviewState::Approved);
         assert!(!out.automatic, "管理动作不是审核机的结论");
 
-        let super_out = review_for_author(Some(Role::Super), PostKind::Resource, "x", "y", 0);
+        let super_out =
+            review_for_author(Some(Role::Super), false, PostKind::Resource, "x", "y", 0);
         assert_eq!(super_out.state, ReviewState::Approved);
 
         // 普通用户与开发者仍然走审核机
-        let member = review_for_author(Some(Role::Member), PostKind::Discussion, "x", "y", 0);
+        let member =
+            review_for_author(Some(Role::Member), false, PostKind::Discussion, "x", "y", 0);
         assert_eq!(member.state, ReviewState::Rejected);
         let dev_sus = review_for_author(
             Some(Role::Developer),
+            false,
             PostKind::Discussion,
             "好物",
             "加微信",
             0,
         );
         assert_eq!(dev_sus.state, ReviewState::Pending);
+
+        // 被信任的账号：只走自动审核，审核机拿不准的直接放行
+        let trusted = review_for_author(
+            Some(Role::Member),
+            true,
+            PostKind::Discussion,
+            "好物",
+            "加微信",
+            0,
+        );
+        assert_eq!(trusted.state, ReviewState::Approved, "信任账号不进人工队列");
+        assert!(trusted.automatic, "这是审核机的结论，不是人的决定");
+
+        // 但硬规则仍然拦得住：信任不等于免死金牌
+        let trusted_bad =
+            review_for_author(Some(Role::Member), true, PostKind::Discussion, "x", "y", 0);
+        assert_eq!(trusted_bad.state, ReviewState::Rejected);
     }
 
     #[test]

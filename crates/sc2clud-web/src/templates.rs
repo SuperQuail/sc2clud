@@ -207,6 +207,10 @@ pub struct PostPageTemplate<'a> {
     /// CSRF 令牌（表单隐藏字段）；用 String 以免模板结构体借用调用方的局部变量。
     pub csrf: String,
     pub post: PostDetailView,
+    /// 左侧分区导航（快捷进入其它分区）。
+    pub sections: Vec<SectionOption>,
+    /// 当前查看者能否与作者互动（登录、已激活、且不是作者本人）。
+    pub can_interact: bool,
     /// 配图（原图或压缩图，按 position 顺序）。
     pub images: Vec<ImageView>,
     /// 下载来源（资源帖；仅这些帖子有）。
@@ -223,6 +227,10 @@ pub struct PostPageTemplate<'a> {
 pub struct PostDetailView {
     pub id: i64,
     pub avatar: Option<String>,
+    /// 作者的登录名（右栏「主页 / 私信」跳转用）。
+    pub author_handle: String,
+    /// 回复数（右栏数据卡）。
+    pub comment_count: i64,
     pub title: String,
     pub section: String,
     pub section_label: String,
@@ -301,6 +309,8 @@ pub struct SectionOption {
     pub value: String,
     pub label: String,
     pub checked: bool,
+    /// 分区封面（管理员设置过才有）。
+    pub cover: Option<String>,
 }
 
 /// 发帖页的来源下拉项。
@@ -315,6 +325,8 @@ pub struct SourceSlot {
     pub url: String,
     pub code: String,
     pub provider: String,
+    /// 自定义显示名（可留空）。
+    pub label: String,
 }
 
 /// 编辑帖子（作者本人或管理员）。
@@ -331,6 +343,9 @@ pub struct EditPostTemplate<'a> {
     pub review_note: Option<String>,
     pub kinds: Vec<KindOption>,
     pub sections: Vec<SectionOption>,
+    pub providers: Vec<ProviderOption>,
+    /// 已有的下载来源（**必须回填**：编辑保存会整体重写来源，漏了就全丢了）。
+    pub sources: Vec<SourceSlot>,
     // 用 String 而不是借用：模板结构体要能独立于调用方的局部变量返回
     pub title: String,
     pub body: String,
@@ -568,11 +583,15 @@ pub struct AdminTemplate<'a> {
     pub users: Vec<AdminUserView>,
     /// 待审核的帖子（按提交时间正序，先来先审）。
     pub pending: Vec<FeedView>,
+    /// 分区与它们的封面（封面卡片用）。
+    pub sections: Vec<SectionOption>,
 }
 
 /// 管理员面板里的用户行。
 pub struct AdminUserView {
     pub id: i64,
+    /// 是否被信任（发帖只走自动审核）。
+    pub trusted: bool,
     pub email: String,
     /// 已分配预算（可读文本，如「1 GB」）。
     pub quota_human: String,

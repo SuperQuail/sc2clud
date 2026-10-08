@@ -15,6 +15,8 @@ pub struct UserRow {
     pub avatar_hash: Option<String>,
     /// 头像 MIME。
     pub avatar_mime: Option<String>,
+    /// 是否被信任（1 = 发帖只走自动审核）。
+    pub trusted: i64,
     pub email: Option<String>,
     pub password_hash: String,
     pub role: String,
@@ -193,6 +195,8 @@ pub struct AdminUserRow {
     pub quota_bytes: i64,
     /// 已占用（消费逻辑之后再做，现在恒为 0）。
     pub used_bytes: i64,
+    /// 是否被信任（1 = 发帖只走自动审核）。
+    pub trusted: i64,
 }
 
 /// 资源帖的下载来源（网盘 / GitHub / 直链）。

@@ -28,6 +28,8 @@ pub struct CurrentUser {
     pub display_name: String,
     /// 头像的内容摘要（NULL = 用首字母兜底）。
     pub avatar_hash: Option<String>,
+    /// 被信任的账号：发帖只走自动审核。
+    pub trusted: bool,
     pub role: Role,
     pub activated: bool,
     pub csrf_token: String,
@@ -78,6 +80,7 @@ pub async fn current_user(state: &AppState, headers: &HeaderMap) -> AppResult<Op
         handle: user.handle,
         display_name,
         avatar_hash: user.avatar_hash,
+        trusted: user.trusted != 0,
         role,
         activated: user.activated_at.is_some(),
         csrf_token: session.csrf_token,

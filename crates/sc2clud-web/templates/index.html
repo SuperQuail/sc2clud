@@ -17,6 +17,11 @@
 {% block bar_avatar %}{% if let Some(hash) = my_avatar %}/avatar/{{ hash }}{% else %}/static/art/miyin-chibi-80.webp{% endif %}{% endblock %}
 
 {% block content %}
+{% for section in sections %}{% if section.checked %}{% if let Some(cover) = section.cover %}
+<div class="section-banner" style="background-image:url('/img/{{ cover }}')">
+  <div class="inner"><h3>{{ section.label }}</h3></div>
+</div>
+{% endif %}{% endif %}{% endfor %}
 {% if let Some((title, body)) = announcement %}
 <section class="card announce-banner">
   <div class="chips"><span class="chip">系统公告</span></div>
@@ -31,7 +36,7 @@
     <nav class="section-nav">
       <a href="/" class="{% if sections_all_active %}active{% endif %}">全部</a>
       {% for section in sections %}
-      <a href="/?section={{ section.value }}" class="{% if section.checked %}active{% endif %}">{{ section.label }}</a>
+      <a href="/?section={{ section.value }}" class="{% if section.checked %}active{% endif %}{% if section.cover.is_some() %} has-cover{% endif %}">{% if let Some(cover) = section.cover %}<img src="/img/{{ cover }}" alt="" loading="lazy">{% endif %}{{ section.label }}</a>
       {% endfor %}
     </nav>
     <div class="view-switch" role="group" aria-label="显示方式">

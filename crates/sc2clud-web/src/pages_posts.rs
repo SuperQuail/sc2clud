@@ -7,6 +7,7 @@ use axum::Form;
 use axum::extract::{Path, State};
 use axum::http::HeaderMap;
 use axum::response::{IntoResponse, Redirect, Response};
+use bytes::Bytes;
 use serde::Deserialize;
 
 use sc2clud_core::auth::{Permission, Role};
@@ -26,6 +27,55 @@ use crate::templates::{
     PostDetailView, PostPageTemplate, ProviderOption, SectionOption, SourceSlot, SourceView,
     format_date, render,
 };
+
+/// 手工解析过的发帖/编辑表单。
+///
+/// 为什么不用 `Form<..>`：下载来源现在是**不限数量**的重复字段
+/// （`provider` / `label` / `url` / `code` 各来一遍），serde 的单结构体接不住。
+#[derive(Debug, Default)]
+pub struct ParsedPostForm {
+    pub csrf: String,
+    pub title: String,
+    pub body: String,
+    pub kind: String,
+    pub section: String,
+    /// (provider, label, url, code)
+    pub sources: Vec<(String, String, String, String)>,
+}
+
+pub fn parse_post_form(bytes: &[u8]) -> ParsedPostForm {
+    let mut out = ParsedPostForm::default();
+    let mut providers = Vec::new();
+    let mut labels = Vec::new();
+    let mut urls = Vec::new();
+    let mut codes = Vec::new();
+    for (key, value) in form_urlencoded::parse(bytes) {
+        let value = value.into_owned();
+        match key.as_ref() {
+            "csrf" => out.csrf = value,
+            "title" => out.title = value,
+            "body" => out.body = value,
+            "kind" => out.kind = value,
+            "section" => out.section = value,
+            "provider" => providers.push(value),
+            "label" => labels.push(value),
+            "url" => urls.push(value),
+            "code" => codes.push(value),
+            _ => {}
+        }
+    }
+    let count = urls.len().max(providers.len());
+    let take = |list: &Vec<String>, i: usize| list.get(i).cloned().unwrap_or_default();
+    for i in 0..count {
+        out.sources.push((
+            take(&providers, i),
+            take(&labels, i),
+            take(&urls, i),
+            take(&codes, i),
+        ));
+    }
+    out
+}
 
 #[derive(Debug, Deserialize)]
 pub struct ReplyForm {
@@ -75,6 +125,7 @@ fn section_options(selected: &str, user: Option<&CurrentUser>) -> Vec<SectionOpt
             value: section.as_str().to_string(),
             label: section.label().to_string(),
             checked: section.as_str() == selected,
+            cover: None,
         })
         .collect()
 }
@@ -95,20 +146,20 @@ fn empty_slots() -> Vec<SourceSlot> {
             index,
             url: String::new(),
             code: String::new(),
+            label: String::new(),
             provider: ResourceProvider::BaiduPan.as_str().to_string(),
         })
         .collect()
 }
 
-/// 从表单里取下载来源；url 为空的槽直接跳过。
-fn form_sources(form: &NewPostForm) -> AppResult<Vec<(ResourceProvider, String, Option<String>)>> {
-    let slots = [
-        (&form.provider1, &form.url1, &form.code1),
-        (&form.provider2, &form.url2, &form.code2),
-        (&form.provider3, &form.url3, &form.code3),
-    ];
+/// 一个校验过的下载来源：`(来源类型, 自定义名称, 地址, 提取码)`。
+type ParsedSource = (ResourceProvider, Option<String>, String, Option<String>);
+
+/// 从表单里取下载来源：**数量不限**，地址为空的整行跳过；
+/// 名称可以自定义（留空就用来源类型的默认名）。
+fn form_sources(form: &ParsedPostForm) -> AppResult<Vec<ParsedSource>> {
     let mut out = Vec::new();
-    for (provider_raw, url_raw, code_raw) in slots {
+    for (provider_raw, label_raw, url_raw, code_raw) in &form.sources {
         if url_raw.trim().is_empty() {
             continue;
         }
@@ -116,7 +167,13 @@ fn form_sources(form: &NewPostForm) -> AppResult<Vec<(ResourceProvider, String, 
             ResourceProvider::parse(provider_raw.trim()).unwrap_or(ResourceProvider::Direct);
         let url = validate_resource_url(url_raw)?;
         let code = validate_extract_code(code_raw)?;
-        out.push((provider, url, code));
+        let label = label_raw.trim();
+        let label = if label.is_empty() {
+            None
+        } else {
+            Some(label.chars().take(24).collect::<String>())
+        };
+        out.push((provider, label, url, code));
     }
     Ok(out)
 }
@@ -233,6 +290,25 @@ async fn build_post_page<'a>(
             .unwrap_or_default(),
         can_reply: user.as_ref().is_some_and(|u| u.activated),
         is_staff,
+        can_interact: viewer_id.is_some_and(|id| id != row.author_id)
+            && user.as_ref().is_some_and(|u| u.activated),
+        sections: {
+            let covers: std::collections::HashMap<String, String> =
+                repo::list_section_covers(state.db.pool())
+                    .await?
+                    .into_iter()
+                    .map(|(section, hash, _mime)| (section, hash))
+                    .collect();
+            PostSection::ALL
+                .iter()
+                .map(|s| SectionOption {
+                    value: s.as_str().to_string(),
+                    label: s.label().to_string(),
+                    checked: s.as_str() == section.as_str(),
+                    cover: covers.get(s.as_str()).cloned(),
+                })
+                .collect()
+        },
         images,
         sources,
         show_sources,
@@ -249,7 +325,12 @@ async fn build_post_page<'a>(
             state_label: state_.label().to_string(),
             review_note: row.review_note.clone(),
             author: author_handle,
+            author_handle: author
+                .as_ref()
+                .map(|u| u.handle.clone())
+                .unwrap_or_default(),
             author_role_label: author_role.label().to_string(),
+            comment_count: comments.len() as i64,
             created_at: format_date(row.created_at),
             image_count: row.image_count,
             is_mine: viewer_id == Some(row.author_id),
@@ -325,6 +406,19 @@ async fn build_edit<'a>(
         review_note: row.review_note.clone(),
         kinds: kind_options(kind.as_str()),
         sections: section_options(section.as_str(), Some(&user)),
+        providers: provider_options(),
+        sources: repo::list_post_sources(state.db.pool(), id)
+            .await?
+            .into_iter()
+            .enumerate()
+            .map(|(i, row)| SourceSlot {
+                index: i + 1,
+                url: row.url,
+                code: row.extract_code.unwrap_or_default(),
+                provider: row.provider,
+                label: row.label.unwrap_or_default(),
+            })
+            .collect(),
         title: row.title.clone(),
         body: row.body.clone(),
     })
@@ -335,13 +429,14 @@ pub async fn edit_submit(
     State(state): State<AppState>,
     Path(id): Path<i64>,
     headers: HeaderMap,
-    Form(form): Form<NewPostForm>,
+    body: Bytes,
 ) -> Response {
     let user = match session::current_user(&state, &headers).await {
         Ok(Some(user)) => user,
         Ok(None) => return Redirect::to("/login").into_response(),
         Err(e) => return e.into_response(),
     };
+    let form = parse_post_form(&body);
     if let Err(e) = save_edit(&state, id, &user, &form).await {
         return e.into_page_response(true);
     }
@@ -352,7 +447,7 @@ async fn save_edit(
     state: &AppState,
     id: i64,
     user: &CurrentUser,
-    form: &NewPostForm,
+    form: &ParsedPostForm,
 ) -> AppResult<()> {
     let row = repo::get_post_for(state.db.pool(), id, Some(user.id), user.is_staff())
         .await?
@@ -363,17 +458,18 @@ async fn save_edit(
         )));
     }
     session::check_csrf(user, &form.csrf)?;
-    let kind = PostKind::parse(form.kind.as_deref().unwrap_or("discussion"))
-        .unwrap_or(PostKind::Discussion);
-    let section = form
-        .section
-        .as_deref()
-        .and_then(|raw| PostSection::parse(raw).ok())
-        .unwrap_or(PostSection::default_section());
+    let kind = PostKind::parse(if form.kind.is_empty() {
+        "discussion"
+    } else {
+        form.kind.as_str()
+    })
+    .unwrap_or(PostKind::Discussion);
+    let section = PostSection::parse(&form.section).unwrap_or(PostSection::default_section());
     let title = form.title.trim().to_string();
     let body = form.body.trim().to_string();
     let outcome = review_for_author(
         Some(user.role),
+        user.trusted,
         kind,
         &title,
         &body,
@@ -397,10 +493,34 @@ async fn save_edit(
     {
         return Err(AppError::not_found("帖子不存在"));
     }
+    // 下载来源整体重写：编辑页允许增删，逐个 diff 反而更容易出错
+    let sources = form_sources(form).unwrap_or_default();
+    if let Err(e) = repo::delete_post_sources(state.db.pool(), id).await {
+        tracing::error!(post.id = id, error = %e, "清空下载来源失败");
+    }
+    for (position, (provider, label, url, code)) in sources.iter().enumerate() {
+        if let Err(e) = repo::add_post_source(
+            state.db.pool(),
+            repo::NewPostSource {
+                post_id: id,
+                position: position as i64,
+                provider: provider.as_str(),
+                label: label.as_deref(),
+                url,
+                extract_code: code.as_deref(),
+                now,
+            },
+        )
+        .await
+        {
+            tracing::error!(post.id = id, error = %e, "写下载来源失败");
+        }
+    }
     tracing::info!(
         post.id = id,
         state = outcome.state.as_str(),
         editor.id = user.id,
+        sources = sources.len(),
         "编辑帖子"
     );
     let _ = repo::record_audit(
@@ -484,21 +604,22 @@ pub async fn new_post_form(State(state): State<AppState>, headers: HeaderMap) ->
 pub async fn new_post_submit(
     State(state): State<AppState>,
     headers: HeaderMap,
-    Form(form): Form<NewPostForm>,
+    body: Bytes,
 ) -> Response {
     let user = match session::current_user(&state, &headers).await {
         Ok(Some(user)) => user,
         Ok(None) => return Redirect::to("/login").into_response(),
         Err(e) => return e.into_response(),
     };
+    let form = parse_post_form(&body);
 
-    let kind_raw = form.kind.as_deref().unwrap_or("discussion");
+    let kind_raw = if form.kind.is_empty() {
+        "discussion"
+    } else {
+        form.kind.as_str()
+    };
     let kind = PostKind::parse(kind_raw).unwrap_or(PostKind::Discussion);
-    let section = form
-        .section
-        .as_deref()
-        .and_then(|raw| PostSection::parse(raw).ok())
-        .unwrap_or(PostSection::default_section());
+    let section = PostSection::parse(&form.section).unwrap_or(PostSection::default_section());
     let title = form.title.trim().to_string();
     let body = form.body.trim().to_string();
 
@@ -507,7 +628,7 @@ pub async fn new_post_submit(
         .and_then(|()| session::check_csrf(&user, &form.csrf))
         .and_then(|()| form_sources(&form).map(|_| ()));
     let outcome = match checked {
-        Ok(()) => review_for_author(Some(user.role), kind, &title, &body, 0),
+        Ok(()) => review_for_author(Some(user.role), user.trusted, kind, &title, &body, 0),
         Err(e) => {
             return render(NewPostTemplate {
                 site_name: &state.config.server.site_name,
@@ -565,14 +686,14 @@ pub async fn new_post_submit(
     };
     // 下载来源（资源帖的核心信息）
     let sources = form_sources(&form).unwrap_or_default();
-    for (position, (provider, url, code)) in sources.iter().enumerate() {
+    for (position, (provider, label, url, code)) in sources.iter().enumerate() {
         if let Err(e) = repo::add_post_source(
             state.db.pool(),
             repo::NewPostSource {
                 post_id: id,
                 position: position as i64,
                 provider: provider.as_str(),
-                label: None,
+                label: label.as_deref(),
                 url,
                 extract_code: code.as_deref(),
                 now,

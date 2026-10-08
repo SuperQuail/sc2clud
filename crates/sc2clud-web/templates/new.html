@@ -28,23 +28,60 @@
       </select>
     </fieldset>
     <fieldset style="border:0;padding:0;margin:0">
-      <legend style="font-size:14px;font-weight:600;margin-bottom:8px">下载来源（最多 3 个，留空即忽略）</legend>
-      {% for slot in source_slots %}
-      <div class="source-row">
-        <select name="provider{{ slot.index }}">
-          {% for provider in providers %}
-          <option value="{{ provider.value }}"{% if provider.value == slot.provider %} selected{% endif %}>{{ provider.label }}</option>
-          {% endfor %}
-        </select>
-        <input type="url" name="url{{ slot.index }}" value="{{ slot.url }}" placeholder="https:// 下载地址">
-        <input type="text" name="code{{ slot.index }}" value="{{ slot.code }}" maxlength="8" placeholder="提取码（可选）">
+      <legend style="font-size:14px;font-weight:600;margin-bottom:8px">下载来源（数量不限，名称可自定义）</legend>
+      <div class="source-rows" id="source-rows">
+        {% for slot in source_slots %}
+        <div class="source-row">
+          <select name="provider">
+            {% for provider in providers %}
+            <option value="{{ provider.value }}"{% if provider.value == slot.provider %} selected{% endif %}>{{ provider.label }}</option>
+            {% endfor %}
+          </select>
+          <input type="text" name="label" placeholder="显示名（可留空）" maxlength="24">
+          <input type="text" name="code" placeholder="提取码" maxlength="8">
+          <input type="url" name="url" placeholder="https:// 下载地址">
+          <button class="icon-btn" type="button" data-source-remove title="删除这一行">
+            <svg viewBox="0 0 16 16" width="15" height="15"><path d="M4 4l8 8M12 4l-8 8" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg>
+          </button>
+        </div>
+        {% endfor %}
       </div>
-      {% endfor %}
-      <p class="hint">GitHub 链接会额外给出镜像跳转，并在页面上实测哪个镜像最快。</p>
+      <div class="actions-inline" style="margin-top:10px">
+        <button class="btn ghost sm" type="button" id="source-add">＋ 添加一个来源</button>
+        <span class="hint">GitHub 链接会自动给出镜像并实测最快的一个</span>
+      </div>
     </fieldset>
+    <p class="hint">配图在**发帖之后**到帖子页点「添加配图」上传（最多 10 张）。</p>
     <label>正文<textarea name="body" required minlength="2" maxlength="20000">{{ body }}</textarea></label>
     <p class="hint">公告只有管理员可以发布。</p>
     <button class="btn" type="submit">发布</button>
   </form>
 </section>
+{% block scripts %}
+<script>
+  // 下载来源：数量不限，自己加行、自己删行（服务端按重复字段解析）
+  (function () {
+    var rows = document.getElementById('source-rows');
+    var add = document.getElementById('source-add');
+    if (!rows || !add) return;
+    function bind(row) {
+      var remove = row.querySelector('[data-source-remove]');
+      if (remove) {
+        remove.addEventListener('click', function () {
+          if (rows.querySelectorAll('.source-row').length > 1) row.remove();
+        });
+      }
+    }
+    Array.prototype.forEach.call(rows.querySelectorAll('.source-row'), bind);
+    add.addEventListener('click', function () {
+      var first = rows.querySelector('.source-row');
+      if (!first) return;
+      var copy = first.cloneNode(true);
+      Array.prototype.forEach.call(copy.querySelectorAll('input'), function (input) { input.value = ''; });
+      rows.appendChild(copy);
+      bind(copy);
+    });
+  })();
+</script>
+{% endblock %}
 {% endblock %}

@@ -86,6 +86,7 @@
               {% endif %}
               <span data-display-name>{{ user.display_name }}</span>
               {% if user.activated %}<span class="dot on" title="已激活"></span>{% else %}<span class="dot off" title="未激活"></span>{% endif %}
+              {% if user.trusted %}<span class="tag ok" title="发帖只走自动审核">信任</span>{% endif %}
               {% if user.is_self %}<span class="tag">我</span>{% endif %}
             </td>
             <td class="muted">{{ user.email }}</td>
@@ -126,6 +127,11 @@
               </form>
               {% endif %}
               {% if !user.is_self %}
+              <form class="inline-form" method="post" data-async data-after="refresh" action="/admin/users/{{ user.id }}/trusted">
+                <input type="hidden" name="csrf" value="{{ csrf }}">
+                <input type="hidden" name="trusted" value="{% if user.trusted %}0{% else %}1{% endif %}">
+                <button class="btn ghost sm" type="submit">{% if user.trusted %}取消信任{% else %}设为信任{% endif %}</button>
+              </form>
               <form class="inline-form" method="post" data-async data-after="refresh" action="/admin/users/{{ user.id }}/{% if user.activated %}deactivate{% else %}activate{% endif %}">
                 <input type="hidden" name="csrf" value="{{ csrf }}">
                 <button class="icon-btn" type="submit" title="{% if user.activated %}停用{% else %}激活{% endif %}">
@@ -180,6 +186,21 @@
     </section>
     {% endif %}
 
+    <section class="panel" id="covers">
+      <h2>分区封面 <span class="spacer">管理员及以上可设置</span></h2>
+      <p class="hint">上传后立刻生效：显示在首页分区导航与分区横幅上。</p>
+      <div class="cover-grid" data-cover-csrf="{{ csrf }}">
+        {% for section in sections %}
+        <div class="cover-cell">
+          <div class="thumb" {% if let Some(cover) = section.cover %}style="background-image:url('/img/{{ cover }}')"{% endif %}></div>
+          <strong>{{ section.label }}</strong>
+          <input type="file" accept="image/*" data-cover-section="{{ section.value }}">
+        </div>
+        {% endfor %}
+      </div>
+      <p class="hint" data-cover-status></p>
+    </section>
+
     <section class="panel" id="settings">
       <h2>注册策略 <span class="count">{% if require_activation %}人工激活{% else %}自动激活{% endif %}</span></h2>
       <p class="hint">
@@ -195,4 +216,29 @@
 </div>
 {% endblock %}
 
-{% block scripts %}<script type="module" src="/static/islands/admin.js"></script>{% endblock %}
+{% block scripts %}<script type="module" src="/static/islands/admin.js"></script>
+<script>
+  // 分区封面：直接把文件当请求体发（服务端按魔数认类型）
+  (function () {
+    var grid = document.querySelector('[data-cover-csrf]');
+    if (!grid) return;
+    var csrf = grid.dataset.coverCsrf;
+    var status = document.querySelector('[data-cover-status]');
+    grid.addEventListener('change', function (event) {
+      var input = event.target;
+      if (!input || input.type !== 'file' || !input.files || !input.files[0]) return;
+      var section = input.dataset.coverSection;
+      var file = input.files[0];
+      if (status) status.textContent = '上传中…';
+      fetch('/admin/sections/' + section + '/cover', {
+        method: 'POST',
+        headers: { 'x-csrf-token': csrf },
+        body: file,
+        credentials: 'same-origin',
+      })
+        .then(function (r) { return r.ok ? r.json() : Promise.reject(r.status); })
+        .then(function () { location.reload(); })
+        .catch(function (code) { if (status) status.textContent = '上传失败（' + code + '）'; });
+    });
+  })();
+</script>{% endblock %}

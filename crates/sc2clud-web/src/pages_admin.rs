@@ -12,6 +12,7 @@ use serde::Deserialize;
 use sc2clud_core::auth::{Permission, Role};
 use sc2clud_core::{Error as DomainError, now_unix};
 use sc2clud_db::repo;
+use sc2clud_storage::BlobReader;
 
 use crate::AppState;
 use crate::error::{AppError, AppResult};
@@ -105,6 +106,7 @@ async fn build_panel<'a>(
         .into_iter()
         .map(|row| AdminUserView {
             id: row.id,
+            trusted: row.trusted != 0,
             avatar: row.avatar_hash.clone(),
             handle: row.handle,
             display_name: row.display_name,
@@ -146,6 +148,23 @@ async fn build_panel<'a>(
             .map(|r| (r.as_str().to_string(), r.label().to_string()))
             .collect(),
         users,
+        sections: {
+            let covers: std::collections::HashMap<String, String> =
+                repo::list_section_covers(state.db.pool())
+                    .await?
+                    .into_iter()
+                    .map(|(section, hash, _mime)| (section, hash))
+                    .collect();
+            sc2clud_core::resource::PostSection::ALL
+                .iter()
+                .map(|s| crate::templates::SectionOption {
+                    value: s.as_str().to_string(),
+                    label: s.label().to_string(),
+                    checked: false,
+                    cover: covers.get(s.as_str()).cloned(),
+                })
+                .collect()
+        },
         pending: pending_rows
             .iter()
             .map(|row| feed_view(row, Some(user.id)))
@@ -309,6 +328,95 @@ pub async fn create_user(
     );
     Ok(done(&headers, "已保存", "/admin/users/overview"))
 }
+#[derive(Debug, Deserialize)]
+pub struct TrustForm {
+    pub csrf: String,
+    pub trusted: Option<String>,
+}
+
+/// 设置「信任」：被信任的账号发帖只走自动审核。
+pub async fn set_trusted(
+    State(state): State<AppState>,
+    Path(id): Path<i64>,
+    headers: HeaderMap,
+    Form(form): Form<TrustForm>,
+) -> AppResult<Response> {
+    let actor = require_user(&state, &headers).await?;
+    session::guard(Some(&actor), Permission::ManageUsers)?;
+    session::check_csrf(&actor, &form.csrf)?;
+    let trusted = matches!(form.trusted.as_deref(), Some("1") | Some("on"));
+    let now = now_unix();
+    if repo::set_user_trusted(state.db.pool(), id, trusted).await? {
+        tracing::info!(user.id = id, trusted, actor.id = actor.id, "设置信任标记");
+        let _ = repo::record_audit(
+            state.db.pool(),
+            Some(actor.id),
+            "user.set_trusted",
+            Some(&format!("user:{id}")),
+            Some(if trusted { "1" } else { "0" }),
+            now,
+        )
+        .await;
+    }
+    Ok(done(&headers, "已保存", "/admin/users/overview"))
+}
+
+/// 分区封面：管理员及以上可以设置（直接上传图片，服务端只做魔数校验与体积上限）。
+pub async fn set_section_cover(
+    State(state): State<AppState>,
+    Path(section): Path<String>,
+    headers: HeaderMap,
+    body: axum::body::Body,
+) -> AppResult<Response> {
+    let actor = require_user(&state, &headers).await?;
+    session::guard(Some(&actor), Permission::ManageUsers)?;
+    let token = headers
+        .get("x-csrf-token")
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or("");
+    session::check_csrf(&actor, token)?;
+    let parsed = sc2clud_core::resource::PostSection::parse(&section)?;
+
+    // 封面体积：读进内存即可（上限 2 MB），比走完整流式上传简单得多
+    let bytes = axum::body::to_bytes(body, 2 * 1024 * 1024)
+        .await
+        .map_err(|e| {
+            AppError::Domain(DomainError::InvalidInput(format!(
+                "封面读取失败或超过 2 MB：{e}"
+            )))
+        })?;
+    let mime = crate::routes::sniff_image_mime(&bytes).ok_or_else(|| {
+        AppError::Domain(DomainError::InvalidInput(
+            "封面只接受 PNG / JPEG / GIF / WebP".to_string(),
+        ))
+    })?;
+    let size = bytes.len() as i64;
+    // 走统一的流式写入：把内存里的封面包成一次性的流
+    let reader: BlobReader = Box::pin(tokio_util::io::StreamReader::new(
+        futures_util::stream::once(async move { Ok::<_, std::io::Error>(bytes) }),
+    ));
+    let outcome = state
+        .storage
+        .put_stream(reader, None)
+        .await
+        .map_err(AppError::from)?;
+    let hash = outcome.stat.hash.to_string();
+    let now = now_unix();
+    repo::ensure_blob(state.db.pool(), &hash, size, now).await?;
+    repo::set_section_cover(state.db.pool(), parsed.as_str(), &hash, mime, actor.id, now).await?;
+    tracing::info!(section = parsed.as_str(), %hash, actor.id = actor.id, "设置分区封面");
+    let _ = repo::record_audit(
+        state.db.pool(),
+        Some(actor.id),
+        "section.set_cover",
+        Some(parsed.as_str()),
+        Some(&hash),
+        now,
+    )
+    .await;
+    Ok(done(&headers, "封面已更新", "/admin/users/overview"))
+}
+
 #[derive(Debug, Deserialize)]
 pub struct QuotaForm {
     pub csrf: String,

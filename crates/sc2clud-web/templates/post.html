@@ -3,6 +3,30 @@
 {% block title %}{{ post.title }} · {{ site_name }}{% endblock %}
 
 {% block content %}
+<div class="post-layout">
+  {# 左栏：分区快捷入口 + 我的 #}
+  <aside class="post-side">
+    <div class="side-card">
+      <h3>分区</h3>
+      <nav class="side-nav">
+        <a href="/">全部</a>
+        {% for section in sections %}
+        <a href="/?section={{ section.value }}" class="{% if section.checked %}active{% endif %}">{{ section.label }}</a>
+        {% endfor %}
+      </nav>
+    </div>
+    <div class="side-card">
+      <h3>我的</h3>
+      <nav class="side-nav">
+        <a href="/new">发新帖</a>
+        <a href="/bookmarks">我的收藏</a>
+        <a href="/messages">私信</a>
+      </nav>
+    </div>
+  </aside>
+
+  {# 中栏：正文主体 #}
+  <div class="post-main">
 <section class="card">
   <div class="head" style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px">
     <span class="tag">{{ post.section_label }}</span>
@@ -24,7 +48,7 @@
 
   {% if post.can_edit %}
   <div class="actions-inline" style="margin-top:14px">
-    <a class="btn ghost" href="/p/{{ post.id }}/edit">编辑帖子</a>
+    <a class="btn ghost sm" href="/p/{{ post.id }}/edit">编辑帖子</a>
   </div>
   {% endif %}
 
@@ -67,37 +91,12 @@
   </div>
   {% endif %}
 
-  {# 审核意见只在「还没通过」时有意义：通过后的说明文案对读者是噪音 #}
   {% if let Some(note) = post.review_note %}
   {% if post.state != "approved" %}
   <p class="alert" style="margin-top:12px">审核意见：{{ note }}</p>
   {% endif %}
   {% endif %}
   <p class="post-body">{{ post.body }}</p>
-  {% if show_sources %}
-  <section class="sources">
-    <h3>下载来源</h3>
-    {% for source in sources %}
-    <div class="source-item">
-      <div class="source-head">
-        <span class="provider provider-{{ source.provider }}">{{ source.provider_label }}</span>
-        {% if let Some(label) = source.label %}<span class="meta">{{ label }}</span>{% endif %}
-        <a class="btn" href="{{ source.url }}" target="_blank" rel="noopener nofollow">打开下载</a>
-        {% if let Some(code) = source.extract_code %}<span class="meta">提取码 <code>{{ code }}</code></span>{% endif %}
-      </div>
-      {% if !source.mirrors.is_empty() %}
-      <div class="mirrors">
-        <p class="hint">GitHub 镜像（页面会实测延迟，最快的排在最前）：</p>
-        {% for mirror in source.mirrors %}
-        <a class="mirror" href="{{ mirror.url }}" target="_blank" rel="noopener nofollow" data-mirror-url="{{ mirror.url }}" data-mirror-original="{{ mirror.is_original }}">{{ mirror.label }}</a>
-        {% endfor %}
-        <button class="btn ghost" type="button" data-copy-github="{{ source.url }}">复制 GitHub 原链</button>
-      </div>
-      {% endif %}
-    </div>
-    {% endfor %}
-  </section>
-  {% endif %}
 
   {% if !images.is_empty() %}
   <div class="gallery">
@@ -106,6 +105,16 @@
     {% endfor %}
   </div>
   {% endif %}
+
+  {# 配图上传：作者与管理员可以随时补图（服务端按魔数认类型、最多 10 张） #}
+  {% if post.can_edit %}
+  <div class="upload-row" data-post-upload data-post-id="{{ post.id }}" data-csrf="{{ csrf }}">
+    <input type="file" accept="image/*" id="post-image-input" multiple hidden>
+    <button class="btn ghost sm" type="button" id="post-image-add">添加配图</button>
+    <span class="hint" data-post-image-status>最多 10 张，单张 50 MB 以内</span>
+  </div>
+  {% endif %}
+
   <div class="post-actions">
     <form method="post" action="/p/{{ post.id }}/like" class="inline-form" data-like>
       <input type="hidden" name="csrf" value="{{ csrf }}">
@@ -125,10 +134,7 @@
   </div>
 
   <div class="actions-inline" style="margin-top:18px">
-    <a class="btn ghost" href="/">返回首页</a>
-    {% if is_staff && post.state != "approved" %}
-    <span class="hint">你是管理员：此帖状态「{{ post.state_label }}」，普通用户看不到</span>
-    {% endif %}
+    <a class="btn ghost sm" href="/">返回首页</a>
   </div>
 </section>
 
@@ -166,9 +172,99 @@
   <p class="hint" style="margin-top:16px">账号激活后才能回复。</p>
   {% endif %}
 </section>
+  </div>{# /post-main #}
+
+  {# 右栏：作者 + 资源 + 数据 #}
+  <aside class="post-aside">
+    <div class="side-card author-card">
+      {% if let Some(avatar) = post.avatar %}
+      <img class="avatar avatar-lg" src="/avatar/{{ avatar }}" alt="" width="64" height="64">
+      {% else %}
+      <img class="avatar avatar-lg" src="/static/art/miyin-chibi-160.webp" alt="" width="64" height="64">
+      {% endif %}
+      <strong>{{ post.author }}</strong>
+      <span class="meta">{{ post.author_role_label }}</span>
+      <div class="actions-inline">
+        <a class="btn ghost sm" href="/u/{{ post.author_handle }}">主页</a>
+        {% if can_interact %}<a class="btn ghost sm" href="/messages/{{ post.author_handle }}">私信</a>{% endif %}
+      </div>
+    </div>
+
+    {% if show_sources %}
+    <div class="side-card">
+      <h3>资源下载</h3>
+      {% for source in sources %}
+      <div class="source-item">
+        <div class="source-head">
+          <span class="provider provider-{{ source.provider }}">{{ source.provider_label }}</span>
+          {% if let Some(label) = source.label %}<span class="meta">{{ label }}</span>{% endif %}
+        </div>
+        <a class="btn sm" href="{{ source.url }}" target="_blank" rel="noopener nofollow">打开下载</a>
+        {% if let Some(code) = source.extract_code %}<span class="meta">提取码 <code>{{ code }}</code></span>{% endif %}
+        {% if !source.mirrors.is_empty() %}
+        <div class="mirrors">
+          <p class="hint">GitHub 镜像（实测延迟，最快在最前）：</p>
+          {% for mirror in source.mirrors %}
+          <a class="mirror" href="{{ mirror.url }}" target="_blank" rel="noopener nofollow" data-mirror-url="{{ mirror.url }}" data-mirror-original="{{ mirror.is_original }}">{{ mirror.label }}</a>
+          {% endfor %}
+          <button class="btn ghost sm" type="button" data-copy-github="{{ source.url }}">复制 GitHub 原链</button>
+        </div>
+        {% endif %}
+      </div>
+      {% endfor %}
+    </div>
+    {% endif %}
+
+    <div class="side-card">
+      <h3>数据</h3>
+      <ul class="side-stats">
+        <li><span>点赞</span><b>{{ post.like_count }}</b></li>
+        <li><span>收藏</span><b>{{ post.bookmark_count }}</b></li>
+        <li><span>回复</span><b>{{ post.comment_count }}</b></li>
+        <li><span>配图</span><b>{{ post.image_count }}</b></li>
+      </ul>
+    </div>
+  </aside>
+</div>{# /post-layout #}
 {% endblock %}
 
 {% block scripts %}
+<script>
+  // 配图上传：作者与管理员可以随时补图（整份文件当请求体，服务端按魔数认类型）
+  (function () {
+    var box = document.querySelector('[data-post-upload]');
+    if (!box) return;
+    var input = document.getElementById('post-image-input');
+    var button = document.getElementById('post-image-add');
+    var status = box.querySelector('[data-post-image-status]');
+    if (!input || !button) return;
+    var csrf = box.dataset.csrf;
+    var id = box.dataset.postId;
+    button.addEventListener('click', function () { input.click(); });
+    input.addEventListener('change', function () {
+      var files = Array.prototype.slice.call(input.files || []);
+      if (!files.length) return;
+      var send = function (index) {
+        if (index >= files.length) {
+          if (status) status.textContent = '已上传，刷新中…';
+          location.reload();
+          return;
+        }
+        if (status) status.textContent = '上传中 ' + (index + 1) + '/' + files.length + '…';
+        fetch('/api/v1/posts/' + id + '/images', {
+          method: 'POST',
+          headers: { 'x-csrf-token': csrf },
+          body: files[index],
+          credentials: 'same-origin',
+        })
+          .then(function (r) { return r.ok ? r.json() : r.json().then(function (d) { return Promise.reject(d.message || r.status); }); })
+          .then(function () { send(index + 1); })
+          .catch(function (message) { if (status) status.textContent = '上传失败：' + message; });
+      };
+      send(0);
+    });
+  })();
+</script>
 <script>
   // 点赞 / 收藏：就地切换，不刷新页面
   (function () {

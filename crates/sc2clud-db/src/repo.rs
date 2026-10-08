@@ -1336,7 +1336,7 @@ pub async fn admin_list_users(
     let needle = format!("%{}%", query.trim());
     query_as::<_, AdminUserRow>(
         "SELECT u.id, u.handle, u.display_name, u.email, u.role, u.created_at, \
-                u.activated_at, u.avatar_hash, u.quota_bytes, u.used_bytes, \
+                u.activated_at, u.avatar_hash, u.quota_bytes, u.used_bytes, u.trusted, \
                 (SELECT MAX(s.last_seen_at) FROM sessions s WHERE s.user_id = u.id) AS last_seen_at \
          FROM users u \
          WHERE ?1 = '' OR u.handle LIKE ?2 OR u.display_name LIKE ?2 \
@@ -1608,6 +1608,67 @@ pub async fn set_post_archived(
             .map_err(db_err)?
             .rows_affected();
     Ok(affected == 1)
+}
+
+/// 设置「信任」标记：被信任的账号发帖只走自动审核。
+pub async fn set_user_trusted(pool: &SqlitePool, user_id: i64, trusted: bool) -> Result<bool> {
+    let value: i64 = i64::from(trusted);
+    let affected = query("UPDATE users SET trusted = ? WHERE id = ? AND trusted <> ?")
+        .bind(value)
+        .bind(user_id)
+        .bind(value)
+        .execute(pool)
+        .await
+        .map_err(db_err)?
+        .rows_affected();
+    Ok(affected == 1)
+}
+
+/// 设置分区封面（内容寻址的图片摘要）。
+pub async fn set_section_cover(
+    pool: &SqlitePool,
+    section: &str,
+    hash: &str,
+    mime: &str,
+    by: i64,
+    now: i64,
+) -> Result<()> {
+    query(
+        "INSERT INTO section_covers (section, cover_hash, mime, updated_by, updated_at) \
+         VALUES (?, ?, ?, ?, ?) \
+         ON CONFLICT(section) DO UPDATE SET cover_hash = excluded.cover_hash, \
+             mime = excluded.mime, updated_by = excluded.updated_by, updated_at = excluded.updated_at",
+    )
+    .bind(section)
+    .bind(hash)
+    .bind(mime)
+    .bind(by)
+    .bind(now)
+    .execute(pool)
+    .await
+    .map_err(db_err)?;
+    Ok(())
+}
+
+/// 全部分区封面：`(section, hash, mime)`。
+pub async fn list_section_covers(pool: &SqlitePool) -> Result<Vec<(String, String, String)>> {
+    let rows: Vec<(String, String, String)> =
+        query_as("SELECT section, cover_hash, mime FROM section_covers")
+            .fetch_all(pool)
+            .await
+            .map_err(db_err)?;
+    Ok(rows)
+}
+
+/// 清空某帖的下载来源（编辑时整体重写）。
+pub async fn delete_post_sources(pool: &SqlitePool, post_id: i64) -> Result<u64> {
+    let affected = query("DELETE FROM post_sources WHERE post_id = ?")
+        .bind(post_id)
+        .execute(pool)
+        .await
+        .map_err(db_err)?
+        .rows_affected();
+    Ok(affected)
 }
 
 // ------------------------------------------------------------ 点赞 / 收藏 / 通知 / 公告
