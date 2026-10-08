@@ -84,45 +84,6 @@ fn check_origin(state: &AppState, headers: &HeaderMap) -> AppResult<()> {
     }
 }
 
-#[cfg(test)]
-mod origin_tests {
-    use super::*;
-
-    #[test]
-    fn same_host_passes() {
-        // 域名访问：Host 头就是域名，Origin 也是域名 → 同源
-        assert!(origin_is_same_site(
-            "http://www.xn--xpra07ba.fun",
-            Some("www.xn--xpra07ba.fun"),
-            "http://191.40.41.97"
-        ));
-        // 默认端口应当被抹平
-        assert!(origin_is_same_site(
-            "http://example.com:80",
-            Some("example.com"),
-            "http://191.40.41.97"
-        ));
-    }
-
-    #[test]
-    fn base_url_still_works_as_fallback() {
-        assert!(origin_is_same_site(
-            "http://191.40.41.97",
-            None,
-            "http://191.40.41.97"
-        ));
-    }
-
-    #[test]
-    fn foreign_origin_is_rejected() {
-        assert!(!origin_is_same_site(
-            "http://evil.example",
-            Some("www.xn--xpra07ba.fun"),
-            "http://191.40.41.97"
-        ));
-    }
-}
-
 fn with_cookie(mut response: Response, cookie: String) -> Response {
     if let Ok(value) = HeaderValue::from_str(&cookie) {
         response.headers_mut().append(header::SET_COOKIE, value);
@@ -329,4 +290,42 @@ pub async fn logout(State(state): State<AppState>, headers: HeaderMap) -> Respon
         Redirect::to("/").into_response(),
         session::clear_cookie(&state),
     )
+}
+#[cfg(test)]
+mod origin_tests {
+    use super::*;
+
+    #[test]
+    fn same_host_passes() {
+        // 域名访问：Host 头就是域名，Origin 也是域名 → 同源
+        assert!(origin_is_same_site(
+            "http://www.xn--xpra07ba.fun",
+            Some("www.xn--xpra07ba.fun"),
+            "http://191.40.41.97"
+        ));
+        // 默认端口应当被抹平
+        assert!(origin_is_same_site(
+            "http://example.com:80",
+            Some("example.com"),
+            "http://191.40.41.97"
+        ));
+    }
+
+    #[test]
+    fn base_url_still_works_as_fallback() {
+        assert!(origin_is_same_site(
+            "http://191.40.41.97",
+            None,
+            "http://191.40.41.97"
+        ));
+    }
+
+    #[test]
+    fn foreign_origin_is_rejected() {
+        assert!(!origin_is_same_site(
+            "http://evil.example",
+            Some("www.xn--xpra07ba.fun"),
+            "http://191.40.41.97"
+        ));
+    }
 }
