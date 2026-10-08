@@ -153,3 +153,36 @@ pwsh -File scripts/smoke.ps1     # 改动触及上传/下载/存储/计数时必
 仓库**外层**目录（`D:\Code\Rust\SC2clud\`）放 SSH 私钥与生产环境变量，不属于任何 git 仓库：
 `secrets/ssh/`、`secrets/env/production.env`。仓库内只保留 `.env.example` 模板。
 不要在外层执行 `git init`，也不要把 `secrets/` 拷进 `site/` 或对它建软链接。
+
+## 11. 开发与测试流程：先 dev，后生产
+
+站点有**两个实例**，同一份二进制、两套数据：
+
+| 实例 | 端点 | 数据目录 | 用途 |
+| --- | --- | --- | --- |
+| 生产 | `/`（对外） | `/srv/sc2clud/data` | 只放已验证的版本 |
+| 测试 | `/dev/`（对外，nginx `sub_filter` 补前缀） | `/srv/sc2clud/data-debug` | **所有开发与测试都在这里** |
+
+流程：
+
+```bash
+# 1. 在 /dev 上发布新版本（只重启测试实例，生产继续跑旧进程）
+bash deploy/dev.sh
+
+# 2. 在 http://<域名>/dev/ 上验证（登录、点按钮、看页面）
+#    /dev 与生产同域，所以 Cookie 名必须不同（SC2CLUD_COOKIE_NAME），
+#    否则两边会话互相顶掉——见 deploy/systemd/sc2clud-debug.service
+
+# 3.（可选）让 /dev 用生产数据来测：只读快照，不碰生产
+bash deploy/dev-sync.sh
+
+# 4. 验证通过后，才推给生产
+bash deploy/promote.sh
+```
+
+要点：
+
+- **不要在生产的 `/` 上做任何交互式测试或写入**（包括自动化点击、造数据）。
+- `/dev/` 上的路径前缀由 nginx 的 `sub_filter` 处理，应用代码里**不要**写 `/dev`。
+- 生产数据快照进测试库是**只读**操作；反向绝不允许。
+- 出问题的回滚：生产 unit 重启即可回到旧版本（二进制换成上一个 release 的即可）。

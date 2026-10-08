@@ -346,8 +346,8 @@ pub struct EditPostTemplate<'a> {
     pub kinds: Vec<KindOption>,
     pub sections: Vec<SectionOption>,
     pub providers: Vec<ProviderOption>,
-    /// 已有的配图（编辑页展示 + 继续追加）。
-    pub images: Vec<ImageView>,
+    /// 已有的配图（编辑页展示、可排序、可删除）。
+    pub images: Vec<EditImageView>,
     pub image_count: i64,
     /// 已有的下载来源（**必须回填**：编辑保存会整体重写来源，漏了就全丢了）。
     pub sources: Vec<SourceSlot>,
@@ -368,6 +368,16 @@ pub struct AdminUserEditTemplate<'a> {
     pub roles: Vec<(String, String)>,
     /// 只有超级管理员能改等级与显示名。
     pub is_super: bool,
+}
+
+/// 编辑页里的一张配图：带 id 与顺序，可前移/后移/删除。
+pub struct EditImageView {
+    pub id: i64,
+    pub href: String,
+    /// 从 1 开始的展示序号。
+    pub number: usize,
+    pub is_first: bool,
+    pub is_last: bool,
 }
 
 /// 数据备份页（仅超级管理员）。

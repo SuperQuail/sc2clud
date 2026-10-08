@@ -173,6 +173,14 @@ pub fn pages() -> Router<AppState> {
         )
         .route("/p/{id}", axum::routing::get(crate::pages_posts::post_page))
         .route(
+            "/p/{id}/images/{image_id}/delete",
+            axum::routing::post(crate::pages_posts::post_image_delete),
+        )
+        .route(
+            "/p/{id}/images/{image_id}/move",
+            axum::routing::post(crate::pages_posts::post_image_move),
+        )
+        .route(
             "/p/{id}/edit",
             axum::routing::get(crate::pages_posts::edit_form).post(crate::pages_posts::edit_submit),
         )

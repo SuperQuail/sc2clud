@@ -27,6 +27,12 @@ upstream sc2clud_app {
     keepalive 16;
 }
 
+# 测试实例（/dev/ 端点）：独立端口 + 独立数据目录，重启它不影响生产
+upstream sc2clud_dev {
+    server 127.0.0.1:8081;
+    keepalive 4;
+}
+
 # @@REDIRECT_BEGIN@@
 # TLS 终止在 nginx：80 只留跳转
 server {
@@ -162,6 +168,41 @@ server {
     # ---------- 探针 ----------
     location = /healthz { proxy_pass http://sc2clud_app; access_log off; }
     location = /readyz  { proxy_pass http://sc2clud_app; access_log off; allow 127.0.0.1; deny all; }
+
+    # ---------- 测试端点：/dev/ → 本机测试实例（独立数据目录）----------
+    # 开发与测试都在这里做，确认无误再重启生产实例（见 deploy/dev.sh 与 promote.sh）。
+    # 应用的链接都是绝对路径（/p/1、/static/...），所以用 sub_filter 在响应里补 /dev 前缀——
+    # 这样同一份代码不用为「路径前缀」做任何改动。
+    location = /dev { return 301 /dev/; }
+    location /dev/static/ {
+        alias /srv/sc2clud/static/;
+        expires 2m;
+        add_header Cache-Control "public, max-age=120";
+        access_log off;
+    }
+    location /dev/ {
+        proxy_pass http://sc2clud_dev;
+        proxy_http_version 1.1;
+        proxy_set_header Connection "";
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_request_buffering off;
+        proxy_buffering off;
+        proxy_read_timeout 300s;
+        proxy_send_timeout 300s;
+        sub_filter_once off;
+        sub_filter_types text/html text/css application/javascript;
+        sub_filter 'href="/'   'href="/dev/';
+        sub_filter 'src="/'    'src="/dev/';
+        sub_filter 'action="/' 'action="/dev/';
+        sub_filter "fetch('/"   "fetch('/dev/";
+        sub_filter "'/static/"  "'/dev/static/";
+        sub_filter "'/avatar/"  "'/dev/avatar/";
+        sub_filter "'/img/"     "'/dev/img/";
+        sub_filter "'/p/"       "'/dev/p/";
+    }
 
     # ---------- 其余请求交给应用 ----------
     location / {

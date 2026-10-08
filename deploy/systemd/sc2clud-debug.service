@@ -16,6 +16,8 @@ EnvironmentFile=/srv/sc2clud/sc2clud-debug.env
 Environment=SC2CLUD_BIND=127.0.0.1:8081
 Environment=SC2CLUD_DATA_DIR=/srv/sc2clud/data-debug
 Environment=SC2CLUD_BASE_URL=http://127.0.0.1:8081
+# 与生产同域（/dev 前缀），Cookie 名必须不同——否则两边会话互相顶掉
+Environment=SC2CLUD_COOKIE_NAME=sc2clud_dev_session
 Environment=SC2CLUD_DEBUG_PAGES=1
 Environment=SC2CLUD_SERVE_BLOBS_LOCALLY=1
 Environment=SC2CLUD_LOG=debug

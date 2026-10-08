@@ -314,6 +314,23 @@ footer { color: var(--muted); font-size: 12px; text-align: center; padding: 14px
 .actions-inline { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
 .title-line { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; font-weight: 600; }
 
+/* 帖子配图：读者视角要看得清，别做成一排小方块 */
+.gallery { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 12px; margin-top: 16px; }
+.gallery img { width: 100%; height: 210px; object-fit: cover; border-radius: 12px; border: 1px solid var(--line); display: block; }
+.gallery a:hover img { transform: translateY(-2px); box-shadow: 0 8px 20px rgba(16,32,64,.16); }
+.gallery img { transition: transform .16s ease, box-shadow .16s ease; }
+
+/* 编辑页的配图管理器 */
+.image-manager { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 12px; }
+.image-cell { margin: 0; border: 1px solid var(--line); border-radius: 12px; overflow: hidden; background: var(--card); }
+.image-cell img { width: 100%; height: 150px; object-fit: cover; display: block; }
+.image-cell figcaption { display: flex; align-items: center; justify-content: space-between; gap: 6px; padding: 6px 8px; }
+.image-actions { display: inline-flex; gap: 4px; }
+.image-actions form { display: inline; }
+.icon-btn.danger:hover { color: #b3261e; border-color: #b3261e; }
+.icon-btn[disabled] { opacity: .35; cursor: not-allowed; }
+
+
 /* 管理表格：单元格只读，编辑去 /admin/users/{id} 那个页面做。
  * 别再往格子里塞输入框——固定列宽 + 行内表单会把名字挤成竖排（踩过一次）。 */
 .admin-table.users { table-layout: auto; }

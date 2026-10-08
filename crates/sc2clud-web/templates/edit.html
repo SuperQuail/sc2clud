@@ -73,16 +73,44 @@
     <fieldset style="border:0;padding:0;margin:0">
       <legend style="font-size:14px;font-weight:600;margin-bottom:8px">配图 <span class="hint">{{ image_count }} / 10</span></legend>
       {% if !images.is_empty() %}
-      <div class="gallery">
+      <div class="image-manager">
         {% for image in images %}
-        <a href="{{ image.href }}" target="_blank" rel="noopener"><img src="{{ image.href }}" loading="lazy" alt="配图"></a>
+        <figure class="image-cell">
+          <a href="{{ image.href }}" target="_blank" rel="noopener"><img src="{{ image.href }}" loading="lazy" alt="配图 {{ image.number }}"></a>
+          <figcaption>
+            <span class="meta">#{{ image.number }}</span>
+            <span class="image-actions">
+              <form method="post" action="/p/{{ id }}/images/{{ image.id }}/move">
+                <input type="hidden" name="csrf" value="{{ csrf }}">
+                <input type="hidden" name="dir" value="forward">
+                <button class="icon-btn" type="submit" title="往前挪一位"{% if image.is_first %} disabled{% endif %}>
+                  <svg viewBox="0 0 16 16" width="15" height="15"><path d="M10 3L5 8l5 5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                </button>
+              </form>
+              <form method="post" action="/p/{{ id }}/images/{{ image.id }}/move">
+                <input type="hidden" name="csrf" value="{{ csrf }}">
+                <input type="hidden" name="dir" value="back">
+                <button class="icon-btn" type="submit" title="往后挪一位"{% if image.is_last %} disabled{% endif %}>
+                  <svg viewBox="0 0 16 16" width="15" height="15"><path d="M6 3l5 5-5 5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                </button>
+              </form>
+              <form method="post" action="/p/{{ id }}/images/{{ image.id }}/delete" data-confirm="删除这张配图？">
+                <input type="hidden" name="csrf" value="{{ csrf }}">
+                <button class="icon-btn danger" type="submit" title="删除这张配图">
+                  <svg viewBox="0 0 16 16" width="15" height="15"><path d="M4 4l8 8M12 4l-8 8" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
+                </button>
+              </form>
+            </span>
+          </figcaption>
+        </figure>
         {% endfor %}
       </div>
+      <p class="hint">用 ← / → 调整顺序，✕ 删除；顺序就是帖子页里的展示顺序。</p>
       {% endif %}
       <div class="upload-row" data-post-upload data-post-id="{{ id }}" data-csrf="{{ csrf }}">
         <input type="file" accept="image/*" id="post-image-input" multiple hidden>
         <button class="btn ghost sm" type="button" id="post-image-add">添加配图</button>
-        <span class="hint" data-post-image-status>最多 10 张，单张 50 MB 以内；保存前上传也会立即生效</span>
+        <span class="hint" data-post-image-status>最多 10 张，单张 50 MB 以内；上传后立即生效</span>
       </div>
     </fieldset>
     <label>正文<textarea name="body" required minlength="2" maxlength="20000">{{ body }}</textarea></label>

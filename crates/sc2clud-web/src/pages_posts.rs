@@ -23,9 +23,9 @@ use crate::error::{AppError, AppResult};
 use crate::routes::{require_user, wants_html};
 use crate::session::{self, CurrentUser};
 use crate::templates::{
-    CommentView, EditPostTemplate, ImageView, KindOption, MirrorView, NewPostTemplate,
-    PostDetailView, PostPageTemplate, ProviderOption, SectionOption, SourceSlot, SourceView,
-    format_date, render,
+    CommentView, EditImageView, EditPostTemplate, ImageView, KindOption, MirrorView,
+    NewPostTemplate, PostDetailView, PostPageTemplate, ProviderOption, SectionOption, SourceSlot,
+    SourceView, format_date, render,
 };
 
 /// 手工解析过的发帖/编辑表单。
@@ -407,13 +407,20 @@ async fn build_edit<'a>(
         kinds: kind_options(kind.as_str()),
         sections: section_options(section.as_str(), Some(&user)),
         providers: provider_options(),
-        images: repo::list_post_images(state.db.pool(), id)
-            .await?
-            .into_iter()
-            .map(|img| ImageView {
-                href: format!("/img/{}", img.display_hash.unwrap_or(img.original_hash)),
-            })
-            .collect(),
+        images: {
+            let rows = repo::list_post_images(state.db.pool(), id).await?;
+            let total = rows.len();
+            rows.into_iter()
+                .enumerate()
+                .map(|(index, img)| EditImageView {
+                    id: img.id,
+                    href: format!("/img/{}", img.display_hash.unwrap_or(img.original_hash)),
+                    number: index + 1,
+                    is_first: index == 0,
+                    is_last: index + 1 == total,
+                })
+                .collect()
+        },
         image_count: row.image_count,
         sources: repo::list_post_sources(state.db.pool(), id)
             .await?
@@ -541,6 +548,100 @@ async fn save_edit(
     )
     .await;
     Ok(())
+}
+
+#[derive(Debug, Deserialize)]
+pub struct CsrfOnlyForm {
+    pub csrf: String,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct MoveImageForm {
+    pub csrf: String,
+    /// `forward` = 往前挪一格，其它值往后。
+    pub dir: String,
+}
+
+/// 取出帖子并确认当前用户有权编辑它（作者本人或管理员及以上）。
+async fn require_post_editor(
+    state: &AppState,
+    headers: &HeaderMap,
+    post_id: i64,
+) -> AppResult<CurrentUser> {
+    let user = require_user(state, headers).await?;
+    let row = repo::get_post_for(state.db.pool(), post_id, Some(user.id), user.is_staff())
+        .await?
+        .ok_or_else(|| AppError::not_found("帖子不存在或不可见"))?;
+    if row.author_id != user.id && !user.is_staff() {
+        return Err(AppError::Domain(DomainError::Forbidden(
+            "只能修改自己的帖子".to_string(),
+        )));
+    }
+    Ok(user)
+}
+
+/// 删除一张配图：软删行 + 扣减引用计数（归零的 blob 顺手回收）。
+pub async fn post_image_delete(
+    State(state): State<AppState>,
+    Path((id, image_id)): Path<(i64, i64)>,
+    headers: HeaderMap,
+    Form(form): Form<CsrfOnlyForm>,
+) -> Response {
+    let user = match require_post_editor(&state, &headers, id).await {
+        Ok(user) => user,
+        Err(e) => return e.into_page_response(true),
+    };
+    if let Err(e) = session::check_csrf(&user, &form.csrf) {
+        return e.into_page_response(true);
+    }
+    match repo::delete_post_image(state.db.pool(), id, image_id).await {
+        Ok(Some(reclaim)) => {
+            for hash in &reclaim {
+                if let Ok(parsed) = sc2clud_core::BlobHash::parse(hash) {
+                    if let Err(e) = state.storage.delete(&parsed).await {
+                        tracing::warn!(blob = %hash, error = %e, "回收配图内容失败（先记着）");
+                    }
+                }
+            }
+            tracing::info!(
+                post.id = id,
+                image.id = image_id,
+                actor.id = user.id,
+                "删除配图"
+            );
+        }
+        Ok(None) => tracing::debug!(post.id = id, image.id = image_id, "配图不存在，忽略"),
+        Err(e) => return AppError::from(e).into_response(),
+    }
+    Redirect::to(&format!("/p/{id}/edit")).into_response()
+}
+
+/// 调整配图顺序：往前或往后挪一格。
+pub async fn post_image_move(
+    State(state): State<AppState>,
+    Path((id, image_id)): Path<(i64, i64)>,
+    headers: HeaderMap,
+    Form(form): Form<MoveImageForm>,
+) -> Response {
+    let user = match require_post_editor(&state, &headers, id).await {
+        Ok(user) => user,
+        Err(e) => return e.into_page_response(true),
+    };
+    if let Err(e) = session::check_csrf(&user, &form.csrf) {
+        return e.into_page_response(true);
+    }
+    let forward = form.dir == "forward";
+    if let Err(e) = repo::move_post_image(state.db.pool(), id, image_id, forward).await {
+        return AppError::from(e).into_response();
+    }
+    tracing::info!(
+        post.id = id,
+        image.id = image_id,
+        forward,
+        actor.id = user.id,
+        "调整配图顺序"
+    );
+    Redirect::to(&format!("/p/{id}/edit")).into_response()
 }
 
 pub async fn comment_submit(

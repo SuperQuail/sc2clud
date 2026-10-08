@@ -582,6 +582,139 @@ pub async fn list_post_sources(pool: &SqlitePool, post_id: i64) -> Result<Vec<Po
     .map_err(db_err)
 }
 
+/// 删除一张配图。
+///
+/// 做四件事（在一个事务里）：删行 → 扣 blob 引用 → 让帖子的 image_count 与事实一致 →
+/// 把剩下的位置重排成 0..n-1（不留空洞）。
+///
+/// 返回**引用归零、可以物理删除**的 blob 摘要列表（由调用方去删文件）；
+/// 图片不存在时返回 `None`。
+pub async fn delete_post_image(
+    pool: &SqlitePool,
+    post_id: i64,
+    image_id: i64,
+) -> Result<Option<Vec<String>>> {
+    let mut tx = pool.begin().await.map_err(db_err)?;
+    let row: Option<(String, Option<String>, Option<String>)> = query_as(
+        "SELECT original_hash, display_hash, thumb_hash FROM post_images \
+         WHERE id = ? AND post_id = ?",
+    )
+    .bind(image_id)
+    .bind(post_id)
+    .fetch_optional(&mut *tx)
+    .await
+    .map_err(db_err)?;
+    let Some((original, display, thumb)) = row else {
+        return Ok(None);
+    };
+
+    query("DELETE FROM post_images WHERE id = ?")
+        .bind(image_id)
+        .execute(&mut *tx)
+        .await
+        .map_err(db_err)?;
+
+    // 同一个 blob 可能同时被 original/display/thumb 引用（去重后再扣）
+    let mut hashes: Vec<String> = vec![original];
+    for extra in [display, thumb].into_iter().flatten() {
+        if !hashes.contains(&extra) {
+            hashes.push(extra);
+        }
+    }
+    let mut reclaim = Vec::new();
+    for hash in &hashes {
+        query("UPDATE blobs SET refcount = refcount - 1 WHERE hash = ?")
+            .bind(hash)
+            .execute(&mut *tx)
+            .await
+            .map_err(db_err)?;
+    }
+    // 归零的 blob 顺手把元数据行也删掉，文件由调用方回收
+    for hash in &hashes {
+        let left: Option<(i64,)> = query_as("SELECT refcount FROM blobs WHERE hash = ?")
+            .bind(hash)
+            .fetch_optional(&mut *tx)
+            .await
+            .map_err(db_err)?;
+        if left.map(|(n,)| n).unwrap_or(0) <= 0 {
+            query("DELETE FROM blobs WHERE hash = ?")
+                .bind(hash)
+                .execute(&mut *tx)
+                .await
+                .map_err(db_err)?;
+            reclaim.push(hash.clone());
+        }
+    }
+    // 位置重排：删掉中间一张后不留空洞
+    let ids: Vec<(i64,)> =
+        query_as("SELECT id FROM post_images WHERE post_id = ? ORDER BY position, id")
+            .bind(post_id)
+            .fetch_all(&mut *tx)
+            .await
+            .map_err(db_err)?;
+    for (index, (id,)) in ids.iter().enumerate() {
+        query("UPDATE post_images SET position = ? WHERE id = ?")
+            .bind(index as i64)
+            .bind(id)
+            .execute(&mut *tx)
+            .await
+            .map_err(db_err)?;
+    }
+    query(
+        "UPDATE posts SET image_count = (SELECT COUNT(*) FROM post_images WHERE post_id = posts.id) \
+         WHERE id = ?",
+    )
+    .bind(post_id)
+    .execute(&mut *tx)
+    .await
+    .map_err(db_err)?;
+
+    tx.commit().await.map_err(db_err)?;
+    Ok(Some(reclaim))
+}
+
+/// 把一张配图往前/往后挪一格（`forward = true` 表示往前）。
+///
+/// 直接按当前顺序整体重写位置，不依赖「相邻两张一定相差 1」的假设。
+pub async fn move_post_image(
+    pool: &SqlitePool,
+    post_id: i64,
+    image_id: i64,
+    forward: bool,
+) -> Result<bool> {
+    let ids: Vec<(i64,)> =
+        query_as("SELECT id FROM post_images WHERE post_id = ? ORDER BY position, id")
+            .bind(post_id)
+            .fetch_all(pool)
+            .await
+            .map_err(db_err)?;
+    let mut order: Vec<i64> = ids.into_iter().map(|(id,)| id).collect();
+    let Some(index) = order.iter().position(|id| *id == image_id) else {
+        return Ok(false);
+    };
+    let target = if forward {
+        index.checked_sub(1)
+    } else {
+        (index + 1 < order.len()).then_some(index + 1)
+    };
+    let Some(target) = target else {
+        return Ok(false);
+    };
+    order.swap(index, target);
+
+    let mut tx = pool.begin().await.map_err(db_err)?;
+    for (position, id) in order.iter().enumerate() {
+        query("UPDATE post_images SET position = ? WHERE id = ?")
+            .bind(position as i64)
+            .bind(id)
+            .execute(&mut *tx)
+            .await
+            .map_err(db_err)?;
+    }
+    tx.commit().await.map_err(db_err)?;
+    Ok(true)
+}
+
 pub async fn count_post_images(pool: &SqlitePool, post_id: i64) -> Result<i64> {
     let row: (i64,) =
         query_as("SELECT COUNT(*) FROM post_images WHERE post_id = ? AND state <> 'failed'")
