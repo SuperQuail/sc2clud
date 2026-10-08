@@ -7,8 +7,10 @@ license.workspace = true
 description = "SC2clud 领域核心：错误、配置、路径安全、限速与计数聚合（不依赖 Web / DB / 具体存储）"
 
 [dependencies]
+argon2 = "0.5"
 blake3 = "1.8.7"
 md-5 = "0.11.0"
+rand_core = { version = "0.6", features = ["getrandom"] }
 serde = { version = "1.0.229", features = ["derive"] }
 serde_json = "1.0.151"
 thiserror = "2.0.21"

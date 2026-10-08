@@ -20,7 +20,8 @@ pub mod models;
 pub mod repo;
 
 pub use models::{
-    BlobRow, CommentRow, FileRow, FileWithOwnerRow, PostRow, UploadSessionRow, UserRow,
+    AuditRow, BlobRow, CommentRow, FileRow, FileWithOwnerRow, ImageJobRow, PostImageRow, PostRow,
+    UploadSessionRow, UserRow,
 };
 
 /// 编译期嵌入的迁移集合。
@@ -334,5 +335,253 @@ mod tests {
                 .expect("查询")
                 .is_none()
         );
+    }
+
+    #[tokio::test]
+    async fn registration_is_inactive_by_default() {
+        let db = db().await;
+        let now = sc2clud_core::now_unix();
+        let id = repo::register_user(
+            db.pool(),
+            "newbie",
+            "n@example.com",
+            "$argon2id$hash",
+            false,
+            now,
+        )
+        .await
+        .expect("注册");
+        let user = repo::find_user_by_email(db.pool(), "n@example.com")
+            .await
+            .expect("查询")
+            .expect("存在");
+        assert_eq!(user.id, id);
+        assert!(user.activated_at.is_none(), "注册用户默认未激活");
+        assert_eq!(user.role, "member");
+        assert!(
+            repo::registration_requires_activation(db.pool())
+                .await
+                .expect("设置")
+        );
+        repo::set_setting(db.pool(), repo::SETTING_REQUIRE_ACTIVATION, "0", None, now)
+            .await
+            .expect("改设置");
+        assert!(
+            !repo::registration_requires_activation(db.pool())
+                .await
+                .expect("设置")
+        );
+    }
+
+    #[tokio::test]
+    async fn activation_and_role_changes_are_idempotent() {
+        let db = db().await;
+        let now = sc2clud_core::now_unix();
+        let admin = repo::register_user(db.pool(), "admin1", "a@example.com", "h", true, now)
+            .await
+            .expect("管理员");
+        let member = repo::register_user(db.pool(), "member1", "m@example.com", "h", false, now)
+            .await
+            .expect("普通用户");
+
+        assert!(
+            repo::set_user_activated(db.pool(), member, true, admin, now)
+                .await
+                .expect("激活")
+        );
+        assert!(
+            !repo::set_user_activated(db.pool(), member, true, admin, now)
+                .await
+                .expect("重复激活"),
+            "重复激活应幂等"
+        );
+        let row = repo::find_user_by_id_any(db.pool(), member)
+            .await
+            .expect("查询")
+            .expect("存在");
+        assert!(row.activated_at.is_some());
+        assert_eq!(row.activated_by, Some(admin));
+
+        assert!(
+            repo::set_user_role(db.pool(), member, "developer")
+                .await
+                .expect("改角色")
+        );
+        assert!(
+            !repo::set_user_role(db.pool(), member, "developer")
+                .await
+                .expect("重复改角色"),
+            "角色没变时不该报告改动"
+        );
+        assert!(
+            repo::set_user_activated(db.pool(), member, false, admin, now)
+                .await
+                .expect("停用")
+        );
+        assert!(
+            repo::find_user_by_id_any(db.pool(), member)
+                .await
+                .expect("查询")
+                .expect("存在")
+                .activated_at
+                .is_none()
+        );
+        assert_eq!(repo::count_users(db.pool()).await.expect("计数"), 2);
+    }
+
+    #[tokio::test]
+    async fn audit_log_keeps_newest_first() {
+        let db = db().await;
+        let now = sc2clud_core::now_unix();
+        repo::record_audit(
+            db.pool(),
+            Some(1),
+            "user.activate",
+            Some("user:2"),
+            Some("由管理员激活"),
+            now,
+        )
+        .await
+        .expect("写审计");
+        repo::record_audit(db.pool(), None, "system.bootstrap", None, None, now + 1)
+            .await
+            .expect("写审计");
+        let rows = repo::recent_audit(db.pool(), 10).await.expect("读审计");
+        assert_eq!(rows.len(), 2);
+        assert_eq!(rows[0].action, "system.bootstrap", "最新在前");
+    }
+
+    #[tokio::test]
+    async fn post_review_state_gates_visibility() {
+        let db = db().await;
+        let now = sc2clud_core::now_unix();
+        let user = repo::register_user(db.pool(), "poster", "p@example.com", "h", true, now)
+            .await
+            .expect("用户");
+
+        let approved = repo::create_post_reviewed(
+            db.pool(),
+            user,
+            "resource",
+            "地图包",
+            "看 http://x.example",
+            0,
+            "approved",
+            None,
+            now,
+        )
+        .await
+        .expect("发帖");
+        let pending = repo::create_post_reviewed(
+            db.pool(),
+            user,
+            "discussion",
+            "好物",
+            "加微信",
+            0,
+            "pending",
+            Some("命中可疑词"),
+            now + 1,
+        )
+        .await
+        .expect("发帖");
+        let rejected = repo::create_post_reviewed(
+            db.pool(),
+            user,
+            "discussion",
+            "x",
+            "y",
+            0,
+            "rejected",
+            Some("标题过短"),
+            now + 2,
+        )
+        .await
+        .expect("发帖");
+
+        let visible = repo::list_visible_posts(db.pool(), 10, 0)
+            .await
+            .expect("列表");
+        let ids: Vec<i64> = visible.iter().map(|p| p.id).collect();
+        assert!(ids.contains(&approved) && ids.contains(&pending));
+        assert!(!ids.contains(&rejected), "被拒的帖子不应出现在列表");
+
+        let row = repo::get_post(db.pool(), pending)
+            .await
+            .expect("查询")
+            .expect("存在");
+        assert_eq!(row.kind, "discussion");
+        assert_eq!(row.review_state, "pending");
+        assert_eq!(row.auto_reviewed, 1);
+
+        assert!(
+            repo::set_post_review_state(db.pool(), pending, "approved", None, user, now + 3)
+                .await
+                .expect("人工改判")
+        );
+        let row = repo::get_post(db.pool(), pending)
+            .await
+            .expect("查询")
+            .expect("存在");
+        assert_eq!(row.review_state, "approved");
+        assert_eq!(row.auto_reviewed, 0, "人工改判后不再是自动结论");
+    }
+
+    #[tokio::test]
+    async fn post_images_are_queued_and_claimed_once() {
+        let db = db().await;
+        let now = sc2clud_core::now_unix();
+        let user = repo::register_user(db.pool(), "sharer", "s@example.com", "h", true, now)
+            .await
+            .expect("用户");
+        let post = repo::create_post_reviewed(
+            db.pool(),
+            user,
+            "resource",
+            "图集",
+            "看图",
+            0,
+            "approved",
+            None,
+            now,
+        )
+        .await
+        .expect("发帖");
+
+        let image = repo::add_post_image(db.pool(), post, 0, "abc123", 4096, "image/png", now)
+            .await
+            .expect("加图");
+        let images = repo::list_post_images(db.pool(), post).await.expect("读图");
+        assert_eq!(images.len(), 1);
+        assert_eq!(images[0].state, "processing");
+        assert_eq!(images[0].original_hash, "abc123", "原图哈希永久保留");
+        assert!(images[0].display_hash.is_none());
+        assert_eq!(repo::pending_image_jobs(db.pool()).await.expect("队列"), 1);
+
+        let jobs = repo::claim_image_jobs(db.pool(), 10, now)
+            .await
+            .expect("领取");
+        assert_eq!(jobs.len(), 1);
+        assert_eq!(jobs[0].image_id, image);
+        assert_eq!(jobs[0].attempts, 1);
+        assert!(
+            repo::claim_image_jobs(db.pool(), 10, now)
+                .await
+                .expect("再领")
+                .is_empty(),
+            "已被领取的任务不能被重复领取"
+        );
+
+        repo::finish_post_image(db.pool(), image, "disp", "thumb", 1280, 720, 2048)
+            .await
+            .expect("回填");
+        repo::finish_image_job(db.pool(), jobs[0].id, now)
+            .await
+            .expect("完成任务");
+        let images = repo::list_post_images(db.pool(), post).await.expect("读图");
+        assert_eq!(images[0].state, "ready");
+        assert_eq!(images[0].display_hash.as_deref(), Some("disp"));
+        assert_eq!(images[0].width, Some(1280));
+        assert_eq!(repo::pending_image_jobs(db.pool()).await.expect("队列"), 0);
     }
 }

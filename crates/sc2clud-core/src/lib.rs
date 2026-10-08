@@ -6,11 +6,13 @@
 //! 依赖方向（不可违反）：
 //! `sc2clud-core` ← `sc2clud-storage` / `sc2clud-db` ← `sc2clud-web` ← `sc2clud-app`
 
+pub mod auth;
 pub mod config;
 pub mod counter;
 pub mod error;
 pub mod hash;
 pub mod ratelimit;
+pub mod review;
 pub mod safety;
 pub mod sign;
 
