@@ -49,6 +49,10 @@ for name in $DOMAIN; do
     *) DOMAIN_NAMES="$DOMAIN_NAMES www.$ascii" ;;
   esac
 done
+# 证书路径用「用户给的主域名」（转 punycode 后的第一个），不能用 IP，否则
+# __DOMAIN__ 会变成 /etc/letsencrypt/live/<IP>/ 这种不存在的目录。
+PRIMARY="$(for n in $DOMAIN; do to_ascii "$n"; break; done)"
+[ -n "$PRIMARY" ] && DOMAIN="$PRIMARY"
 DOMAIN_NAMES="$(printf '%s' "$DOMAIN_NAMES" | tr -s ' ' | sed 's/^ //;s/ $//')"
 # 本机 IP 也写进去：用 IP 访问同样要能打开
 HOST_IP="$(hostname -I 2>/dev/null | awk '{print $1}')"
