@@ -19,6 +19,9 @@
   </script>
   <title>{% block title %}{{ site_name }}{% endblock %}</title>
   <link rel="stylesheet" href="/static/app.css">
+  {# 给个真图标：否则浏览器会去要 /favicon.ico，落到 nginx 的 404 #}
+  <link rel="icon" href="/static/art/miyin-chibi-80.webp" type="image/webp">
+  <link rel="apple-touch-icon" href="/static/art/miyin-chibi-160.webp">
   {% block head %}{% endblock %}
 </head>
 <body>
