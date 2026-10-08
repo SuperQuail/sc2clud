@@ -82,7 +82,8 @@ main { max-width: min(1720px, 94vw); margin: 0 auto; padding: 22px 20px 8px; }
 .hero .eyebrow { color: var(--blue); font-size: 13px; font-weight: 700; letter-spacing: .5px; }
 .hero h1 { font-size: 27px; margin: 4px 0 6px; letter-spacing: -.4px; }
 .hero p { color: var(--muted); margin: 0 0 16px; }
-.hero .art { flex: 0 0 auto; width: 200px; max-width: 32%; }
+/* 大屏上把配图推到右侧：文案靠左、图靠右，中间不留一块空 */
+.hero .art { flex: 0 0 auto; width: 200px; max-width: 32%; margin-left: auto; }
 @media (min-width: 1400px) {
   .hero .art { width: 240px; }
   .hero h1 { font-size: 32px; }
