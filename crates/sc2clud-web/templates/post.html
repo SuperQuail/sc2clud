@@ -40,7 +40,7 @@
     {% else %}
     <img class="avatar" src="/static/art/miyin-chibi-80.webp" alt="" width="24" height="24">
     {% endif %}
-    {{ post.author }} · {{ post.author_role_label }} · {{ post.created_at }}
+    <span class="ellipsis" title="{{ post.author }}">{{ post.author }}</span> · {{ post.author_role_label }} · {{ post.created_at }}
     {% if post.image_count > 0 %} · {{ post.image_count }} 张图{% endif %}</div>
   {% if post.archived %}
   <p class="alert" style="margin-top:12px">此帖已归档：列表里不再展示，只有作者与管理员能通过直链打开。</p>

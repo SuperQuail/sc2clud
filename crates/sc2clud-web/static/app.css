@@ -330,6 +330,20 @@ footer { color: var(--muted); font-size: 12px; text-align: center; padding: 14px
 [data-theme='dark'] .btn.ghost.danger { color: #f0a9a4; border-color: rgba(240,169,164,.4); }
 [data-theme='dark'] .btn.ghost.danger:hover { background: #3a2122; }
 
+/* ============================================================
+ * 超长显示名不该把布局顶飞：统一用省略号，并保留 title 看全名
+ * ============================================================ */
+.ellipsis {
+  display: inline-block; max-width: 16em; overflow: hidden;
+  text-overflow: ellipsis; white-space: nowrap; vertical-align: middle;
+}
+.admin-table.users .user-name {
+  display: inline-block; max-width: 15em; overflow: hidden;
+  text-overflow: ellipsis; white-space: nowrap; vertical-align: middle;
+}
+/* 卡片/列表里的作者名同样收口（保留头像，只截文字） */
+.byline .ellipsis, .post-row .ellipsis { max-width: 10em; }
+
 .icon-btn.danger { color: #b3261e; border-color: rgba(179,38,30,.4); }
 .icon-btn.danger:hover { color: #fff; background: #b3261e; border-color: #b3261e; }
 .icon-btn.ok { color: #1c7a52; border-color: rgba(28,122,82,.4); }

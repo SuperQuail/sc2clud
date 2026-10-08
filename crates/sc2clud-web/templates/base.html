@@ -42,7 +42,7 @@
       <div class="usermenu" id="usermenu">
         <button class="user-chip" type="button" id="usermenu-toggle" aria-haspopup="menu" aria-expanded="false">
           <img class="avatar" src="{% block bar_avatar %}/static/art/miyin-chibi-80.webp{% endblock %}" alt="" width="28" height="28">
-          <span>{{ name }}</span>
+          <span class="ellipsis" title="{{ name }}">{{ name }}</span>
           <svg class="chev" viewBox="0 0 16 16" width="12" height="12" aria-hidden="true"><path d="M4 6l4 4 4-4" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
         </button>
         <div class="usermenu-panel" id="usermenu-panel" role="menu">

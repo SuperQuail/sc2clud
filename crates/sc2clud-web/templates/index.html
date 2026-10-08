@@ -84,7 +84,7 @@
           {% else %}
           <img class="avatar" src="/static/art/miyin-chibi-80.webp" alt="" width="20" height="20" loading="lazy">
           {% endif %}
-          {{ post.author }}
+          <span class="ellipsis" title="{{ post.author }}">{{ post.author }}</span>
         </a>
         <span>{{ post.time_ago }}</span>
       </div>
@@ -126,7 +126,7 @@
             {% else %}
             <img class="avatar" src="/static/art/miyin-chibi-80.webp" alt="" width="18" height="18" loading="lazy">
             {% endif %}
-            {{ post.author }}
+            <span class="ellipsis" title="{{ post.author }}">{{ post.author }}</span>
           </a>
         </div>
       </div>
