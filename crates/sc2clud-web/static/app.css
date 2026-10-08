@@ -1,14 +1,24 @@
-/* SC2clud 首屏样式。
- * 预算：brotli 后 ≤ 20 KB（见 docs/BUDGETS.md）。
- * 只用系统字体栈：1.25 MB/s 的链路上，字体文件是纯负担。
- */
+# ============================================================
+# SC2clud 首屏样式
+# 美术风格对齐既有启动器（弥音）：蓝白配色、圆角卡片、柔和投影；
+# 但布局按「社区站 + 网盘」重新组织，不照搬启动器界面。
+# 预算：brotli 后 ≤ 20 KB（见 docs/BUDGETS.md）。
+# 只用系统字体栈：1.25 MB/s 的链路上，字体文件是纯负担。
+# ============================================================
+
 :root {
-  --bg: #12141a;
-  --surface: #1b1f28;
-  --line: #2b3140;
-  --text: #e6e9f0;
-  --muted: #98a2b8;
-  --accent: #4f9cf9;
+  --blue: #2f6fe4;
+  --blue-deep: #1f57bd;
+  --blue-soft: #eaf1fd;
+  --ink: #1b2430;
+  --muted: #7b8798;
+  --line: #e6ebf2;
+  --bg: #f4f7fb;
+  --card: #fff;
+  --ok: #2f9e6f;
+  --warn: #d96a2b;
+  --radius: 16px;
+  --shadow: 0 8px 24px rgba(29, 60, 116, .08);
 }
 
 * { box-sizing: border-box; }
@@ -16,63 +26,126 @@
 body {
   margin: 0;
   background: var(--bg);
-  color: var(--text);
-  font: 15px/1.6 system-ui, -apple-system, 'Segoe UI', 'Noto Sans SC', sans-serif;
+  color: var(--ink);
+  font: 15px/1.65 system-ui, -apple-system, 'Segoe UI', 'Noto Sans SC', 'Microsoft YaHei', sans-serif;
 }
 
-a { color: var(--accent); text-decoration: none; }
+a { color: var(--blue); text-decoration: none; }
 a:hover { text-decoration: underline; }
 
-.site-header {
+/* ---------- 顶栏：与启动器同色系的蓝色渐变 ---------- */
+.topbar {
+  background: linear-gradient(180deg, #3f7ff0, #2a63d6);
+  color: #fff;
+  padding: 12px 20px;
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 16px;
-  padding: 14px 20px;
-  border-bottom: 1px solid var(--line);
+  gap: 14px;
+  box-shadow: 0 2px 10px rgba(31, 87, 189, .25);
 }
-.brand { font-weight: 700; color: var(--text); }
-.site-header nav { display: flex; gap: 14px; font-size: 14px; }
+.topbar .mascot { width: 40px; height: 40px; border-radius: 50%; background: rgba(255,255,255,.9); }
+.topbar .brand { font-size: 17px; font-weight: 700; color: #fff; letter-spacing: .5px; }
+.topbar .brand small { display: block; font-size: 11px; font-weight: 400; opacity: .8; letter-spacing: 1px; }
+.topbar nav { margin-left: auto; display: flex; gap: 8px; }
+.topbar nav a {
+  color: #eaf1fd; padding: 7px 16px; border-radius: 999px; font-size: 14px; font-weight: 600;
+  transition: background .15s ease;
+}
+.topbar nav a:hover { background: rgba(255,255,255,.16); text-decoration: none; }
+.topbar nav a.active { background: #fff; color: var(--blue-deep); }
 
-main { max-width: 860px; margin: 0 auto; padding: 20px; }
+main { max-width: 980px; margin: 0 auto; padding: 20px; }
 
-.panel {
-  background: var(--surface);
-  border: 1px solid var(--line);
-  border-radius: 10px;
-  padding: 18px 20px;
+/* ---------- 卡片 ---------- */
+.card {
+  background: var(--card);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  padding: 22px 24px;
   margin-bottom: 18px;
 }
-.panel h1 { font-size: 18px; margin: 0 0 12px; }
-.panel h1 small { color: var(--muted); font-weight: 400; font-size: 13px; }
-.panel h2 { font-size: 16px; margin: 0 0 4px; }
-
-ul { list-style: none; margin: 0; padding: 0; }
-.post-list li, .file-list li { padding: 10px 0; border-top: 1px solid var(--line); }
-.meta, time { color: var(--muted); font-size: 13px; }
-.empty, .hint { color: var(--muted); font-size: 13px; }
-
-.uploader { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
-.uploader input[type='file'] { color: var(--muted); max-width: 100%; }
-.uploader progress { width: 100%; height: 6px; }
-
-button, .button {
-  background: var(--accent);
-  color: #08101c;
-  border: 0;
-  border-radius: 6px;
-  padding: 8px 14px;
-  font: inherit;
-  font-weight: 600;
-  cursor: pointer;
+.card > h2 { font-size: 17px; margin: 0 0 14px; display: flex; align-items: center; gap: 8px; }
+.card > h2 .count {
+  background: var(--blue-soft); color: var(--blue-deep); border-radius: 999px;
+  font-size: 12px; font-weight: 600; padding: 2px 10px;
 }
-button[disabled] { opacity: .55; cursor: progress; }
+.card > h2 .spacer { margin-left: auto; font-size: 12px; color: var(--muted); font-weight: 400; }
 
-.file-meta { display: grid; grid-template-columns: max-content 1fr; gap: 4px 16px; margin: 0 0 16px; }
-.file-meta dt { color: var(--muted); }
-.file-meta dd { margin: 0; }
+/* ---------- 首屏 hero ---------- */
+.hero { display: flex; gap: 24px; align-items: center; padding: 4px 0 8px; }
+.hero .copy { flex: 1 1 auto; min-width: 0; }
+.hero .eyebrow { color: var(--blue); font-size: 13px; font-weight: 700; letter-spacing: .5px; }
+.hero h1 { font-size: 30px; margin: 6px 0 8px; letter-spacing: -.5px; }
+.hero p { color: var(--muted); margin: 0 0 16px; }
+.hero .art { flex: 0 0 auto; width: 260px; max-width: 40%; }
+.hero .art img { width: 100%; height: auto; display: block; filter: drop-shadow(0 10px 20px rgba(47,111,228,.18)); }
 
-.error-panel { max-width: 520px; margin: 15vh auto 0; text-align: center; }
-code { background: #0e1116; padding: 1px 6px; border-radius: 4px; }
+.actions { display: flex; flex-wrap: wrap; gap: 10px; }
+.btn {
+  display: inline-flex; align-items: center; gap: 6px;
+  border: 0; border-radius: 999px; padding: 10px 22px;
+  font: inherit; font-weight: 600; cursor: pointer; text-decoration: none;
+  background: var(--blue); color: #fff; box-shadow: 0 6px 14px rgba(47,111,228,.28);
+}
+.btn:hover { background: var(--blue-deep); text-decoration: none; }
+.btn.ghost { background: #fff; color: var(--ink); border: 1px solid var(--line); box-shadow: none; }
+.btn.ghost:hover { background: #f7f9fd; }
+.btn:disabled { opacity: .55; cursor: progress; }
 
-.site-footer { color: var(--muted); font-size: 12px; text-align: center; padding: 24px 20px 40px; }
+/* ---------- 统计条（对齐启动器的「官方战役/已导入/已切换」那排数字）---------- */
+.stats { display: flex; flex-wrap: wrap; gap: 30px; border-top: 1px solid var(--line); margin-top: 18px; padding-top: 16px; }
+.stats div { min-width: 84px; }
+.stats .label { color: var(--muted); font-size: 13px; }
+.stats .value { color: var(--blue); font-size: 24px; font-weight: 700; line-height: 1.2; }
+
+/* ---------- 列表 ---------- */
+ul.list { list-style: none; margin: 0; padding: 0; }
+ul.list > li { padding: 12px 0; border-top: 1px solid var(--line); }
+ul.list > li:first-child { border-top: 0; }
+ul.list .title { font-weight: 600; font-size: 15px; }
+ul.list .row { display: flex; align-items: center; gap: 12px; }
+ul.list .row .grow { flex: 1 1 auto; min-width: 0; }
+ul.list .row .name { font-weight: 600; word-break: break-all; }
+.meta { color: var(--muted); font-size: 13px; }
+.empty, .hint { color: var(--muted); font-size: 13px; }
+.empty { padding: 6px 0; }
+
+.tag { display: inline-block; border-radius: 999px; padding: 2px 10px; font-size: 12px; background: var(--blue-soft); color: var(--blue-deep); }
+.tag.gray { background: #f1f4f9; color: var(--muted); }
+.size-pill { color: var(--muted); font-size: 13px; white-space: nowrap; }
+
+/* ---------- 上传岛 ---------- */
+.uploader { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; }
+.uploader input[type='file'] {
+  flex: 1 1 260px; padding: 10px 12px; background: #f7f9fd;
+  border: 1px dashed #c8d6ec; border-radius: 12px; color: var(--muted); font: inherit; max-width: 100%;
+}
+.uploader progress { flex: 1 1 100%; height: 8px; border: 0; border-radius: 999px; overflow: hidden; }
+.uploader progress::-webkit-progress-bar { background: var(--blue-soft); }
+.uploader progress::-webkit-progress-value { background: var(--blue); }
+
+/* ---------- 文件详情 ---------- */
+.detail { display: flex; gap: 24px; align-items: flex-start; }
+.detail .art { flex: 0 0 auto; width: 160px; max-width: 32%; }
+.detail .art img { width: 100%; height: auto; display: block; }
+.detail h1 { font-size: 22px; margin: 0 0 10px; word-break: break-all; }
+.detail dl { display: grid; grid-template-columns: max-content 1fr; gap: 6px 18px; margin: 0 0 18px; }
+.detail dt { color: var(--muted); }
+.detail dd { margin: 0; }
+
+/* ---------- 错误页 ---------- */
+.oops { max-width: 560px; margin: 8vh auto 0; text-align: center; }
+.oops img { width: 120px; height: auto; margin-bottom: 6px; }
+.oops h1 { font-size: 40px; margin: 0; color: var(--blue); }
+code { background: #f1f4f9; padding: 1px 6px; border-radius: 6px; font-size: 13px; }
+
+footer { color: var(--muted); font-size: 12px; text-align: center; padding: 26px 20px 40px; }
+
+@media (max-width: 640px) {
+  .hero { flex-direction: column-reverse; text-align: left; }
+  .hero .art { width: 180px; max-width: 60%; align-self: flex-end; }
+  .hero h1 { font-size: 24px; }
+  .detail { flex-direction: column; }
+  .detail .art { width: 110px; }
+  .stats { gap: 20px; }
+}

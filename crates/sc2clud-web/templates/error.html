@@ -7,11 +7,16 @@
   <link rel="stylesheet" href="/static/app.css">
 </head>
 <body>
-  <main class="panel error-panel">
-    <h1>{{ status }}</h1>
-    <p>{{ message }}</p>
-    <p class="hint">错误码：<code>{{ code }}</code></p>
-    <p><a class="button" href="/">返回首页</a></p>
+  <main>
+    <section class="card oops">
+      <img src="/static/art/miyin-cry-120.webp"
+           srcset="/static/art/miyin-cry-120.webp 120w, /static/art/miyin-cry-240.webp 240w"
+           sizes="120px" width="120" height="120" alt="弥音">
+      <h1>{{ status }}</h1>
+      <p>{{ message }}</p>
+      <p class="hint">错误码：<code>{{ code }}</code></p>
+      <p><a class="btn" href="/">返回首页</a></p>
+    </section>
   </main>
 </body>
 </html>

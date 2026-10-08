@@ -322,6 +322,31 @@ pub async fn flush_counters(pool: &SqlitePool, drained: &[(String, i64)]) -> Res
     Ok(())
 }
 
+/// 文件统计（首页展示用）。
+#[derive(Debug, Clone, Default)]
+pub struct FileStats {
+    pub files: i64,
+    pub bytes: i64,
+    pub downloads: i64,
+}
+
+/// 一次聚合查询拿到三个数字，避免首页发三条 SQL。
+pub async fn file_stats(pool: &SqlitePool, owner_id: i64) -> Result<FileStats> {
+    let row: (i64, i64, i64) = query_as(
+        "SELECT COUNT(*), COALESCE(SUM(size), 0), COALESCE(SUM(download_count), 0) \
+         FROM files WHERE owner_id = ? AND deleted_at IS NULL",
+    )
+    .bind(owner_id)
+    .fetch_one(pool)
+    .await
+    .map_err(db_err)?;
+    Ok(FileStats {
+        files: row.0,
+        bytes: row.1,
+        downloads: row.2,
+    })
+}
+
 pub async fn counter_value(pool: &SqlitePool, key: &str) -> Result<i64> {
     let row: Option<(i64,)> = query_as("SELECT value FROM counters WHERE key = ?")
         .bind(key)

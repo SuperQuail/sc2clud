@@ -15,6 +15,9 @@ pub struct IndexTemplate<'a> {
     pub posts: Vec<PostView>,
     pub files: Vec<FileView>,
     pub total_posts: i64,
+    pub total_files: i64,
+    pub total_downloads: i64,
+    pub total_bytes_human: String,
     pub max_upload_human: String,
 }
 

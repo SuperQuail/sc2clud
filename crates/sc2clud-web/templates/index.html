@@ -1,41 +1,73 @@
 {% extends "base.html" %}
 
+{% block nav_home %}active{% endblock %}
+
 {% block content %}
-<section class="panel">
-  <h1>帖子 <small>共 {{ total_posts }} 篇</small></h1>
+<section class="card">
+  <div class="hero">
+    <div class="copy">
+      <p class="eyebrow">SC2CLUD · 社区站与轻量网盘</p>
+      <h1>{{ site_name }}</h1>
+      <p>发帖、评论、传文件。单机 2 核 2 G 上跑得动：页面服务端渲染，下载走 nginx 零拷贝直出。</p>
+      <div class="actions">
+        <a class="btn" href="#files">上传文件</a>
+        <a class="btn ghost" href="/api/v1/posts">帖子接口</a>
+      </div>
+    </div>
+    <div class="art">
+      <img src="/static/art/miyin-wink-260.webp"
+           srcset="/static/art/miyin-wink-260.webp 260w, /static/art/miyin-wink-520.webp 520w"
+           sizes="260px" width="260" height="260" alt="弥音" fetchpriority="high">
+    </div>
+  </div>
+  <div class="stats">
+    <div><div class="label">帖子</div><div class="value">{{ total_posts }}</div></div>
+    <div><div class="label">文件</div><div class="value">{{ total_files }}</div></div>
+    <div><div class="label">下载</div><div class="value">{{ total_downloads }}</div></div>
+    <div><div class="label">已用空间</div><div class="value">{{ total_bytes_human }}</div></div>
+  </div>
+</section>
+
+<section class="card" id="posts">
+  <h2>最新帖子 <span class="count">{{ total_posts }}</span></h2>
   {% if posts.is_empty() %}
   <p class="empty">还没有帖子。POST /api/v1/posts 可以发第一篇。</p>
   {% else %}
-  <ul class="post-list">
+  <ul class="list">
     {% for post in posts %}
     <li>
-      <h2>{{ post.title }}</h2>
-      <p>{{ post.preview }}</p>
-      <time datetime="{{ post.created_at }}">{{ post.created_at }}</time>
+      <div class="title">{{ post.title }}</div>
+      <p class="meta" style="margin:4px 0 0">{{ post.preview }}</p>
+      <time class="meta" datetime="{{ post.created_at }}">{{ post.created_at }}</time>
     </li>
     {% endfor %}
   </ul>
   {% endif %}
 </section>
 
-<section class="panel">
-  <h1>文件 <small>单文件上限 {{ max_upload_human }}</small></h1>
-  {# 前端岛容器：挂载时会替换其中的静态回退表单，文件列表仍由服务端渲染 #}
+<section class="card" id="files">
+  <h2>文件 <span class="count">{{ total_files }}</span><span class="spacer">单文件上限 {{ max_upload_human }}</span></h2>
   <div data-island="uploader">
     <form id="upload-form" class="uploader">
       <input id="upload-input" type="file" required>
-      <button id="upload-submit" type="submit">上传</button>
+      <button id="upload-submit" class="btn" type="submit">上传</button>
       <p class="hint">选择文件后上传（启用 JavaScript 可看到进度与秒传提示）。</p>
     </form>
   </div>
   {% if files.is_empty() %}
   <p class="empty">还没有文件。</p>
   {% else %}
-  <ul class="file-list">
+  <ul class="list">
     {% for file in files %}
     <li>
-      <a href="/f/{{ file.id }}">{{ file.name }}</a>
-      <span class="meta">{{ file.size_human }} · {{ file.mime }} · 下载 {{ file.download_count }} 次 · {{ file.created_at }}</span>
+      <div class="row">
+        <div class="grow">
+          <a class="name" href="/f/{{ file.id }}">{{ file.name }}</a>
+          <div class="meta">{{ file.mime }} · 下载 {{ file.download_count }} 次 · {{ file.created_at }}</div>
+        </div>
+        <span class="size-pill">{{ file.size_human }}</span>
+        <a class="btn ghost" href="/f/{{ file.id }}">详情</a>
+      </div>
     </li>
     {% endfor %}
   </ul>

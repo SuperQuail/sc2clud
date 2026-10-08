@@ -80,7 +80,7 @@ function describeFailure(xhr: XMLHttpRequest): string {
 <template>
   <form class="uploader" @submit.prevent="upload">
     <input type="file" :disabled="busy" @change="pick" />
-    <button type="submit" :disabled="busy || !file">{{ busy ? '上传中…' : '上传' }}</button>
+    <button class="btn" type="submit" :disabled="busy || !file">{{ busy ? '上传中…' : '上传' }}</button>
     <progress v-if="busy || percent > 0" :value="percent" max="100"></progress>
     <p class="hint">
       {{ failure || status || '选择文件后上传；同内容命中秒传，不重复占盘。' }}

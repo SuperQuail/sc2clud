@@ -165,11 +165,16 @@ async fn build_index(state: &AppState) -> AppResult<IndexTemplate<'_>> {
     let posts = repo::list_posts(state.db.pool(), 20, 0).await?;
     let total_posts = repo::count_posts(state.db.pool()).await?;
     let files = repo::list_files(state.db.pool(), state.demo_owner_id, 20).await?;
+    // 统计条用一次聚合查询拿全，避免首页多发 SQL。
+    let stats = repo::file_stats(state.db.pool(), state.demo_owner_id).await?;
     Ok(IndexTemplate {
         site_name: &state.config.server.site_name,
         posts: posts.into_iter().map(post_view).collect(),
         files: files.iter().map(FileView::from_row).collect(),
         total_posts,
+        total_files: stats.files,
+        total_downloads: stats.downloads,
+        total_bytes_human: human_bytes(stats.bytes.max(0) as u64),
         max_upload_human: human_bytes(state.config.limits.max_upload_bytes),
     })
 }

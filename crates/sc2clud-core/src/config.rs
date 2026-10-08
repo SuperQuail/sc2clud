@@ -156,21 +156,16 @@ impl Default for LimitsConfig {
 }
 
 /// 下载下发方式。两种都满足硬约束「文件字节不经过应用进程」，区别只在谁来校验授权。
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum DownloadMode {
     /// 应用 302 到带签名的 URL，由 nginx `secure_link` 自行校验签名与过期时间。
     /// 需要 nginx 编译了 `--with-http_secure_link_module`（官方包有，宝塔自编译常常没有）。
+    #[default]
     SecureLink,
     /// 应用返回 `X-Accel-Redirect`，nginx 从 `internal` location 直接 sendfile。
     /// 任何 nginx 都支持；授权由应用在请求时判定。
     XAccel,
-}
-
-impl Default for DownloadMode {
-    fn default() -> Self {
-        Self::SecureLink
-    }
 }
 
 #[derive(Debug, Clone, Deserialize)]
