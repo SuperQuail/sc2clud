@@ -202,12 +202,15 @@
         <a class="btn sm" href="{{ source.url }}" target="_blank" rel="noopener nofollow">打开下载</a>
         {% if let Some(code) = source.extract_code %}<span class="meta">提取码 <code>{{ code }}</code></span>{% endif %}
         {% if !source.mirrors.is_empty() %}
-        <div class="mirrors">
-          <p class="hint">GitHub 镜像（实测延迟，最快在最前）：</p>
-          {% for mirror in source.mirrors %}
-          <a class="mirror" href="{{ mirror.url }}" target="_blank" rel="noopener nofollow" data-mirror-url="{{ mirror.url }}" data-mirror-original="{{ mirror.is_original }}">{{ mirror.label }}</a>
-          {% endfor %}
+        <div class="mirror-box" data-mirror-box>
+          <select class="mirror-select" data-mirror-select aria-label="选择镜像">
+            {% for mirror in source.mirrors %}
+            <option value="{{ mirror.url }}" data-mirror-original="{{ mirror.is_original }}">{{ mirror.label }}{% if mirror.is_original %}（原链）{% endif %}</option>
+            {% endfor %}
+          </select>
+          <button class="btn ghost sm" type="button" data-mirror-open>打开镜像</button>
           <button class="btn ghost sm" type="button" data-copy-github="{{ source.url }}">复制 GitHub 原链</button>
+          <p class="hint" data-mirror-note>正在实测各镜像延迟…</p>
         </div>
         {% endif %}
       </div>
@@ -316,36 +319,85 @@
 </script>
 {% if is_staff %}<script type="module" src="/static/islands/admin.js"></script>{% endif %}
 <script type="module">
-  // 镜像实测：HEAD 探一次，按耗时把最快的排到最前（用户仍可点任何一个）。
-  for (const group of document.querySelectorAll('.mirrors')) {
-    const links = Array.from(group.querySelectorAll('a[data-mirror-url]'));
-    const mirrors = links.filter((a) => a.dataset.mirrorOriginal === 'false');
-    if (mirrors.length > 0) {
-      const probe = async (a) => {
-        const started = performance.now();
-        try {
-          await fetch(a.dataset.mirrorUrl, { method: 'HEAD', mode: 'no-cors', cache: 'no-store' });
-        } catch (_) {}
-        return [a, performance.now() - started];
-      };
-      const results = await Promise.all(mirrors.map(probe));
-      results.sort((x, y) => x[1] - y[1]);
-      const fastest = results[0][0];
-      fastest.classList.add('mirror-fastest');
-      fastest.insertAdjacentHTML('beforeend', ' <span class="tag">最快</span>');
-      for (const entry of results) group.appendChild(entry[0]);
+  // 复制到剪贴板。
+  // 注意：navigator.clipboard 只在**安全上下文**（https / localhost）可用，
+  // 本站目前是纯 http，所以必须带 execCommand 兜底，否则按钮点了没反应。
+  function copyText(text) {
+    if (navigator.clipboard && window.isSecureContext) {
+      return navigator.clipboard.writeText(text);
     }
-  }
-  // 复制 GitHub 原链
-  for (const button of document.querySelectorAll('[data-copy-github]')) {
-    button.addEventListener('click', async () => {
-      try {
-        await navigator.clipboard.writeText(button.dataset.copyGithub);
-        button.textContent = '已复制 ✓';
-      } catch (_) {
-        button.textContent = '复制失败，请手动选择';
-      }
+    return new Promise(function (resolve, reject) {
+      var area = document.createElement('textarea');
+      area.value = text;
+      area.setAttribute('readonly', 'readonly');
+      area.style.position = 'fixed';
+      area.style.top = '-1000px';
+      document.body.appendChild(area);
+      area.select();
+      area.setSelectionRange(0, text.length);
+      var ok = false;
+      try { ok = document.execCommand('copy'); } catch (e) { ok = false; }
+      document.body.removeChild(area);
+      ok ? resolve() : reject(new Error('execCommand 复制失败'));
     });
+  }
+  for (var copyButton of document.querySelectorAll('[data-copy-github]')) {
+    copyButton.addEventListener('click', function () {
+      var self = this;
+      copyText(this.dataset.copyGithub)
+        .then(function () {
+          self.textContent = '已复制 ✓';
+          window.setTimeout(function () { self.textContent = '复制 GitHub 原链'; }, 2000);
+        })
+        .catch(function () {
+          // 两条路都失败时给一条最笨但一定可用的路：弹出来手动复制
+          self.textContent = '复制失败，请手动复制';
+          window.prompt('自动复制不可用，请按 Ctrl+C 复制：', self.dataset.copyGithub);
+          window.setTimeout(function () { self.textContent = '复制 GitHub 原链'; }, 2500);
+        });
+    });
+  }
+  // 镜像：实测延迟，最快的排到最前并默认选中；下拉里选谁就打开谁
+  for (var box of document.querySelectorAll('[data-mirror-box]')) {
+    var select = box.querySelector('[data-mirror-select]');
+    var open = box.querySelector('[data-mirror-open]');
+    var note = box.querySelector('[data-mirror-note]');
+    if (!select || !open) continue;
+    open.addEventListener('click', function () {
+      window.open(select.value, '_blank', 'noopener,noreferrer');
+    });
+    (function (select, note) {
+      var options = Array.prototype.slice.call(select.options);
+      var probes = options.filter(function (option) { return option.dataset.mirrorOriginal === 'false'; });
+      if (!probes.length) {
+        if (note) note.textContent = '只有一个原链来源；网络慢的话可以自己挂代理';
+        return;
+      }
+      var probe = function (option) {
+        var started = performance.now();
+        return fetch(option.value, { method: 'HEAD', mode: 'no-cors', cache: 'no-store' })
+          .catch(function () {})
+          .then(function () { return [option, performance.now() - started]; });
+      };
+      Promise.all(probes.map(probe)).then(function (results) {
+        results.sort(function (a, b) { return a[1] - b[1]; });
+        var fastest = results[0];
+        // 原链保持第一项，其余按实测耗时重排；最快的那条标注出来并选中
+        var plain = options.filter(function (option) { return option.dataset.mirrorOriginal === 'true'; });
+        select.innerHTML = '';
+        plain.forEach(function (option) { select.appendChild(option); });
+        results.forEach(function (entry) {
+          var option = entry[0];
+          option.textContent = option.textContent.replace(/（最快.*）$/, '');
+          select.appendChild(option);
+        });
+        fastest[0].textContent = fastest[0].textContent + '（最快）';
+        select.value = fastest[0].value;
+        if (note) {
+          note.textContent = '已实测：最快的是 ' + fastest[0].textContent + '（约 ' + Math.round(fastest[1]) + ' ms）';
+        }
+      });
+    })(select, note);
   }
 </script>
 {% endblock %}

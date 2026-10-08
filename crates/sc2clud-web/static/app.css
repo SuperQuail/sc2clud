@@ -312,6 +312,16 @@ footer { color: var(--muted); font-size: 12px; text-align: center; padding: 14px
 .actions-inline { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
 .title-line { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; font-weight: 600; }
 
+/* 镜像下拉：不要把所有镜像堆成一片按钮 */
+.mirror-box { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-top: 8px; }
+.mirror-select {
+  flex: 1 1 150px; min-width: 0; height: 34px; box-sizing: border-box;
+  font: inherit; font-size: 13.5px; padding: 0 8px; cursor: pointer;
+  border: 1px solid var(--line); border-radius: 8px; background: var(--card); color: var(--ink);
+}
+.mirror-box .hint { flex: 1 1 100%; margin: 0; }
+
+
 /* ============================================================
  * 整卡可点：覆盖式链接 + 作者栏单独跳主页
  * ============================================================ */
