@@ -286,6 +286,34 @@ pub struct SourceSlot {
     pub provider: String,
 }
 
+/// 调试页（开发自检；生产实例不注册该路由）。
+#[derive(Template)]
+#[template(path = "debug.html")]
+pub struct DebugTemplate<'a> {
+    pub site_name: &'a str,
+    pub user_label: Option<String>,
+    pub version: &'a str,
+    pub bind: String,
+    pub data_dir: String,
+    pub download_mode: String,
+    pub free_human: String,
+    pub min_free_human: String,
+    pub storage_ok: bool,
+    pub users: i64,
+    pub posts: i64,
+    pub comments: i64,
+    pub pending_images: i64,
+    pub audit: Vec<DebugAuditView>,
+}
+
+/// 调试页里的审计行。
+pub struct DebugAuditView {
+    pub created_at: String,
+    pub action: String,
+    pub target: String,
+    pub detail: String,
+}
+
 /// 管理员面板。
 #[derive(Template)]
 #[template(path = "admin.html")]

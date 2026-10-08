@@ -3,6 +3,17 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
+  <script>
+    // 主题要在首次绘制前定下来，否则会先闪一下白底。
+    (function () {
+      var dark = true;
+      try {
+        var stored = localStorage.getItem('sc2clud-theme');
+        dark = stored ? stored === 'dark' : window.matchMedia('(prefers-color-scheme: dark)').matches;
+      } catch (e) {}
+      document.documentElement.setAttribute('data-theme', dark ? 'dark' : 'light');
+    })();
+  </script>
   <title>{% block title %}{{ site_name }}{% endblock %}</title>
   <link rel="stylesheet" href="/static/app.css">
   {% block head %}{% endblock %}
@@ -13,15 +24,34 @@
          srcset="/static/art/miyin-chibi-80.webp 80w, /static/art/miyin-chibi-160.webp 160w"
          sizes="40px" width="40" height="40" alt="弥音" fetchpriority="high">
     <a class="brand" href="/">{{ site_name }}<small>COMMUNITY &amp; CLOUD</small></a>
-    <nav>
+    <nav class="main-nav">
       <a href="/" class="{% block nav_home %}{% endblock %}">社区</a>
       {% if let Some(name) = user_label %}
       <a href="/">{{ name }}</a>
       {% else %}
       <a href="/login">登录</a>
       <a href="/register">注册</a>
+      <button class="theme-toggle" type="button" id="theme-toggle" aria-label="切换夜间模式">夜间</button>
       {% endif %}
     </nav>
+  <script>
+    (function () {
+      var button = document.getElementById('theme-toggle');
+      if (!button) return;
+      var sync = function () {
+        var dark = document.documentElement.getAttribute('data-theme') === 'dark';
+        button.textContent = dark ? '日间' : '夜间';
+        button.setAttribute('aria-pressed', dark ? 'true' : 'false');
+      };
+      sync();
+      button.addEventListener('click', function () {
+        var next = document.documentElement.getAttribute('data-theme') === 'dark' ? 'light' : 'dark';
+        document.documentElement.setAttribute('data-theme', next);
+        try { localStorage.setItem('sc2clud-theme', next); } catch (e) {}
+        sync();
+      });
+    })();
+  </script>
   </header>
   <main>
 {% block content %}{% endblock %}

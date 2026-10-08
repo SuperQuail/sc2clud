@@ -308,6 +308,62 @@ footer { color: var(--muted); font-size: 12px; text-align: center; padding: 14px
 .actions-inline { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
 .title-line { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; font-weight: 600; }
 
+/* ============================================================
+ * 夜间模式
+ * 主题由 base.html 的内联脚本在首次绘制前写到 <html data-theme>，
+ * 默认跟随系统（prefers-color-scheme），用户切换后记在 localStorage。
+ * 这里只覆盖配色与少数写死颜色的表面，不动版式。
+ * ============================================================ */
+[data-theme="dark"] {
+  --blue: #5b8def;
+  --blue-deep: #8fb4f8;
+  --blue-soft: #1b2740;
+  --ink: #e7edf6;
+  --muted: #93a1b5;
+  --line: #26313f;
+  --bg: #0e141b;
+  --card: #161e28;
+}
+[data-theme="dark"] body { color: var(--ink); }
+[data-theme="dark"] code { background: #1e2935; color: #cfe0f5; }
+[data-theme="dark"] .card,
+[data-theme="dark"] .post-card,
+[data-theme="dark"] .auth-card { background: var(--card); border-color: var(--line); box-shadow: 0 6px 18px rgba(0,0,0,.35); }
+[data-theme="dark"] .post-card:hover { box-shadow: 0 10px 24px rgba(0,0,0,.45); }
+[data-theme="dark"] .btn.ghost { background: #1b2431; color: var(--ink); border-color: var(--line); }
+[data-theme="dark"] .section-nav a,
+[data-theme="dark"] .mirror,
+[data-theme="dark"] .size-pill,
+[data-theme="dark"] .tag { background: #1b2431; color: var(--ink); border-color: var(--line); }
+[data-theme="dark"] .section-nav a.active { background: var(--blue); color: #08101c; border-color: var(--blue); }
+[data-theme="dark"] .mirror-fastest { background: #1b2740; color: var(--blue-deep); }
+[data-theme="dark"] .stack input,
+[data-theme="dark"] .stack textarea,
+[data-theme="dark"] .stack select,
+[data-theme="dark"] .inline-form input,
+[data-theme="dark"] .inline-form select,
+[data-theme="dark"] .source-row input,
+[data-theme="dark"] .source-row select { background: #131a24; color: var(--ink); border-color: var(--line); }
+[data-theme="dark"] .kind-picker label { border-color: var(--line); }
+[data-theme="dark"] .post-cover-empty { background: linear-gradient(135deg, #1a2434, #141c27); }
+[data-theme="dark"] .post-cover-empty::after { opacity: .22; }
+[data-theme="dark"] .kind-discussion { background: #1b2740; color: #9dbdf5; }
+[data-theme="dark"] .kind-resource { background: #14301f; color: #86d6ab; }
+[data-theme="dark"] .kind-repost { background: #33240f; color: #e0b47f; }
+[data-theme="dark"] .provider { background: #1b2431; color: #c7d4e6; }
+[data-theme="dark"] .provider-github { background: #1f242b; color: #d8dee6; }
+[data-theme="dark"] .gallery img { border-color: var(--line); }
+[data-theme="dark"] .alert { background: #3a1d1b; color: #f3b4ae; }
+[data-theme="dark"] .tag.ok { background: #14301f; color: #86d6ab; }
+[data-theme="dark"] .tag.warn { background: #33240f; color: #e0b47f; }
+
+.theme-toggle {
+  margin-left: 6px; border: 1px solid rgba(255,255,255,.45); background: transparent;
+  color: #fff; border-radius: 999px; padding: 5px 12px; font: inherit; font-size: 13px; cursor: pointer;
+}
+.theme-toggle:hover { background: rgba(255,255,255,.16); }
+
+
 /* 管理面板 */
 .admin-table { width: 100%; border-collapse: collapse; font-size: 14px; }
 .admin-table th, .admin-table td { text-align: left; padding: 10px 8px; border-bottom: 1px solid var(--line); vertical-align: middle; }

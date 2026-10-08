@@ -1,0 +1,32 @@
+# 调试实例：与生产**完全隔离**。
+#   - 独立端口 127.0.0.1:8081（不对外，需要时用 ssh -L 进去）
+#   - 独立数据目录 /srv/sc2clud/data-debug（碰不到生产库）
+#   - 打开调试页与「应用自己回图片字节」，方便本地/远程调试新功能
+# 生产实例（sc2clud.service）不开这些开关。
+[Unit]
+Description=SC2clud 调试实例（仅回环，独立数据目录）
+After=network.target
+
+[Service]
+Type=simple
+EnvironmentFile=/srv/sc2clud/sc2clud.env
+# 下面这些 Environment 会覆盖 EnvironmentFile 里的同名项
+Environment=SC2CLUD_BIND=127.0.0.1:8081
+Environment=SC2CLUD_DATA_DIR=/srv/sc2clud/data-debug
+Environment=SC2CLUD_BASE_URL=http://127.0.0.1:8081
+Environment=SC2CLUD_DEBUG_PAGES=1
+Environment=SC2CLUD_SERVE_BLOBS_LOCALLY=1
+Environment=SC2CLUD_LOG=debug
+ExecStart=/srv/sc2clud/sc2clud serve
+Restart=on-failure
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectSystem=strict
+ProtectHome=yes
+ReadWritePaths=/srv/sc2clud/data-debug
+MemoryHigh=96M
+MemoryMax=160M
+OOMScoreAdjust=300
+
+[Install]
+WantedBy=multi-user.target

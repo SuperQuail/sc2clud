@@ -68,6 +68,12 @@ pub struct ServerConfig {
     pub download_prefix: String,
     /// 站点名（页面标题用）。
     pub site_name: String,
+    /// **调试页**开关（默认关）。
+    ///
+    /// 打开后才有 `/debug`：里面是给开发用的自检面板（表计数、存储余量、
+    /// 最近审计、配置摘要），**不含密钥**。生产实例保持关闭——
+    /// 要用就起一个独立实例（独立数据目录 + 独立端口 + 仅回环监听）。
+    pub debug_pages: bool,
     /// **仅供本地开发/截图**：由应用进程直接回图片字节。
     ///
     /// 生产环境必须保持 false——字节应由 nginx 直出，不经过应用进程。
@@ -82,6 +88,7 @@ impl Default for ServerConfig {
             base_url: "http://127.0.0.1:8080".to_string(),
             download_prefix: "/dl".to_string(),
             site_name: "SC2clud".to_string(),
+            debug_pages: false,
             serve_blobs_locally: false,
         }
     }
@@ -283,6 +290,9 @@ impl Config {
         if let Some(v) = env_var("SC2CLUD_DOWNLOAD_PREFIX") {
             self.server.download_prefix = v;
         }
+        if let Some(v) = env_var("SC2CLUD_DEBUG_PAGES") {
+            self.server.debug_pages = matches!(v.as_str(), "1" | "true" | "yes");
+        }
         if let Some(v) = env_var("SC2CLUD_SERVE_BLOBS_LOCALLY") {
             self.server.serve_blobs_locally = matches!(v.as_str(), "1" | "true" | "yes");
         }
@@ -334,6 +344,11 @@ impl Config {
             ));
         }
         let addr = self.bind_addr()?;
+        if self.server.debug_pages && !addr.ip().is_loopback() {
+            return Err(Error::Config(
+                "server.debug_pages 只允许在回环监听时开启（调试页不得对公网暴露）".to_string(),
+            ));
+        }
         if self.server.serve_blobs_locally && !addr.ip().is_loopback() {
             return Err(Error::Config(
                 "server.serve_blobs_locally 只允许在回环监听时开启（生产必须由 nginx 直出字节）"

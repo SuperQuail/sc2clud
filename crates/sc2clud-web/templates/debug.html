@@ -1,0 +1,44 @@
+{% extends "base.html" %}
+
+{% block title %}调试 · {{ site_name }}{% endblock %}
+
+{% block content %}
+<section class="card">
+  <h2>自检 <span class="spacer">调试实例 · 未对公网暴露</span></h2>
+  <div class="stats">
+    <div><div class="label">版本</div><div class="value">{{ version }}</div></div>
+    <div><div class="label">监听</div><div class="value">{{ bind }}</div></div>
+    <div><div class="label">下载模式</div><div class="value">{{ download_mode }}</div></div>
+    <div><div class="label">存储</div><div class="value">{% if storage_ok %}正常{% else %}异常{% endif %}</div></div>
+    <div><div class="label">可用空间</div><div class="value">{{ free_human }}</div></div>
+    <div><div class="label">安全阈值</div><div class="value">{{ min_free_human }}</div></div>
+  </div>
+  <p class="hint">数据目录：<code>{{ data_dir }}</code></p>
+</section>
+
+<section class="card">
+  <h2>表计数</h2>
+  <div class="stats">
+    <div><div class="label">用户</div><div class="value">{{ users }}</div></div>
+    <div><div class="label">帖子</div><div class="value">{{ posts }}</div></div>
+    <div><div class="label">回复</div><div class="value">{{ comments }}</div></div>
+    <div><div class="label">待处理图片任务</div><div class="value">{{ pending_images }}</div></div>
+  </div>
+</section>
+
+<section class="card">
+  <h2>最近审计 <span class="count">{{ audit.len() }}</span></h2>
+  {% if audit.is_empty() %}
+  <p class="empty">暂无记录。</p>
+  {% else %}
+  <table class="admin-table">
+    <thead><tr><th>时间</th><th>动作</th><th>对象</th><th>备注</th></tr></thead>
+    <tbody>
+      {% for row in audit %}
+      <tr><td>{{ row.created_at }}</td><td>{{ row.action }}</td><td><code>{{ row.target }}</code></td><td>{{ row.detail }}</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% endif %}
+</section>
+{% endblock %}

@@ -8,6 +8,7 @@
 pub mod error;
 pub mod pages_admin;
 pub mod pages_auth;
+pub mod pages_debug;
 pub mod pages_posts;
 pub mod routes;
 pub mod session;
@@ -78,9 +79,16 @@ fn static_dir() -> std::path::PathBuf {
 /// 层次顺序（外 → 内）：访问日志 → panic 兜底 → 请求体上限 → 路由。
 /// 请求体上限与上传体积上限同源（`limits.max_request_body_bytes`），避免两处配置打架。
 pub fn router(state: AppState) -> Router {
+    // 调试页只在开关打开时**注册路由**：关着时 /debug 与不存在的路径没有区别。
+    let debug = if state.config.server.debug_pages {
+        Router::new().route("/debug", axum::routing::get(pages_debug::page))
+    } else {
+        Router::new()
+    };
     let max_body = state.config.limits.max_request_body_bytes as usize;
     Router::new()
         .nest_service("/static", ServeDir::new(static_dir()))
+        .merge(debug)
         .merge(routes::pages())
         .merge(routes::api_read())
         .merge(routes::api_upload())

@@ -1209,6 +1209,14 @@ pub async fn list_users(pool: &SqlitePool, limit: i64, offset: i64) -> Result<Ve
         .map_err(db_err)
 }
 
+pub async fn count_comments(pool: &SqlitePool) -> Result<i64> {
+    let row: (i64,) = query_as("SELECT COUNT(*) FROM comments WHERE deleted_at IS NULL")
+        .fetch_one(pool)
+        .await
+        .map_err(db_err)?;
+    Ok(row.0)
+}
+
 pub async fn count_users(pool: &SqlitePool) -> Result<i64> {
     let row: (i64,) = query_as("SELECT COUNT(*) FROM users")
         .fetch_one(pool)
