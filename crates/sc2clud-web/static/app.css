@@ -350,6 +350,14 @@ footer { color: var(--muted); font-size: 12px; text-align: center; padding: 14px
   transition: color .15s ease, border-color .15s ease, background .15s ease, transform .15s ease;
 }
 .icon-btn:hover { color: var(--blue); border-color: var(--blue); transform: translateY(-1px); text-decoration: none; }
+/* 磁盘预算单元格：数值 + 行内编辑 */
+.quota-cell { white-space: nowrap; }
+.quota-cell .inline-form { display: inline-flex; align-items: center; gap: 6px; margin-left: 8px; }
+.quota-cell input[type='number'] {
+  font: inherit; font-size: 13px; width: 88px; padding: 6px 8px;
+  border: 1px solid var(--line); border-radius: 8px; background: var(--card); color: var(--ink);
+}
+
 .row-actions .inline-form input[type='text'] { width: 110px; }
 .row-actions .inline-form select { max-width: 120px; }
 @media (max-width: 900px) { .admin { grid-template-columns: 1fr; } .admin-side { position: static; } .search { margin-left: 0; width: 100%; } .search input { width: 100%; } }
