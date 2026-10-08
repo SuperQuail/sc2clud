@@ -461,40 +461,46 @@ mod tests {
 
         let approved = repo::create_post_reviewed(
             db.pool(),
-            user,
-            "resource",
-            "地图包",
-            "看 http://x.example",
-            0,
-            "approved",
-            None,
-            now,
+            repo::NewPost {
+                author_id: user,
+                kind: "resource",
+                title: "地图包",
+                body: "看 http://x.example",
+                image_count: 0,
+                review_state: "approved",
+                review_note: None,
+                now,
+            },
         )
         .await
         .expect("发帖");
         let pending = repo::create_post_reviewed(
             db.pool(),
-            user,
-            "discussion",
-            "好物",
-            "加微信",
-            0,
-            "pending",
-            Some("命中可疑词"),
-            now + 1,
+            repo::NewPost {
+                author_id: user,
+                kind: "discussion",
+                title: "好物",
+                body: "加微信",
+                image_count: 0,
+                review_state: "pending",
+                review_note: Some("命中可疑词"),
+                now: now + 1,
+            },
         )
         .await
         .expect("发帖");
         let rejected = repo::create_post_reviewed(
             db.pool(),
-            user,
-            "discussion",
-            "x",
-            "y",
-            0,
-            "rejected",
-            Some("标题过短"),
-            now + 2,
+            repo::NewPost {
+                author_id: user,
+                kind: "discussion",
+                title: "x",
+                body: "y",
+                image_count: 0,
+                review_state: "rejected",
+                review_note: Some("标题过短"),
+                now: now + 2,
+            },
         )
         .await
         .expect("发帖");
@@ -536,14 +542,16 @@ mod tests {
             .expect("用户");
         let post = repo::create_post_reviewed(
             db.pool(),
-            user,
-            "resource",
-            "图集",
-            "看图",
-            0,
-            "approved",
-            None,
-            now,
+            repo::NewPost {
+                author_id: user,
+                kind: "resource",
+                title: "图集",
+                body: "看图",
+                image_count: 0,
+                review_state: "approved",
+                review_note: None,
+                now,
+            },
         )
         .await
         .expect("发帖");

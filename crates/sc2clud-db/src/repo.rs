@@ -352,32 +352,36 @@ pub async fn file_stats(pool: &SqlitePool, owner_id: i64) -> Result<FileStats> {
 
 // ---------------------------------------------------------------- 帖子（类型 + 审核）
 
+/// 新建帖子的入参（含审核结论）。
+///
+/// 参数多且同型（四个 `&str`、两个 `i64`），用具名结构体避免调用处顺序错位。
+pub struct NewPost<'a> {
+    pub author_id: i64,
+    pub kind: &'a str,
+    pub title: &'a str,
+    pub body: &'a str,
+    pub image_count: i64,
+    pub review_state: &'a str,
+    pub review_note: Option<&'a str>,
+    pub now: i64,
+}
+
 /// 新建帖子并写入审核结论。返回帖子 id。
-pub async fn create_post_reviewed(
-    pool: &SqlitePool,
-    author_id: i64,
-    kind: &str,
-    title: &str,
-    body: &str,
-    image_count: i64,
-    review_state: &str,
-    review_note: Option<&str>,
-    now: i64,
-) -> Result<i64> {
+pub async fn create_post_reviewed(pool: &SqlitePool, post: NewPost<'_>) -> Result<i64> {
     let res = query(
         "INSERT INTO posts (author_id, title, body, created_at, updated_at, kind, review_state, \
                             review_note, auto_reviewed, image_count) \
          VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1, ?)",
     )
-    .bind(author_id)
-    .bind(title)
-    .bind(body)
-    .bind(now)
-    .bind(now)
-    .bind(kind)
-    .bind(review_state)
-    .bind(review_note)
-    .bind(image_count)
+    .bind(post.author_id)
+    .bind(post.title)
+    .bind(post.body)
+    .bind(post.now)
+    .bind(post.now)
+    .bind(post.kind)
+    .bind(post.review_state)
+    .bind(post.review_note)
+    .bind(post.image_count)
     .execute(pool)
     .await
     .map_err(db_err)?;
