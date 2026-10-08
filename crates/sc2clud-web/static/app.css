@@ -583,7 +583,7 @@ html[data-post-view='card'] .post-list { display: none; }
 /* ============================================================
  * 管理表格对齐 + 异步提交反馈
  * ============================================================ */
-.admin-table.users { table-layout: fixed; }
+.admin-table.users { table-layout: auto; }
 .admin-table.users th:nth-child(1), .admin-table.users td:nth-child(1) { width: 92px; }
 .admin-table.users th:nth-child(2), .admin-table.users td:nth-child(2) { width: 192px; }
 .admin-table.users th:nth-child(3), .admin-table.users td:nth-child(3) { width: 200px; }
