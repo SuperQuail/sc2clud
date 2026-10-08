@@ -163,14 +163,15 @@ footer { color: var(--muted); font-size: 12px; text-align: center; padding: 14px
 .post-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
-  /* 卡片按自身内容高度排布：有无封面混排时不会被拉到同高而中间空一大片 */
-  align-items: start;
+  /* 统一尺寸：同一行卡片等高（封面高度固定，留白由摘要区吸收） */
+  align-items: stretch;
   gap: 14px;
 }
 
 .post-card {
   display: flex;
   flex-direction: column;
+  height: 100%;
   gap: 8px;
   background: #fff;
   border: 1px solid var(--line);
@@ -190,13 +191,31 @@ footer { color: var(--muted); font-size: 12px; text-align: center; padding: 14px
   background-position: center;
 }
 
+/* 没有配图的帖子：同高的淡色封面 + 弥音水印，保证整行卡片尺寸一致 */
+.post-cover-empty {
+  position: relative;
+  background: linear-gradient(135deg, #eef4ff, #dce8fb);
+}
+.post-cover-empty::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: url('/static/art/miyin-chibi-80.webp') center / 56px no-repeat;
+  opacity: .38;
+}
+
 .post-card .head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
-.post-card h3 { margin: 0; font-size: 15px; line-height: 1.45; }
+.post-card h3 {
+  margin: 0; font-size: 15px; line-height: 1.45;
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+}
 .post-card h3 a { color: var(--ink); }
 .post-card h3 a:hover { color: var(--blue); text-decoration: none; }
 .post-card .preview {
   margin: 0; color: var(--muted); font-size: 13px;
-  display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden;
+  /* 摘要吸收剩余高度：卡片等高时不会在底部留出一条空白 */
+  flex: 1 1 auto;
+  display: -webkit-box; -webkit-line-clamp: 4; -webkit-box-orient: vertical; overflow: hidden;
 }
 .post-card .foot {
   margin-top: 4px; padding-top: 8px; border-top: 1px solid var(--line);

@@ -213,12 +213,14 @@ async fn build_index<'a>(
     let is_staff = user.is_some_and(CurrentUser::is_staff);
     let feed = repo::list_feed(state.db.pool(), viewer_id, is_staff, 20, 0).await?;
 
-    let my_files = match viewer_id {
-        Some(id) => repo::list_files(state.db.pool(), id, 20).await?,
-        None => Vec::new(),
+    // 网盘是后续施工内容：**只对网站管理员及以上**开放，普通用户与游客都看不到这一块。
+    let netdisk_visible = user.is_some_and(CurrentUser::is_staff);
+    let my_files = match (viewer_id, netdisk_visible) {
+        (Some(id), true) => repo::list_files(state.db.pool(), id, 20).await?,
+        _ => Vec::new(),
     };
-    let my_file_stats = match viewer_id {
-        Some(id) => {
+    let my_file_stats = match (viewer_id, netdisk_visible) {
+        (Some(id), true) => {
             let stats = repo::file_stats(state.db.pool(), id).await?;
             Some(MyFileStats {
                 files: stats.files,
@@ -226,7 +228,7 @@ async fn build_index<'a>(
                 downloads: stats.downloads,
             })
         }
-        None => None,
+        _ => None,
     };
 
     Ok(IndexTemplate {
@@ -237,6 +239,7 @@ async fn build_index<'a>(
         needs_activation: user.is_some_and(|u| !u.activated),
         visible_posts: feed.len() as i64,
         posts: feed.iter().map(|row| feed_view(row, viewer_id)).collect(),
+        netdisk_visible,
         my_files: my_files.iter().map(FileView::from_row).collect(),
         my_file_stats,
         max_upload_human: human_bytes(state.config.limits.max_upload_bytes),
@@ -335,7 +338,7 @@ pub async fn upload_post_image(
     body: Body,
 ) -> AppResult<Json<serde_json::Value>> {
     let user = require_user(&state, &headers).await?;
-    session::guard(Some(&user), Permission::UploadFile)?;
+    session::guard(Some(&user), Permission::UseNetdisk)?;
     ensure_free_space(
         state.storage.available_bytes().await?,
         state.config.limits.min_free_bytes,
@@ -574,6 +577,7 @@ pub async fn list_files(
     headers: HeaderMap,
 ) -> AppResult<Json<Vec<FileDto>>> {
     let user = require_user(&state, &headers).await?;
+    session::guard(Some(&user), Permission::UseNetdisk)?;
     let files = repo::list_files(state.db.pool(), user.id, 100).await?;
     Ok(Json(files.iter().map(|row| file_dto(row, false)).collect()))
 }
@@ -605,7 +609,7 @@ pub async fn claim_file(
     Json(req): Json<ClaimRequest>,
 ) -> AppResult<(StatusCode, Json<FileDto>)> {
     let user = require_user(&state, &headers).await?;
-    session::guard(Some(&user), Permission::UploadFile)?;
+    session::guard(Some(&user), Permission::UseNetdisk)?;
     let hash = BlobHash::parse(&req.hash)?;
     let name = safety::safe_file_name(&req.name)?;
     if req.size <= 0 {
@@ -676,7 +680,7 @@ pub async fn upload_file(
     body: Body,
 ) -> AppResult<Json<FileDto>> {
     let user = require_user(&state, &headers).await?;
-    session::guard(Some(&user), Permission::UploadFile)?;
+    session::guard(Some(&user), Permission::UseNetdisk)?;
     // 磁盘闸门：可用空间低于阈值就拒绝，避免把服务器写爆（507）。
     ensure_free_space(
         state.storage.available_bytes().await?,
@@ -793,6 +797,7 @@ pub async fn delete_file(
     headers: HeaderMap,
 ) -> AppResult<StatusCode> {
     let user = require_user(&state, &headers).await?;
+    session::guard(Some(&user), Permission::UseNetdisk)?;
     let row = repo::get_file(state.db.pool(), id)
         .await?
         .ok_or_else(|| AppError::not_found("文件不存在或已删除"))?;
@@ -832,6 +837,7 @@ pub async fn download_file(
         .await?
         .ok_or_else(|| AppError::not_found("文件不存在或已删除"))?;
     let user = require_user(&state, &headers).await?;
+    session::guard(Some(&user), Permission::UseNetdisk)?;
     if row.owner_id != user.id && !user.is_staff() {
         return Err(AppError::not_found("文件不存在或已删除"));
     }

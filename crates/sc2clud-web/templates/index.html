@@ -50,6 +50,8 @@
     <article class="post-card">
       {% if let Some(cover) = post.cover_hash %}
       <div class="post-cover" style="background-image:url('/img/{{ cover }}')"></div>
+      {% else %}
+      <div class="post-cover post-cover-empty"></div>
       {% endif %}
       <div class="head">
         <span class="kind kind-{{ post.kind }}">{{ post.kind_label }}</span>
@@ -68,14 +70,13 @@
   {% endif %}
 </section>
 
-{% if user_label.is_some() %}
+{# 网盘只对网站管理员及以上可见：这是后续施工内容，普通用户看不到入口。 #}
+{% if netdisk_visible %}
 <section class="card" id="files">
-  <h2>我的文件 <span class="count">{% if let Some(stats) = my_file_stats %}{{ stats.files }}{% else %}0{% endif %}</span>
-    <span class="spacer">单文件上限 {{ max_upload_human }}</span>
+  <h2>网盘（施工中） <span class="count">{% if let Some(stats) = my_file_stats %}{{ stats.files }}{% else %}0{% endif %}</span>
+    <span class="spacer">仅管理员可见 · 单文件上限 {{ max_upload_human }}</span>
   </h2>
-  {% if !can_post %}
-  <p class="empty">账号激活后才能上传文件。</p>
-  {% else %}
+  <p class="hint">网盘暂未对普通用户开放：路径、配额、分享与清理策略定稿后再上线。下面是管理员自用的上传入口。</p>
   <div data-island="uploader">
     <form id="upload-form" class="uploader">
       <input id="upload-input" type="file" required>
@@ -83,7 +84,6 @@
       <p class="hint">选择文件后上传（启用 JavaScript 可看到进度与秒传提示）。</p>
     </form>
   </div>
-  {% endif %}
   {% if my_files.is_empty() %}
   <p class="empty">还没有文件。</p>
   {% else %}

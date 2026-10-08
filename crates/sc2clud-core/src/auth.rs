@@ -69,8 +69,11 @@ pub enum Permission {
     CreateRepost,
     /// 回复帖子。
     Comment,
-    /// 上传文件到网盘。
-    UploadFile,
+    /// 使用网盘（上传/下载/管理自己的文件）。
+    ///
+    /// **当前阶段只对网站管理员及以上开放**：网盘是后续施工内容，
+    /// 等路径、配额、分享与清理策略定稿后再下调到普通用户。
+    UseNetdisk,
     /// 人工复核被审核机拦下的帖子。
     ReviewPost,
     /// 激活 / 停用用户。
@@ -84,10 +87,11 @@ impl Permission {
     pub fn min_role(self) -> Option<Role> {
         match self {
             Permission::ViewContent => None,
-            Permission::CreateDiscussion
-            | Permission::CreateRepost
-            | Permission::Comment
-            | Permission::UploadFile => Some(Role::Member),
+            Permission::CreateDiscussion | Permission::CreateRepost | Permission::Comment => {
+                Some(Role::Member)
+            }
+            // 网盘：暂只对管理员开放（施工中）
+            Permission::UseNetdisk => Some(Role::Admin),
             // 讨论 / 资源 / 转载三类帖子对**所有已激活用户**开放（产品决定：不设发布门槛）。
             Permission::CreateResource => Some(Role::Member),
             // 人工复核是管理动作，仍要求开发者及以上。
@@ -296,6 +300,10 @@ mod tests {
     #[test]
     fn developer_and_admin_tiers() {
         assert!(allows(Some(Role::Developer), true, Permission::ReviewPost));
+        // 网盘暂不对普通用户/开发者开放
+        assert!(!allows(Some(Role::Member), true, Permission::UseNetdisk));
+        assert!(!allows(Some(Role::Developer), true, Permission::UseNetdisk));
+        assert!(allows(Some(Role::Admin), true, Permission::UseNetdisk));
         assert!(!allows(
             Some(Role::Developer),
             true,

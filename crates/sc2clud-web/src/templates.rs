@@ -22,6 +22,8 @@ pub struct IndexTemplate<'a> {
     /// 帖子流（已按查看者过滤：审核中的只有作者与管理员可见）。
     pub posts: Vec<FeedView>,
     pub visible_posts: i64,
+    /// 网盘区块是否可见（当前仅网站管理员及以上）。
+    pub netdisk_visible: bool,
     /// **只显示自己的文件**——别人的文件不进首页。
     pub my_files: Vec<FileView>,
     /// 登录后才给的文件统计。
