@@ -36,7 +36,7 @@
         <li><span>磁盘预算</span><b>{{ user.quota_human }}</b><span class="meta">已用 {{ user.used_human }}</span></li>
         <li><span>最后在线</span><b>{{ user.last_seen }}</b></li>
         <li><span>注册于</span><b>{{ user.created_at }}（{{ user.created_from_now }}）</b></li>
-        <li><span>状态</span>{% if user.activated %}<span class="tag ok">已激活</span>{% else %}<span class="tag warn">未激活</span>{% endif %}{% if user.trusted %}<span class="tag ok">信任</span>{% endif %}{% if user.is_self %}<span class="tag">这是你自己</span>{% endif %}</li>
+        <li><span>状态</span>{% if user.activated %}<span class="tag ok" title="可以登录、发帖与上传">已激活</span>{% else %}<span class="tag warn" title="不能发帖与上传，需要管理员激活">未激活</span>{% endif %}{% if user.trusted %}<span class="tag ok">信任</span>{% endif %}{% if user.is_self %}<span class="tag">这是你自己</span>{% endif %}</li>
       </ul>
     </section>
 
@@ -86,7 +86,7 @@
         {% if !user.is_self %}
         <form method="post" data-async data-after="refresh" action="/admin/users/{{ user.id }}/{% if user.activated %}deactivate{% else %}activate{% endif %}">
           <input type="hidden" name="csrf" value="{{ csrf }}">
-          <button class="btn ghost sm" type="submit">{% if user.activated %}停用账号{% else %}激活账号{% endif %}</button>
+          <button class="btn {% if user.activated %}danger{% else %}ghost{% endif %} sm" type="submit">{% if user.activated %}停用账号{% else %}激活账号{% endif %}</button>
         </form>
         {% endif %}
         <a class="btn ghost sm" href="/u/{{ user.handle }}">查看主页</a>

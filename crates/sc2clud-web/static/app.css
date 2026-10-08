@@ -314,6 +314,19 @@ footer { color: var(--muted); font-size: 12px; text-align: center; padding: 14px
 .actions-inline { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
 .title-line { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; font-weight: 600; }
 
+/* 危险 / 正向图标按钮：停用账号是红色，激活是绿色——一眼能分清账号状态 */
+.icon-btn.danger { color: #b3261e; border-color: rgba(179,38,30,.4); }
+.icon-btn.danger:hover { color: #fff; background: #b3261e; border-color: #b3261e; }
+.icon-btn.ok { color: #1c7a52; border-color: rgba(28,122,82,.4); }
+.icon-btn.ok:hover { color: #fff; background: #1c7a52; border-color: #1c7a52; }
+.btn.danger { background: #b3261e; color: #fff; box-shadow: 0 3px 10px rgba(179,38,30,.24); }
+.btn.danger:hover { background: #8f1e17; }
+.tag.warn { background: #fdf1e3; color: #9a5b06; }
+[data-theme='dark'] .tag.warn { background: #3a2a12; color: #f0c084; }
+[data-theme='dark'] .icon-btn.danger { color: #f0a9a4; border-color: rgba(240,169,164,.35); }
+[data-theme='dark'] .icon-btn.ok { color: #8ee0b8; border-color: rgba(142,224,184,.35); }
+
+
 /* 角色列：参考 Open WebUI，角色本身是个可点按钮（点开直接改等级） */
 .role-cell { white-space: nowrap; }
 .role-menu { position: relative; display: inline-block; }

@@ -144,6 +144,7 @@
             <span class="avatar-initial c{{ user.color_index }}" aria-hidden="true">{{ user.initial }}</span>
             {% endif %}
             <span class="user-name">{{ user.display_name }}</span>
+            {% if user.activated %}<span class="tag ok" title="可以登录、发帖与上传">已激活</span>{% else %}<span class="tag warn" title="未激活：不能发帖与上传，需要管理员激活">未激活</span>{% endif %}
             {% if user.online %}<span class="dot on" title="最近 5 分钟有活动"></span>{% endif %}
             {% if user.trusted %}<span class="tag ok" title="发帖只走自动审核">信任</span>{% endif %}
             {% if user.is_self %}<span class="tag">我</span>{% endif %}
@@ -187,7 +188,7 @@
             {% if !user.is_self %}
             <form class="inline-form" method="post" data-async data-after="refresh" action="/admin/users/{{ user.id }}/{% if user.activated %}deactivate{% else %}activate{% endif %}">
               <input type="hidden" name="csrf" value="{{ csrf }}">
-              <button class="icon-btn" type="submit" title="{% if user.activated %}停用账号{% else %}激活账号{% endif %}">
+              <button class="icon-btn {% if user.activated %}danger{% else %}ok{% endif %}" type="submit" title="{% if user.activated %}停用账号（危险操作，按钮为红色）{% else %}激活账号{% endif %}">
                 <svg viewBox="0 0 16 16" width="15" height="15"><path d="M8 2v6" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/><path d="M4.6 4.4a5 5 0 106.8 0" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
               </button>
             </form>
