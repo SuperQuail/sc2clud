@@ -71,13 +71,15 @@ async fn sections_can_be_created_reordered_archived_and_restored() {
     assert!(
         repo::create_section(
             db.pool(),
-            "qa_board",
-            "测试分区",
-            "用来试",
-            position,
-            "member",
-            "member",
-            now
+            repo::NewSection {
+                key: "qa_board",
+                label: "测试分区",
+                description: "用来试",
+                position,
+                post_min_role: "member",
+                reply_min_role: "member",
+                now,
+            },
         )
         .await
         .expect("建分区")
@@ -85,13 +87,15 @@ async fn sections_can_be_created_reordered_archived_and_restored() {
     assert!(
         !repo::create_section(
             db.pool(),
-            "qa_board",
-            "重复",
-            "",
-            9,
-            "member",
-            "member",
-            now
+            repo::NewSection {
+                key: "qa_board",
+                label: "重复",
+                description: "",
+                position: 9,
+                post_min_role: "member",
+                reply_min_role: "member",
+                now,
+            },
         )
         .await
         .expect("重复 key 应被忽略")

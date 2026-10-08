@@ -2255,29 +2255,31 @@ pub async fn get_section(
     Ok(row.map(section_from_row))
 }
 
+/// 新建分区的入参（参数太多，收成结构体）。
+pub struct NewSection<'a> {
+    pub key: &'a str,
+    pub label: &'a str,
+    pub description: &'a str,
+    pub position: i64,
+    pub post_min_role: &'a str,
+    pub reply_min_role: &'a str,
+    pub now: i64,
+}
+
 /// 新建分区；key 已存在返回 `false`。
-pub async fn create_section(
-    pool: &SqlitePool,
-    key: &str,
-    label: &str,
-    description: &str,
-    position: i64,
-    post_min_role: &str,
-    reply_min_role: &str,
-    now: i64,
-) -> Result<bool> {
+pub async fn create_section(pool: &SqlitePool, section: NewSection<'_>) -> Result<bool> {
     let affected = query(
         "INSERT OR IGNORE INTO sections (key, label, description, position, post_min_role, reply_min_role, created_at, updated_at) \
          VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
     )
-    .bind(key)
-    .bind(label)
-    .bind(description)
-    .bind(position)
-    .bind(post_min_role)
-    .bind(reply_min_role)
-    .bind(now)
-    .bind(now)
+    .bind(section.key)
+    .bind(section.label)
+    .bind(section.description)
+    .bind(section.position)
+    .bind(section.post_min_role)
+    .bind(section.reply_min_role)
+    .bind(section.now)
+    .bind(section.now)
     .execute(pool)
     .await
     .map_err(db_err)?

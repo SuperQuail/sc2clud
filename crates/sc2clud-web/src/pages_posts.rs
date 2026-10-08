@@ -711,7 +711,7 @@ async fn add_comment(
     if let Ok(Some(post_row)) =
         repo::get_post_for(state.db.pool(), post_id, Some(user.id), user.is_staff()).await
     {
-        ensure_section_action(&state, &user, &post_row.section, false).await?;
+        ensure_section_action(state, &user, &post_row.section, false).await?;
     }
     session::check_csrf(&user, &form.csrf)?;
 
