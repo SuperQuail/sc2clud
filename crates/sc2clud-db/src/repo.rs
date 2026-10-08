@@ -71,7 +71,10 @@ pub async fn ensure_super_admin(
         Some(user) => {
             if user.role != "super" || user.activated_at.is_none() {
                 query(
-                    "UPDATE users SET role = 'super', activated_at = COALESCE(activated_at, ?) WHERE id = ?",
+                    "UPDATE users SET role = 'super', \
+                     activated_at = COALESCE(activated_at, ?), \
+                     display_name = CASE WHEN display_name = '' THEN handle ELSE display_name END \
+                     WHERE id = ?",
                 )
                 .bind(now)
                 .bind(user.id)
@@ -87,7 +90,18 @@ pub async fn ensure_super_admin(
         }
         None => {
             let email = format!("{handle}@localhost");
-            let id = register_user(pool, handle, &email, "!", true, now).await?;
+            let id = register_user(
+                pool,
+                NewUser {
+                    handle,
+                    display_name: handle,
+                    email: &email,
+                    password_hash: "!",
+                    activated: true,
+                    now,
+                },
+            )
+            .await?;
             query("UPDATE users SET role = 'super', quota_bytes = ? WHERE id = ?")
                 .bind(quota_bytes)
                 .bind(id)
@@ -732,7 +746,8 @@ pub async fn list_feed(
     let staff = i64::from(is_staff);
     query_as::<_, PostWithAuthorRow>(
         "SELECT p.id, p.title, p.body, p.kind, p.review_state, p.review_note, p.image_count, \
-                p.created_at, p.author_id, u.handle AS author_handle, u.role AS author_role \
+                p.created_at, p.author_id, u.handle AS author_handle, \
+                u.display_name AS author_display_name, u.role AS author_role \
          FROM posts p JOIN users u ON u.id = p.author_id \
          WHERE p.deleted_at IS NULL \
            AND (p.review_state = 'approved' \
@@ -796,7 +811,8 @@ pub async fn list_comments(
     limit: i64,
 ) -> Result<Vec<CommentWithAuthorRow>> {
     query_as::<_, CommentWithAuthorRow>(
-        "SELECT c.id, c.post_id, c.author_id, u.handle AS author_handle, c.body, c.created_at \
+        "SELECT c.id, c.post_id, c.author_id, u.handle AS author_handle, \
+                u.display_name AS author_display_name, c.body, c.created_at \
          FROM comments c JOIN users u ON u.id = c.author_id \
          WHERE c.post_id = ? AND c.deleted_at IS NULL ORDER BY c.created_at, c.id LIMIT ?",
     )
@@ -957,24 +973,30 @@ pub async fn bump_release_asset_downloads(pool: &SqlitePool, asset_id: i64) -> R
 
 // ---------------------------------------------------------------- 账号、激活与角色
 
+/// 注册入参：**登录名与显示名分开**。
+///
+/// 登录名是账号标识（唯一、ASCII、用于登录）；显示名是对外展示（可改、可重名、≤ 20 字符）。
+pub struct NewUser<'a> {
+    pub handle: &'a str,
+    pub display_name: &'a str,
+    pub email: &'a str,
+    pub password_hash: &'a str,
+    pub activated: bool,
+    pub now: i64,
+}
+
 /// 注册：创建账号。`activated` 由调用方按站点设置决定（默认要求管理员激活）。
-pub async fn register_user(
-    pool: &SqlitePool,
-    handle: &str,
-    email: &str,
-    password_hash: &str,
-    activated: bool,
-    now: i64,
-) -> Result<i64> {
-    let activated_at: Option<i64> = activated.then_some(now);
+pub async fn register_user(pool: &SqlitePool, user: NewUser<'_>) -> Result<i64> {
+    let activated_at: Option<i64> = user.activated.then_some(user.now);
     let res = query(
-        "INSERT INTO users (handle, email, password_hash, role, quota_bytes, used_bytes, created_at, activated_at, activated_by) \
-         VALUES (?, ?, ?, 'member', 1073741824, 0, ?, ?, NULL)",
+        "INSERT INTO users (handle, display_name, email, password_hash, role, quota_bytes, used_bytes, created_at, activated_at, activated_by) \
+         VALUES (?, ?, ?, ?, 'member', 1073741824, 0, ?, ?, NULL)",
     )
-    .bind(handle)
-    .bind(email)
-    .bind(password_hash)
-    .bind(now)
+    .bind(user.handle)
+    .bind(user.display_name)
+    .bind(user.email)
+    .bind(user.password_hash)
+    .bind(user.now)
     .bind(activated_at)
     .execute(pool)
     .await
@@ -1031,6 +1053,19 @@ pub async fn set_user_password(pool: &SqlitePool, user_id: i64, password_hash: &
         .await
         .map_err(db_err)?;
     Ok(())
+}
+
+/// 改显示名（不影响登录名）。为空或超长由领域层校验，这里只做写入。
+pub async fn set_display_name(pool: &SqlitePool, user_id: i64, display_name: &str) -> Result<bool> {
+    let affected = query("UPDATE users SET display_name = ? WHERE id = ? AND display_name <> ?")
+        .bind(display_name)
+        .bind(user_id)
+        .bind(display_name)
+        .execute(pool)
+        .await
+        .map_err(db_err)?
+        .rows_affected();
+    Ok(affected == 1)
 }
 
 pub async fn set_user_role(pool: &SqlitePool, user_id: i64, role: &str) -> Result<bool> {

@@ -223,7 +223,7 @@ async fn build_index<'a>(
 
     Ok(IndexTemplate {
         site_name: &state.config.server.site_name,
-        user_label: user.map(|u| u.handle.clone()),
+        user_label: user.map(|u| u.display_name.clone()),
         user_role_label: user.map(|u| u.role.label().to_string()).unwrap_or_default(),
         can_post: user.is_some_and(|u| u.activated),
         needs_activation: user.is_some_and(|u| !u.activated),
@@ -250,7 +250,7 @@ fn feed_view(row: &sc2clud_db::PostWithAuthorRow, viewer_id: Option<i64>) -> Fee
         kind_label: kind.label().to_string(),
         state: state.as_str().to_string(),
         state_label: state.label().to_string(),
-        author: row.author_handle.clone(),
+        author: row.author_display_name.clone(),
         author_role_label: author_role.to_string(),
         created_at: format_date(row.created_at),
         image_count: row.image_count,
@@ -286,7 +286,7 @@ async fn build_file_page<'a>(
     let download_href = format!("/api/v1/files/{}/download", row.id);
     Ok(FilePageTemplate {
         site_name: &state.config.server.site_name,
-        user_label: Some(user.handle.clone()),
+        user_label: Some(user.display_name.clone()),
         file: FileView::from_owner_row(&row),
         owner_handle: row.owner_handle.clone(),
         download_href,

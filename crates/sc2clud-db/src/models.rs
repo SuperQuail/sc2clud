@@ -7,7 +7,10 @@ use sqlx::FromRow;
 #[derive(Debug, Clone, FromRow)]
 pub struct UserRow {
     pub id: i64,
+    /// 登录名：账号标识，唯一，用于登录。
     pub handle: String,
+    /// 显示名：对外展示，非空、≤ 20 字符，可改。
+    pub display_name: String,
     pub email: Option<String>,
     pub password_hash: String,
     pub role: String,
@@ -45,6 +48,8 @@ pub struct PostWithAuthorRow {
     pub created_at: i64,
     pub author_id: i64,
     pub author_handle: String,
+    /// 对外展示用：帖子卡片与详情页显示它。
+    pub author_display_name: String,
     pub author_role: String,
 }
 
@@ -55,6 +60,7 @@ pub struct CommentWithAuthorRow {
     pub post_id: i64,
     pub author_id: i64,
     pub author_handle: String,
+    pub author_display_name: String,
     pub body: String,
     pub created_at: i64,
 }

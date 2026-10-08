@@ -22,7 +22,10 @@ pub const SESSION_TTL_SECS: i64 = 14 * 24 * 3600;
 #[derive(Debug, Clone)]
 pub struct CurrentUser {
     pub id: i64,
+    /// 登录名：账号标识。
     pub handle: String,
+    /// 显示名：页面上展示的名字。
+    pub display_name: String,
     pub role: Role,
     pub activated: bool,
     pub csrf_token: String,
@@ -62,9 +65,16 @@ pub async fn current_user(state: &AppState, headers: &HeaderMap) -> AppResult<Op
     };
     let _ = repo::touch_session(state.db.pool(), &digest, now).await;
     let role = Role::parse(&user.role)?;
+    // 显示名兜底为登录名（存量数据在迁移里已回填，这里只是防御）。
+    let display_name = if user.display_name.trim().is_empty() {
+        user.handle.clone()
+    } else {
+        user.display_name.clone()
+    };
     Ok(Some(CurrentUser {
         id: user.id,
         handle: user.handle,
+        display_name,
         role,
         activated: user.activated_at.is_some(),
         csrf_token: session.csrf_token,

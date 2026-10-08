@@ -198,6 +198,28 @@ pub fn validate_handle(raw: &str) -> Result<String> {
     Ok(handle.to_string())
 }
 
+/// 显示名上限（字符数，不是字节数）——中文一个字算一个。
+pub const MAX_DISPLAY_NAME_CHARS: usize = 20;
+
+/// 显示名：非空、≤ 20 个字符、不含控制字符。
+///
+/// 与登录名不同，显示名面向读者，允许任意文字（中文、表情都行），
+/// 也允许重复——重复由用户自己区分，不占用唯一索引。
+pub fn validate_display_name(raw: &str) -> Result<String> {
+    let name = raw.trim();
+    let bad = |reason: &str| Error::InvalidInput(format!("显示名无效：{reason}"));
+    if name.is_empty() {
+        return Err(bad("不能为空"));
+    }
+    if name.chars().count() > MAX_DISPLAY_NAME_CHARS {
+        return Err(bad(&format!("最长 {MAX_DISPLAY_NAME_CHARS} 个字符")));
+    }
+    if name.chars().any(char::is_control) {
+        return Err(bad("不能包含控制字符"));
+    }
+    Ok(name.to_string())
+}
+
 /// 口令：8..=128 字节，且不能全是空白。
 pub fn validate_password(raw: &str) -> Result<()> {
     if raw.trim().is_empty() || raw.len() < 8 {
@@ -323,6 +345,24 @@ mod tests {
         assert!(validate_handle("有中文").is_err());
         assert!(validate_handle("-lead").is_err());
         assert!(validate_handle("has space").is_err());
+    }
+
+    #[test]
+    fn display_name_rules() {
+        assert_eq!(validate_display_name("  弥音  ").expect("ok"), "弥音");
+        assert_eq!(validate_display_name("a").expect("ok"), "a");
+        // 20 个中文字符可以，21 个不行（按字符数而非字节数）
+        let twenty: String = "星".repeat(20);
+        assert!(validate_display_name(&twenty).is_ok());
+        assert!(validate_display_name(&"星".repeat(21)).is_err());
+        assert!(validate_display_name("   ").is_err(), "空白不算名字");
+        assert!(validate_display_name("").is_err());
+        assert!(
+            validate_display_name("bad\nname").is_err(),
+            "换行是控制字符"
+        );
+        // 显示名允许重复，也没有字符集限制
+        assert_eq!(validate_display_name("同名的人").expect("ok"), "同名的人");
     }
 
     #[test]

@@ -70,9 +70,16 @@ async fn build_post_page<'a>(
         .await?
         .ok_or_else(|| AppError::not_found("帖子不存在或不可见"))?;
     let author = repo::find_user_by_id_any(state.db.pool(), row.author_id).await?;
+    // 对外展示一律用显示名；空值兜底为登录名（存量数据已在迁移里回填）。
     let author_handle = author
         .as_ref()
-        .map(|u| u.handle.clone())
+        .map(|u| {
+            if u.display_name.trim().is_empty() {
+                u.handle.clone()
+            } else {
+                u.display_name.clone()
+            }
+        })
         .unwrap_or_else(|| "未知用户".to_string());
     let author_role = author
         .as_ref()
@@ -85,7 +92,7 @@ async fn build_post_page<'a>(
 
     Ok(PostPageTemplate {
         site_name: &state.config.server.site_name,
-        user_label: user.as_ref().map(|u| u.handle.clone()),
+        user_label: user.as_ref().map(|u| u.display_name.clone()),
         csrf: user
             .as_ref()
             .map(|u| u.csrf_token.clone())
@@ -110,7 +117,7 @@ async fn build_post_page<'a>(
         comments: comments
             .into_iter()
             .map(|c| CommentView {
-                author: c.author_handle,
+                author: c.author_display_name,
                 body: c.body,
                 created_at: format_date(c.created_at),
             })
@@ -214,7 +221,7 @@ pub async fn new_post_submit(
         Err(e) => {
             return render(NewPostTemplate {
                 site_name: &state.config.server.site_name,
-                user_label: Some(user.handle.clone()),
+                user_label: Some(user.display_name.clone()),
                 csrf: user.csrf_token.clone(),
                 error: Some(e.parts().2),
                 kinds: kind_options(kind.as_str()),
@@ -226,7 +233,7 @@ pub async fn new_post_submit(
     if !outcome.state.visible_to(true, true) {
         return render(NewPostTemplate {
             site_name: &state.config.server.site_name,
-            user_label: Some(user.handle.clone()),
+            user_label: Some(user.display_name.clone()),
             csrf: user.csrf_token.clone(),
             error: Some(format!(
                 "审核未通过：{}",

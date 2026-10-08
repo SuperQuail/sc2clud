@@ -10,7 +10,8 @@ use axum::response::{IntoResponse, Redirect, Response};
 use serde::Deserialize;
 
 use sc2clud_core::auth::{
-    hash_password, validate_email, validate_handle, validate_password, verify_password,
+    hash_password, validate_display_name, validate_email, validate_handle, validate_password,
+    verify_password,
 };
 use sc2clud_core::{Error as DomainError, now_unix};
 use sc2clud_db::repo;
@@ -23,6 +24,7 @@ use crate::templates::{LoginTemplate, RegisterTemplate};
 #[derive(Debug, Deserialize)]
 pub struct RegisterForm {
     pub handle: String,
+    pub display_name: String,
     pub email: String,
     pub password: String,
 }
@@ -70,10 +72,11 @@ pub async fn register_form(State(state): State<AppState>, headers: HeaderMap) ->
     let user = session::current_user(&state, &headers).await.ok().flatten();
     crate::templates::render(RegisterTemplate {
         site_name: &state.config.server.site_name,
-        user_label: user.as_ref().map(|u| u.handle.clone()),
+        user_label: user.as_ref().map(|u| u.display_name.clone()),
         needs_activation,
         error: None,
         handle: "",
+        display_name: "",
         email: "",
     })
 }
@@ -90,6 +93,7 @@ pub async fn register_submit(
             needs_activation: true,
             error: Some(error.to_string()),
             handle: "",
+            display_name: "",
             email: "",
         })
     };
@@ -99,6 +103,10 @@ pub async fn register_submit(
     }
     let handle = match validate_handle(&form.handle) {
         Ok(handle) => handle,
+        Err(e) => return page(&state, &e.to_string()),
+    };
+    let display_name = match validate_display_name(&form.display_name) {
+        Ok(name) => name,
         Err(e) => return page(&state, &e.to_string()),
     };
     let email = match validate_email(&form.email) {
@@ -129,11 +137,22 @@ pub async fn register_submit(
         Err(e) => return AppError::from(e).into_response(),
     };
     let now = now_unix();
-    let user_id =
-        match repo::register_user(pool, &handle, &email, &hash, !needs_activation, now).await {
-            Ok(id) => id,
-            Err(e) => return AppError::from(e).into_response(),
-        };
+    let user_id = match repo::register_user(
+        pool,
+        repo::NewUser {
+            handle: &handle,
+            display_name: &display_name,
+            email: &email,
+            password_hash: &hash,
+            activated: !needs_activation,
+            now,
+        },
+    )
+    .await
+    {
+        Ok(id) => id,
+        Err(e) => return AppError::from(e).into_response(),
+    };
     let _ = repo::record_audit(
         pool,
         Some(user_id),

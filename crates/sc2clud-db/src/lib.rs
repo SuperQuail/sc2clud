@@ -344,11 +344,14 @@ mod tests {
         let now = sc2clud_core::now_unix();
         let id = repo::register_user(
             db.pool(),
-            "newbie",
-            "n@example.com",
-            "$argon2id$hash",
-            false,
-            now,
+            repo::NewUser {
+                handle: "newbie",
+                display_name: "新人",
+                email: "n@example.com",
+                password_hash: "$argon2id$hash",
+                activated: false,
+                now,
+            },
         )
         .await
         .expect("注册");
@@ -375,15 +378,106 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn display_name_is_stored_and_shown_in_feed() {
+        let db = db().await;
+        let now = sc2clud_core::now_unix();
+        let user = repo::register_user(
+            db.pool(),
+            repo::NewUser {
+                handle: "miyin_fan",
+                display_name: "弥音小助手",
+                email: "fan@example.com",
+                password_hash: "h",
+                activated: true,
+                now,
+            },
+        )
+        .await
+        .expect("注册");
+
+        let row = repo::find_user_by_handle(db.pool(), "miyin_fan")
+            .await
+            .expect("查询")
+            .expect("存在");
+        assert_eq!(row.handle, "miyin_fan", "登录名保持 ASCII 标识");
+        assert_eq!(row.display_name, "弥音小助手", "显示名可与登录名不同");
+
+        let post = repo::create_post_reviewed(
+            db.pool(),
+            repo::NewPost {
+                author_id: user,
+                kind: "discussion",
+                title: "显示名测试",
+                body: "看卡片上显示的是哪个名字。",
+                image_count: 0,
+                review_state: "approved",
+                review_note: None,
+                now,
+            },
+        )
+        .await
+        .expect("发帖");
+        repo::create_comment(db.pool(), post, user, "回复也用显示名。", now)
+            .await
+            .expect("回复");
+
+        let feed = repo::list_feed(db.pool(), None, false, 10, 0)
+            .await
+            .expect("feed");
+        assert_eq!(feed[0].author_handle, "miyin_fan");
+        assert_eq!(
+            feed[0].author_display_name, "弥音小助手",
+            "feed 必须带显示名，页面展示它"
+        );
+
+        let comments = repo::list_comments(db.pool(), post, 10)
+            .await
+            .expect("回复");
+        assert_eq!(comments[0].author_display_name, "弥音小助手");
+
+        // 改显示名不影响登录名
+        assert!(
+            repo::set_display_name(db.pool(), user, "改名后的小助手")
+                .await
+                .expect("改名")
+        );
+        let feed = repo::list_feed(db.pool(), None, false, 10, 0)
+            .await
+            .expect("feed");
+        assert_eq!(feed[0].author_display_name, "改名后的小助手");
+        assert_eq!(feed[0].author_handle, "miyin_fan");
+    }
+
+    #[tokio::test]
     async fn activation_and_role_changes_are_idempotent() {
         let db = db().await;
         let now = sc2clud_core::now_unix();
-        let admin = repo::register_user(db.pool(), "admin1", "a@example.com", "h", true, now)
-            .await
-            .expect("管理员");
-        let member = repo::register_user(db.pool(), "member1", "m@example.com", "h", false, now)
-            .await
-            .expect("普通用户");
+        let admin = repo::register_user(
+            db.pool(),
+            repo::NewUser {
+                handle: "admin1",
+                display_name: "管理员一号",
+                email: "a@example.com",
+                password_hash: "h",
+                activated: true,
+                now,
+            },
+        )
+        .await
+        .expect("管理员");
+        let member = repo::register_user(
+            db.pool(),
+            repo::NewUser {
+                handle: "member1",
+                display_name: "普通用户一号",
+                email: "m@example.com",
+                password_hash: "h",
+                activated: false,
+                now,
+            },
+        )
+        .await
+        .expect("普通用户");
 
         assert!(
             repo::set_user_activated(db.pool(), member, true, admin, now)
@@ -456,9 +550,19 @@ mod tests {
     async fn post_review_state_gates_visibility() {
         let db = db().await;
         let now = sc2clud_core::now_unix();
-        let user = repo::register_user(db.pool(), "poster", "p@example.com", "h", true, now)
-            .await
-            .expect("用户");
+        let user = repo::register_user(
+            db.pool(),
+            repo::NewUser {
+                handle: "poster",
+                display_name: "发帖人",
+                email: "p@example.com",
+                password_hash: "h",
+                activated: true,
+                now,
+            },
+        )
+        .await
+        .expect("用户");
 
         let approved = repo::create_post_reviewed(
             db.pool(),
@@ -578,9 +682,19 @@ mod tests {
     async fn post_images_are_queued_and_claimed_once() {
         let db = db().await;
         let now = sc2clud_core::now_unix();
-        let user = repo::register_user(db.pool(), "sharer", "s@example.com", "h", true, now)
-            .await
-            .expect("用户");
+        let user = repo::register_user(
+            db.pool(),
+            repo::NewUser {
+                handle: "sharer",
+                display_name: "分享者",
+                email: "s@example.com",
+                password_hash: "h",
+                activated: true,
+                now,
+            },
+        )
+        .await
+        .expect("用户");
         let post = repo::create_post_reviewed(
             db.pool(),
             repo::NewPost {

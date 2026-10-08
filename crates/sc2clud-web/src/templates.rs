@@ -246,6 +246,7 @@ pub struct RegisterTemplate<'a> {
     pub needs_activation: bool,
     pub error: Option<String>,
     pub handle: &'a str,
+    pub display_name: &'a str,
     pub email: &'a str,
 }
 
