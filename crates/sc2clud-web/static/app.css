@@ -312,6 +312,19 @@ footer { color: var(--muted); font-size: 12px; text-align: center; padding: 14px
 .actions-inline { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
 .title-line { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; font-weight: 600; }
 
+/* FAB 里的主题三态选择 */
+.fab-item.theme-picker { display: inline-flex; gap: 2px; background: var(--card); border: 1px solid var(--line); border-radius: 999px; padding: 3px; box-shadow: 0 10px 22px rgba(16,32,64,.18); }
+.theme-picker button {
+  font: inherit; font-size: 12.5px; font-weight: 600; cursor: pointer;
+  border: 0; border-radius: 999px; padding: 6px 12px; background: transparent; color: var(--muted);
+  transition: background .15s ease, color .15s ease;
+}
+.theme-picker button:hover { color: var(--blue); }
+.theme-picker button.active { background: var(--blue); color: #fff; }
+.fab-item { border: 0; background: transparent; cursor: pointer; font: inherit; }
+.fab-item > span { box-shadow: 0 10px 22px rgba(16,32,64,.18); }
+
+
 /* 镜像下拉：不要把所有镜像堆成一片按钮 */
 .mirror-box { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-top: 8px; }
 .mirror-select {

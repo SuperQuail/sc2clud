@@ -4,13 +4,17 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <script>
+    // 主题三态：'system'（默认，跟随系统）/ 'light' / 'dark'。
+    // 老版本只存了 light|dark，这里一并兼容。
     (function () {
-      var dark = true;
+      var mode = 'system';
       try {
         var stored = localStorage.getItem('sc2clud-theme');
-        dark = stored ? stored === 'dark' : window.matchMedia('(prefers-color-scheme: dark)').matches;
+        if (stored === 'light' || stored === 'dark' || stored === 'system') mode = stored;
       } catch (e) {}
+      var dark = mode === 'dark' || (mode === 'system' && window.matchMedia('(prefers-color-scheme: dark)').matches);
       document.documentElement.setAttribute('data-theme', dark ? 'dark' : 'light');
+      document.documentElement.setAttribute('data-theme-mode', mode);
     })();
   </script>
   <title>{% block title %}{{ site_name }}{% endblock %}</title>
@@ -50,7 +54,6 @@
           <a href="/announcements" role="menuitem">系统公告</a>
           <a href="/settings" role="menuitem">账户设置</a>
           {% if is_staff %}<a href="/admin" role="menuitem">管理面板</a>{% endif %}
-          <button type="button" class="menu-btn" id="theme-toggle" role="menuitem">夜间模式</button>
           <form method="post" action="/logout" class="menu-form">
             <input type="hidden" name="csrf" value="{{ csrf }}">
             <button type="submit" class="menu-btn" role="menuitem">退出登录</button>
@@ -64,20 +67,28 @@
     </div>
   </header>
 
-  {# 右下角快捷按钮：只放「发帖」，其余功能都在用户菜单与账户设置里 #}
-  {% if user_label.is_some() %}
+  {# 右下角快捷按钮：发帖 / 回到顶部 / 主题三态 #}
   <div class="fab" id="fab">
     <div class="fab-menu" id="fab-menu">
+      {% if user_label.is_some() %}
       <a class="fab-item" href="/new"><span>发帖</span></a>
+      {% else %}
+      <a class="fab-item" href="/login"><span>登录</span></a>
+      {% endif %}
+      <button class="fab-item" type="button" id="to-top"><span>回到最上面</span></button>
+      <div class="fab-item theme-picker" role="group" aria-label="主题">
+        <button type="button" data-theme-mode="light">日间</button>
+        <button type="button" data-theme-mode="dark">夜间</button>
+        <button type="button" data-theme-mode="system">跟随系统</button>
+      </div>
     </div>
-    <button class="fab-btn" type="button" id="fab-btn" aria-expanded="false" aria-label="发帖">
+    <button class="fab-btn" type="button" id="fab-btn" aria-expanded="false" aria-label="快捷操作">
       <svg viewBox="0 0 24 24" width="26" height="26" aria-hidden="true">
         <path d="M4 20h4l10-10-4-4L4 16v4z" fill="currentColor"/>
         <path d="M14.5 5.5l4 4" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
       </svg>
     </button>
   </div>
-  {% endif %}
 
   <main>
 {% block content %}{% endblock %}
@@ -109,19 +120,39 @@
         });
         document.addEventListener('click', function (event) { if (!fab.contains(event.target)) fab.classList.remove('open'); });
       }
-      // 夜间模式（在用户菜单里）
-      var theme = document.getElementById('theme-toggle');
-      if (theme) {
-        var sync = function () {
-          var dark = document.documentElement.getAttribute('data-theme') === 'dark';
-          theme.textContent = dark ? '日间模式' : '夜间模式';
-        };
-        sync();
-        theme.addEventListener('click', function () {
-          var next = document.documentElement.getAttribute('data-theme') === 'dark' ? 'light' : 'dark';
-          document.documentElement.setAttribute('data-theme', next);
-          try { localStorage.setItem('sc2clud-theme', next); } catch (e) {}
-          sync();
+      // 主题三态：日间 / 夜间 / 跟随系统（默认）
+      var media = window.matchMedia('(prefers-color-scheme: dark)');
+      var modeButtons = document.querySelectorAll('[data-theme-mode]');
+      function applyTheme(mode, persist) {
+        var dark = mode === 'dark' || (mode === 'system' && media.matches);
+        document.documentElement.setAttribute('data-theme', dark ? 'dark' : 'light');
+        document.documentElement.setAttribute('data-theme-mode', mode);
+        Array.prototype.forEach.call(modeButtons, function (button) {
+          button.classList.toggle('active', button.getAttribute('data-theme-mode') === mode);
+        });
+        if (persist) {
+          try { localStorage.setItem('sc2clud-theme', mode); } catch (e) {}
+        }
+      }
+      applyTheme(document.documentElement.getAttribute('data-theme-mode') || 'system', false);
+      Array.prototype.forEach.call(modeButtons, function (button) {
+        button.addEventListener('click', function () {
+          applyTheme(button.getAttribute('data-theme-mode'), true);
+        });
+      });
+      // 选了「跟随系统」就跟着系统实时变
+      var onSystemChange = function () {
+        if ((document.documentElement.getAttribute('data-theme-mode') || 'system') === 'system') {
+          applyTheme('system', false);
+        }
+      };
+      if (media.addEventListener) media.addEventListener('change', onSystemChange);
+      else if (media.addListener) media.addListener(onSystemChange);
+      // 回到最上面
+      var toTop = document.getElementById('to-top');
+      if (toTop) {
+        toTop.addEventListener('click', function () {
+          window.scrollTo({ top: 0, behavior: 'smooth' });
         });
       }
       // 未读通知：登录后问一次（接口很轻，返回 {unread:N}）
