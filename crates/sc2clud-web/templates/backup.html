@@ -9,7 +9,7 @@
      并导出一份用户数据 JSON（登录名 / 显示名 / 邮箱 / 等级 / 激活 / 配额，**不含口令哈希**）。</p>
   <form method="post" action="/admin/backup" data-async data-after="refresh">
     <input type="hidden" name="csrf" value="{{ csrf }}">
-    <button class="btn" type="submit">立即备份</button>
+    <button class="btn sm" type="submit">立即备份</button>
   </form>
 </section>
 

@@ -309,6 +309,31 @@ footer { color: var(--muted); font-size: 12px; text-align: center; padding: 14px
 .title-line { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; font-weight: 600; }
 
 /* ============================================================
+ * 紧凑按钮：和用户管理页的行内控件同一套观感
+ *   —— 8px 圆角（不用胶囊）、统一 34px 高度、字号一致
+ * ============================================================ */
+.btn.sm, .btn-ghost.sm {
+  display: inline-flex; align-items: center; justify-content: center;
+  height: 34px; padding: 0 16px; font-size: 13.5px; font-weight: 600;
+  border-radius: 8px; line-height: 1;
+}
+
+/* 审核动作：一行对齐（通过 / 理由输入 / 拒绝 同高、同基线） */
+.review-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.review-actions .inline-form { display: inline-flex; align-items: center; gap: 8px; margin: 0; }
+.review-actions input[type='text'], .review-bar input[type='text'] {
+  height: 34px; box-sizing: border-box; padding: 0 10px;
+  font: inherit; font-size: 13.5px; border-radius: 8px;
+  border: 1px solid var(--line); background: var(--card); color: var(--ink);
+}
+.review-actions input[type='text'] { width: 168px; }
+.review-bar input[type='text'] { width: 150px; }
+.review-bar { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.review-bar .inline-form { display: inline-flex; align-items: center; gap: 8px; margin: 0; }
+.review-actions .btn, .review-bar .btn { height: 34px; padding: 0 16px; border-radius: 8px; font-size: 13.5px; }
+
+
+/* ============================================================
  * 点赞 / 收藏 / 通知 / 系统公告
  * ============================================================ */
 .post-actions { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-top: 16px; }

@@ -23,12 +23,12 @@
     <span class="hint">此帖当前状态「{{ post.state_label }}」，只有你与作者看得到：</span>
     <form method="post" action="/admin/posts/{{ post.id }}/approve" data-async data-after="refresh" class="inline-form">
       <input type="hidden" name="csrf" value="{{ csrf }}">
-      <button class="btn" type="submit">通过</button>
+      <button class="btn sm" type="submit">通过</button>
     </form>
     <form method="post" action="/admin/posts/{{ post.id }}/reject" data-async data-after="refresh" class="inline-form">
       <input type="hidden" name="csrf" value="{{ csrf }}">
       <input type="text" name="note" placeholder="拒绝理由" maxlength="80">
-      <button class="btn ghost" type="submit">拒绝</button>
+      <button class="btn ghost sm" type="submit">拒绝</button>
     </form>
   </div>
   {% endif %}
