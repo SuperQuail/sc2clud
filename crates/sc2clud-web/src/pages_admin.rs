@@ -19,7 +19,8 @@ use crate::error::{AppError, AppResult};
 use crate::routes::{feed_view, require_user};
 use crate::session;
 use crate::templates::{
-    AdminTemplate, AdminUserView, format_date, format_relative, human_bytes, render,
+    AdminTemplate, AdminUserEditTemplate, AdminUserView, format_date, format_relative, human_bytes,
+    render,
 };
 
 #[derive(Debug, Deserialize)]
@@ -169,6 +170,65 @@ async fn build_panel<'a>(
             .iter()
             .map(|row| feed_view(row, Some(user.id)))
             .collect(),
+    })
+}
+
+/// 编辑用户页（管理面板里点铅笔进来）：集中改显示名 / 等级 / 预算 / 信任 / 激活。
+pub async fn user_edit(
+    State(state): State<AppState>,
+    Path(id): Path<i64>,
+    headers: HeaderMap,
+) -> Response {
+    match build_user_edit(&state, id, &headers).await {
+        Ok(template) => render(template),
+        Err(e) => e.into_page_response(true),
+    }
+}
+
+async fn build_user_edit<'a>(
+    state: &'a AppState,
+    id: i64,
+    headers: &HeaderMap,
+) -> AppResult<AdminUserEditTemplate<'a>> {
+    let actor = require_user(state, headers).await?;
+    session::guard(Some(&actor), Permission::ManageUsers)?;
+    let row = repo::admin_get_user(state.db.pool(), id)
+        .await?
+        .ok_or_else(|| AppError::not_found("没有这个用户"))?;
+    let now = now_unix();
+    Ok(AdminUserEditTemplate {
+        site_name: &state.config.server.site_name,
+        user_label: Some(actor.display_name.clone()),
+        is_staff: true,
+        csrf: actor.csrf_token.clone(),
+        is_super: actor.role == Role::Super,
+        roles: Role::ALL
+            .iter()
+            .map(|r| (r.as_str().to_string(), r.label().to_string()))
+            .collect(),
+        user: AdminUserView {
+            id: row.id,
+            trusted: row.trusted != 0,
+            email: row.email.clone().unwrap_or_default(),
+            quota_human: human_bytes(row.quota_bytes.max(0) as u64),
+            quota_gb: format!("{:.1}", row.quota_bytes.max(0) as f64 / 1_073_741_824.0),
+            used_human: human_bytes(row.used_bytes.max(0) as u64),
+            last_seen: row
+                .last_seen_at
+                .map(|ts| format_relative(ts, now))
+                .unwrap_or_else(|| "从未登录".to_string()),
+            created_from_now: format_relative(row.created_at, now),
+            handle: row.handle,
+            display_name: row.display_name,
+            role_label: Role::parse(&row.role)
+                .map(|r| r.label().to_string())
+                .unwrap_or_else(|_| row.role.clone()),
+            role: row.role,
+            activated: row.activated_at.is_some(),
+            created_at: format_date(row.created_at),
+            is_self: row.id == actor.id,
+            avatar: row.avatar_hash.clone(),
+        },
     })
 }
 

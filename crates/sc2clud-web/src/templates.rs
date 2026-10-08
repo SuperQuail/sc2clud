@@ -356,6 +356,20 @@ pub struct EditPostTemplate<'a> {
     pub body: String,
 }
 
+/// 编辑用户（管理面板里点铅笔进来）。
+#[derive(Template)]
+#[template(path = "admin_user.html")]
+pub struct AdminUserEditTemplate<'a> {
+    pub site_name: &'a str,
+    pub user_label: Option<String>,
+    pub is_staff: bool,
+    pub csrf: String,
+    pub user: AdminUserView,
+    pub roles: Vec<(String, String)>,
+    /// 只有超级管理员能改等级与显示名。
+    pub is_super: bool,
+}
+
 /// 数据备份页（仅超级管理员）。
 #[derive(Template)]
 #[template(path = "backup.html")]

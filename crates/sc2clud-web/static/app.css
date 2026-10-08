@@ -314,20 +314,22 @@ footer { color: var(--muted); font-size: 12px; text-align: center; padding: 14px
 .actions-inline { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
 .title-line { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; font-weight: 600; }
 
-/* 管理表格：把编辑控件放回它该在的列，别全挤在「操作」里 */
-.admin-table.users th:nth-child(1), .admin-table.users td:nth-child(1) { width: 210px; }
-.admin-table.users th:nth-child(2), .admin-table.users td:nth-child(2) { width: 250px; }
-.admin-table.users th:nth-child(4), .admin-table.users td:nth-child(4) { width: 240px; }
-.admin-table.users th:nth-child(7), .admin-table.users td:nth-child(7) { width: 180px; }
-.role-cell { white-space: nowrap; }
-.role-cell .inline-form { display: inline-flex; align-items: center; gap: 6px; margin-left: 8px; vertical-align: middle; }
-.role-cell select { max-width: 132px; height: 32px; }
-.name-form { display: inline-flex; align-items: center; gap: 6px; margin-left: 8px; vertical-align: middle; }
-.name-form input[type='text'] { width: 118px; height: 32px; }
+/* 管理表格：单元格只读，编辑去 /admin/users/{id} 那个页面做。
+ * 别再往格子里塞输入框——固定列宽 + 行内表单会把名字挤成竖排（踩过一次）。 */
+.admin-table.users { table-layout: auto; }
+.admin-table.users td.name-cell { white-space: nowrap; }
+.admin-table.users td.email-cell { max-width: 230px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.admin-table.users td.row-actions { white-space: nowrap; }
 .row-actions { gap: 8px; align-items: center; }
 .row-actions .btn { height: 32px; padding: 0 12px; font-size: 12.5px; }
 .row-actions .icon-btn { width: 32px; height: 32px; }
-@media (max-width: 1100px) { .admin-table.users { table-layout: auto; } }
+
+/* 编辑用户页的「账号概览」 */
+.admin-facts { list-style: none; margin: 0; padding: 0; }
+.admin-facts li { display: flex; align-items: center; gap: 10px; padding: 9px 0; border-top: 1px solid var(--line); font-size: 14px; }
+.admin-facts li:first-child { border-top: 0; }
+.admin-facts li > span:first-child { width: 88px; flex: 0 0 auto; color: var(--muted); font-size: 13px; }
+.admin-facts code { background: transparent; padding: 0; }
 
 
 /* 深色主题下的输入控件兜底：

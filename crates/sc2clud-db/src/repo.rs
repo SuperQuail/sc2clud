@@ -1327,6 +1327,20 @@ pub async fn list_users(pool: &SqlitePool, limit: i64, offset: i64) -> Result<Ve
         .map_err(db_err)
 }
 
+/// 按 id 取单个用户（编辑页用），字段与列表页一致。
+pub async fn admin_get_user(pool: &SqlitePool, id: i64) -> Result<Option<AdminUserRow>> {
+    query_as::<_, AdminUserRow>(
+        "SELECT u.id, u.handle, u.display_name, u.email, u.role, u.created_at, \
+                u.activated_at, u.avatar_hash, u.quota_bytes, u.used_bytes, u.trusted, \
+                (SELECT MAX(s.last_seen_at) FROM sessions s WHERE s.user_id = u.id) AS last_seen_at \
+         FROM users u WHERE u.id = ?",
+    )
+    .bind(id)
+    .fetch_optional(pool)
+    .await
+    .map_err(db_err)
+}
+
 /// 管理页用户列表：支持按登录名 / 显示名 / 邮箱模糊搜索，并带上最后在线时间。
 pub async fn admin_list_users(
     pool: &SqlitePool,

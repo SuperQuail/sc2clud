@@ -132,6 +132,10 @@ pub fn pages() -> Router<AppState> {
             axum::routing::get(crate::pages_admin::panel),
         )
         .route(
+            "/admin/users/{id}",
+            axum::routing::get(crate::pages_admin::user_edit),
+        )
+        .route(
             "/admin/users/{id}/quota",
             axum::routing::post(crate::pages_admin::set_quota),
         )
