@@ -9,14 +9,19 @@ After=network.target
 
 [Service]
 Type=simple
-EnvironmentFile=/srv/sc2clud/sc2clud.env
-# 下面这些 Environment 会覆盖 EnvironmentFile 里的同名项
+# 必须用**自己的** env 文件：systemd 里 EnvironmentFile= 会覆盖 Environment=，
+# 若复用生产的 sc2clud.env，调试实例会读到生产的 bind/data_dir 然后抢 8080（踩过一次）。
+EnvironmentFile=/srv/sc2clud/sc2clud-debug.env
+# 兜底写一份，即便 env 文件缺项也不会跑错目录/端口
 Environment=SC2CLUD_BIND=127.0.0.1:8081
 Environment=SC2CLUD_DATA_DIR=/srv/sc2clud/data-debug
 Environment=SC2CLUD_BASE_URL=http://127.0.0.1:8081
 Environment=SC2CLUD_DEBUG_PAGES=1
 Environment=SC2CLUD_SERVE_BLOBS_LOCALLY=1
 Environment=SC2CLUD_LOG=debug
+# 这台机器没有 journal，所以把输出落到文件（调试实例的目录里），排障才看得见
+StandardOutput=append:/srv/sc2clud/data-debug/debug.log
+StandardError=append:/srv/sc2clud/data-debug/debug.log
 WorkingDirectory=/srv/sc2clud
 ExecStart=/srv/sc2clud/sc2clud serve
 Restart=on-failure
