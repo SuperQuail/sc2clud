@@ -317,6 +317,8 @@ footer { color: var(--muted); font-size: 12px; text-align: center; padding: 14px
 /* 管理表格：单元格只读，编辑去 /admin/users/{id} 那个页面做。
  * 别再往格子里塞输入框——固定列宽 + 行内表单会把名字挤成竖排（踩过一次）。 */
 .admin-table.users { table-layout: auto; }
+.admin-table.users td { vertical-align: middle; }
+.admin-table.users th { white-space: nowrap; }
 .admin-table.users td.name-cell { white-space: nowrap; }
 .admin-table.users td.email-cell { max-width: 230px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .admin-table.users td.row-actions { white-space: nowrap; }
@@ -608,7 +610,6 @@ html[data-post-view='card'] .post-list { display: none; }
 }
 .quota-cell input[type='number']::-webkit-outer-spin-button,
 .quota-cell input[type='number']::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
-.row-actions { justify-content: flex-start; gap: 8px; }
 .row-actions .inline-form { display: inline-flex; align-items: center; gap: 6px; }
 
 /* 异步反馈：一行小字 + 单元格闪一下，不需要整页刷新 */
@@ -659,7 +660,8 @@ html[data-post-view='card'] .post-list { display: none; }
 .dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; margin-left: 6px; }
 .dot.on { background: #2f9e6f; box-shadow: 0 0 0 3px rgba(47,158,111,.18); }
 .dot.off { background: #c9d2df; }
-.row-actions { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+/* 操作列：一行排开，别换行——换行会把行高撑起来，看着就是「没对齐」 */
+.row-actions { display: flex; align-items: center; justify-content: flex-start; gap: 8px; flex-wrap: nowrap; }
 .icon-btn {
   display: inline-grid; place-items: center; width: 30px; height: 30px; border-radius: 8px;
   border: 1px solid var(--line); background: var(--card); color: var(--muted); cursor: pointer;
@@ -674,8 +676,6 @@ html[data-post-view='card'] .post-list { display: none; }
   border: 1px solid var(--line); border-radius: 8px; background: var(--card); color: var(--ink);
 }
 
-.row-actions .inline-form input[type='text'] { width: 110px; }
-.row-actions .inline-form select { max-width: 120px; }
 @media (max-width: 900px) { .admin { grid-template-columns: 1fr; } .admin-side { position: static; } .search { margin-left: 0; width: 100%; } .search input { width: 100%; } }
 
 /* 夜间模式：所有输入类控件统一深色，别留白块 */

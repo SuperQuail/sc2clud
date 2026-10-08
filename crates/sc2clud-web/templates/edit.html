@@ -50,6 +50,21 @@
         </div>
         {% endfor %}
       </div>
+      <template id="source-row-template">
+        <div class="source-row">
+          <select name="provider">
+            {% for provider in providers %}
+            <option value="{{ provider.value }}">{{ provider.label }}</option>
+            {% endfor %}
+          </select>
+          <input type="text" name="label" placeholder="显示名（可留空）" maxlength="24">
+          <input type="text" name="code" placeholder="提取码" maxlength="8">
+          <input type="url" name="url" placeholder="https:// 下载地址">
+          <button class="icon-btn" type="button" data-source-remove title="删除这一行">
+            <svg viewBox="0 0 16 16" width="15" height="15"><path d="M4 4l8 8M12 4l-8 8" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg>
+          </button>
+        </div>
+      </template>
       <div class="actions-inline" style="margin-top:10px">
         <button class="btn ghost sm" type="button" id="source-add">＋ 添加一个来源</button>
         <span class="hint">留空的整行会被忽略；保存后按这里的顺序重写</span>
@@ -81,10 +96,12 @@
 
 {% block scripts %}
 <script>
+  // 下载来源：数量不限、可增删；用 <template> 复制，所以「本来没有来源」的帖子也能加
   (function () {
     var rows = document.getElementById('source-rows');
     var add = document.getElementById('source-add');
-    if (!rows || !add) return;
+    var tpl = document.getElementById('source-row-template');
+    if (!rows || !add || !tpl) return;
     function bind(row) {
       var remove = row.querySelector('[data-source-remove]');
       if (remove) {
@@ -93,15 +110,14 @@
         });
       }
     }
+    function makeRow() {
+      var row = tpl.content.firstElementChild.cloneNode(true);
+      bind(row);
+      return row;
+    }
+    if (!rows.querySelector('.source-row')) rows.appendChild(makeRow());
     Array.prototype.forEach.call(rows.querySelectorAll('.source-row'), bind);
-    add.addEventListener('click', function () {
-      var first = rows.querySelector('.source-row');
-      if (!first) return;
-      var copy = first.cloneNode(true);
-      Array.prototype.forEach.call(copy.querySelectorAll('input'), function (input) { input.value = ''; });
-      rows.appendChild(copy);
-      bind(copy);
-    });
+    add.addEventListener('click', function () { rows.appendChild(makeRow()); });
   })();
 </script>
 <script>
