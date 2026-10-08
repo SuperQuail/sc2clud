@@ -44,7 +44,10 @@
             <div><strong>{{ name }}</strong><div class="meta">已登录</div></div>
           </div>
           <a href="/me" role="menuitem">我的主页</a>
+          <a href="/notifications" role="menuitem">通知<span class="badge" id="notify-badge" hidden></span></a>
           <a href="/messages" role="menuitem">私信</a>
+          <a href="/bookmarks" role="menuitem">我的收藏</a>
+          <a href="/announcements" role="menuitem">系统公告</a>
           <a href="/settings" role="menuitem">账户设置</a>
           {% if is_staff %}<a href="/admin" role="menuitem">管理面板</a>{% endif %}
           <button type="button" class="menu-btn" id="theme-toggle" role="menuitem">夜间模式</button>
@@ -121,6 +124,20 @@
           sync();
         });
       }
+      // 未读通知：登录后问一次（接口很轻，返回 {unread:N}）
+      var badge = document.getElementById('notify-badge');
+      if (badge) {
+        fetch('/api/v1/notifications/unread', { headers: { 'x-requested-with': 'fetch' } })
+          .then(function (r) { return r.ok ? r.json() : null; })
+          .then(function (data) {
+            if (data && data.unread > 0) {
+              badge.textContent = data.unread > 99 ? '99+' : String(data.unread);
+              badge.hidden = false;
+            }
+          })
+          .catch(function () {});
+      }
+
       // 账户设置页：点了「更换头像」才出现控件
       var pick = document.getElementById('avatar-pick');
       var editor = document.getElementById('avatar-editor');

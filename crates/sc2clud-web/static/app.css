@@ -309,6 +309,40 @@ footer { color: var(--muted); font-size: 12px; text-align: center; padding: 14px
 .title-line { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; font-weight: 600; }
 
 /* ============================================================
+ * 点赞 / 收藏 / 通知 / 系统公告
+ * ============================================================ */
+.post-actions { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-top: 16px; }
+.post-actions .btn { display: inline-flex; align-items: center; gap: 6px; }
+.post-actions .btn.liked { background: #fdeceb; color: #b3261e; border-color: #f6cfcb; }
+.post-actions .btn.marked { background: #fff6e5; color: #a35a17; border-color: #f2ddb8; }
+[data-theme='dark'] .post-actions .btn.liked { background: #3a1d1b; color: #f3b4ae; border-color: #5a2b28; }
+[data-theme='dark'] .post-actions .btn.marked { background: #33240f; color: #e0b47f; border-color: #5a4222; }
+
+.announce-banner { border-left: 4px solid var(--blue); }
+.announce-banner h3 { margin: 8px 0 6px; font-size: 17px; }
+.announcement { padding: 14px 0; border-top: 1px solid var(--line); }
+.announcement:first-of-type { border-top: 0; }
+.announcement h3 { margin: 6px 0; font-size: 16px; }
+.announcement-body { margin: 0; white-space: pre-wrap; color: var(--ink); line-height: 1.7; }
+
+.notify-list { display: flex; flex-direction: column; }
+.notify { display: flex; align-items: flex-start; gap: 12px; padding: 12px 8px; border-top: 1px solid var(--line); }
+.notify:first-child { border-top: 0; }
+.notify.unread { background: var(--blue-soft); border-radius: 12px; }
+.notify-main { min-width: 0; flex: 1 1 auto; }
+.notify-title { font-weight: 600; color: var(--ink); }
+.notify-body { margin: 4px 0 0; color: var(--muted); font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.notify-kind { font-size: 11.5px; font-weight: 700; border-radius: 999px; padding: 3px 9px; background: #eef2f8; color: #33415c; white-space: nowrap; }
+.notify-kind.kind-message { background: #eaf1fd; color: #1f57bd; }
+.notify-kind.kind-like { background: #fdeceb; color: #b3261e; }
+.notify-kind.kind-announcement { background: #e8f7ef; color: #1c7a52; }
+.notify-kind.kind-review { background: #fff4e5; color: #a35a17; }
+[data-theme='dark'] .notify-kind { background: #1b2431; color: #c7d4e6; }
+.badge:not([hidden]) { margin-left: 6px; }
+.usermenu-panel .badge { background: #e5484d; color: #fff; border-radius: 999px; font-size: 11px; font-weight: 700; padding: 1px 7px; }
+
+
+/* ============================================================
  * 帖子列表视图（参考社区项目列表）+ 私信 + 审核 + 黑名单
  * ============================================================ */
 html[data-post-view='list'] .post-grid { display: none; }

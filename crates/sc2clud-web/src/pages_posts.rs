@@ -202,6 +202,20 @@ async fn build_post_page<'a>(
         })
         .collect::<Vec<_>>();
     let show_sources = !sources.is_empty();
+    // 点赞/收藏：未登录时状态为 false，只显示计数
+    let (flags, like_count, bookmark_count) = match viewer_id {
+        Some(uid) => {
+            let flags = repo::my_post_flags(state.db.pool(), id, uid).await?;
+            let likes = repo::post_like_count(state.db.pool(), id).await? as u64;
+            (flags, likes, 0u64)
+        }
+        None => (
+            (false, false),
+            repo::post_like_count(state.db.pool(), id).await? as u64,
+            0,
+        ),
+    };
+    let _ = bookmark_count;
     // 过滤掉查看者拉黑的人（登录才谈得上黑名单）
     let comments = repo::list_comments_for(state.db.pool(), id, viewer_id, 200).await?;
 
@@ -238,6 +252,10 @@ async fn build_post_page<'a>(
             created_at: format_date(row.created_at),
             image_count: row.image_count,
             is_mine: viewer_id == Some(row.author_id),
+            liked: flags.0,
+            bookmarked: flags.1,
+            like_count: like_count as i64,
+            bookmark_count: bookmark_count as i64,
         },
         comments: comments
             .into_iter()

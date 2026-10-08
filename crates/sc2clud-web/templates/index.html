@@ -17,6 +17,15 @@
 {% block bar_avatar %}{% if let Some(hash) = my_avatar %}/avatar/{{ hash }}{% else %}/static/art/miyin-chibi-80.webp{% endif %}{% endblock %}
 
 {% block content %}
+{% if let Some((title, body)) = announcement %}
+<section class="card announce-banner">
+  <div class="chips"><span class="chip">系统公告</span></div>
+  <h3>{{ title }}</h3>
+  <p class="announcement-body">{{ body }}</p>
+  <a class="btn ghost" href="/announcements">查看全部公告</a>
+</section>
+{% endif %}
+
 <section class="card" id="posts">
   <div class="list-toolbar">
     <nav class="section-nav">

@@ -148,6 +148,16 @@ pub async fn send(
     let body = validate_message_body(&form.body)?;
     let now = now_unix();
     repo::send_message(state.db.pool(), user.id, other.id, &body, now).await?;
+    let _ = repo::notify(
+        state.db.pool(),
+        other.id,
+        "message",
+        &format!("{} 给你发了私信", user.display_name),
+        Some(body.chars().take(60).collect::<String>().as_str()),
+        Some(&format!("/messages/{}", user.handle)),
+        now,
+    )
+    .await;
     state.counters.bump("message:sent", 1);
     tracing::info!(from.id = user.id, to.id = other.id, "发送私信");
     Ok(Redirect::to(&format!("/messages/{}", other.handle)).into_response())

@@ -62,6 +62,10 @@ pub struct PostWithAuthorRow {
     pub cover_hash: Option<String>,
     /// 回复数（列表视图的统计条用）。
     pub comment_count: i64,
+    /// 点赞数。
+    pub like_count: i64,
+    /// 收藏数。
+    pub bookmark_count: i64,
 }
 
 /// 回复 + 作者。
@@ -105,6 +109,37 @@ pub struct ReleaseAssetRow {
     pub sha256: Option<String>,
     pub download_count: i64,
     pub created_at: i64,
+}
+
+/// 一条站内通知。
+#[derive(Debug, Clone, FromRow)]
+pub struct NotificationRow {
+    pub id: i64,
+    pub kind: String,
+    pub title: String,
+    pub body: Option<String>,
+    pub link: Option<String>,
+    pub read_at: Option<i64>,
+    pub created_at: i64,
+}
+
+/// 一条系统公告。
+#[derive(Debug, Clone, FromRow)]
+pub struct AnnouncementRow {
+    pub id: i64,
+    pub title: String,
+    pub body: String,
+    pub created_at: i64,
+}
+
+/// 我收藏的一篇帖子（列表用）。
+#[derive(Debug, Clone, FromRow)]
+pub struct BookmarkRow {
+    pub post_id: i64,
+    pub title: String,
+    pub section: String,
+    pub created_at: i64,
+    pub saved_at: i64,
 }
 
 /// 一条私信。

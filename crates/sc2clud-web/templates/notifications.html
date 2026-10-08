@@ -1,0 +1,29 @@
+{% extends "base.html" %}
+
+{% block title %}通知 · {{ site_name }}{% endblock %}
+
+{% block content %}
+<section class="card">
+  <h2>通知 <span class="count">{{ items.len() }}</span></h2>
+  {% if items.is_empty() %}
+  <p class="empty">还没有通知。</p>
+  {% else %}
+  <div class="notify-list">
+    {% for n in items %}
+    <div class="notify{% if n.unread %} unread{% endif %}">
+      <span class="notify-kind kind-{{ n.kind }}">{{ n.kind }}</span>
+      <div class="notify-main">
+        {% if let Some(link) = n.link %}
+        <a class="notify-title" href="{{ link }}">{{ n.title }}</a>
+        {% else %}
+        <span class="notify-title">{{ n.title }}</span>
+        {% endif %}
+        {% if !n.body.is_empty() %}<p class="notify-body">{{ n.body }}</p>{% endif %}
+      </div>
+      <span class="meta">{{ n.when }}</span>
+    </div>
+    {% endfor %}
+  </div>
+  {% endif %}
+</section>
+{% endblock %}

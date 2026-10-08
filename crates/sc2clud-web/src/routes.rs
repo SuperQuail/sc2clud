@@ -57,6 +57,35 @@ pub fn pages() -> Router<AppState> {
         .route("/logout", axum::routing::post(crate::pages_auth::logout))
         .route("/me", axum::routing::get(crate::pages_profile::me))
         .route(
+            "/bookmarks",
+            axum::routing::get(crate::pages_social::bookmarks),
+        )
+        .route(
+            "/notifications",
+            axum::routing::get(crate::pages_social::notifications),
+        )
+        .route(
+            "/announcements",
+            axum::routing::get(crate::pages_social::announcements),
+        )
+        .route(
+            "/api/v1/notifications/unread",
+            axum::routing::get(crate::pages_social::unread_badge),
+        )
+        .route(
+            "/admin/announcements",
+            axum::routing::post(crate::pages_social::create_announcement),
+        )
+        .route(
+            "/admin/backup",
+            axum::routing::get(crate::pages_social::backup_page)
+                .post(crate::pages_social::create_backup),
+        )
+        .route(
+            "/admin/backup/{name}",
+            axum::routing::get(crate::pages_social::download_backup),
+        )
+        .route(
             "/messages",
             axum::routing::get(crate::pages_messages::inbox),
         )
@@ -131,6 +160,14 @@ pub fn pages() -> Router<AppState> {
             axum::routing::post(crate::pages_admin::toggle_activation_policy),
         )
         .route("/p/{id}", axum::routing::get(crate::pages_posts::post_page))
+        .route(
+            "/p/{id}/like",
+            axum::routing::post(crate::pages_social::toggle_like),
+        )
+        .route(
+            "/p/{id}/bookmark",
+            axum::routing::post(crate::pages_social::toggle_bookmark),
+        )
         .route(
             "/p/{id}/comments",
             axum::routing::post(crate::pages_posts::comment_submit),
@@ -339,6 +376,9 @@ async fn build_index<'a>(
         can_post: user.is_some_and(|u| u.activated),
         needs_activation: user.is_some_and(|u| !u.activated),
         sections_all_active: section.is_none(),
+        announcement: repo::latest_announcement(state.db.pool())
+            .await?
+            .map(|row| (row.title, row.body)),
         sections: PostSection::ALL
             .iter()
             .map(|s| SectionOption {
@@ -383,6 +423,8 @@ pub(crate) fn feed_view(row: &sc2clud_db::PostWithAuthorRow, viewer_id: Option<i
         created_at: format_date(row.created_at),
         image_count: row.image_count,
         comment_count: row.comment_count,
+        like_count: row.like_count,
+        bookmark_count: row.bookmark_count,
         time_ago: format_relative(row.created_at, sc2clud_core::now_unix()),
         is_mine: viewer_id == Some(row.author_id),
         cover_hash: row.cover_hash.clone(),

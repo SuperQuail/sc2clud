@@ -23,6 +23,8 @@ pub struct IndexTemplate<'a> {
     pub sections: Vec<SectionOption>,
     /// 「全部」是否处于选中态（没有指定分区时）。
     pub sections_all_active: bool,
+    /// 最新一条系统公告（首页顶部横幅）。
+    pub announcement: Option<(String, String)>,
     /// 帖子流（已按查看者过滤：审核中的只有作者与管理员可见）。
     pub posts: Vec<FeedView>,
     pub visible_posts: i64,
@@ -48,6 +50,8 @@ pub struct FeedView {
     pub avatar: Option<String>,
     /// 回复数（列表视图统计条）。
     pub comment_count: i64,
+    pub like_count: i64,
+    pub bookmark_count: i64,
     /// 「多久以前」（列表视图统计条）。
     pub time_ago: String,
     pub title: String,
@@ -226,6 +230,11 @@ pub struct PostDetailView {
     pub state: String,
     pub state_label: String,
     pub review_note: Option<String>,
+    /// 当前查看者是否已点赞 / 收藏，以及计数。
+    pub liked: bool,
+    pub bookmarked: bool,
+    pub like_count: i64,
+    pub bookmark_count: i64,
     pub author: String,
     pub author_role_label: String,
     pub created_at: String,
@@ -301,6 +310,83 @@ pub struct SourceSlot {
     pub url: String,
     pub code: String,
     pub provider: String,
+}
+
+/// 数据备份页（仅超级管理员）。
+#[derive(Template)]
+#[template(path = "backup.html")]
+pub struct BackupTemplate<'a> {
+    pub site_name: &'a str,
+    pub user_label: Option<String>,
+    pub is_staff: bool,
+    pub csrf: String,
+    pub files: Vec<BackupFileView>,
+    pub dir: String,
+}
+
+/// 一个备份文件。
+pub struct BackupFileView {
+    pub name: String,
+    pub size: String,
+    pub modified: String,
+}
+
+/// 我的收藏。
+#[derive(Template)]
+#[template(path = "bookmarks.html")]
+pub struct BookmarksTemplate<'a> {
+    pub site_name: &'a str,
+    pub user_label: Option<String>,
+    pub is_staff: bool,
+    pub csrf: String,
+    pub items: Vec<BookmarkView>,
+}
+
+/// 收藏条目。
+pub struct BookmarkView {
+    pub id: i64,
+    pub title: String,
+    pub section_label: String,
+    pub when: String,
+}
+
+/// 通知中心。
+#[derive(Template)]
+#[template(path = "notifications.html")]
+pub struct NotificationsTemplate<'a> {
+    pub site_name: &'a str,
+    pub user_label: Option<String>,
+    pub is_staff: bool,
+    pub csrf: String,
+    pub items: Vec<NotificationView>,
+}
+
+/// 一条通知。
+pub struct NotificationView {
+    pub kind: String,
+    pub title: String,
+    pub body: String,
+    pub link: Option<String>,
+    pub when: String,
+    pub unread: bool,
+}
+
+/// 系统公告页。
+#[derive(Template)]
+#[template(path = "announcements.html")]
+pub struct AnnouncementsTemplate<'a> {
+    pub site_name: &'a str,
+    pub user_label: Option<String>,
+    pub is_staff: bool,
+    pub csrf: String,
+    pub items: Vec<AnnouncementView>,
+}
+
+/// 一条公告。
+pub struct AnnouncementView {
+    pub title: String,
+    pub body: String,
+    pub when: String,
 }
 
 /// 私信收件箱。

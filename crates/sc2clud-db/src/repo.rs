@@ -10,9 +10,10 @@ use sqlx::{SqlitePool, query, query_as};
 
 use crate::db_err;
 use crate::models::{
-    AdminUserRow, AuditRow, BlobRow, BlockRow, CommentWithAuthorRow, ConversationRow, FileRow,
-    FileWithOwnerRow, ImageJobRow, MessageRow, PostImageRow, PostRow, PostSourceRow,
-    PostWithAuthorRow, ReleaseAssetRow, ReleaseRow, SessionRow, UploadSessionRow, UserRow,
+    AdminUserRow, AnnouncementRow, AuditRow, BlobRow, BlockRow, BookmarkRow, CommentWithAuthorRow,
+    ConversationRow, FileRow, FileWithOwnerRow, ImageJobRow, MessageRow, NotificationRow,
+    PostImageRow, PostRow, PostSourceRow, PostWithAuthorRow, ReleaseAssetRow, ReleaseRow,
+    SessionRow, UploadSessionRow, UserRow,
 };
 
 // ---------------------------------------------------------------- 用户
@@ -824,7 +825,9 @@ pub async fn list_feed(
                  WHERE pi.post_id = p.id AND pi.state <> 'failed' \
                  ORDER BY pi.position, pi.id LIMIT 1) AS cover_hash, \
                 (SELECT COUNT(*) FROM comments c \
-                 WHERE c.post_id = p.id AND c.deleted_at IS NULL) AS comment_count \
+                 WHERE c.post_id = p.id AND c.deleted_at IS NULL) AS comment_count, \
+                (SELECT COUNT(*) FROM post_likes pl WHERE pl.post_id = p.id) AS like_count, \
+                (SELECT COUNT(*) FROM post_bookmarks pb WHERE pb.post_id = p.id) AS bookmark_count \
          FROM posts p JOIN users u ON u.id = p.author_id \
          WHERE p.deleted_at IS NULL \
            AND (p.review_state = 'approved' \
@@ -863,7 +866,9 @@ pub async fn list_feed_by_section(
                  WHERE pi.post_id = p.id AND pi.state <> 'failed' \
                  ORDER BY pi.position, pi.id LIMIT 1) AS cover_hash, \
                 (SELECT COUNT(*) FROM comments c \
-                 WHERE c.post_id = p.id AND c.deleted_at IS NULL) AS comment_count \
+                 WHERE c.post_id = p.id AND c.deleted_at IS NULL) AS comment_count, \
+                (SELECT COUNT(*) FROM post_likes pl WHERE pl.post_id = p.id) AS like_count, \
+                (SELECT COUNT(*) FROM post_bookmarks pb WHERE pb.post_id = p.id) AS bookmark_count \
          FROM posts p JOIN users u ON u.id = p.author_id \
          WHERE p.deleted_at IS NULL \
            AND (?5 = '' OR p.section = ?5) \
@@ -901,7 +906,9 @@ pub async fn list_posts_by_author(
                  WHERE pi.post_id = p.id AND pi.state <> 'failed' \
                  ORDER BY pi.position, pi.id LIMIT 1) AS cover_hash, \
                 (SELECT COUNT(*) FROM comments c \
-                 WHERE c.post_id = p.id AND c.deleted_at IS NULL) AS comment_count \
+                 WHERE c.post_id = p.id AND c.deleted_at IS NULL) AS comment_count, \
+                (SELECT COUNT(*) FROM post_likes pl WHERE pl.post_id = p.id) AS like_count, \
+                (SELECT COUNT(*) FROM post_bookmarks pb WHERE pb.post_id = p.id) AS bookmark_count \
          FROM posts p JOIN users u ON u.id = p.author_id \
          WHERE p.deleted_at IS NULL AND p.author_id = ?1 \
            AND (p.review_state = 'approved' OR ?2 = 1) \
@@ -1533,7 +1540,9 @@ pub async fn list_pending_posts(pool: &SqlitePool, limit: i64) -> Result<Vec<Pos
                  WHERE pi.post_id = p.id AND pi.state <> 'failed' \
                  ORDER BY pi.position, pi.id LIMIT 1) AS cover_hash, \
                 (SELECT COUNT(*) FROM comments c \
-                 WHERE c.post_id = p.id AND c.deleted_at IS NULL) AS comment_count \
+                 WHERE c.post_id = p.id AND c.deleted_at IS NULL) AS comment_count, \
+                (SELECT COUNT(*) FROM post_likes pl WHERE pl.post_id = p.id) AS like_count, \
+                (SELECT COUNT(*) FROM post_bookmarks pb WHERE pb.post_id = p.id) AS bookmark_count \
          FROM posts p JOIN users u ON u.id = p.author_id \
          WHERE p.deleted_at IS NULL AND p.review_state = 'pending' \
          ORDER BY p.created_at ASC LIMIT ?",
@@ -1542,6 +1551,244 @@ pub async fn list_pending_posts(pool: &SqlitePool, limit: i64) -> Result<Vec<Pos
     .fetch_all(pool)
     .await
     .map_err(db_err)
+}
+
+// ------------------------------------------------------------ 点赞 / 收藏 / 通知 / 公告
+
+/// 点赞开关：返回点赞后的状态（true = 已赞）。
+pub async fn toggle_like(pool: &SqlitePool, post_id: i64, user_id: i64, now: i64) -> Result<bool> {
+    let removed = query("DELETE FROM post_likes WHERE post_id = ? AND user_id = ?")
+        .bind(post_id)
+        .bind(user_id)
+        .execute(pool)
+        .await
+        .map_err(db_err)?
+        .rows_affected();
+    if removed > 0 {
+        return Ok(false);
+    }
+    query("INSERT INTO post_likes (post_id, user_id, created_at) VALUES (?, ?, ?)")
+        .bind(post_id)
+        .bind(user_id)
+        .bind(now)
+        .execute(pool)
+        .await
+        .map_err(db_err)?;
+    Ok(true)
+}
+
+/// 收藏开关：返回收藏后的状态（true = 已收藏）。
+pub async fn toggle_bookmark(
+    pool: &SqlitePool,
+    post_id: i64,
+    user_id: i64,
+    now: i64,
+) -> Result<bool> {
+    let removed = query("DELETE FROM post_bookmarks WHERE post_id = ? AND user_id = ?")
+        .bind(post_id)
+        .bind(user_id)
+        .execute(pool)
+        .await
+        .map_err(db_err)?
+        .rows_affected();
+    if removed > 0 {
+        return Ok(false);
+    }
+    query("INSERT INTO post_bookmarks (post_id, user_id, created_at) VALUES (?, ?, ?)")
+        .bind(post_id)
+        .bind(user_id)
+        .bind(now)
+        .execute(pool)
+        .await
+        .map_err(db_err)?;
+    Ok(true)
+}
+
+/// 我是否赞过 / 收藏过某帖：`(liked, bookmarked)`。
+pub async fn my_post_flags(pool: &SqlitePool, post_id: i64, user_id: i64) -> Result<(bool, bool)> {
+    let liked: Option<(i64,)> =
+        query_as("SELECT 1 FROM post_likes WHERE post_id = ? AND user_id = ?")
+            .bind(post_id)
+            .bind(user_id)
+            .fetch_optional(pool)
+            .await
+            .map_err(db_err)?;
+    let marked: Option<(i64,)> =
+        query_as("SELECT 1 FROM post_bookmarks WHERE post_id = ? AND user_id = ?")
+            .bind(post_id)
+            .bind(user_id)
+            .fetch_optional(pool)
+            .await
+            .map_err(db_err)?;
+    Ok((liked.is_some(), marked.is_some()))
+}
+
+pub async fn post_like_count(pool: &SqlitePool, post_id: i64) -> Result<i64> {
+    let row: (i64,) = query_as("SELECT COUNT(*) FROM post_likes WHERE post_id = ?")
+        .bind(post_id)
+        .fetch_one(pool)
+        .await
+        .map_err(db_err)?;
+    Ok(row.0)
+}
+
+/// 我的收藏（按收藏时间倒序）。
+pub async fn list_bookmarks(
+    pool: &SqlitePool,
+    user_id: i64,
+    limit: i64,
+) -> Result<Vec<BookmarkRow>> {
+    query_as::<_, BookmarkRow>(
+        "SELECT p.id AS post_id, p.title, p.section, p.created_at, b.created_at AS saved_at \
+         FROM post_bookmarks b JOIN posts p ON p.id = b.post_id \
+         WHERE b.user_id = ? AND p.deleted_at IS NULL \
+         ORDER BY b.created_at DESC LIMIT ?",
+    )
+    .bind(user_id)
+    .bind(limit)
+    .fetch_all(pool)
+    .await
+    .map_err(db_err)
+}
+
+// ---------------- 通知 ----------------
+
+pub async fn notify(
+    pool: &SqlitePool,
+    user_id: i64,
+    kind: &str,
+    title: &str,
+    body: Option<&str>,
+    link: Option<&str>,
+    now: i64,
+) -> Result<i64> {
+    let res = query(
+        "INSERT INTO notifications (user_id, kind, title, body, link, created_at) \
+         VALUES (?, ?, ?, ?, ?, ?)",
+    )
+    .bind(user_id)
+    .bind(kind)
+    .bind(title)
+    .bind(body)
+    .bind(link)
+    .bind(now)
+    .execute(pool)
+    .await
+    .map_err(db_err)?;
+    Ok(res.last_insert_rowid())
+}
+
+/// 公告/全员通知：一次插一批（避开逐条往返）。
+pub async fn notify_all(
+    pool: &SqlitePool,
+    kind: &str,
+    title: &str,
+    body: Option<&str>,
+    link: Option<&str>,
+    now: i64,
+) -> Result<u64> {
+    let affected = query(
+        "INSERT INTO notifications (user_id, kind, title, body, link, created_at) \
+         SELECT id, ?, ?, ?, ?, ? FROM users",
+    )
+    .bind(kind)
+    .bind(title)
+    .bind(body)
+    .bind(link)
+    .bind(now)
+    .execute(pool)
+    .await
+    .map_err(db_err)?
+    .rows_affected();
+    Ok(affected)
+}
+
+pub async fn list_notifications(
+    pool: &SqlitePool,
+    user_id: i64,
+    limit: i64,
+) -> Result<Vec<NotificationRow>> {
+    query_as::<_, NotificationRow>(
+        "SELECT id, kind, title, body, link, read_at, created_at FROM notifications \
+         WHERE user_id = ? ORDER BY created_at DESC, id DESC LIMIT ?",
+    )
+    .bind(user_id)
+    .bind(limit)
+    .fetch_all(pool)
+    .await
+    .map_err(db_err)
+}
+
+pub async fn unread_notification_count(pool: &SqlitePool, user_id: i64) -> Result<i64> {
+    let row: (i64,) =
+        query_as("SELECT COUNT(*) FROM notifications WHERE user_id = ? AND read_at IS NULL")
+            .bind(user_id)
+            .fetch_one(pool)
+            .await
+            .map_err(db_err)?;
+    Ok(row.0)
+}
+
+pub async fn mark_notifications_read(pool: &SqlitePool, user_id: i64, now: i64) -> Result<u64> {
+    let affected =
+        query("UPDATE notifications SET read_at = ? WHERE user_id = ? AND read_at IS NULL")
+            .bind(now)
+            .bind(user_id)
+            .execute(pool)
+            .await
+            .map_err(db_err)?
+            .rows_affected();
+    Ok(affected)
+}
+
+// ---------------- 系统公告 ----------------
+
+pub async fn create_announcement(
+    pool: &SqlitePool,
+    title: &str,
+    body: &str,
+    by: i64,
+    now: i64,
+) -> Result<i64> {
+    let res = query(
+        "INSERT INTO announcements (title, body, created_by, created_at) VALUES (?, ?, ?, ?)",
+    )
+    .bind(title)
+    .bind(body)
+    .bind(by)
+    .bind(now)
+    .execute(pool)
+    .await
+    .map_err(db_err)?;
+    Ok(res.last_insert_rowid())
+}
+
+pub async fn list_announcements(pool: &SqlitePool, limit: i64) -> Result<Vec<AnnouncementRow>> {
+    query_as::<_, AnnouncementRow>(
+        "SELECT id, title, body, created_at FROM announcements \
+         ORDER BY created_at DESC, id DESC LIMIT ?",
+    )
+    .bind(limit)
+    .fetch_all(pool)
+    .await
+    .map_err(db_err)
+}
+
+pub async fn latest_announcement(pool: &SqlitePool) -> Result<Option<AnnouncementRow>> {
+    query_as::<_, AnnouncementRow>(
+        "SELECT id, title, body, created_at FROM announcements \
+         ORDER BY created_at DESC, id DESC LIMIT 1",
+    )
+    .fetch_optional(pool)
+    .await
+    .map_err(db_err)
+}
+
+/// 备份用：把数据库一致地写到目标文件（SQLite 的 VACUUM INTO，不用停服）。
+pub async fn backup_to(pool: &SqlitePool, path: &str) -> Result<()> {
+    let statement = format!("VACUUM INTO '{}'", path.replace('\'', "''"));
+    query(&statement).execute(pool).await.map_err(db_err)?;
+    Ok(())
 }
 
 pub async fn count_comments(pool: &SqlitePool) -> Result<i64> {

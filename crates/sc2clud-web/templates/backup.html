@@ -1,0 +1,38 @@
+{% extends "base.html" %}
+
+{% block title %}数据备份 · {{ site_name }}{% endblock %}
+
+{% block content %}
+<section class="card">
+  <h2>数据备份 <span class="spacer">仅超级管理员</span></h2>
+  <p class="hint">创建备份会做两件事：把整库一致性快照写到 <code>{{ dir }}</code>（SQLite <code>VACUUM INTO</code>，不用停服），
+     并导出一份用户数据 JSON（登录名 / 显示名 / 邮箱 / 等级 / 激活 / 配额，**不含口令哈希**）。</p>
+  <form method="post" action="/admin/backup" data-async data-after="refresh">
+    <input type="hidden" name="csrf" value="{{ csrf }}">
+    <button class="btn" type="submit">立即备份</button>
+  </form>
+</section>
+
+<section class="card" id="backups">
+  <h2>备份文件 <span class="count">{{ files.len() }}</span></h2>
+  {% if files.is_empty() %}
+  <p class="empty">还没有备份。</p>
+  {% else %}
+  <table class="admin-table">
+    <thead><tr><th>文件</th><th>大小</th><th>时间</th><th>操作</th></tr></thead>
+    <tbody>
+      {% for file in files %}
+      <tr>
+        <td><code>{{ file.name }}</code></td>
+        <td class="muted">{{ file.size }}</td>
+        <td class="muted">{{ file.modified }}</td>
+        <td><a class="btn ghost" href="/admin/backup/{{ file.name }}">下载</a></td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% endif %}
+</section>
+{% endblock %}
+
+{% block scripts %}<script type="module" src="/static/islands/admin.js"></script>{% endblock %}

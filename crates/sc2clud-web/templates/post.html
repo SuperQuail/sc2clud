@@ -73,6 +73,24 @@
     {% endfor %}
   </div>
   {% endif %}
+  <div class="post-actions">
+    <form method="post" action="/p/{{ post.id }}/like" class="inline-form" data-like>
+      <input type="hidden" name="csrf" value="{{ csrf }}">
+      <button class="btn {% if post.liked %}liked{% else %}ghost{% endif %}" type="submit">
+        <svg viewBox="0 0 20 20" width="16" height="16" aria-hidden="true"><path d="M6 9.4l3.6-6.2c.6-1 2.2-.6 2.2.6v4h3.1c1.1 0 1.9 1 1.7 2.1l-1 5c-.2.9-.9 1.5-1.7 1.5H6z" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/><path d="M6 9.4H3v8h3z" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/></svg>
+        <span data-like-count>{{ post.like_count }}</span>
+      </button>
+    </form>
+    <form method="post" action="/p/{{ post.id }}/bookmark" class="inline-form" data-mark>
+      <input type="hidden" name="csrf" value="{{ csrf }}">
+      <button class="btn {% if post.bookmarked %}marked{% else %}ghost{% endif %}" type="submit">
+        <svg viewBox="0 0 20 20" width="16" height="16" aria-hidden="true"><path d="M5.5 3h9v14l-4.5-3.4L5.5 17z" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/></svg>
+        <span data-mark-label>{% if post.bookmarked %}已收藏{% else %}收藏{% endif %}</span>
+      </button>
+    </form>
+    <span class="hint" data-post-note></span>
+  </div>
+
   <div class="actions-inline" style="margin-top:18px">
     <a class="btn ghost" href="/">返回首页</a>
     {% if is_staff %}
@@ -118,6 +136,48 @@
 {% endblock %}
 
 {% block scripts %}
+<script>
+  // 点赞 / 收藏：就地切换，不刷新页面
+  (function () {
+    function wire(form, apply) {
+      form.addEventListener('submit', function (event) {
+        event.preventDefault();
+        fetch(form.action, {
+          method: 'POST',
+          body: new FormData(form),
+          headers: { 'x-requested-with': 'fetch' },
+          credentials: 'same-origin',
+        })
+          .then(function (r) { return r.ok ? r.json() : Promise.reject(r.status); })
+          .then(apply)
+          .catch(function (status) {
+            var note = document.querySelector('[data-post-note]');
+            if (note) note.textContent = '操作失败（' + status + '）';
+          });
+      });
+    }
+    var like = document.querySelector('form[data-like]');
+    if (like) {
+      wire(like, function (data) {
+        var count = like.querySelector('[data-like-count]');
+        var button = like.querySelector('button');
+        if (count) count.textContent = data.count;
+        button.classList.toggle('liked', data.liked);
+        button.classList.toggle('ghost', !data.liked);
+      });
+    }
+    var mark = document.querySelector('form[data-mark]');
+    if (mark) {
+      wire(mark, function (data) {
+        var label = mark.querySelector('[data-mark-label]');
+        var button = mark.querySelector('button');
+        if (label) label.textContent = data.bookmarked ? '已收藏' : '收藏';
+        button.classList.toggle('marked', data.bookmarked);
+        button.classList.toggle('ghost', !data.bookmarked);
+      });
+    }
+  })();
+</script>
 {% if is_staff %}<script type="module" src="/static/islands/admin.js"></script>{% endif %}
 <script type="module">
   // 镜像实测：HEAD 探一次，按耗时把最快的排到最前（用户仍可点任何一个）。

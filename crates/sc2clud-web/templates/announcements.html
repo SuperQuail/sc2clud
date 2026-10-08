@@ -1,0 +1,33 @@
+{% extends "base.html" %}
+
+{% block title %}系统公告 · {{ site_name }}{% endblock %}
+
+{% block content %}
+{% if is_staff %}
+<section class="card">
+  <h2>发布系统公告</h2>
+  <p class="hint">系统公告独立于帖子：发布后会出现在这里，并给所有账号发一条通知。</p>
+  <form method="post" action="/admin/announcements" class="stack">
+    <input type="hidden" name="csrf" value="{{ csrf }}">
+    <label>标题<input type="text" name="title" required maxlength="80"></label>
+    <label>正文<textarea name="body" required maxlength="4000" style="min-height:120px"></textarea></label>
+    <button class="btn" type="submit">发布公告</button>
+  </form>
+</section>
+{% endif %}
+
+<section class="card">
+  <h2>系统公告 <span class="count">{{ items.len() }}</span></h2>
+  {% if items.is_empty() %}
+  <p class="empty">还没有公告。</p>
+  {% else %}
+  {% for item in items %}
+  <article class="announcement">
+    <div class="chips"><span class="chip">公告</span><span class="meta">{{ item.when }}</span></div>
+    <h3>{{ item.title }}</h3>
+    <p class="announcement-body">{{ item.body }}</p>
+  </article>
+  {% endfor %}
+  {% endif %}
+</section>
+{% endblock %}
