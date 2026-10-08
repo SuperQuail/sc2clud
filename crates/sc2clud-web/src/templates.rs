@@ -26,6 +26,8 @@ pub struct IndexTemplate<'a> {
     /// 帖子流（已按查看者过滤：审核中的只有作者与管理员可见）。
     pub posts: Vec<FeedView>,
     pub visible_posts: i64,
+    /// 当前用户是否管理员及以上（决定导航里是否出现「管理」）。
+    pub is_staff: bool,
     /// 网盘区块是否可见（当前仅网站管理员及以上）。
     pub netdisk_visible: bool,
     /// **只显示自己的文件**——别人的文件不进首页。
@@ -282,6 +284,33 @@ pub struct SourceSlot {
     pub url: String,
     pub code: String,
     pub provider: String,
+}
+
+/// 管理员面板。
+#[derive(Template)]
+#[template(path = "admin.html")]
+pub struct AdminTemplate<'a> {
+    pub site_name: &'a str,
+    pub user_label: Option<String>,
+    pub csrf: String,
+    /// 当前管理员是否超级管理员（决定能否改等级/显示名）。
+    pub is_super: bool,
+    pub require_activation: bool,
+    /// (值, 显示名)
+    pub roles: Vec<(String, String)>,
+    pub users: Vec<AdminUserView>,
+}
+
+/// 管理员面板里的用户行。
+pub struct AdminUserView {
+    pub id: i64,
+    pub handle: String,
+    pub display_name: String,
+    pub role: String,
+    pub role_label: String,
+    pub activated: bool,
+    pub created_at: String,
+    pub is_self: bool,
 }
 
 /// 后台用户行（管理员页）。

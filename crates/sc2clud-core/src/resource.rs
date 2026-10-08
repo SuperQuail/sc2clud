@@ -12,6 +12,8 @@ use crate::error::{Error, Result};
 /// 帖子分区。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum PostSection {
+    /// 公告：站点通知，只有管理员及以上可以发布。
+    Announcement,
     /// 原版战役 mod（对官方战役的修改）。
     VanillaMod,
     /// 自制战役（整段新战役）。
@@ -23,7 +25,8 @@ pub enum PostSection {
 }
 
 impl PostSection {
-    pub const ALL: [PostSection; 4] = [
+    pub const ALL: [PostSection; 5] = [
+        PostSection::Announcement,
         PostSection::VanillaMod,
         PostSection::CustomCampaign,
         PostSection::ToolPlayer,
@@ -32,6 +35,7 @@ impl PostSection {
 
     pub fn as_str(self) -> &'static str {
         match self {
+            PostSection::Announcement => "announcement",
             PostSection::VanillaMod => "vanilla_mod",
             PostSection::CustomCampaign => "custom_campaign",
             PostSection::ToolPlayer => "tool_player",
@@ -41,6 +45,7 @@ impl PostSection {
 
     pub fn label(self) -> &'static str {
         match self {
+            PostSection::Announcement => "公告",
             PostSection::VanillaMod => "原版战役 mod",
             PostSection::CustomCampaign => "自制战役",
             PostSection::ToolPlayer => "工具（玩家用）",
@@ -60,6 +65,16 @@ impl PostSection {
             }
         }
         Err(Error::InvalidInput(format!("未知分区：{raw}")))
+    }
+
+    /// 发布该分区所需的权限。
+    ///
+    /// 公告是站点通知，只有管理员及以上能发；其余分区对所有已激活用户开放。
+    pub fn required_permission(self) -> crate::auth::Permission {
+        match self {
+            PostSection::Announcement => crate::auth::Permission::ManageUsers,
+            _ => crate::auth::Permission::CreateDiscussion,
+        }
     }
 }
 
@@ -240,6 +255,15 @@ mod tests {
         }
         assert_eq!(PostSection::default_section(), PostSection::CustomCampaign);
         assert!(PostSection::parse("nope").is_err());
+        // 公告只有管理员能发
+        assert_eq!(
+            PostSection::Announcement.required_permission(),
+            crate::auth::Permission::ManageUsers
+        );
+        assert_eq!(
+            PostSection::VanillaMod.required_permission(),
+            crate::auth::Permission::CreateDiscussion
+        );
     }
 
     #[test]

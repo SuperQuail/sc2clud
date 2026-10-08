@@ -45,6 +45,7 @@
   </nav>
   <h2>帖子 <span class="count">{{ visible_posts }}</span>
     <span class="spacer">
+      {% if is_staff %}<a href="/admin">管理面板</a> · {% endif %}
       {% if can_post %}<a href="/new">发新帖</a>{% else if user_label.is_none() %}<a href="/login">登录后可发帖</a>{% else %}待激活后可发帖{% endif %}
     </span>
   </h2>
@@ -80,15 +81,15 @@
 {# 网盘只对网站管理员及以上可见：这是后续施工内容，普通用户看不到入口。 #}
 {% if netdisk_visible %}
 <section class="card" id="files">
-  <h2>网盘（施工中） <span class="count">{% if let Some(stats) = my_file_stats %}{{ stats.files }}{% else %}0{% endif %}</span>
+  <h2>网盘 <span class="count">{% if let Some(stats) = my_file_stats %}{{ stats.files }}{% else %}0{% endif %}</span>
     <span class="spacer">仅管理员可见 · 单文件上限 {{ max_upload_human }}</span>
   </h2>
-  <p class="hint">网盘暂未对普通用户开放：路径、配额、分享与清理策略定稿后再上线。下面是管理员自用的上传入口。</p>
+  <p class="hint">此区域仅管理员可见。</p>
   <div data-island="uploader">
     <form id="upload-form" class="uploader">
       <input id="upload-input" type="file" required>
       <button id="upload-submit" class="btn" type="submit">上传</button>
-      <p class="hint">选择文件后上传（启用 JavaScript 可看到进度与秒传提示）。</p>
+      <p class="hint">选择文件后上传。</p>
     </form>
   </div>
   {% if my_files.is_empty() %}

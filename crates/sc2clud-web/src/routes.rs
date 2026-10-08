@@ -54,6 +54,27 @@ pub fn pages() -> Router<AppState> {
             axum::routing::get(crate::pages_auth::login_form).post(crate::pages_auth::login_submit),
         )
         .route("/logout", axum::routing::post(crate::pages_auth::logout))
+        .route("/admin", axum::routing::get(crate::pages_admin::panel))
+        .route(
+            "/admin/users/{id}/activate",
+            axum::routing::post(crate::pages_admin::activate),
+        )
+        .route(
+            "/admin/users/{id}/deactivate",
+            axum::routing::post(crate::pages_admin::deactivate),
+        )
+        .route(
+            "/admin/users/{id}/role",
+            axum::routing::post(crate::pages_admin::set_role),
+        )
+        .route(
+            "/admin/users/{id}/rename",
+            axum::routing::post(crate::pages_admin::rename),
+        )
+        .route(
+            "/admin/settings/require-activation",
+            axum::routing::post(crate::pages_admin::toggle_activation_policy),
+        )
         .route("/p/{id}", axum::routing::get(crate::pages_posts::post_page))
         .route(
             "/p/{id}/comments",
@@ -272,6 +293,7 @@ async fn build_index<'a>(
             .collect(),
         visible_posts: feed.len() as i64,
         posts: feed.iter().map(|row| feed_view(row, viewer_id)).collect(),
+        is_staff,
         netdisk_visible,
         my_files: my_files.iter().map(FileView::from_row).collect(),
         my_file_stats,

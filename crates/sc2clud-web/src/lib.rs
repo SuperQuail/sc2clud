@@ -6,6 +6,7 @@
 //! - 页面默认服务端渲染，前端只做局部增强。
 
 pub mod error;
+pub mod pages_admin;
 pub mod pages_auth;
 pub mod pages_posts;
 pub mod routes;

@@ -1,0 +1,67 @@
+{% extends "base.html" %}
+
+{% block title %}管理面板 · {{ site_name }}{% endblock %}
+
+{% block content %}
+<section class="card">
+  <h2>注册策略</h2>
+  <p class="hint">
+    当前：{% if require_activation %}新注册用户需要管理员激活{% else %}新注册用户自动激活{% endif %}
+  </p>
+  <form method="post" action="/admin/settings/require-activation" class="actions-inline">
+    <input type="hidden" name="csrf" value="{{ csrf }}">
+    <button class="btn" type="submit">切换为{% if require_activation %}自动激活{% else %}人工激活{% endif %}</button>
+  </form>
+</section>
+
+<section class="card">
+  <h2>用户 <span class="count">{{ users.len() }}</span>
+    <span class="spacer">{% if is_super %}超级管理员：可改等级与显示名{% else %}改等级与显示名需要超级管理员{% endif %}</span>
+  </h2>
+  <table class="admin-table">
+    <thead>
+      <tr><th>#</th><th>登录名</th><th>显示名</th><th>等级</th><th>状态</th><th>注册时间</th><th>操作</th></tr>
+    </thead>
+    <tbody>
+      {% for user in users %}
+      <tr>
+        <td>{{ user.id }}</td>
+        <td>{{ user.handle }}{% if user.is_self %} <span class="tag">我</span>{% endif %}</td>
+        <td>
+          {% if is_super %}
+          <form method="post" action="/admin/users/{{ user.id }}/rename" class="inline-form">
+            <input type="hidden" name="csrf" value="{{ csrf }}">
+            <input type="text" name="display_name" value="{{ user.display_name }}" maxlength="20" required>
+            <button class="btn ghost" type="submit">改名</button>
+          </form>
+          {% else %}{{ user.display_name }}{% endif %}
+        </td>
+        <td>
+          {% if is_super && !user.is_self %}
+          <form method="post" action="/admin/users/{{ user.id }}/role" class="inline-form">
+            <input type="hidden" name="csrf" value="{{ csrf }}">
+            <select name="role">
+              {% for role in roles %}
+              <option value="{{ role.0 }}"{% if role.0 == user.role %} selected{% endif %}>{{ role.1 }}</option>
+              {% endfor %}
+            </select>
+            <button class="btn ghost" type="submit">保存</button>
+          </form>
+          {% else %}{{ user.role_label }}{% endif %}
+        </td>
+        <td>{% if user.activated %}<span class="tag ok">已激活</span>{% else %}<span class="tag warn">未激活</span>{% endif %}</td>
+        <td>{{ user.created_at }}</td>
+        <td>
+          {% if !user.is_self %}
+          <form method="post" action="/admin/users/{{ user.id }}/{% if user.activated %}deactivate{% else %}activate{% endif %}" class="inline-form">
+            <input type="hidden" name="csrf" value="{{ csrf }}">
+            <button class="btn ghost" type="submit">{% if user.activated %}停用{% else %}激活{% endif %}</button>
+          </form>
+          {% else %}—{% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</section>
+{% endblock %}

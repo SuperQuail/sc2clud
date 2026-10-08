@@ -82,6 +82,18 @@ pub async fn current_user(state: &AppState, headers: &HeaderMap) -> AppResult<Op
 }
 
 /// 权限守卫：不满足就 401（未登录）或 403（已登录但不够）。
+/// 判断某个用户（可能未登录）是否具备权限。
+///
+/// 页面用它决定「显示哪些选项」（例如公告分区只对管理员出现）；
+/// 真正的写操作仍然要再走一次 `guard`，界面过滤不能当授权。
+pub fn allows_for(user: Option<&CurrentUser>, permission: Permission) -> bool {
+    sc2clud_core::auth::allows(
+        user.map(|u| u.role),
+        user.is_some_and(|u| u.activated),
+        permission,
+    )
+}
+
 pub fn guard(user: Option<&CurrentUser>, permission: Permission) -> AppResult<()> {
     match user {
         None => Err(AppError::Domain(DomainError::Unauthorized(

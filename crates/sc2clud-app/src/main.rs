@@ -37,6 +37,7 @@ async fn main() -> Result<()> {
         "serve" | "run" => serve().await,
         "check" => check().await,
         "set-password" => set_password().await,
+        "create-admin" => create_admin().await,
         "version" | "-V" | "--version" => {
             println!("sc2clud {}", env!("CARGO_PKG_VERSION"));
             Ok(())
@@ -60,6 +61,7 @@ fn print_help() {
            sc2clud serve     启动 HTTP 服务（默认）\n\
            sc2clud check     配置与依赖自检，不监听端口\n\
            sc2clud set-password <用户名> <新口令>   重置口令（忘记管理员口令时用）\n\
+sc2clud create-admin <登录名> <显示名> <口令>   创建/提升超级管理员\n\
            sc2clud version   打印版本\n\n\
          配置：<exe 同级>/sc2clud.toml，环境变量优先（见 .env.example）",
         env!("CARGO_PKG_VERSION")
@@ -111,6 +113,55 @@ async fn check() -> Result<()> {
 
 /// 重置某个账号的口令，并确保它处于激活状态。
 ///
+/// 创建或提升一个**超级管理员**账号（幂等）：
+/// 不存在就建，已存在就提升为 super、激活并改显示名与口令。
+async fn create_admin() -> Result<()> {
+    let mut args = std::env::args().skip(2);
+    let usage = "用法：sc2clud create-admin <登录名> <显示名> <口令>";
+    let handle = args.next().context(usage)?;
+    let display_name = args.next().context(usage)?;
+    let password = args.next().context(usage)?;
+
+    let handle =
+        sc2clud_core::auth::validate_handle(&handle).map_err(|e| anyhow::anyhow!("{e}"))?;
+    let display_name = sc2clud_core::auth::validate_display_name(&display_name)
+        .map_err(|e| anyhow::anyhow!("{e}"))?;
+    // validate_password 只做校验（返回 ()），口令按原样使用。
+    sc2clud_core::auth::validate_password(&password).map_err(|e| anyhow::anyhow!("{e}"))?;
+
+    let config = Config::load().context("装载配置失败")?;
+    config.paths.ensure_dirs().context("创建数据目录失败")?;
+    let db = Db::connect(&config.paths.db_path())
+        .await
+        .context("打开数据库失败")?;
+    db.migrate().await.context("执行迁移失败")?;
+
+    let now = sc2clud_core::now_unix();
+    let user_id = repo::ensure_super_admin(db.pool(), &handle, 1 << 30, now)
+        .await
+        .context("创建管理员失败")?;
+    let hash = sc2clud_core::auth::hash_password(&password).map_err(|e| anyhow::anyhow!("{e}"))?;
+    repo::set_user_password(db.pool(), user_id, &hash)
+        .await
+        .context("写入口令失败")?;
+    repo::set_display_name(db.pool(), user_id, &display_name)
+        .await
+        .context("写入显示名失败")?;
+    repo::record_audit(
+        db.pool(),
+        Some(user_id),
+        "user.create_admin",
+        Some(&format!("user:{user_id}")),
+        Some("命令行创建/提升超级管理员"),
+        now,
+    )
+    .await
+    .context("写审计日志失败")?;
+
+    println!("超级管理员就绪：{handle}（显示名 {display_name}，id={user_id}）");
+    Ok(())
+}
+
 /// 这是**运维工具**：忘记管理员口令时用，需要在服务器上（有数据目录权限）执行。
 async fn set_password() -> Result<()> {
     let mut args = std::env::args().skip(2);

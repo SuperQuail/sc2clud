@@ -66,9 +66,10 @@ fn invalid(msg: impl Into<String>) -> AppError {
     AppError::Domain(DomainError::InvalidInput(msg.into()))
 }
 
-fn section_options(selected: &str) -> Vec<SectionOption> {
+fn section_options(selected: &str, user: Option<&CurrentUser>) -> Vec<SectionOption> {
     PostSection::ALL
         .iter()
+        .filter(|section| crate::session::allows_for(user, section.required_permission()))
         .map(|section| SectionOption {
             value: section.as_str().to_string(),
             label: section.label().to_string(),
@@ -315,7 +316,7 @@ pub async fn new_post_form(State(state): State<AppState>, headers: HeaderMap) ->
         csrf: user.csrf_token.clone(),
         error,
         kinds: kind_options("discussion"),
-        sections: section_options(PostSection::default_section().as_str()),
+        sections: section_options(PostSection::default_section().as_str(), Some(&user)),
         providers: provider_options(),
         source_slots: empty_slots(),
         title: "",
@@ -344,7 +345,8 @@ pub async fn new_post_submit(
     let title = form.title.trim().to_string();
     let body = form.body.trim().to_string();
 
-    let checked = session::guard(Some(&user), kind.required_permission())
+    // 分区权限优先：公告只有管理员能发
+    let checked = session::guard(Some(&user), section.required_permission())
         .and_then(|()| session::check_csrf(&user, &form.csrf))
         .and_then(|()| form_sources(&form).map(|_| ()));
     let outcome = match checked {
@@ -356,7 +358,7 @@ pub async fn new_post_submit(
                 csrf: user.csrf_token.clone(),
                 error: Some(e.parts().2),
                 kinds: kind_options(kind.as_str()),
-                sections: section_options(section.as_str()),
+                sections: section_options(section.as_str(), Some(&user)),
                 providers: provider_options(),
                 source_slots: empty_slots(),
                 title: &title,
@@ -374,7 +376,7 @@ pub async fn new_post_submit(
                 outcome.note.as_deref().unwrap_or("内容不符合规范")
             )),
             kinds: kind_options(kind.as_str()),
-            sections: section_options(section.as_str()),
+            sections: section_options(section.as_str(), Some(&user)),
             providers: provider_options(),
             source_slots: empty_slots(),
             title: &title,

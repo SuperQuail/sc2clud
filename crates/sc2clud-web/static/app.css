@@ -308,3 +308,14 @@ footer { color: var(--muted); font-size: 12px; text-align: center; padding: 14px
 .actions-inline { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
 .title-line { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; font-weight: 600; }
 
+/* 管理面板 */
+.admin-table { width: 100%; border-collapse: collapse; font-size: 14px; }
+.admin-table th, .admin-table td { text-align: left; padding: 10px 8px; border-bottom: 1px solid var(--line); vertical-align: middle; }
+.admin-table th { color: var(--muted); font-weight: 600; font-size: 13px; }
+.inline-form { display: flex; gap: 6px; align-items: center; margin: 0; }
+.inline-form input[type='text'], .inline-form select { font: inherit; padding: 6px 8px; border: 1px solid var(--line); border-radius: 8px; background: #fbfcfe; }
+.inline-form input[type='text'] { width: 130px; }
+.tag.ok { background: #e8f7ef; color: #1c7a52; }
+.tag.warn { background: #fff4e5; color: #a35a17; }
+.tag { display: inline-block; border-radius: 999px; padding: 2px 10px; font-size: 12px; font-weight: 600; background: #eef2f8; color: #33415c; }
+
