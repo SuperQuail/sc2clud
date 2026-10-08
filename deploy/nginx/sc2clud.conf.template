@@ -181,7 +181,9 @@ server {
         access_log off;
     }
     location /dev/ {
-        proxy_pass http://sc2clud_dev;
+        # 尾斜杠必须有：否则 nginx 会把完整的 /dev/... 原样转发给测试实例，
+        # 应用看到的就是「/dev/ 这个路径」→ 自己回 JSON 404（踩过一次）。
+        proxy_pass http://sc2clud_dev/;
         proxy_http_version 1.1;
         proxy_set_header Connection "";
         proxy_set_header Host $host;
