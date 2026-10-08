@@ -194,6 +194,9 @@ pub struct DownloadConfig {
     pub bind_client_ip: bool,
     /// `x_accel` 模式下 nginx 内部 location 的前缀（对应 `internal` + `alias`）。
     pub internal_prefix: String,
+    /// 图片的 nginx 内部前缀：按**类型分目录**，让 nginx 给出正确的 Content-Type
+    /// （blob 文件名是哈希、没有扩展名，靠 mime.types 判不出类型）。
+    pub image_prefix: String,
 }
 
 impl Default for DownloadConfig {
@@ -203,6 +206,7 @@ impl Default for DownloadConfig {
             url_ttl_secs: 300,
             bind_client_ip: true,
             internal_prefix: "/_blob".to_string(),
+            image_prefix: "/_img".to_string(),
         }
     }
 }
@@ -345,6 +349,12 @@ impl Config {
             return Err(Error::Config(format!(
                 "download.url_ttl_secs 应在 10..86400 秒之间（当前 {}）",
                 self.download.url_ttl_secs
+            )));
+        }
+        let image_prefix = &self.download.image_prefix;
+        if !image_prefix.starts_with('/') || image_prefix.ends_with('/') || image_prefix.len() < 2 {
+            return Err(Error::Config(format!(
+                "download.image_prefix 必须形如 /_img（当前 {image_prefix:?}）"
             )));
         }
         let internal = &self.download.internal_prefix;

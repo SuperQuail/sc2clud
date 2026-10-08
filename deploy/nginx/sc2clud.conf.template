@@ -98,7 +98,7 @@ server {
     }
 
 # @@SECURELINK_BEGIN@@
-    # ---------- 文件下载（需要 --with-http_secure_link_module）----------
+    # ---------- 帖子图片：按类型分目录，给出正确的 Content-Type ----------
     # 表达式必须与 sc2clud-core::sign 逐字节一致：
     #     "{expires}{uri}{remote_addr} {secret}"
     # 若把 download.bind_client_ip 设为 false，这里必须同时删掉 $remote_addr。

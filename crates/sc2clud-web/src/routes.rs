@@ -452,9 +452,18 @@ pub async fn serve_image(
     let cache = [(header::CACHE_CONTROL, "public, max-age=31536000, immutable")];
 
     if !state.config.server.serve_blobs_locally {
+        // 按图片真实类型选内部目录：nginx 那里每个目录一个 default_type，
+        // 这样浏览器拿到的 Content-Type 才是 image/webp 之类而不是 octet-stream。
+        let kind = match mime.as_str() {
+            "image/png" => "png",
+            "image/jpeg" => "jpeg",
+            "image/gif" => "gif",
+            _ => "webp",
+        };
         let location = format!(
-            "{}/{}",
-            state.config.download.internal_prefix.trim_end_matches('/'),
+            "{}/{}/{}",
+            state.config.download.image_prefix.trim_end_matches('/'),
+            kind,
             hash.relative_path()
         );
         return Ok((
