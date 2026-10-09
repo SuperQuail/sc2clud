@@ -235,7 +235,8 @@ pub async fn bio_save(
         chars = bio.chars().count(),
         "更新个人简介"
     );
-    Ok(Redirect::to("/settings?ok=bio"))
+    // 简介是从主页就地改的：保存后回主页，不要跳到设置页（设置页里的表单也回主页）
+    Ok(Redirect::to(&format!("/u/{}", user.handle)))
 }
 
 #[derive(Debug, Deserialize)]
