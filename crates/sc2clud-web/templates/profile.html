@@ -87,14 +87,16 @@
   /* 底部一行：左按钮组与右侧赞助按钮**底边对齐** */
   .profile-foot{display:flex;align-items:flex-end;justify-content:space-between;gap:16px;flex-wrap:wrap;margin-top:16px}
   .profile-foot .actions-inline{align-items:center}
+  /* 右侧组：私信与赞助按钮同一行，底部对齐 */
+  .profile-foot-right{display:flex;align-items:flex-end;gap:12px}
   .donate-cta.center{max-width:320px;margin-left:auto;margin-right:auto}
   </style>
 
   {# 卡片底部一行：左侧互动/资料按钮，右侧赞助按钮 —— **底边对齐** #}
   <div class="profile-foot">
+    {# 左侧：拉黑 / 发新帖（头像与简介各自有入口，不再放「更换头像/修改资料」） #}
     <div class="actions-inline">
       {% if can_interact %}
-      <a class="btn" href="/messages/{{ handle }}">发私信</a>
       {% if blocked %}
       <form method="post" action="/u/{{ handle }}/unblock">
         <input type="hidden" name="csrf" value="{{ csrf }}">
@@ -107,14 +109,15 @@
       </form>
       {% endif %}
       {% endif %}
-      {% if is_self %}
-      <a class="btn" href="/settings">更换头像 / 修改资料</a>
-      <a class="btn ghost" href="/new">发新帖</a>
-      {% endif %}
+      {% if is_self %}<a class="btn ghost" href="/new">发新帖</a>{% endif %}
     </div>
-    {% if header_variant == 2 && donation_visible %}
+    {# 右侧：发私信在赞助按钮左侧，两者底边与左侧按钮组对齐 #}
+    <div class="profile-foot-right">
+    {% if can_interact %}<a class="btn" href="/messages/{{ handle }}">发私信</a>{% endif %}
+    {% if donation_visible %}
     <button type="button" class="donate-cta aside" id="donate-open"><span class="donate-cta-title">赞助作者</span><span class="donate-cta-sub">支持 {{ display_name }} 继续创作</span></button>
     {% endif %}
+    </div>
   </div>
 </section>
 {% if can_edit_bio %}
