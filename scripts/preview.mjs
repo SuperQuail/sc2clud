@@ -36,6 +36,10 @@ const handle = arg('handle', 'tangtian')
 const password = arg('password', 'preview-pass-' + Math.random().toString(36).slice(2, 8))
 const port = Number(arg('port', '18120'))
 const theme = arg('theme', 'both')
+// PC 视口：默认 1440×900（只截首屏，比例正常）；--full 才截整页长图
+const width = Number(arg('width', '1440'))
+const height = Number(arg('height', '900'))
+const fullPage = args.includes('--full')
 const outDir = arg('out', join(repo, '..', 'shots', 'preview'))
 const pagesArg = arg('pages', '')
 
@@ -185,6 +189,7 @@ const main = async () => {
   const chromePort = port + 1
   const chrome = spawn(browser, [
     '--headless=new', '--disable-gpu', '--hide-scrollbars', '--no-first-run',
+    `--window-size=${width},${height}`,
     `--remote-debugging-port=${chromePort}`, `--user-data-dir=${join(work, 'chrome')}`,
     'about:blank',
   ], { stdio: 'ignore' })
@@ -195,6 +200,10 @@ const main = async () => {
   if (!cdp) throw new Error('连不上 Chrome 调试端口')
   await cdp.send('Network.enable')
   await cdp.send('Page.enable')
+  // 不设视口的话 headless 默认 ~800 宽，截出来就是窄长条
+  await cdp.send('Emulation.setDeviceMetricsOverride', {
+    width, height, deviceScaleFactor: 1, mobile: false,
+  })
   if (cookie) {
     await cdp.send('Network.setCookie', {
       name: 'sc2clud_preview_session', value: cookie.split('=')[1],
@@ -227,7 +236,10 @@ const main = async () => {
               ? html.includes('csrf') || html.includes('/p/')
               // 分区页可能本来就是空的（该分区还没有帖子）——空态也算真实渲染
               : /\/p\/\d+/.test(html) || /(empty|还没有|暂无|没有匹配)/.test(html))
-      const shot = await cdp.send('Page.captureScreenshot', { format: 'png', captureBeyondViewport: true })
+      const shot = await cdp.send('Page.captureScreenshot', {
+        format: 'png',
+        captureBeyondViewport: fullPage,
+      })
       const name = (path === '/' ? 'home' : path.replace(/[^a-z0-9]+/gi, '_').replace(/^_|_$/g, '')) + '-' + t + '.png'
       writeFileSync(join(outDir, name), Buffer.from(shot.data, 'base64'))
       shots.push({ name, path, theme: t, ok, bytes: Buffer.from(shot.data, 'base64').length })
