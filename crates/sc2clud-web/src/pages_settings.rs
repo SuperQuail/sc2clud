@@ -271,3 +271,36 @@ pub async fn donation_save(
     tracing::info!(user.id = user.id, visible, notice_visible, "更新打赏设置");
     Ok(Redirect::to("/settings?ok=donation").into_response())
 }
+
+#[derive(Debug, Deserialize)]
+pub struct TitleForm {
+    pub csrf: String,
+    /// 空 = 不佩戴。
+    pub title_id: Option<String>,
+}
+
+/// 佩戴 / 切换 / 卸下自己的头衔。只能戴自己持有的（仓储会校验）。
+pub async fn title_set(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Form(form): Form<TitleForm>,
+) -> AppResult<Redirect> {
+    let user = require_user(&state, &headers).await?;
+    session::guard(Some(&user), sc2clud_core::auth::Permission::SetAvatar)?;
+    session::check_csrf(&user, &form.csrf)?;
+    let wanted: Option<i64> = form
+        .title_id
+        .as_deref()
+        .map(str::trim)
+        .filter(|v| !v.is_empty())
+        .and_then(|v| v.parse::<i64>().ok())
+        .filter(|v| *v > 0);
+    let ok = repo::set_equipped_title(state.db.pool(), user.id, wanted).await?;
+    if !ok && wanted.is_some() {
+        return Err(AppError::from(sc2clud_core::Error::InvalidInput(
+            "这个头衔不在你名下".to_string(),
+        )));
+    }
+    tracing::info!(user.id = user.id, title = ?wanted, "切换头衔");
+    Ok(Redirect::to(&format!("/u/{}", user.handle)))
+}

@@ -247,6 +247,15 @@ pub struct PostPageTemplate<'a> {
     pub donation_notice: Option<String>,
 }
 
+/// 头衔切换列表里的一项。
+#[derive(Debug, Clone)]
+pub struct TitleChoice {
+    pub id: i64,
+    pub name: String,
+    pub color: String,
+    pub equipped: bool,
+}
+
 /// 用户名后面的头衔徽章。
 #[derive(Debug, Clone)]
 pub struct TitleBadgeView {
@@ -607,6 +616,8 @@ pub struct ProfileTemplate<'a> {
     pub title_variant: u8,
     /// 本人或管理员可以点简介就地编辑。
     pub can_edit_bio: bool,
+    /// 本人持有的头衔（点头衔弹出切换列表）；别人的主页为空。
+    pub my_titles: Vec<TitleChoice>,
     /// 个人简介（未通过审核时只有本人与管理员看得到）。
     pub bio: Option<String>,
     /// 简介的审核态：approved / pending / rejected。

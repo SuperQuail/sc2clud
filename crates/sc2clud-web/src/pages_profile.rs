@@ -271,7 +271,22 @@ async fn build_profile<'a>(
     } else {
         1
     };
+    let my_titles = if is_self {
+        repo::list_user_titles(state.db.pool(), owner.id)
+            .await?
+            .into_iter()
+            .map(|row| crate::templates::TitleChoice {
+                id: row.title_id,
+                name: row.name,
+                color: row.color,
+                equipped: row.equipped != 0,
+            })
+            .collect()
+    } else {
+        Vec::new()
+    };
     Ok(ProfileTemplate {
+        my_titles,
         title,
         title_variant,
         can_edit_bio: is_self || is_staff,

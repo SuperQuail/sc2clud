@@ -12,7 +12,20 @@
   const openBtn = document.getElementById('avatar-open');
   if (!modal || !openBtn) return;
   const show = (v) => { modal.hidden = !v; };
-  openBtn.addEventListener('click', () => { show(true); document.getElementById('avatar-input').click(); });
+  openBtn.addEventListener('click', () => {
+    show(true);
+    // 关键：文件输入在 hidden 容器里时，浏览器**不会**打开选择框（点不动就是这个原因）
+    document.getElementById('avatar-editor').hidden = false;
+    document.getElementById('avatar-input').click();
+  });
+  // 头衔：点一下弹出「我持有的头衔」
+  const titleBtn = document.getElementById('title-toggle');
+  const titleBox = document.getElementById('title-picker');
+  if (titleBtn && titleBox) {
+    titleBtn.addEventListener('click', (e) => { e.stopPropagation(); titleBox.hidden = !titleBox.hidden; });
+    document.addEventListener('click', (e) => { if (!titleBox.contains(e.target)) titleBox.hidden = true; });
+    if (new URLSearchParams(location.search).get('titles') === '1') titleBox.hidden = false;
+  }
   document.getElementById('avatar-modal-close').addEventListener('click', () => show(false));
   modal.addEventListener('click', (e) => { if (e.target === modal) show(false); });
   document.getElementById('avatar-clear').addEventListener('click', async () => {
@@ -40,7 +53,26 @@
     {% endif %}
     {% if can_edit_bio %}</button>{% endif %}
     <div>
-      <h1 class="profile-name">{{ display_name }}{% if let Some(title) = title %}<span class="title-badge tv{{ title_variant }}"{% if !title.color.is_empty() %} style="--tc: {{ title.color }}"{% endif %}>{{ title.name }}</span>{% endif %}</h1>
+      <h1 class="profile-name">{{ display_name }}
+      {% if !my_titles.is_empty() %}
+      {# 本人：点头衔弹出「我持有的头衔」列表 #}
+      <button type="button" class="title-badge tv{{ title_variant }} title-toggle" id="title-toggle"{% if let Some(t) = title %} style="--tc: {{ t.color }}"{% endif %}>{% if let Some(t) = title %}{{ t.name }}{% else %}佩戴头衔{% endif %}</button>
+      <div class="title-picker" id="title-picker" hidden>
+        {% for item in my_titles %}
+        <form method="post" action="/settings/title">
+          <input type="hidden" name="csrf" value="{{ csrf }}">
+          <input type="hidden" name="title_id" value="{{ item.id }}">
+          <button class="title-option{% if item.equipped %} active{% endif %}" type="submit"{% if !item.color.is_empty() %} style="--tc: {{ item.color }}"{% endif %}>{{ item.name }}{% if item.equipped %} ✓{% endif %}</button>
+        </form>
+        {% endfor %}
+        <form method="post" action="/settings/title">
+          <input type="hidden" name="csrf" value="{{ csrf }}">
+          <input type="hidden" name="title_id" value="">
+          <button class="title-option" type="submit">不佩戴</button>
+        </form>
+      </div>
+      {% else if let Some(title) = title %}<span class="title-badge tv{{ title_variant }}"{% if !title.color.is_empty() %} style="--tc: {{ title.color }}"{% endif %}>{{ title.name }}</span>{% endif %}
+      </h1>
       <p class="meta">@{{ handle }} · {{ role_label }} · 加入于 {{ joined_at }}</p>
     </div>
 
@@ -61,6 +93,11 @@
   <style>
   .profile-bio{margin:10px 0 0;line-height:1.8;opacity:.92;white-space:pre-wrap}
   /* 头衔：三套设计（?tui=1/2/3；生产用 1） */
+  .title-toggle{cursor:pointer;font:inherit}
+  .title-picker{position:absolute;z-index:40;margin-top:6px;background:var(--card,#fff);border:1px solid var(--line,#e5e7eb);border-radius:10px;padding:6px;display:flex;flex-direction:column;gap:4px;box-shadow:0 10px 28px rgba(0,0,0,.16)}
+  .title-picker[hidden]{display:none}
+  .title-option{padding:6px 12px;border:1px solid var(--line,#e5e7eb);border-radius:999px;background:none;color:var(--tc,inherit);font:inherit;font-size:13px;cursor:pointer;text-align:left}
+  .title-option.active{border-color:var(--tc,#2563eb);font-weight:600}
   .avatar-open{border:0;background:none;padding:0;cursor:pointer;border-radius:50%;line-height:0}
   .avatar-open:hover{box-shadow:0 0 0 3px rgba(37,99,235,.35)}
   .avatar-modal{position:fixed;inset:0;z-index:80;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,.55)}
