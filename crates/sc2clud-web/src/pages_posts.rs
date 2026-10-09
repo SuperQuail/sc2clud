@@ -198,7 +198,16 @@ async fn build_post_page<'a>(
     state: &'a AppState,
     id: i64,
     headers: &HeaderMap,
+    ui: Option<&str>,
 ) -> AppResult<PostPageTemplate<'a>> {
+    // 预览开关：只有开发实例看这个参数（生产恒为样式 1，预览代码不影响线上）
+    let ui_variant = if state.config.server.debug_pages {
+        ui.and_then(|value| value.parse::<u8>().ok())
+            .filter(|value| (1..=3).contains(value))
+            .unwrap_or(1)
+    } else {
+        1
+    };
     let user = session::current_user(state, headers).await?;
     let viewer_id = user.as_ref().map(|u| u.id);
     let is_staff = user.as_ref().is_some_and(CurrentUser::is_staff);
