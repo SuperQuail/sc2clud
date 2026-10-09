@@ -17,6 +17,7 @@
 // ============================================================
 
 import { spawn, spawnSync } from 'node:child_process'
+import { deflateSync } from 'node:zlib'
 import { mkdirSync, copyFileSync, writeFileSync, existsSync, openSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join, dirname } from 'node:path'
@@ -40,9 +41,53 @@ const theme = arg('theme', 'both')
 const width = Number(arg('width', '1440'))
 const height = Number(arg('height', '900'))
 const fullPage = args.includes('--full')
+// --qr-test：生成三张不同分辨率的纯蓝测试图，走**真实上传接口**传进本地副本，
+// 用来验证「上传分辨率不同、展示尺寸一致」
+const qrTest = args.includes('--qr-test')
 const outDir = arg('out', join(repo, '..', 'shots', 'preview'))
 const pagesArg = arg('pages', '')
 
+// 纯色 PNG 编码器（只要 zlib，够造测试图）：8 位 RGB、无滤波
+const solidPng = (size, [r, g, b]) => {
+  const raw = Buffer.alloc(size * (size * 3 + 1))
+  for (let y = 0; y < size; y++) {
+    const row = y * (size * 3 + 1)
+    raw[row] = 0
+    for (let x = 0; x < size; x++) {
+      raw[row + 1 + x * 3] = r
+      raw[row + 2 + x * 3] = g
+      raw[row + 3 + x * 3] = b
+    }
+  }
+  const chunk = (type, data) => {
+    const len = Buffer.alloc(4)
+    len.writeUInt32BE(data.length)
+    const body = Buffer.concat([Buffer.from(type, 'ascii'), data])
+    const crc = Buffer.alloc(4)
+    crc.writeUInt32BE(crc32(body) >>> 0)
+    return Buffer.concat([len, body, crc])
+  }
+  const ihdr = Buffer.alloc(13)
+  ihdr.writeUInt32BE(size, 0)
+  ihdr.writeUInt32BE(size, 4)
+  ihdr[8] = 8; ihdr[9] = 2
+  return Buffer.concat([
+    Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
+    chunk('IHDR', ihdr),
+    chunk('IDAT', deflateSync(raw)),
+    chunk('IEND', Buffer.alloc(0)),
+  ])
+}
+const crcTable = Array.from({ length: 256 }, (_, n) => {
+  let c = n
+  for (let k = 0; k < 8; k++) c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1
+  return c >>> 0
+})
+const crc32 = (buf) => {
+  let c = 0xffffffff
+  for (const byte of buf) c = crcTable[(c ^ byte) & 0xff] ^ (c >>> 8)
+  return (c ^ 0xffffffff) >>> 0
+}
 const run = (cmd, cmdArgs, opts = {}) => {
   const res = spawnSync(cmd, cmdArgs, { encoding: 'utf8', ...opts })
   if (res.status !== 0) {
@@ -178,6 +223,20 @@ const main = async () => {
     console.log(cookie ? `==> 已登录：${handle}` : '==> 登录失败，只截游客视图')
   }
 
+  // 三张纯蓝测试图（200 / 512 / 1200），走真实上传接口 —— 验证展示尺寸是否一致
+  if (qrTest && cookie && existsSync(dbPath)) {
+    const page = await (await fetch(base + '/settings', { headers: { cookie } })).text()
+    const csrf = (page.match(/name="csrf" value="([^"]+)"/) ?? [])[1]
+    if (!csrf) throw new Error('拿不到 csrf，无法上传测试图')
+    for (const size of [200, 512, 1200]) {
+      const png = solidPng(size, [37, 99, 235])
+      const res = await fetch(
+        `${base}/api/v1/me/payment-channels?channel=test${size}&label=${size}px`,
+        { method: 'POST', headers: { 'x-csrf-token': csrf, cookie }, body: png },
+      )
+      console.log(`==> 上传测试收款码 ${size}×${size} → ${res.status}`)
+    }
+  }
   // 页面清单：默认覆盖「首页 / 分区 / 帖子 / 编辑页 / 后台 / 我的」
   let pages = pagesArg ? pagesArg.split(',') : []
   if (!pages.length) {
