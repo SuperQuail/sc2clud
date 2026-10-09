@@ -4,8 +4,8 @@
 {% block title %}消息中心 · {{ site_name }}{% endblock %}
 
 {% block content %}
-{# 照 B 站私信页做：左分类 / 中列表 / 右内容 + 底部输入。只做我们真有的（私信 / 收到的赞 / 系统通知） #}
-<div class="inbox">
+{# 照 B 站：我的消息 = 分类 + 会话列表 + 消息流；收到的赞 / 系统通知 = 分类 + 整列信息流 #}
+<div class="inbox{% if tab == "dm" %} inbox--dm{% endif %}">
   <aside class="card inbox-rail">
     <h2 class="inbox-rail-title">消息中心</h2>
     <nav class="inbox-nav">
@@ -17,44 +17,29 @@
     <a class="inbox-settings" href="/settings">消息设置</a>
   </aside>
 
+  {% if tab == "dm" %}
   <section class="card inbox-list">
-    <div class="inbox-list-head">
-      {% if tab == "dm" %}最近消息{% else if tab == "likes" %}收到的赞{% else %}系统通知{% endif %}
-    </div>
+    <div class="inbox-list-head">最近消息</div>
     <div class="inbox-list-body">
-      {% if tab == "dm" %}
-        {% for c in conversations %}
-        <a class="inbox-item{% if c.active %} active{% endif %}" href="/inbox?tab=dm&with={{ c.handle }}">
-          {% if let Some(hash) = c.avatar %}
-          <img class="avatar" src="/avatar/{{ hash }}" alt="" width="44" height="44">
-          {% else %}
-          <img class="avatar" src="/static/art/miyin-chibi-80.webp" alt="" width="44" height="44">
-          {% endif %}
-          <div class="inbox-item-main">
-            <div class="inbox-item-name">{{ c.display_name }}</div>
-            <div class="inbox-item-preview">{{ c.last_body }}</div>
-          </div>
-          <span class="inbox-item-date">{{ c.date }}</span>
-        </a>
-        {% endfor %}
-        {% if conversations.is_empty() %}<p class="empty">还没有会话。</p>{% endif %}
-      {% else %}
-        {% for n in notices %}
-        <a class="inbox-item{% if n.active %} active{% endif %}" href="/inbox?tab={{ tab }}&nid={{ n.id }}">
-          <div class="inbox-item-main">
-            <div class="inbox-item-name">{% if n.unread %}<span class="dot"></span>{% endif %}{{ n.title }}</div>
-            <div class="inbox-item-preview">{{ n.body }}</div>
-          </div>
-          <span class="inbox-item-date">{{ n.date }}</span>
-        </a>
-        {% endfor %}
-        {% if notices.is_empty() %}<p class="empty">这里还没有消息。</p>{% endif %}
-      {% endif %}
+      {% for c in conversations %}
+      <a class="inbox-item{% if c.active %} active{% endif %}" href="/inbox?tab=dm&with={{ c.handle }}">
+        {% if let Some(hash) = c.avatar %}
+        <img class="avatar" src="/avatar/{{ hash }}" alt="" width="44" height="44">
+        {% else %}
+        <img class="avatar" src="/static/art/miyin-chibi-80.webp" alt="" width="44" height="44">
+        {% endif %}
+        <div class="inbox-item-main">
+          <div class="inbox-item-name">{{ c.display_name }}</div>
+          <div class="inbox-item-preview">{{ c.last_body }}</div>
+        </div>
+        <span class="inbox-item-date">{{ c.date }}</span>
+      </a>
+      {% endfor %}
+      {% if conversations.is_empty() %}<p class="empty">还没有会话。</p>{% endif %}
     </div>
   </section>
 
   <section class="card inbox-detail">
-  {% if tab == "dm" %}
     {% if other_display.is_empty() %}
     <div class="inbox-detail-empty">从左侧选一个会话，这里显示往来消息。</div>
     {% else %}
@@ -67,7 +52,6 @@
       {% for m in thread %}
       {% if m.show_date %}<div class="inbox-date">{{ m.date }}</div>{% endif %}
       <div class="inbox-msg{% if m.mine %} mine{% endif %}">
-        {% if let Some(hash) = other_avatar %}{% if !m.mine %}<img class="avatar" src="/avatar/{{ hash }}" alt="" width="32" height="32">{% endif %}{% endif %}
         <div class="bubble">{{ m.body }}</div>
       </div>
       {% endfor %}
@@ -80,20 +64,42 @@
       <button class="btn" type="submit">发送</button>
     </form>
     {% endif %}
-  {% else %}
-    {% if let Some(n) = selected_notice %}
-    <div class="inbox-detail-head"><b>{{ n.title }}</b><span class="inbox-item-date">{{ n.date }}</span></div>
-    <div class="inbox-thread"><div class="inbox-msg"><div class="bubble">{{ n.body }}</div></div></div>
-    {% if !n.link.is_empty() %}<div class="inbox-detail-actions"><a class="btn" href="{{ n.link }}">前往查看</a></div>{% endif %}
-    {% else %}
-    <div class="inbox-detail-empty">从左侧选一条消息，这里显示内容。</div>
-    {% endif %}
-  {% endif %}
   </section>
+  {% else %}
+  {# 收到的赞 / 系统通知：B 站是整列信息流 #}
+  <section class="card inbox-feed">
+    <div class="inbox-list-head">{% if tab == "likes" %}收到的赞{% else %}系统通知{% endif %}</div>
+    <div class="inbox-feed-body">
+      {% if notices.is_empty() %}
+      <p class="empty">这里还没有消息。</p>
+      {% else if tab == "likes" %}
+      <div class="feed-group">最新</div>
+      {% for n in notices %}
+      <div class="feed-row">
+        <span class="feed-icon like">♥</span>
+        <div class="feed-main">
+          <div class="feed-line"><b>{{ n.title }}</b></div>
+          <div class="feed-date">{{ n.date }}</div>
+        </div>
+        {% if !n.body.is_empty() %}<div class="feed-quote">{{ n.body }}</div>{% endif %}
+      </div>
+      {% endfor %}
+      {% else %}
+      {% for n in notices %}
+      <article class="feed-card">
+        <div class="feed-card-head"><h3>{{ n.title }}</h3><span class="feed-date">{{ n.date }}</span></div>
+        <p class="feed-card-body">{{ n.body }}</p>
+        {% if !n.link.is_empty() %}<a class="feed-card-link" href="{{ n.link }}">查看详情</a>{% endif %}
+      </article>
+      {% endfor %}
+      {% endif %}
+    </div>
+  </section>
+  {% endif %}
 </div>
-
 <style>
-.inbox{display:grid;grid-template-columns:160px 300px 1fr;gap:12px;align-items:stretch;min-height:70vh}
+.inbox{display:grid;grid-template-columns:160px 1fr;gap:12px;align-items:start;min-height:70vh}
+.inbox--dm{grid-template-columns:160px 300px 1fr;align-items:stretch}
 .inbox-rail{padding:16px 12px;display:flex;flex-direction:column}
 .inbox-rail-title{margin:0 0 14px;font-size:15px;font-weight:600}
 .inbox-nav{display:flex;flex-direction:column;gap:2px}
@@ -110,13 +116,11 @@
 .inbox-item:hover{background:rgba(127,127,127,.09)}
 .inbox-item.active{background:rgba(37,99,235,.12)}
 .inbox-item-main{min-width:0;flex:1}
-.inbox-item-name{font-size:14px;display:flex;align-items:center;gap:5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.inbox-item-name .dot{width:7px;height:7px;border-radius:50%;background:#dc2626;flex:none}
+.inbox-item-name{font-size:14px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .inbox-item-preview{font-size:12px;opacity:.7;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .inbox-item-date{font-size:11px;opacity:.6;flex:none}
 .inbox-detail{display:flex;flex-direction:column;padding:0}
 .inbox-detail-head{display:flex;align-items:center;gap:8px;padding:12px 16px;border-bottom:1px solid var(--line,#e5e7eb)}
-.inbox-detail-head b{font-size:15px}
 .inbox-detail-more{margin-left:auto;color:inherit;text-decoration:none;font-size:18px;opacity:.7}
 .inbox-detail-empty{padding:40px 16px;text-align:center;opacity:.7;font-size:14px}
 .inbox-thread{flex:1;overflow:auto;padding:16px;display:flex;flex-direction:column;gap:12px}
@@ -128,7 +132,25 @@
 .inbox-composer{display:flex;align-items:center;gap:10px;padding:12px 16px;border-top:1px solid var(--line,#e5e7eb)}
 .inbox-composer input[type=text]{flex:1;padding:10px 12px;border:1px solid var(--line,#e5e7eb);border-radius:10px;background:none;color:inherit;font:inherit}
 .inbox-counter{font-size:12px;opacity:.6}
-.inbox-detail-actions{padding:0 16px 16px}
-@media (max-width:900px){.inbox{grid-template-columns:1fr}.inbox-rail{flex-direction:row;flex-wrap:wrap;align-items:center}.inbox-nav{flex-direction:row}}
+/* 信息流（收到的赞 / 系统通知） */
+.inbox-feed{padding:0}
+.inbox-feed-body{padding:0 0 8px}
+.feed-group{padding:12px 16px 6px;font-size:13px;opacity:.65}
+.feed-row{display:flex;gap:12px;align-items:flex-start;padding:14px 16px;border-bottom:1px solid var(--line,#e5e7eb)}
+.feed-row:last-child{border-bottom:0}
+.feed-icon{width:34px;height:34px;border-radius:50%;display:flex;align-items:center;justify-content:center;flex:none;font-size:16px}
+.feed-icon.like{background:rgba(220,38,38,.12);color:#dc2626}
+.feed-main{flex:1;min-width:0}
+.feed-line{font-size:14px;line-height:1.6}
+.feed-line b{font-weight:600}
+.feed-date{font-size:12px;opacity:.6;margin-top:2px}
+.feed-quote{max-width:240px;font-size:12px;opacity:.7;line-height:1.5;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden}
+.feed-card{padding:16px;border-bottom:1px solid var(--line,#e5e7eb)}
+.feed-card:last-child{border-bottom:0}
+.feed-card-head{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap}
+.feed-card-head h3{margin:0;font-size:14px}
+.feed-card-body{margin:8px 0 0;font-size:13px;line-height:1.8;opacity:.9}
+.feed-card-link{display:inline-block;margin-top:8px;font-size:13px;color:#2563eb;text-decoration:none}
+@media (max-width:900px){.inbox,.inbox--dm{grid-template-columns:1fr}.inbox-rail{flex-direction:row;flex-wrap:wrap;align-items:center}.inbox-nav{flex-direction:row}}
 </style>
 {% endblock %}
