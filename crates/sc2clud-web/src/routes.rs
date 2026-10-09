@@ -58,6 +58,7 @@ pub fn pages() -> Router<AppState> {
             "/search",
             axum::routing::get(crate::pages_search::search_page),
         )
+        .route("/inbox", axum::routing::get(crate::pages_messages::center))
         .route(
             "/login",
             axum::routing::get(crate::pages_auth::login_form).post(crate::pages_auth::login_submit),

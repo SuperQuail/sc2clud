@@ -256,6 +256,53 @@ pub struct TitleChoice {
     pub equipped: bool,
 }
 
+/// 消息中心（B 站式：左分类 / 中列表 / 右消息流）。
+#[derive(Template)]
+#[template(path = "inbox.html")]
+pub struct InboxTemplate<'a> {
+    pub site_name: &'a str,
+    pub user_label: Option<String>,
+    pub is_staff: bool,
+    pub csrf: String,
+    /// 版式：1 三栏 / 2 两栏 / 3 单栏+会话选择（预览用，生产恒 1）。
+    pub inbox_variant: u8,
+    pub tab: String,
+    pub conversations: Vec<InboxConversationView>,
+    pub notifications: Vec<InboxNotificationView>,
+    pub selected: String,
+    pub other_display: String,
+    pub thread: Vec<InboxMessageView>,
+}
+
+/// 消息中心的会话项。
+#[derive(Debug, Clone)]
+pub struct InboxConversationView {
+    pub handle: String,
+    pub display_name: String,
+    pub avatar: Option<String>,
+    pub last_body: String,
+    pub date: String,
+    pub active: bool,
+}
+
+/// 消息中心的通知项。
+#[derive(Debug, Clone)]
+pub struct InboxNotificationView {
+    pub title: String,
+    pub body: String,
+    pub link: String,
+    pub date: String,
+    pub unread: bool,
+}
+
+/// 消息流里的一条。
+#[derive(Debug, Clone)]
+pub struct InboxMessageView {
+    pub mine: bool,
+    pub body: String,
+    pub date: String,
+}
+
 /// 搜索页（B 站式：搜索框 + 分类标签 + 结果）。
 #[derive(Template)]
 #[template(path = "search.html")]

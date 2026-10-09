@@ -19,8 +19,8 @@ use crate::error::{AppError, AppResult};
 use crate::routes::require_user;
 use crate::session;
 use crate::templates::{
-    ConversationView, MessageView, MessagesTemplate, ThreadTemplate, format_date, format_relative,
-    render,
+    ConversationView, InboxTemplate, MessageView, MessagesTemplate, ThreadTemplate, format_date,
+    format_relative, render,
 };
 
 #[derive(Debug, Deserialize)]
@@ -218,4 +218,99 @@ pub async fn unblock(
         .await;
     }
     Ok(Redirect::to("/settings#blocklist").into_response())
+}
+
+#[derive(Debug, serde::Deserialize)]
+pub struct InboxParams {
+    tab: Option<String>,
+    with: Option<String>,
+    /// 预览用版式编号。
+    iv: Option<String>,
+}
+
+/// 消息中心：左分类 + 中列表 + 右消息流（参考 B 站私信页）。
+pub async fn center(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    axum::extract::Query(params): axum::extract::Query<InboxParams>,
+) -> AppResult<Response> {
+    let user = crate::routes::require_user(&state, &headers).await?;
+    let tab = params.tab.unwrap_or_else(|| "dm".to_string());
+    let inbox_variant = if state.config.server.debug_pages {
+        params
+            .iv
+            .as_deref()
+            .and_then(|v| v.parse::<u8>().ok())
+            .filter(|v| (1..=3).contains(v))
+            .unwrap_or(1)
+    } else {
+        1
+    };
+    let selected = params.with.clone().unwrap_or_default();
+
+    let conversations: Vec<crate::templates::InboxConversationView> =
+        repo::list_conversations(state.db.pool(), user.id)
+            .await?
+            .into_iter()
+            .map(|row| crate::templates::InboxConversationView {
+                active: row.other_handle == selected,
+                date: crate::templates::format_date(row.last_at),
+                handle: row.other_handle,
+                display_name: row.other_display_name,
+                avatar: row.other_avatar,
+                last_body: row.last_body,
+            })
+            .collect();
+    let notifications: Vec<crate::templates::InboxNotificationView> =
+        repo::list_notifications(state.db.pool(), user.id, 50)
+            .await?
+            .into_iter()
+            .map(|row| crate::templates::InboxNotificationView {
+                date: crate::templates::format_date(row.created_at),
+                unread: row.read_at.is_none(),
+                link: row.link.unwrap_or_default(),
+                body: row.body.unwrap_or_default(),
+                title: row.title,
+            })
+            .collect();
+
+    // 选中会话的消息流：只读展示；发送仍走既有 /messages/{handle}
+    let mut other_display = String::new();
+    let mut thread = Vec::new();
+    if tab == "dm"
+        && !selected.is_empty()
+        && let Ok(Some(other)) = repo::find_user_by_handle(state.db.pool(), &selected).await
+    {
+        other_display = if other.display_name.trim().is_empty() {
+            other.handle.clone()
+        } else {
+            other.display_name.clone()
+        };
+        thread = repo::list_thread(state.db.pool(), user.id, other.id, 100)
+            .await?
+            .into_iter()
+            .map(|row| crate::templates::InboxMessageView {
+                mine: row.sender_id == user.id,
+                date: crate::templates::format_date(row.created_at),
+                body: row.body,
+            })
+            .collect();
+        let _ =
+            repo::mark_thread_read(state.db.pool(), user.id, other.id, sc2clud_core::now_unix())
+                .await;
+    }
+
+    Ok(crate::templates::render(InboxTemplate {
+        site_name: &state.config.server.site_name,
+        user_label: Some(user.display_name.clone()),
+        is_staff: user.is_staff(),
+        csrf: user.csrf_token.clone(),
+        inbox_variant,
+        tab,
+        conversations,
+        notifications,
+        selected,
+        other_display,
+        thread,
+    }))
 }
