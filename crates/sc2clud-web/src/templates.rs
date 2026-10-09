@@ -264,14 +264,34 @@ pub struct InboxTemplate<'a> {
     pub user_label: Option<String>,
     pub is_staff: bool,
     pub csrf: String,
-    /// 版式：1 三栏 / 2 两栏 / 3 单栏+会话选择（预览用，生产恒 1）。
-    pub inbox_variant: u8,
+    /// 分类：dm / likes / system。
     pub tab: String,
     pub conversations: Vec<InboxConversationView>,
-    pub notifications: Vec<InboxNotificationView>,
+    /// 当前选中会话对方 handle（私信用）。
     pub selected: String,
     pub other_display: String,
+    pub other_avatar: Option<String>,
     pub thread: Vec<InboxMessageView>,
+    /// 未读数（左栏徽标）。
+    pub like_unread: i64,
+    pub system_unread: i64,
+    pub dm_unread: i64,
+    /// 收到的赞 / 系统通知列表（按 tab 取其一）。
+    pub notices: Vec<InboxNoticeView>,
+    /// 当前选中的通知。
+    pub selected_notice: Option<InboxNoticeView>,
+}
+
+/// 消息中心的一条通知（收到的赞 / 系统通知）。
+#[derive(Debug, Clone)]
+pub struct InboxNoticeView {
+    pub id: i64,
+    pub title: String,
+    pub body: String,
+    pub link: String,
+    pub date: String,
+    pub unread: bool,
+    pub active: bool,
 }
 
 /// 消息中心的会话项。
@@ -301,6 +321,8 @@ pub struct InboxMessageView {
     pub mine: bool,
     pub body: String,
     pub date: String,
+    /// 时间分隔条：与上一条不是同一天时显示（B 站那种居中日期行）。
+    pub show_date: bool,
 }
 
 /// 搜索页（B 站式：搜索框 + 分类标签 + 结果）。

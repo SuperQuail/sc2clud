@@ -48,6 +48,8 @@ const qrTest = args.includes('--qr-test')
 const bioArg = arg('bio', '')
 // --donate-test：给登录用户开启打赏展示（只写本地副本），用来渲染带赞助按钮的页面
 const donateTest = args.includes('--donate-test')
+// --dm <handle>：给某人发一条私信（只写本地副本），让消息中心有真实会话可渲染
+const dmTo = arg('dm', '')
 const outDir = arg('out', join(repo, '..', 'shots', 'preview'))
 const pagesArg = arg('pages', '')
 
@@ -225,6 +227,19 @@ const main = async () => {
     const line = raw.find((c) => c.startsWith('sc2clud_preview_session='))
     cookie = line ? line.split(';')[0] : null
     console.log(cookie ? `==> 已登录：${handle}` : '==> 登录失败，只截游客视图')
+  }
+
+  // 发一条私信：消息中心要看到真实会话与气泡
+  if (dmTo && cookie && existsSync(dbPath)) {
+    const page = await (await fetch(base + '/inbox', { headers: { cookie } })).text()
+    const csrf = (page.match(/name="csrf" value="([^"]+)"/) ?? [])[1]
+    const res = await fetch(base + '/messages/' + dmTo, {
+      method: 'POST',
+      headers: { 'content-type': 'application/x-www-form-urlencoded', cookie },
+      body: new URLSearchParams({ csrf, body: '你好，我是唐天。想跟你确认一下 mod 的下载源是否还有效？' }),
+      redirect: 'manual',
+    })
+    console.log('==> 发测试私信给 ' + dmTo + ' → ' + res.status)
   }
 
   // 开打赏（本地副本）：让作者主页/帖子页出现「赞助作者」

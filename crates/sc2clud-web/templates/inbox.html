@@ -4,118 +4,131 @@
 {% block title %}消息中心 · {{ site_name }}{% endblock %}
 
 {% block content %}
-{# B 站式消息中心。inbox_variant：1 三栏 / 2 两栏 / 3 单栏+会话选择（生产恒 1） #}
-<section class="card inbox-head">
-  <h1>消息中心</h1>
-  <nav class="inbox-tabs">
-    <a href="/inbox?tab=dm" class="{% if tab == "dm" %}active{% endif %}">我的消息 <span class="count">{{ conversations.len() }}</span></a>
-    <a href="/inbox?tab=notifications" class="{% if tab == "notifications" %}active{% endif %}">系统通知 <span class="count">{{ notifications.len() }}</span></a>
-  </nav>
-</section>
-
-{% if inbox_variant == 3 %}
-<section class="card inbox-chips">
-  {% for c in conversations %}
-  <a class="inbox-chip{% if c.active %} active{% endif %}" href="/inbox?tab=dm&with={{ c.handle }}">{{ c.display_name }}</a>
-  {% endfor %}
-  {% if conversations.is_empty() %}<p class="empty">还没有会话。</p>{% endif %}
-</section>
-{% endif %}
-
-<div class="inbox-layout{% if inbox_variant == 1 %} three{% else if inbox_variant == 2 %} two{% endif %}">
-  {% if inbox_variant == 1 %}
-  <aside class="card inbox-cats">
-    <h3>分类</h3>
-    <a href="/inbox?tab=dm" class="{% if tab == "dm" %}active{% endif %}">我的消息</a>
-    <a href="/inbox?tab=notifications" class="{% if tab == "notifications" %}active{% endif %}">系统通知</a>
+{# 照 B 站私信页做：左分类 / 中列表 / 右内容 + 底部输入。只做我们真有的（私信 / 收到的赞 / 系统通知） #}
+<div class="inbox">
+  <aside class="card inbox-rail">
+    <h2 class="inbox-rail-title">消息中心</h2>
+    <nav class="inbox-nav">
+      <a href="/inbox?tab=dm" class="{% if tab == "dm" %}active{% endif %}">我的消息{% if dm_unread > 0 %}<span class="badge">{{ dm_unread }}</span>{% endif %}</a>
+      <a href="/inbox?tab=likes" class="{% if tab == "likes" %}active{% endif %}">收到的赞{% if like_unread > 0 %}<span class="badge">{{ like_unread }}</span>{% endif %}</a>
+      <a href="/inbox?tab=system" class="{% if tab == "system" %}active{% endif %}">系统通知{% if system_unread > 0 %}<span class="badge">{{ system_unread }}</span>{% endif %}</a>
+    </nav>
+    <div class="inbox-rail-sep"></div>
+    <a class="inbox-settings" href="/settings">消息设置</a>
   </aside>
-  {% endif %}
 
-  {% if inbox_variant != 3 %}
   <section class="card inbox-list">
-    {% if tab == "notifications" %}
-    <h3>系统通知</h3>
-    {% for n in notifications %}
-    <a class="inbox-item{% if n.unread %} unread{% endif %}" {% if !n.link.is_empty() %}href="{{ n.link }}"{% endif %}>
-      <div class="inbox-item-top"><b>{{ n.title }}</b><span class="meta">{{ n.date }}</span></div>
-      <p class="inbox-item-body">{{ n.body }}</p>
-    </a>
-    {% endfor %}
-    {% if notifications.is_empty() %}<p class="empty">没有通知。</p>{% endif %}
-    {% else %}
-    <h3>会话</h3>
-    {% for c in conversations %}
-    <a class="inbox-item{% if c.active %} active{% endif %}" href="/inbox?tab=dm&with={{ c.handle }}">
-      {% if let Some(hash) = c.avatar %}
-      <img class="avatar" src="/avatar/{{ hash }}" alt="" width="40" height="40">
+    <div class="inbox-list-head">
+      {% if tab == "dm" %}最近消息{% else if tab == "likes" %}收到的赞{% else %}系统通知{% endif %}
+    </div>
+    <div class="inbox-list-body">
+      {% if tab == "dm" %}
+        {% for c in conversations %}
+        <a class="inbox-item{% if c.active %} active{% endif %}" href="/inbox?tab=dm&with={{ c.handle }}">
+          {% if let Some(hash) = c.avatar %}
+          <img class="avatar" src="/avatar/{{ hash }}" alt="" width="44" height="44">
+          {% else %}
+          <img class="avatar" src="/static/art/miyin-chibi-80.webp" alt="" width="44" height="44">
+          {% endif %}
+          <div class="inbox-item-main">
+            <div class="inbox-item-name">{{ c.display_name }}</div>
+            <div class="inbox-item-preview">{{ c.last_body }}</div>
+          </div>
+          <span class="inbox-item-date">{{ c.date }}</span>
+        </a>
+        {% endfor %}
+        {% if conversations.is_empty() %}<p class="empty">还没有会话。</p>{% endif %}
       {% else %}
-      <img class="avatar" src="/static/art/miyin-chibi-80.webp" alt="" width="40" height="40">
+        {% for n in notices %}
+        <a class="inbox-item{% if n.active %} active{% endif %}" href="/inbox?tab={{ tab }}&nid={{ n.id }}">
+          <div class="inbox-item-main">
+            <div class="inbox-item-name">{% if n.unread %}<span class="dot"></span>{% endif %}{{ n.title }}</div>
+            <div class="inbox-item-preview">{{ n.body }}</div>
+          </div>
+          <span class="inbox-item-date">{{ n.date }}</span>
+        </a>
+        {% endfor %}
+        {% if notices.is_empty() %}<p class="empty">这里还没有消息。</p>{% endif %}
       {% endif %}
-      <div class="inbox-item-main">
-        <div class="inbox-item-top"><b>{{ c.display_name }}</b><span class="meta">{{ c.date }}</span></div>
-        <p class="inbox-item-body">{{ c.last_body }}</p>
-      </div>
-    </a>
-    {% endfor %}
-    {% if conversations.is_empty() %}<p class="empty">还没有会话。</p>{% endif %}
-    {% endif %}
+    </div>
   </section>
-  {% endif %}
 
-  {% if inbox_variant != 1 || tab == "dm" %}
-  <section class="card inbox-thread">
+  <section class="card inbox-detail">
+  {% if tab == "dm" %}
     {% if other_display.is_empty() %}
-    <p class="empty">从左侧选一个会话，这里显示往来消息。</p>
+    <div class="inbox-detail-empty">从左侧选一个会话，这里显示往来消息。</div>
     {% else %}
-    <h3>与 {{ other_display }} 的消息</h3>
-    <div class="inbox-bubbles">
+    <div class="inbox-detail-head">
+      {% if let Some(hash) = other_avatar %}<img class="avatar" src="/avatar/{{ hash }}" alt="" width="28" height="28">{% else %}<img class="avatar" src="/static/art/miyin-chibi-80.webp" alt="" width="28" height="28">{% endif %}
+      <b>{{ other_display }}</b>
+      <a class="inbox-detail-more" href="/messages/{{ selected }}" title="打开完整会话页">⋯</a>
+    </div>
+    <div class="inbox-thread">
       {% for m in thread %}
-      <div class="bubble{% if m.mine %} mine{% endif %}"><p>{{ m.body }}</p><span class="meta">{{ m.date }}</span></div>
+      {% if m.show_date %}<div class="inbox-date">{{ m.date }}</div>{% endif %}
+      <div class="inbox-msg{% if m.mine %} mine{% endif %}">
+        {% if let Some(hash) = other_avatar %}{% if !m.mine %}<img class="avatar" src="/avatar/{{ hash }}" alt="" width="32" height="32">{% endif %}{% endif %}
+        <div class="bubble">{{ m.body }}</div>
+      </div>
       {% endfor %}
-      {% if thread.is_empty() %}<p class="empty">还没有消息。</p>{% endif %}
+      {% if thread.is_empty() %}<p class="empty">还没有消息，打个招呼吧。</p>{% endif %}
     </div>
     <form class="inbox-composer" method="post" action="/messages/{{ selected }}">
       <input type="hidden" name="csrf" value="{{ csrf }}">
-      <input type="text" name="body" maxlength="500" placeholder="输入消息内容">
+      <input type="text" name="body" maxlength="500" placeholder="请输入消息内容" required>
+      <span class="inbox-counter">0/500</span>
       <button class="btn" type="submit">发送</button>
     </form>
     {% endif %}
-  </section>
+  {% else %}
+    {% if let Some(n) = selected_notice %}
+    <div class="inbox-detail-head"><b>{{ n.title }}</b><span class="inbox-item-date">{{ n.date }}</span></div>
+    <div class="inbox-thread"><div class="inbox-msg"><div class="bubble">{{ n.body }}</div></div></div>
+    {% if !n.link.is_empty() %}<div class="inbox-detail-actions"><a class="btn" href="{{ n.link }}">前往查看</a></div>{% endif %}
+    {% else %}
+    <div class="inbox-detail-empty">从左侧选一条消息，这里显示内容。</div>
+    {% endif %}
   {% endif %}
+  </section>
 </div>
 
 <style>
-.inbox-head{padding:16px 18px}
-.inbox-tabs{display:flex;gap:22px;margin-top:10px;border-bottom:1px solid var(--line,#e5e7eb);flex-wrap:wrap}
-.inbox-tabs a{padding:8px 2px;color:inherit;text-decoration:none;opacity:.75;border-bottom:2px solid transparent}
-.inbox-tabs a.active{opacity:1;font-weight:600;border-bottom-color:#2563eb;color:#2563eb}
-.inbox-tabs .count{font-size:12px;opacity:.7}
-.inbox-chips{display:flex;gap:8px;flex-wrap:wrap;margin-top:14px;padding:12px}
-.inbox-chip{padding:6px 12px;border:1px solid var(--line,#e5e7eb);border-radius:999px;text-decoration:none;color:inherit;font-size:13px}
-.inbox-chip.active{border-color:#2563eb;color:#2563eb;font-weight:600}
-.inbox-layout{display:grid;gap:14px;margin-top:14px;align-items:start}
-.inbox-layout.three{grid-template-columns:160px 320px 1fr}
-.inbox-layout.two{grid-template-columns:320px 1fr}
-.inbox-cats{display:flex;flex-direction:column;gap:6px;padding:14px}
-.inbox-cats h3{margin:0 0 6px;font-size:13px;opacity:.7}
-.inbox-cats a{color:inherit;text-decoration:none;padding:6px 8px;border-radius:8px}
-.inbox-cats a.active{background:rgba(37,99,235,.14);color:#2563eb;font-weight:600}
-.inbox-list{padding:12px;max-height:70vh;overflow:auto}
-.inbox-list h3{margin:0 0 8px;font-size:13px;opacity:.7}
-.inbox-item{display:flex;gap:10px;padding:10px;border-radius:10px;text-decoration:none;color:inherit;border:1px solid transparent}
-.inbox-item:hover{background:rgba(127,127,127,.08)}
-.inbox-item.active{border-color:rgba(37,99,235,.5);background:rgba(37,99,235,.08)}
-.inbox-item.unread b::after{content:" ●";color:#dc2626;font-size:10px}
-.inbox-item-main{min-width:0}
-.inbox-item-top{display:flex;justify-content:space-between;gap:8px;font-size:14px}
-.inbox-item-body{margin:4px 0 0;font-size:13px;opacity:.8;overflow:hidden;display:-webkit-box;-webkit-line-clamp:1;-webkit-box-orient:vertical}
-.inbox-thread{padding:14px;min-height:320px;display:flex;flex-direction:column}
-.inbox-bubbles{display:flex;flex-direction:column;gap:10px;margin:10px 0;flex:1}
-.bubble{max-width:70%;padding:10px 14px;border-radius:12px;background:rgba(127,127,127,.14)}
-.bubble.mine{align-self:flex-end;background:rgba(37,99,235,.16)}
-.bubble p{margin:0 0 4px;line-height:1.6}
-.bubble .meta{font-size:12px;opacity:.7}
-.inbox-composer{display:flex;gap:8px;margin-top:10px}
-.inbox-composer input{flex:1;padding:10px 12px;border:1px solid var(--line,#e5e7eb);border-radius:10px;background:none;color:inherit;font:inherit}
+.inbox{display:grid;grid-template-columns:160px 300px 1fr;gap:12px;align-items:stretch;min-height:70vh}
+.inbox-rail{padding:16px 12px;display:flex;flex-direction:column}
+.inbox-rail-title{margin:0 0 14px;font-size:15px;font-weight:600}
+.inbox-nav{display:flex;flex-direction:column;gap:2px}
+.inbox-nav a{display:flex;align-items:center;gap:6px;padding:9px 10px;border-radius:8px;color:inherit;text-decoration:none;font-size:14px}
+.inbox-nav a:hover{background:rgba(127,127,127,.1)}
+.inbox-nav a.active{background:rgba(37,99,235,.12);color:#2563eb;font-weight:600}
+.inbox-nav .badge{margin-left:auto;background:#dc2626;color:#fff;border-radius:999px;font-size:11px;padding:1px 6px}
+.inbox-rail-sep{height:1px;background:var(--line,#e5e7eb);margin:12px 4px}
+.inbox-settings{color:inherit;text-decoration:none;font-size:13px;opacity:.8;padding:6px 10px}
+.inbox-list{display:flex;flex-direction:column;padding:0;overflow:hidden}
+.inbox-list-head{padding:14px 16px;border-bottom:1px solid var(--line,#e5e7eb);font-size:14px;font-weight:600}
+.inbox-list-body{overflow:auto;flex:1;padding:6px}
+.inbox-item{display:flex;gap:10px;align-items:center;padding:10px;border-radius:10px;text-decoration:none;color:inherit}
+.inbox-item:hover{background:rgba(127,127,127,.09)}
+.inbox-item.active{background:rgba(37,99,235,.12)}
+.inbox-item-main{min-width:0;flex:1}
+.inbox-item-name{font-size:14px;display:flex;align-items:center;gap:5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.inbox-item-name .dot{width:7px;height:7px;border-radius:50%;background:#dc2626;flex:none}
+.inbox-item-preview{font-size:12px;opacity:.7;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.inbox-item-date{font-size:11px;opacity:.6;flex:none}
+.inbox-detail{display:flex;flex-direction:column;padding:0}
+.inbox-detail-head{display:flex;align-items:center;gap:8px;padding:12px 16px;border-bottom:1px solid var(--line,#e5e7eb)}
+.inbox-detail-head b{font-size:15px}
+.inbox-detail-more{margin-left:auto;color:inherit;text-decoration:none;font-size:18px;opacity:.7}
+.inbox-detail-empty{padding:40px 16px;text-align:center;opacity:.7;font-size:14px}
+.inbox-thread{flex:1;overflow:auto;padding:16px;display:flex;flex-direction:column;gap:12px}
+.inbox-date{text-align:center;font-size:12px;opacity:.55;margin:6px 0}
+.inbox-msg{display:flex;gap:8px;align-items:flex-start}
+.inbox-msg.mine{justify-content:flex-end}
+.bubble{max-width:70%;padding:10px 14px;border-radius:12px;background:rgba(127,127,127,.14);line-height:1.6;white-space:pre-wrap;word-break:break-word}
+.inbox-msg.mine .bubble{background:#2563eb;color:#fff}
+.inbox-composer{display:flex;align-items:center;gap:10px;padding:12px 16px;border-top:1px solid var(--line,#e5e7eb)}
+.inbox-composer input[type=text]{flex:1;padding:10px 12px;border:1px solid var(--line,#e5e7eb);border-radius:10px;background:none;color:inherit;font:inherit}
+.inbox-counter{font-size:12px;opacity:.6}
+.inbox-detail-actions{padding:0 16px 16px}
+@media (max-width:900px){.inbox{grid-template-columns:1fr}.inbox-rail{flex-direction:row;flex-wrap:wrap;align-items:center}.inbox-nav{flex-direction:row}}
 </style>
 {% endblock %}

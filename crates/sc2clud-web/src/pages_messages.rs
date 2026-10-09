@@ -219,16 +219,18 @@ pub async fn unblock(
     }
     Ok(Redirect::to("/settings#blocklist").into_response())
 }
-
 #[derive(Debug, serde::Deserialize)]
 pub struct InboxParams {
+    /// 分类：dm（我的消息）/ likes（收到的赞）/ system（系统通知）。
     tab: Option<String>,
+    /// 选中的会话对方 handle。
     with: Option<String>,
-    /// 预览用版式编号。
-    iv: Option<String>,
+    /// 选中的通知 id。
+    nid: Option<String>,
 }
 
-/// 消息中心：左分类 + 中列表 + 右消息流（参考 B 站私信页）。
+/// 消息中心（照 B 站私信页做：左分类 / 中列表 / 右内容 + 底部输入）。
+/// 只做我们真有的东西：私信、收到的赞、系统通知；B 站的「回复我的 / @我的」我们没有，不放。
 pub async fn center(
     State(state): State<AppState>,
     headers: HeaderMap,
@@ -236,18 +238,9 @@ pub async fn center(
 ) -> AppResult<Response> {
     let user = crate::routes::require_user(&state, &headers).await?;
     let tab = params.tab.unwrap_or_else(|| "dm".to_string());
-    let inbox_variant = if state.config.server.debug_pages {
-        params
-            .iv
-            .as_deref()
-            .and_then(|v| v.parse::<u8>().ok())
-            .filter(|v| (1..=3).contains(v))
-            .unwrap_or(1)
-    } else {
-        1
-    };
     let selected = params.with.clone().unwrap_or_default();
 
+    // 左栏「我的消息」：会话列表（最近消息在前）
     let conversations: Vec<crate::templates::InboxConversationView> =
         repo::list_conversations(state.db.pool(), user.id)
             .await?
@@ -261,21 +254,44 @@ pub async fn center(
                 last_body: row.last_body,
             })
             .collect();
-    let notifications: Vec<crate::templates::InboxNotificationView> =
-        repo::list_notifications(state.db.pool(), user.id, 50)
-            .await?
-            .into_iter()
-            .map(|row| crate::templates::InboxNotificationView {
-                date: crate::templates::format_date(row.created_at),
-                unread: row.read_at.is_none(),
-                link: row.link.unwrap_or_default(),
-                body: row.body.unwrap_or_default(),
-                title: row.title,
-            })
-            .collect();
 
-    // 选中会话的消息流：只读展示；发送仍走既有 /messages/{handle}
+    // 通知按 kind 分到「收到的赞」和「系统通知」两栏
+    let selected_nid: Option<i64> = params.nid.as_deref().and_then(|v| v.parse().ok());
+    let mut likes = Vec::new();
+    let mut system = Vec::new();
+    let mut selected_notice = None;
+    let mut like_unread = 0i64;
+    let mut system_unread = 0i64;
+    for row in repo::list_notifications(state.db.pool(), user.id, 100).await? {
+        let view = crate::templates::InboxNoticeView {
+            id: row.id,
+            title: row.title,
+            body: row.body.unwrap_or_default(),
+            link: row.link.unwrap_or_default(),
+            date: crate::templates::format_date(row.created_at),
+            unread: row.read_at.is_none(),
+            active: selected_nid == Some(row.id),
+        };
+        if selected_nid == Some(view.id) {
+            selected_notice = Some(view.clone());
+        }
+        let unread = view.unread;
+        if row.kind == "like" {
+            if unread {
+                like_unread += 1;
+            }
+            likes.push(view);
+        } else {
+            if unread {
+                system_unread += 1;
+            }
+            system.push(view);
+        }
+    }
+
+    // 右栏：私信线程（选中会话时）；顺带标记已读
     let mut other_display = String::new();
+    let mut other_avatar = None;
     let mut thread = Vec::new();
     if tab == "dm"
         && !selected.is_empty()
@@ -286,31 +302,49 @@ pub async fn center(
         } else {
             other.display_name.clone()
         };
-        thread = repo::list_thread(state.db.pool(), user.id, other.id, 100)
-            .await?
-            .into_iter()
-            .map(|row| crate::templates::InboxMessageView {
+        other_avatar = other.avatar_hash.clone();
+        let rows = repo::list_thread(state.db.pool(), user.id, other.id, 100).await?;
+        let mut last_day = String::new();
+        for row in rows {
+            let day = crate::templates::format_date(row.created_at);
+            let show_date = day != last_day;
+            last_day = day.clone();
+            thread.push(crate::templates::InboxMessageView {
                 mine: row.sender_id == user.id,
-                date: crate::templates::format_date(row.created_at),
                 body: row.body,
-            })
-            .collect();
+                date: day,
+                show_date,
+            });
+        }
         let _ =
             repo::mark_thread_read(state.db.pool(), user.id, other.id, sc2clud_core::now_unix())
                 .await;
     }
+
+    // 中栏展示哪一类列表
+    let notices = if tab == "likes" {
+        likes
+    } else if tab == "system" {
+        system
+    } else {
+        Vec::new()
+    };
 
     Ok(crate::templates::render(InboxTemplate {
         site_name: &state.config.server.site_name,
         user_label: Some(user.display_name.clone()),
         is_staff: user.is_staff(),
         csrf: user.csrf_token.clone(),
-        inbox_variant,
         tab,
         conversations,
-        notifications,
         selected,
         other_display,
+        other_avatar,
         thread,
+        like_unread,
+        system_unread,
+        dm_unread: 0,
+        notices,
+        selected_notice,
     }))
 }
