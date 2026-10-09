@@ -249,7 +249,9 @@ pub fn api_upload() -> Router<AppState> {
         .route("/api/v1/files", axum::routing::put(upload_file))
         .route(
             "/api/v1/me/avatar",
-            axum::routing::post(upload_avatar).get(crate::pages_profile::avatar_info),
+            axum::routing::post(upload_avatar)
+                .get(crate::pages_profile::avatar_info)
+                .delete(crate::pages_profile::avatar_clear),
         )
         .route(
             "/api/v1/posts/{post_id}/images",

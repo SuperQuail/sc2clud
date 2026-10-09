@@ -132,6 +132,27 @@ pub async fn payment_channels_json(
     Ok(axum::Json(serde_json::json!({ "channels": channels })).into_response())
 }
 
+/// 清掉自己的头像（主页头像弹窗里的「不设头像」）。
+pub async fn avatar_clear(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+) -> AppResult<Response> {
+    let user = crate::routes::require_user(&state, &headers).await?;
+    session::guard(Some(&user), sc2clud_core::auth::Permission::SetAvatar)?;
+    let token = headers
+        .get("x-csrf-token")
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or("");
+    session::check_csrf(&user, token)?;
+    let previous = repo::clear_avatar(state.db.pool(), user.id).await?;
+    if let Some(hash) = previous
+        && let Ok(blob) = sc2clud_core::BlobHash::parse(&hash)
+    {
+        let _ = state.storage.delete(&blob).await;
+    }
+    Ok(axum::Json(serde_json::json!({ "ok": true })).into_response())
+}
+
 /// 当前登录者的头像摘要；不暴露其他账号资料或会话信息。
 pub async fn avatar_info(State(state): State<AppState>, headers: HeaderMap) -> AppResult<Response> {
     let user = crate::routes::require_user(&state, &headers).await?;

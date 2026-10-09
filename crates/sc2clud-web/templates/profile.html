@@ -4,25 +4,46 @@
 
 {% block title %}{{ display_name }} · {{ site_name }}{% endblock %}
 
+{% block scripts %}
+<script type="module" src="/static/islands/avatar.js"></script>
+<script>
+(() => {
+  const modal = document.getElementById('avatar-modal');
+  const openBtn = document.getElementById('avatar-open');
+  if (!modal || !openBtn) return;
+  const show = (v) => { modal.hidden = !v; };
+  openBtn.addEventListener('click', () => { show(true); document.getElementById('avatar-input').click(); });
+  document.getElementById('avatar-modal-close').addEventListener('click', () => show(false));
+  modal.addEventListener('click', (e) => { if (e.target === modal) show(false); });
+  document.getElementById('avatar-clear').addEventListener('click', async () => {
+    const csrf = document.querySelector('[data-island="avatar"]').dataset.csrf;
+    const res = await fetch('/api/v1/me/avatar', { method: 'DELETE', headers: { 'x-csrf-token': csrf } });
+    if (res.ok) location.reload();
+  });
+  // 预览用：?avatar=1 直接打开弹窗
+  if (new URLSearchParams(location.search).get('avatar') === '1') show(true);
+})();
+</script>
+{% endblock %}
+
 {% block bar_stats %}<span>帖子 {{ accepted }}</span><span>加入于 {{ joined_at }}</span>{% endblock %}
 
 
 {% block content %}
 <section class="card profile">
   <div class="profile-head">
+    {% if can_edit_bio %}<button type="button" class="avatar-open" id="avatar-open" title="点击修改头像" aria-label="修改头像">{% endif %}
     {% if let Some(hash) = avatar %}
     <img class="avatar avatar-lg" src="/avatar/{{ hash }}" alt="" width="72" height="72">
     {% else %}
     <img class="avatar avatar-lg" src="/static/art/miyin-chibi-160.webp" alt="" width="72" height="72">
     {% endif %}
+    {% if can_edit_bio %}</button>{% endif %}
     <div>
       <h1 class="profile-name">{{ display_name }}{% if let Some(title) = title %}<span class="title-badge tv{{ title_variant }}"{% if !title.color.is_empty() %} style="--tc: {{ title.color }}"{% endif %}>{{ title.name }}</span>{% endif %}</h1>
       <p class="meta">@{{ handle }} · {{ role_label }} · 加入于 {{ joined_at }}</p>
     </div>
-    {% if can_edit_bio %}
-    {# 头像：单独一个按钮（不再和「修改资料」挤在一起） #}
-    <a class="btn ghost sm avatar-btn" href="/settings#avatar">修改头像</a>
-    {% endif %}
+
   </div>
   {# 简介：本人/管理员点一下就地变文本框（参考 B 站主页），保存走 /settings/bio #}
   {% if can_edit_bio %}
@@ -40,7 +61,18 @@
   <style>
   .profile-bio{margin:10px 0 0;line-height:1.8;opacity:.92;white-space:pre-wrap}
   /* 头衔：三套设计（?tui=1/2/3；生产用 1） */
-  .title-badge{margin-left:8px;font-size:12px;font-weight:600;vertical-align:middle;letter-spacing:.5px}
+  .avatar-open{border:0;background:none;padding:0;cursor:pointer;border-radius:50%;line-height:0}
+  .avatar-open:hover{box-shadow:0 0 0 3px rgba(37,99,235,.35)}
+  .avatar-modal{position:fixed;inset:0;z-index:80;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,.55)}
+  .avatar-modal[hidden]{display:none}
+  .avatar-dialog{position:relative;width:min(440px,92vw);background:var(--card,#fff);color:inherit;border:1px solid var(--line,#e5e7eb);border-radius:14px;padding:18px 20px}
+  .avatar-modal-close{position:absolute;top:6px;right:12px;border:0;background:none;font-size:22px;cursor:pointer;color:inherit}
+  .avatar-dialog canvas{max-width:100%;border-radius:50%;background:#111}
+  /* 头衔：半透明胶囊（底色取头衔颜色，18% 透明），默认样式 */
+  .title-badge{margin-left:8px;padding:2px 10px;border-radius:999px;font-size:12px;font-weight:600;vertical-align:middle;letter-spacing:.3px;
+    color:var(--tc,#2563eb);border:1px solid var(--tc,#2563eb);background:color-mix(in srgb, var(--tc,#2563eb) 18%, transparent)}
+  .title-badge.tv2{border:0;background:var(--tc,#2563eb);color:#fff}
+  .title-badge.tv3{border:0;background:none;border-bottom:2px solid var(--tc,#2563eb);border-radius:0;padding:0 2px 2px}
   .title-badge.tv1{padding:1px 9px;border-radius:999px;border:1px solid var(--tc,#2563eb);color:var(--tc,#2563eb)}
   .title-badge.tv2{padding:2px 10px;border-radius:6px;background:var(--tc,#2563eb);color:#fff;box-shadow:0 1px 0 rgba(0,0,0,.12)}
   .title-badge.tv3{padding:0 2px 2px;border-bottom:2px solid var(--tc,#2563eb);color:var(--tc,#2563eb)}
@@ -85,6 +117,34 @@
     {% endif %}
   </div>
 </section>
+{% if can_edit_bio %}
+<div class="avatar-modal" id="avatar-modal" hidden>
+  <div class="avatar-dialog" role="dialog" aria-modal="true" aria-label="修改头像">
+    <button type="button" class="avatar-modal-close" id="avatar-modal-close" aria-label="关闭">×</button>
+    <h3>修改头像</h3>
+    <div class="avatar-row">
+      <img class="avatar avatar-lg" id="avatar-preview" src="{% if let Some(hash) = avatar %}/avatar/{{ hash }}{% else %}/static/art/miyin-chibi-160.webp{% endif %}" alt="" width="84" height="84">
+      <div class="actions-inline">
+        <button class="btn" type="button" id="avatar-pick">选择图片</button>
+        <button class="btn ghost" type="button" id="avatar-clear">不设头像（用默认）</button>
+      </div>
+    </div>
+    <p class="hint">圆形头像：拖动画布选区域，滚轮/滑块缩放，上传前在浏览器里压到 64 KB 以内。</p>
+    <div class="avatar-editor" data-island="avatar" data-csrf="{{ csrf }}" hidden id="avatar-editor">
+      <input type="file" accept="image/*" id="avatar-input" class="visually-hidden">
+      <div class="avatar-crop" id="avatar-crop" hidden>
+        <canvas id="avatar-canvas" width="320" height="320"></canvas>
+        <input type="range" id="avatar-zoom" min="1" max="3" step="0.01" value="1">
+        <div class="actions-inline">
+          <button class="btn" type="button" id="avatar-save">上传头像</button>
+          <button class="btn ghost" type="button" id="avatar-cancel">取消</button>
+          <span class="hint" id="avatar-status"></span>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+{% endif %}
 {# 简介点击就地编辑：只切显隐，保存用普通表单提交（不引岛屿） #}
 <script>
 (() => {

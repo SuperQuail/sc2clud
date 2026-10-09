@@ -3366,6 +3366,22 @@ pub async fn donation_notice_for(
     }
     Ok(None)
 }
+/// 清掉头像（回到默认头像），返回原来的 hash —— 调用方负责回收文件。
+pub async fn clear_avatar(pool: &SqlitePool, user_id: i64) -> Result<Option<String>> {
+    let row: Option<(Option<String>,)> = query_as("SELECT avatar_hash FROM users WHERE id = ?")
+        .bind(user_id)
+        .fetch_optional(pool)
+        .await
+        .map_err(db_err)?;
+    let previous = row.and_then(|r| r.0);
+    query("UPDATE users SET avatar_hash = NULL, avatar_mime = NULL WHERE id = ?")
+        .bind(user_id)
+        .execute(pool)
+        .await
+        .map_err(db_err)?;
+    Ok(previous)
+}
+
 // ---------------------------------------------------------------- 站点文本（超管可改的默认文案）
 
 /// 读一条站点文本；没有就用 `fallback`。
