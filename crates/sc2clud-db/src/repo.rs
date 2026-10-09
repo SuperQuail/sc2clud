@@ -3267,6 +3267,91 @@ pub async fn delete_payment_channel(
     Ok(Some(hash))
 }
 
+/// 作者自己的赞助提示设置：显示开关 + 自定义文本（空 = 用渠道默认）。
+pub async fn set_donation_notice(
+    pool: &SqlitePool,
+    user_id: i64,
+    visible: bool,
+    text: &str,
+) -> Result<()> {
+    query("UPDATE users SET donation_notice_visible = ?, donation_notice_text = ? WHERE id = ?")
+        .bind(i64::from(visible))
+        .bind(text)
+        .bind(user_id)
+        .execute(pool)
+        .await
+        .map_err(db_err)?;
+    Ok(())
+}
+
+/// 超管配某个渠道的默认提示文本。
+pub async fn set_donation_notice_default(
+    pool: &SqlitePool,
+    channel: &str,
+    text: &str,
+    by: Option<i64>,
+    now: i64,
+) -> Result<()> {
+    query(
+        "INSERT INTO donation_notice_defaults (channel, text, updated_at, updated_by) \
+         VALUES (?, ?, ?, ?) \
+         ON CONFLICT(channel) DO UPDATE SET text = excluded.text, \
+             updated_at = excluded.updated_at, updated_by = excluded.updated_by",
+    )
+    .bind(channel)
+    .bind(text)
+    .bind(now)
+    .bind(by)
+    .execute(pool)
+    .await
+    .map_err(db_err)?;
+    Ok(())
+}
+
+pub async fn list_donation_notice_defaults(pool: &SqlitePool) -> Result<Vec<(String, String)>> {
+    query_as("SELECT channel, text FROM donation_notice_defaults ORDER BY channel")
+        .fetch_all(pool)
+        .await
+        .map_err(db_err)
+}
+
+/// 打赏弹窗要显示的那段提示：作者自己写了用他的；没写就按**他第一个渠道**取超管默认；都没有则 None。
+/// 开关关掉直接 None（前端就不用管逻辑了）。
+pub async fn donation_notice_for(
+    pool: &SqlitePool,
+    user_id: i64,
+    channels: &[PaymentChannelRow],
+) -> Result<Option<String>> {
+    let row: Option<(i64, String)> =
+        query_as("SELECT donation_notice_visible, donation_notice_text FROM users WHERE id = ?")
+            .bind(user_id)
+            .fetch_optional(pool)
+            .await
+            .map_err(db_err)?;
+    let Some((visible, own_text)) = row else {
+        return Ok(None);
+    };
+    if visible == 0 {
+        return Ok(None);
+    }
+    if !own_text.trim().is_empty() {
+        return Ok(Some(own_text));
+    }
+    for channel in channels {
+        let found: Option<(String,)> =
+            query_as("SELECT text FROM donation_notice_defaults WHERE channel = ?")
+                .bind(&channel.channel)
+                .fetch_optional(pool)
+                .await
+                .map_err(db_err)?;
+        if let Some((text,)) = found
+            && !text.trim().is_empty()
+        {
+            return Ok(Some(text));
+        }
+    }
+    Ok(None)
+}
 // ---------------------------------------------------------------- 打赏展示（作者侧开关 + 页面用的展示块）
 
 /// 作者是否开启「支持作者」展示。

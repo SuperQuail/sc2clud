@@ -233,6 +233,20 @@ pub struct PostPageTemplate<'a> {
     /// 已登录且已激活才能回复（回复不带图）。
     pub can_reply: bool,
     pub is_staff: bool,
+    /// 作者是否开了打赏展示（开了才出那个大按钮）。
+    pub donation_visible: bool,
+    /// 打赏渠道（弹窗左栏用；没有渠道时为空，前端不显示入口）。
+    pub donation_channels: Vec<DonationChannelView>,
+    /// 打赏前必须点「确定」的那段醒目提示（作者/渠道默认都没配则为 None）。
+    pub donation_notice: Option<String>,
+}
+
+/// 打赏弹窗里的一个渠道。
+#[derive(Debug, Clone)]
+pub struct DonationChannelView {
+    pub channel: String,
+    pub label: String,
+    pub image_hash: String,
 }
 
 /// 帖子正文视图。

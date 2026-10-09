@@ -192,6 +192,14 @@
       </div>
     </div>
 
+    {# 打赏：作者开了展示才出现。大按钮 → 弹窗（左渠道 / 右二维码），提示不点「确定」不消失 #}
+    {% if donation_visible %}
+    <button type="button" class="donate-cta" id="donate-open">
+      <span class="donate-cta-title">赞助作者</span>
+      <span class="donate-cta-sub">支持 {{ post.author }} 继续开发</span>
+    </button>
+    {% endif %}
+
     {% if show_sources %}
     <div class="side-card">
       <h3>资源下载</h3>
@@ -230,6 +238,90 @@
       </ul>
     </div>
   </aside>
+
+<style>
+/* 打赏弹窗：整块自包含，不往 app.css/site.css 里塞（那几份是别人在维护的） */
+.donate-cta{display:flex;flex-direction:column;gap:2px;width:100%;padding:18px 16px;border:0;border-radius:12px;
+  background:linear-gradient(135deg,#f97316,#ef4444);color:#fff;cursor:pointer;text-align:center}
+.donate-cta:hover{filter:brightness(1.06)}
+.donate-cta-title{font-size:20px;font-weight:700;letter-spacing:1px}
+.donate-cta-sub{font-size:12px;opacity:.9}
+.donate-modal{position:fixed;inset:0;z-index:60;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,.55)}
+.donate-modal[hidden]{display:none}
+.donate-dialog{position:relative;width:min(680px,92vw);max-height:86vh;overflow:auto;background:var(--card,#fff);color:inherit;
+  border:1px solid var(--line,#e5e7eb);border-radius:14px;padding:18px}
+.donate-close{position:absolute;top:6px;right:12px;border:0;background:none;font-size:24px;line-height:1;cursor:pointer;color:inherit}
+.donate-notice{border:2px solid #f59e0b;background:rgba(245,158,11,.14);border-radius:10px;padding:14px 16px}
+.donate-notice b{color:#b45309}
+.donate-notice p{margin:8px 0 12px;line-height:1.7}
+.donate-body{display:grid;grid-template-columns:150px 1fr;gap:16px;align-items:start}
+.donate-channels{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:8px}
+.donate-channel{width:100%;padding:10px;border:1px solid var(--line,#e5e7eb);border-radius:8px;background:none;color:inherit;cursor:pointer;font:inherit}
+.donate-channel.active{border-color:#2563eb;background:rgba(37,99,235,.14);font-weight:600}
+.donate-pane{text-align:center}
+.donate-pane img{border-radius:10px;background:#fff;padding:8px}
+.donate-hint{font-size:12px;opacity:.8;margin-top:8px}
+.donate-hidden{display:none}
+</style>
+{% if donation_visible %}
+<div class="donate-modal" id="donate-modal" hidden>
+  <div class="donate-dialog" role="dialog" aria-modal="true" aria-label="赞助作者">
+    <button type="button" class="donate-close" id="donate-close" aria-label="关闭">×</button>
+    <div class="donate-notice" id="donate-notice" {% if donation_notice.is_none() %}hidden{% endif %}>
+      <b>请先看这条提示</b>
+      <p>{% if let Some(text) = donation_notice %}{{ text }}{% endif %}</p>
+      <button type="button" class="btn" id="donate-ack">确定</button>
+    </div>
+    <div class="donate-body" id="donate-body" {% if donation_notice.is_some() %}hidden{% endif %}>
+      <ul class="donate-channels">
+        {% for channel in donation_channels %}
+        <li>
+          <button type="button" class="donate-channel{% if loop.first %} active{% endif %}" data-channel="{{ channel.channel }}">{{ channel.label }}</button>
+        </li>
+        {% endfor %}
+      </ul>
+      <div class="donate-pane">
+        {% for channel in donation_channels %}
+        <div class="donate-pane-item{% if !loop.first %} donate-hidden{% endif %}" data-pane="{{ channel.channel }}">
+          <img src="/avatar/{{ channel.image_hash }}" alt="{{ channel.label }} 收款码" width="220" height="220">
+          <p class="donate-hint">用 {{ channel.label }} 扫码，金额随意；记得按提示备注。</p>
+        </div>
+        {% endfor %}
+      </div>
+    </div>
+  </div>
+</div>
+{# 一个弹窗不值得引入构建产物：内联脚本，和岛屿一样靠 data 属性驱动 #}
+<script>
+(() => {
+  const open = document.getElementById('donate-open');
+  const modal = document.getElementById('donate-modal');
+  if (!open || !modal) return;
+  const notice = document.getElementById('donate-notice');
+  const body = document.getElementById('donate-body');
+  const show = () => { modal.hidden = false; };
+  const hide = () => { modal.hidden = true; };
+  open.addEventListener('click', show);
+  document.getElementById('donate-close').addEventListener('click', hide);
+  modal.addEventListener('click', (e) => { if (e.target === modal) hide(); });
+  document.addEventListener('keydown', (e) => { if (e.key === 'Escape') hide(); });
+  // 提示必须点「确定」：点完才让它消失、也才放出二维码
+  const ack = document.getElementById('donate-ack');
+  if (ack) ack.addEventListener('click', () => { notice.hidden = true; body.hidden = false; });
+  modal.querySelectorAll('.donate-channel').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      modal.querySelectorAll('.donate-channel').forEach((b) => b.classList.toggle('active', b === btn));
+      modal.querySelectorAll('.donate-pane-item').forEach((pane) => {
+        pane.classList.toggle('donate-hidden', pane.dataset.pane !== btn.dataset.channel);
+      });
+    });
+  });
+  // 预览用：?donate=1 直接打开（正式页面没人会带这个参数）
+  if (new URLSearchParams(location.search).get('donate') === '1') show();
+})();
+</script>
+{% endif %}
+
 </div>{# /post-layout #}
 {% endblock %}
 

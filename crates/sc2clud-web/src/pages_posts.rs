@@ -281,8 +281,31 @@ async fn build_post_page<'a>(
     let kind = PostKind::parse(&row.kind).unwrap_or(PostKind::Discussion);
     let section = PostSection::parse(&row.section).unwrap_or(PostSection::default_section());
 
+    // 打赏：只有作者开了展示、且确实有渠道时才给入口
+    let showcase = repo::author_showcase(state.db.pool(), row.author_id).await?;
+    let donation_notice = if showcase.donation_visible {
+        repo::donation_notice_for(state.db.pool(), row.author_id, &showcase.channels).await?
+    } else {
+        None
+    };
+    let donation_channels: Vec<crate::templates::DonationChannelView> = showcase
+        .channels
+        .iter()
+        .map(|c| crate::templates::DonationChannelView {
+            channel: c.channel.clone(),
+            label: if c.label.trim().is_empty() {
+                c.channel.clone()
+            } else {
+                c.label.clone()
+            },
+            image_hash: c.image_hash.clone(),
+        })
+        .collect();
     Ok(PostPageTemplate {
         site_name: &state.config.server.site_name,
+        donation_visible: showcase.donation_visible && !donation_channels.is_empty(),
+        donation_channels,
+        donation_notice,
         user_label: user.as_ref().map(|u| u.display_name.clone()),
         csrf: user
             .as_ref()

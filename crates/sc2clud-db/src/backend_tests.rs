@@ -674,3 +674,77 @@ async fn donation_showcase_respects_the_authors_switch() {
         .expect("展示块");
     assert!(!off.donation_visible && off.channels.is_empty());
 }
+
+#[tokio::test]
+async fn donation_notice_falls_back_to_the_channel_default() {
+    let db = db().await;
+    let now = now_unix();
+    let author = make_user(&db, "notice_author").await;
+    repo::add_payment_channel(
+        db.pool(),
+        author,
+        "alipay",
+        "支付宝",
+        "qr-1",
+        "image/png",
+        now,
+    )
+    .await
+    .expect("加渠道");
+    let channels = repo::list_payment_channels(db.pool(), author)
+        .await
+        .expect("渠道");
+    repo::set_donation_visible(db.pool(), author, true)
+        .await
+        .expect("开打赏");
+
+    // 没配任何默认文本：提示为空
+    assert!(
+        repo::donation_notice_for(db.pool(), author, &channels)
+            .await
+            .expect("查")
+            .is_none()
+    );
+
+    // 超管按渠道配默认 → 作者没自定义时用它
+    repo::set_donation_notice_default(db.pool(), "alipay", "务必备注平台 ID", None, now)
+        .await
+        .expect("配默认");
+    assert_eq!(
+        repo::donation_notice_for(db.pool(), author, &channels)
+            .await
+            .expect("查")
+            .as_deref(),
+        Some("务必备注平台 ID")
+    );
+
+    // 作者自定义优先
+    repo::set_donation_notice(db.pool(), author, true, "我自己的提示")
+        .await
+        .expect("自定义");
+    assert_eq!(
+        repo::donation_notice_for(db.pool(), author, &channels)
+            .await
+            .expect("查")
+            .as_deref(),
+        Some("我自己的提示")
+    );
+
+    // 作者关掉提示 → 什么都不显示（即便有默认）
+    repo::set_donation_notice(db.pool(), author, false, "")
+        .await
+        .expect("关");
+    assert!(
+        repo::donation_notice_for(db.pool(), author, &channels)
+            .await
+            .expect("查")
+            .is_none()
+    );
+    assert_eq!(
+        repo::list_donation_notice_defaults(db.pool())
+            .await
+            .expect("默认表")
+            .len(),
+        1
+    );
+}
