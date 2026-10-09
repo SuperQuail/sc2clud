@@ -227,6 +227,17 @@ async fn serve() -> Result<()> {
         .context("打开数据库失败")?;
     db.migrate().await.context("执行迁移失败")?;
 
+    // 统一域名管理：站点根域名自动登记，链接解析/以后发信都从这里取名单
+    if let Some(domain) = sc2clud_core::community::normalize_domain(&config.server.base_url) {
+        let _ = sc2clud_db::repo::add_site_domain(
+            db.pool(),
+            &domain,
+            "站点根（自动登记）",
+            sc2clud_core::now_unix(),
+        )
+        .await;
+    }
+
     let now = sc2clud_core::now_unix();
     // 脚手架阶段的归属用户：接入登录后由会话解析替换（见 repo::ensure_bootstrap_user）。
     let owner_id = repo::ensure_super_admin(db.pool(), "demo", 1 << 30, now)

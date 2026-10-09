@@ -255,6 +255,74 @@ async fn build_user_edit<'a>(
 }
 
 #[derive(Debug, Deserialize)]
+pub struct DomainForm {
+    pub csrf: String,
+    pub domain: String,
+    pub note: Option<String>,
+}
+
+/// 统一域名管理：列出「哪些域名是我们的」。
+pub async fn list_domains(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+) -> AppResult<Response> {
+    let actor = require_user(&state, &headers).await?;
+    session::guard(Some(&actor), Permission::ManageUsers)?;
+    let rows = repo::list_site_domains(state.db.pool()).await?;
+    let domains: Vec<serde_json::Value> = rows
+        .into_iter()
+        .map(|row| serde_json::json!({ "domain": row.domain, "note": row.note }))
+        .collect();
+    // 站点根也一并给出：它天然算我们的域名（链接解析会带上）
+    Ok(axum::Json(serde_json::json!({
+        "domains": domains,
+        "base_url": state.config.server.base_url,
+    }))
+    .into_response())
+}
+
+/// 加一个域名（会自动规范化：小写、去端口、去开头 www.）。
+pub async fn add_domain(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Form(form): Form<DomainForm>,
+) -> AppResult<Response> {
+    let actor = require_user(&state, &headers).await?;
+    session::guard(Some(&actor), Permission::ManageUsers)?;
+    session::check_csrf(&actor, &form.csrf)?;
+    let domain = sc2clud_core::community::normalize_domain(&form.domain).ok_or_else(|| {
+        AppError::Domain(DomainError::InvalidInput(
+            "域名不合法（示例：example.com）".to_string(),
+        ))
+    })?;
+    let note = form.note.as_deref().unwrap_or_default().trim();
+    let added = repo::add_site_domain(state.db.pool(), &domain, note, now_unix()).await?;
+    Ok(done(
+        &headers,
+        if added {
+            "已添加域名"
+        } else {
+            "域名已存在"
+        },
+        "/admin/users/overview",
+    ))
+}
+
+pub async fn remove_domain(
+    State(state): State<AppState>,
+    Path(domain): Path<String>,
+    headers: HeaderMap,
+    Form(form): Form<CsrfForm>,
+) -> AppResult<Response> {
+    let actor = require_user(&state, &headers).await?;
+    session::guard(Some(&actor), Permission::ManageUsers)?;
+    session::check_csrf(&actor, &form.csrf)?;
+    let domain = sc2clud_core::community::normalize_domain(&domain).unwrap_or(domain);
+    repo::remove_site_domain(state.db.pool(), &domain).await?;
+    Ok(done(&headers, "已移除域名", "/admin/users/overview"))
+}
+
+#[derive(Debug, Deserialize)]
 pub struct BannerForm {
     pub csrf: String,
     pub title: String,
@@ -263,6 +331,8 @@ pub struct BannerForm {
     pub url: Option<String>,
     /// 有效期天数（留空 = 不过期）。
     pub days: Option<String>,
+    /// 定向用户组 id，逗号分隔；留空 = 所有人可见。
+    pub groups: Option<String>,
 }
 
 /// 新建横幅：对登录用户展示，用户点「确认」后不再看到。
@@ -307,7 +377,18 @@ pub async fn create_banner(
         },
     )
     .await?;
-    tracing::info!(banner.id = id, actor.id = actor.id, "新建横幅");
+    // 定向：给了组就只对这些组可见（空 = 所有人）
+    let group_ids: Vec<i64> = form
+        .groups
+        .as_deref()
+        .unwrap_or_default()
+        .split(',')
+        .filter_map(|v| v.trim().parse::<i64>().ok())
+        .collect();
+    if !group_ids.is_empty() {
+        repo::set_banner_groups(state.db.pool(), id, &group_ids).await?;
+    }
+    tracing::info!(banner.id = id, actor.id = actor.id, groups = ?group_ids, "新建横幅");
     let _ = repo::record_audit(
         state.db.pool(),
         Some(actor.id),

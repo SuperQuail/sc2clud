@@ -12,10 +12,10 @@ use crate::db_err;
 use crate::models::{
     AdminUserRow, AnnouncementRow, AuditRow, BannerRow, BlobRow, BlockRow, BookmarkRow,
     CommentWithAuthorRow, ConversationRow, ExpEventRow, FileRow, FileWithOwnerRow,
-    GroupSectionRuleRow, ImageJobRow, MessageRow, NotificationRow, PaymentChannelRow, PostImageRow,
-    PostRow, PostSearchRow, PostSourceRow, PostWithAuthorRow, ReleaseAssetRow, ReleaseRow,
-    SectionModeratorRow, SectionRow, SessionRow, TitleRow, UploadSessionRow, UserGroupRow, UserRow,
-    UserTitleRow,
+    GroupSectionRuleRow, ImageJobRow, IssueCommentRow, MessageRow, NotificationRow,
+    PaymentChannelRow, PostImageRow, PostIssueRow, PostRow, PostSearchRow, PostSourceRow,
+    PostWithAuthorRow, ReleaseAssetRow, ReleaseRow, SectionModeratorRow, SectionRow, SessionRow,
+    SiteDomainRow, TitleRow, UploadSessionRow, UserGroupRow, UserRow, UserTitleRow,
 };
 
 // ---------------------------------------------------------------- 用户
@@ -3048,10 +3048,16 @@ pub async fn visible_banners(pool: &SqlitePool, user_id: i64, now: i64) -> Resul
            AND (b.starts_at IS NULL OR b.starts_at <= ?) \
            AND (b.ends_at IS NULL OR b.ends_at > ?) \
            AND NOT EXISTS (SELECT 1 FROM banner_dismissals d WHERE d.banner_id = b.id AND d.user_id = ?) \
+           -- 定向：没有配组 = 所有人；配了就只给这些组的成员
+           AND (NOT EXISTS (SELECT 1 FROM banner_groups g WHERE g.banner_id = b.id) \
+                OR EXISTS (SELECT 1 FROM banner_groups g \
+                           JOIN user_group_members m ON m.group_id = g.group_id \
+                           WHERE g.banner_id = b.id AND m.user_id = ?)) \
          ORDER BY b.id DESC",
     )
     .bind(now)
     .bind(now)
+    .bind(user_id)
     .bind(user_id)
     .fetch_all(pool)
     .await
@@ -3230,6 +3236,224 @@ pub async fn delete_payment_channel(
         .await
         .map_err(db_err)?;
     Ok(Some(hash))
+}
+// ---------------------------------------------------------------- 站点域名 / issue / 横幅定向
+
+/// 登记一个站点域名（规范化后）；已存在返回 `false`。
+pub async fn add_site_domain(
+    pool: &SqlitePool,
+    domain: &str,
+    note: &str,
+    now: i64,
+) -> Result<bool> {
+    let affected =
+        query("INSERT OR IGNORE INTO site_domains (domain, note, created_at) VALUES (?, ?, ?)")
+            .bind(domain)
+            .bind(note)
+            .bind(now)
+            .execute(pool)
+            .await
+            .map_err(db_err)?
+            .rows_affected();
+    Ok(affected == 1)
+}
+
+pub async fn list_site_domains(pool: &SqlitePool) -> Result<Vec<SiteDomainRow>> {
+    query_as::<_, SiteDomainRow>("SELECT * FROM site_domains ORDER BY created_at, domain")
+        .fetch_all(pool)
+        .await
+        .map_err(db_err)
+}
+
+pub async fn remove_site_domain(pool: &SqlitePool, domain: &str) -> Result<bool> {
+    let affected = query("DELETE FROM site_domains WHERE domain = ?")
+        .bind(domain)
+        .execute(pool)
+        .await
+        .map_err(db_err)?
+        .rows_affected();
+    Ok(affected == 1)
+}
+
+// ---------------- issue ----------------
+
+pub struct NewIssue<'a> {
+    pub post_id: i64,
+    pub author_id: i64,
+    pub kind: &'a str,
+    pub title: &'a str,
+    pub body: &'a str,
+    pub now: i64,
+}
+
+pub async fn create_issue(pool: &SqlitePool, issue: NewIssue<'_>) -> Result<i64> {
+    let affected = query(
+        "INSERT INTO post_issues (post_id, author_id, kind, title, body, state, created_at, updated_at) \
+         VALUES (?, ?, ?, ?, ?, 'open', ?, ?)",
+    )
+    .bind(issue.post_id)
+    .bind(issue.author_id)
+    .bind(issue.kind)
+    .bind(issue.title)
+    .bind(issue.body)
+    .bind(issue.now)
+    .bind(issue.now)
+    .execute(pool)
+    .await
+    .map_err(db_err)?;
+    Ok(affected.last_insert_rowid())
+}
+
+/// 列出某帖的 issue；`include_closed = false` 时只看待处理的。
+pub async fn list_issues(
+    pool: &SqlitePool,
+    post_id: i64,
+    include_closed: bool,
+    limit: i64,
+    offset: i64,
+) -> Result<Vec<PostIssueRow>> {
+    query_as::<_, PostIssueRow>(
+        "SELECT i.id, i.post_id, i.author_id, i.kind, i.title, i.body, i.state, i.created_at, \
+                i.updated_at, u.handle AS author_handle, \
+                COALESCE(NULLIF(u.display_name, ''), u.handle) AS author_display_name, \
+                (SELECT COUNT(*) FROM issue_comments c WHERE c.issue_id = i.id AND c.deleted_at IS NULL) AS comment_count \
+         FROM post_issues i JOIN users u ON u.id = i.author_id \
+         WHERE i.post_id = ? AND (? = 1 OR i.state = 'open') \
+         ORDER BY i.state = 'open' DESC, i.id DESC LIMIT ? OFFSET ?",
+    )
+    .bind(post_id)
+    .bind(i64::from(include_closed))
+    .bind(limit.clamp(1, 100))
+    .bind(offset.max(0))
+    .fetch_all(pool)
+    .await
+    .map_err(db_err)
+}
+
+pub async fn get_issue(pool: &SqlitePool, issue_id: i64) -> Result<Option<PostIssueRow>> {
+    query_as::<_, PostIssueRow>(
+        "SELECT i.id, i.post_id, i.author_id, i.kind, i.title, i.body, i.state, i.created_at, \
+                i.updated_at, u.handle AS author_handle, \
+                COALESCE(NULLIF(u.display_name, ''), u.handle) AS author_display_name, \
+                (SELECT COUNT(*) FROM issue_comments c WHERE c.issue_id = i.id AND c.deleted_at IS NULL) AS comment_count \
+         FROM post_issues i JOIN users u ON u.id = i.author_id WHERE i.id = ?",
+    )
+    .bind(issue_id)
+    .fetch_optional(pool)
+    .await
+    .map_err(db_err)
+}
+
+/// 开 / 关 issue（权限判定在 Web 层：提 issue 的人、帖作者、管理员都行）。
+pub async fn set_issue_state(
+    pool: &SqlitePool,
+    issue_id: i64,
+    state: &str,
+    by: Option<i64>,
+    now: i64,
+) -> Result<bool> {
+    let affected = query(
+        "UPDATE post_issues SET state = ?, updated_at = ?, \
+                closed_at = CASE WHEN ? = 'closed' THEN ? ELSE NULL END, \
+                closed_by = CASE WHEN ? = 'closed' THEN ? ELSE NULL END \
+         WHERE id = ? AND state <> ?",
+    )
+    .bind(state)
+    .bind(now)
+    .bind(state)
+    .bind(now)
+    .bind(state)
+    .bind(by)
+    .bind(issue_id)
+    .bind(state)
+    .execute(pool)
+    .await
+    .map_err(db_err)?
+    .rows_affected();
+    Ok(affected == 1)
+}
+
+/// 某帖待处理的 issue 数（帖子上挂个小角标用）。
+pub async fn count_open_issues(pool: &SqlitePool, post_id: i64) -> Result<i64> {
+    let row: Option<(i64,)> =
+        query_as("SELECT COUNT(*) FROM post_issues WHERE post_id = ? AND state = 'open'")
+            .bind(post_id)
+            .fetch_optional(pool)
+            .await
+            .map_err(db_err)?;
+    Ok(row.map(|r| r.0).unwrap_or(0))
+}
+
+pub async fn add_issue_comment(
+    pool: &SqlitePool,
+    issue_id: i64,
+    author_id: i64,
+    body: &str,
+    now: i64,
+) -> Result<i64> {
+    let res = query(
+        "INSERT INTO issue_comments (issue_id, author_id, body, created_at) VALUES (?, ?, ?, ?)",
+    )
+    .bind(issue_id)
+    .bind(author_id)
+    .bind(body)
+    .bind(now)
+    .execute(pool)
+    .await
+    .map_err(db_err)?;
+    // 有新回复就把 issue 的 updated_at 顶上去（列表排序/未读判断都用它）
+    query("UPDATE post_issues SET updated_at = ? WHERE id = ?")
+        .bind(now)
+        .bind(issue_id)
+        .execute(pool)
+        .await
+        .map_err(db_err)?;
+    Ok(res.last_insert_rowid())
+}
+
+pub async fn list_issue_comments(pool: &SqlitePool, issue_id: i64) -> Result<Vec<IssueCommentRow>> {
+    query_as::<_, IssueCommentRow>(
+        "SELECT c.id, c.issue_id, c.author_id, c.body, c.created_at, u.handle AS author_handle, \
+                COALESCE(NULLIF(u.display_name, ''), u.handle) AS author_display_name \
+         FROM issue_comments c JOIN users u ON u.id = c.author_id \
+         WHERE c.issue_id = ? AND c.deleted_at IS NULL ORDER BY c.id",
+    )
+    .bind(issue_id)
+    .fetch_all(pool)
+    .await
+    .map_err(db_err)
+}
+
+// ---------------- 横幅定向 ----------------
+
+/// 设置横幅的定向用户组；空列表 = 所有人可见。
+pub async fn set_banner_groups(pool: &SqlitePool, banner_id: i64, group_ids: &[i64]) -> Result<()> {
+    let mut tx = pool.begin().await.map_err(db_err)?;
+    query("DELETE FROM banner_groups WHERE banner_id = ?")
+        .bind(banner_id)
+        .execute(&mut *tx)
+        .await
+        .map_err(db_err)?;
+    for group_id in group_ids {
+        query("INSERT OR IGNORE INTO banner_groups (banner_id, group_id) VALUES (?, ?)")
+            .bind(banner_id)
+            .bind(group_id)
+            .execute(&mut *tx)
+            .await
+            .map_err(db_err)?;
+    }
+    tx.commit().await.map_err(db_err)?;
+    Ok(())
+}
+
+pub async fn list_banner_groups(pool: &SqlitePool, banner_id: i64) -> Result<Vec<i64>> {
+    let rows: Vec<(i64,)> =
+        query_as("SELECT group_id FROM banner_groups WHERE banner_id = ? ORDER BY group_id")
+            .bind(banner_id)
+            .fetch_all(pool)
+            .await
+            .map_err(db_err)?;
+    Ok(rows.into_iter().map(|r| r.0).collect())
 }
 
 pub async fn counter_value(pool: &SqlitePool, key: &str) -> Result<i64> {

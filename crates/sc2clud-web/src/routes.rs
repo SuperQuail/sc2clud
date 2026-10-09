@@ -296,6 +296,37 @@ pub fn api_upload() -> Router<AppState> {
             "/admin/banners/{id}/active",
             axum::routing::post(crate::pages_admin::set_banner_active),
         )
+        // ---- 统一域名管理（管理员及以上）----
+        .route(
+            "/admin/domains",
+            axum::routing::get(crate::pages_admin::list_domains)
+                .post(crate::pages_admin::add_domain),
+        )
+        .route(
+            "/admin/domains/{domain}/delete",
+            axum::routing::post(crate::pages_admin::remove_domain),
+        )
+        // ---- 资源帖 issue（读公开，写要登录）----
+        .route(
+            "/p/{id}/issues",
+            axum::routing::post(crate::pages_posts::issue_create),
+        )
+        .route(
+            "/p/{id}/issues/{issue_id}/state",
+            axum::routing::post(crate::pages_posts::issue_set_state),
+        )
+        .route(
+            "/p/{id}/issues/{issue_id}/comments",
+            axum::routing::post(crate::pages_posts::issue_comment),
+        )
+        .route(
+            "/api/v1/posts/{id}/issues",
+            axum::routing::get(crate::pages_posts::issues_json),
+        )
+        .route(
+            "/api/v1/posts/{id}/issues/{issue_id}",
+            axum::routing::get(crate::pages_posts::issue_json),
+        )
 }
 
 // ------------------------------------------------------------ 工具

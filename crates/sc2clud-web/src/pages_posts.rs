@@ -687,6 +687,17 @@ pub async fn post_image_move(
     Redirect::to(&format!("/p/{id}/edit")).into_response()
 }
 
+/// 这条链接是不是本站的：站点根（配置）+ `site_domains` 表（统一域名管理）。
+async fn is_our_link(state: &AppState, url: &str) -> AppResult<bool> {
+    let mut allowed: Vec<String> = repo::list_site_domains(state.db.pool())
+        .await?
+        .into_iter()
+        .map(|row| row.domain)
+        .collect();
+    allowed.push(state.config.server.base_url.clone());
+    Ok(sc2clud_core::community::is_site_link(url, &allowed))
+}
+
 #[derive(Debug, Deserialize)]
 pub struct ResolveQuery {
     pub url: String,
@@ -694,12 +705,16 @@ pub struct ResolveQuery {
 
 /// 把站内帖子链接解析成帖子标题。
 ///
-/// 域名/路径前缀都不看（`core::community::parse_post_link`），所以以后加域名不用改这里；
+/// 域名必须是**我们自己的**：配置里的站点根 + `site_domains` 表（统一域名管理）；
+/// 路径前缀不看（`core::community::parse_post_link`），所以现在/以后加域名都不用改这里。
 /// 只返回「已通过、未删除、未归档」的帖子，避免拿它探测草稿。
 pub async fn resolve_post_link(
     State(state): State<AppState>,
     axum::extract::Query(query): axum::extract::Query<ResolveQuery>,
 ) -> AppResult<Response> {
+    if !is_our_link(&state, &query.url).await? {
+        return Err(AppError::not_found("这不是本站的链接"));
+    }
     let Some(id) = sc2clud_core::community::parse_post_link(&query.url) else {
         return Err(AppError::not_found("链接里没有帖子号"));
     };
@@ -763,6 +778,247 @@ pub async fn resource_status_json(
         .map(|s| s.label())
         .unwrap_or("持续更新");
     Ok(axum::Json(serde_json::json!({ "status": raw, "label": label })).into_response())
+}
+
+#[derive(Debug, Deserialize)]
+pub struct IssueForm {
+    pub csrf: String,
+    pub kind: String,
+    pub title: String,
+    pub body: Option<String>,
+}
+
+/// 提 issue（bug / 功能建议）。门槛与回帖一致：登录 + 已激活 + 分区允许回帖。
+pub async fn issue_create(
+    State(state): State<AppState>,
+    Path(id): Path<i64>,
+    headers: HeaderMap,
+    Form(form): Form<IssueForm>,
+) -> Response {
+    match add_issue(&state, id, &headers, &form).await {
+        Ok(issue_id) => Redirect::to(&format!("/p/{id}?issue={issue_id}")).into_response(),
+        Err(e) => e.into_page_response(true),
+    }
+}
+
+async fn add_issue(
+    state: &AppState,
+    post_id: i64,
+    headers: &HeaderMap,
+    form: &IssueForm,
+) -> AppResult<i64> {
+    let user = require_user(state, headers).await?;
+    session::guard(Some(&user), Permission::Comment)?;
+    session::check_csrf(&user, &form.csrf)?;
+    let post = repo::get_post_for(state.db.pool(), post_id, Some(user.id), user.is_staff())
+        .await?
+        .ok_or_else(|| AppError::not_found("帖子不存在或不可见"))?;
+    ensure_section_action(state, &user, &post.section, false).await?;
+    let kind = sc2clud_core::community::IssueKind::parse(&form.kind)?;
+    let title = form.title.trim();
+    if title.chars().count() < 2 || title.chars().count() > 80 {
+        return Err(AppError::Domain(DomainError::InvalidInput(
+            "标题要 2~80 个字".to_string(),
+        )));
+    }
+    let body = form.body.as_deref().unwrap_or_default().trim();
+    if body.chars().count() > 5000 {
+        return Err(AppError::Domain(DomainError::InvalidInput(
+            "正文最多 5000 字".to_string(),
+        )));
+    }
+    let issue_id = repo::create_issue(
+        state.db.pool(),
+        repo::NewIssue {
+            post_id,
+            author_id: user.id,
+            kind: kind.as_str(),
+            title,
+            body,
+            now: now_unix(),
+        },
+    )
+    .await?;
+    tracing::info!(
+        post.id = post_id,
+        issue.id = issue_id,
+        kind = kind.as_str(),
+        "新 issue"
+    );
+    Ok(issue_id)
+}
+
+#[derive(Debug, Deserialize)]
+pub struct IssueStateForm {
+    pub csrf: String,
+    pub state: String,
+}
+
+/// 关 / 重开 issue：提 issue 的人、帖作者、管理员及以上都可以。
+pub async fn issue_set_state(
+    State(state): State<AppState>,
+    Path((id, issue_id)): Path<(i64, i64)>,
+    headers: HeaderMap,
+    Form(form): Form<IssueStateForm>,
+) -> Response {
+    let user = match require_user(&state, &headers).await {
+        Ok(user) => user,
+        Err(e) => return e.into_page_response(true),
+    };
+    let Some(issue) = (match repo::get_issue(state.db.pool(), issue_id).await {
+        Ok(issue) => issue,
+        Err(e) => return AppError::from(e).into_response(),
+    }) else {
+        return AppError::not_found("issue 不存在").into_page_response(true);
+    };
+    let post = match repo::get_post_for(state.db.pool(), id, Some(user.id), user.is_staff()).await {
+        Ok(Some(post)) => post,
+        Ok(None) => return AppError::not_found("帖子不存在").into_page_response(true),
+        Err(e) => return AppError::from(e).into_response(),
+    };
+    let allowed = issue.post_id == id
+        && (issue.author_id == user.id || post.author_id == user.id || user.is_staff());
+    if !allowed {
+        return AppError::Domain(DomainError::Forbidden(
+            "只有提 issue 的人、帖作者或管理员能关闭".to_string(),
+        ))
+        .into_page_response(true);
+    }
+    if let Err(e) = session::check_csrf(&user, &form.csrf) {
+        return e.into_page_response(true);
+    }
+    let target = match sc2clud_core::community::IssueState::parse(&form.state) {
+        Ok(state) => state,
+        Err(e) => return AppError::from(e).into_page_response(true),
+    };
+    if let Err(e) = repo::set_issue_state(
+        state.db.pool(),
+        issue_id,
+        target.as_str(),
+        Some(user.id),
+        now_unix(),
+    )
+    .await
+    {
+        return AppError::from(e).into_response();
+    }
+    Redirect::to(&format!("/p/{id}?issue={issue_id}")).into_response()
+}
+
+#[derive(Debug, Deserialize)]
+pub struct IssueCommentForm {
+    pub csrf: String,
+    pub body: String,
+}
+
+/// 在 issue 下回复。
+pub async fn issue_comment(
+    State(state): State<AppState>,
+    Path((id, issue_id)): Path<(i64, i64)>,
+    headers: HeaderMap,
+    Form(form): Form<IssueCommentForm>,
+) -> Response {
+    let user = match require_user(&state, &headers).await {
+        Ok(user) => user,
+        Err(e) => return e.into_page_response(true),
+    };
+    if let Err(e) = session::guard(Some(&user), Permission::Comment)
+        .and_then(|()| session::check_csrf(&user, &form.csrf))
+    {
+        return e.into_page_response(true);
+    }
+    let body = form.body.trim();
+    if body.chars().count() < 2 || body.chars().count() > 5000 {
+        return AppError::Domain(DomainError::InvalidInput("回复要 2~5000 字".to_string()))
+            .into_page_response(true);
+    }
+    match repo::get_issue(state.db.pool(), issue_id).await {
+        Ok(Some(issue)) if issue.post_id == id => {}
+        Ok(_) => return AppError::not_found("issue 不存在").into_page_response(true),
+        Err(e) => return AppError::from(e).into_response(),
+    }
+    if let Err(e) =
+        repo::add_issue_comment(state.db.pool(), issue_id, user.id, body, now_unix()).await
+    {
+        return AppError::from(e).into_response();
+    }
+    Redirect::to(&format!("/p/{id}?issue={issue_id}")).into_response()
+}
+
+#[derive(Debug, Deserialize)]
+pub struct IssueQuery {
+    pub all: Option<String>,
+}
+
+/// 某帖的 issue 列表（JSON，前端 issue 面板用）。
+pub async fn issues_json(
+    State(state): State<AppState>,
+    Path(id): Path<i64>,
+    axum::extract::Query(query): axum::extract::Query<IssueQuery>,
+) -> AppResult<Response> {
+    if repo::resolved_post_title(state.db.pool(), id)
+        .await?
+        .is_none()
+    {
+        return Err(AppError::not_found("帖子不存在或不可见"));
+    }
+    let include_closed = matches!(query.all.as_deref(), Some("1") | Some("true"));
+    let rows = repo::list_issues(state.db.pool(), id, include_closed, 50, 0).await?;
+    let issues: Vec<serde_json::Value> = rows
+        .into_iter()
+        .map(|row| {
+            serde_json::json!({
+                "id": row.id,
+                "kind": row.kind,
+                "kind_label": sc2clud_core::community::IssueKind::parse(&row.kind)
+                    .map(|k| k.label())
+                    .unwrap_or("其它"),
+                "title": row.title,
+                "body": row.body,
+                "state": row.state,
+                "state_label": sc2clud_core::community::IssueState::parse(&row.state)
+                    .map(|s| s.label())
+                    .unwrap_or("待处理"),
+                "author": row.author_display_name,
+                "author_handle": row.author_handle,
+                "comments": row.comment_count,
+                "created_at": row.created_at,
+            })
+        })
+        .collect();
+    Ok(axum::Json(serde_json::json!({ "issues": issues })).into_response())
+}
+
+/// 单个 issue + 回复（JSON）。
+pub async fn issue_json(
+    State(state): State<AppState>,
+    Path((_id, issue_id)): Path<(i64, i64)>,
+) -> AppResult<Response> {
+    let issue = repo::get_issue(state.db.pool(), issue_id)
+        .await?
+        .ok_or_else(|| AppError::not_found("issue 不存在"))?;
+    let comments = repo::list_issue_comments(state.db.pool(), issue_id).await?;
+    let comments: Vec<serde_json::Value> = comments
+        .into_iter()
+        .map(|c| {
+            serde_json::json!({
+                "id": c.id,
+                "body": c.body,
+                "author": c.author_display_name,
+                "author_handle": c.author_handle,
+                "created_at": c.created_at,
+            })
+        })
+        .collect();
+    Ok(axum::Json(serde_json::json!({
+        "id": issue.id,
+        "title": issue.title,
+        "body": issue.body,
+        "kind": issue.kind,
+        "state": issue.state,
+        "comments": comments,
+    }))
+    .into_response())
 }
 
 pub async fn comment_submit(

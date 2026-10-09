@@ -164,6 +164,153 @@ impl ResourceStatus {
     }
 }
 
+/// 把域名规范化：小写、去端口、去开头 `www.`、去结尾的点。
+///
+/// 「哪些域名是我们的」统一按这个形状比较，避免 `WWW.X.fun:80` 与 `x.fun` 被当成两个站。
+pub fn normalize_domain(raw: &str) -> Option<String> {
+    // 允许传完整 URL：先剥掉协议
+    let raw = raw.trim();
+    let raw = raw.split("://").nth(1).unwrap_or(raw);
+    let host = raw.split(['/', '?', '#']).next()?;
+    let host = host.split('@').next_back()?;
+    let host = host.split(':').next()?;
+    let host = host.trim().trim_end_matches('.').to_ascii_lowercase();
+    if host.is_empty() || !host.contains('.') {
+        return None;
+    }
+    Some(host.strip_prefix("www.").unwrap_or(&host).to_string())
+}
+
+/// 取链接的域名（规范化后）。没写协议的也认：`x.fun/p/1` → `x.fun`。
+pub fn link_domain(raw: &str) -> Option<String> {
+    let rest = raw.trim();
+    let after_scheme = rest.split("://").nth(1).unwrap_or(rest);
+    normalize_domain(after_scheme)
+}
+
+/// 链接是不是本站的：域名在允许集合里（忽略协议、大小写、`www.`、端口）。
+pub fn is_site_link(raw: &str, allowed: &[String]) -> bool {
+    let Some(domain) = link_domain(raw) else {
+        return false;
+    };
+    allowed
+        .iter()
+        .filter_map(|entry| normalize_domain(entry))
+        .any(|entry| entry == domain)
+}
+
+/// issue 类型：bug / 功能建议 / 其它。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum IssueKind {
+    Bug,
+    Feature,
+    Other,
+}
+
+impl IssueKind {
+    pub const ALL: [IssueKind; 3] = [IssueKind::Bug, IssueKind::Feature, IssueKind::Other];
+
+    pub fn as_str(self) -> &'static str {
+        match self {
+            IssueKind::Bug => "bug",
+            IssueKind::Feature => "feature",
+            IssueKind::Other => "other",
+        }
+    }
+
+    pub fn label(self) -> &'static str {
+        match self {
+            IssueKind::Bug => "Bug 反馈",
+            IssueKind::Feature => "功能建议",
+            IssueKind::Other => "其它",
+        }
+    }
+
+    pub fn parse(raw: &str) -> Result<Self, crate::Error> {
+        match raw.trim() {
+            "bug" => Ok(IssueKind::Bug),
+            "feature" => Ok(IssueKind::Feature),
+            "other" => Ok(IssueKind::Other),
+            other => Err(crate::Error::InvalidInput(format!(
+                "未知 issue 类型：{other}"
+            ))),
+        }
+    }
+}
+
+/// issue 状态：开着 / 已关闭。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum IssueState {
+    Open,
+    Closed,
+}
+
+impl IssueState {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            IssueState::Open => "open",
+            IssueState::Closed => "closed",
+        }
+    }
+
+    pub fn label(self) -> &'static str {
+        match self {
+            IssueState::Open => "待处理",
+            IssueState::Closed => "已关闭",
+        }
+    }
+
+    pub fn parse(raw: &str) -> Result<Self, crate::Error> {
+        match raw.trim() {
+            "open" => Ok(IssueState::Open),
+            "closed" => Ok(IssueState::Closed),
+            other => Err(crate::Error::InvalidInput(format!(
+                "未知 issue 状态：{other}"
+            ))),
+        }
+    }
+}
+
+#[cfg(test)]
+mod domain_tests {
+    use super::*;
+
+    #[test]
+    fn normalizes_domains_the_same_way() {
+        for (raw, want) in [
+            ("WWW.X.fun", "x.fun"),
+            ("x.fun:8080", "x.fun"),
+            ("xn--xpra07ba.fun.", "xn--xpra07ba.fun"),
+            ("https://www.x.fun/p/1", "x.fun"),
+            ("user:pw@x.fun", "x.fun"),
+        ] {
+            assert_eq!(normalize_domain(raw).as_deref(), Some(want), "{raw}");
+        }
+        assert!(normalize_domain("localhost").is_none());
+        assert!(normalize_domain("").is_none());
+    }
+
+    #[test]
+    fn accepts_only_our_domains() {
+        let ours = vec!["xn--xpra07ba.fun".to_string(), "x.fun".to_string()];
+        assert!(is_site_link("http://www.xn--xpra07ba.fun/p/12", &ours));
+        assert!(is_site_link("https://x.fun/dev/p/12", &ours));
+        assert!(is_site_link("X.FUN:443/p/12", &ours), "没写协议也认");
+        assert!(!is_site_link("https://evil.example/p/12", &ours));
+        assert!(!is_site_link("not a link", &ours));
+    }
+
+    #[test]
+    fn issue_enums_round_trip() {
+        for kind in IssueKind::ALL {
+            assert_eq!(IssueKind::parse(kind.as_str()).expect("ok"), kind);
+        }
+        for state in [IssueState::Open, IssueState::Closed] {
+            assert_eq!(IssueState::parse(state.as_str()).expect("ok"), state);
+        }
+        assert!(IssueKind::parse("nope").is_err());
+    }
+}
 #[cfg(test)]
 mod link_tests {
     use super::*;

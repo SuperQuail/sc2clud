@@ -143,6 +143,42 @@ pub struct ExpEventRow {
     pub created_at: i64,
 }
 
+/// 站点域名（统一管理「哪些域名是我们的」）。
+#[derive(Debug, Clone, FromRow)]
+pub struct SiteDomainRow {
+    pub domain: String,
+    pub note: String,
+    pub created_at: i64,
+}
+
+/// 资源帖 issue（列表带作者与回复数）。
+#[derive(Debug, Clone, FromRow)]
+pub struct PostIssueRow {
+    pub id: i64,
+    pub post_id: i64,
+    pub author_id: i64,
+    pub kind: String,
+    pub title: String,
+    pub body: String,
+    pub state: String,
+    pub created_at: i64,
+    pub updated_at: i64,
+    pub author_handle: String,
+    pub author_display_name: String,
+    pub comment_count: i64,
+}
+
+/// issue 下的回复。
+#[derive(Debug, Clone, FromRow)]
+pub struct IssueCommentRow {
+    pub id: i64,
+    pub issue_id: i64,
+    pub author_id: i64,
+    pub body: String,
+    pub created_at: i64,
+    pub author_handle: String,
+    pub author_display_name: String,
+}
 /// 横幅。
 #[derive(Debug, Clone, FromRow)]
 pub struct BannerRow {
