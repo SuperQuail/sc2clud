@@ -199,15 +199,23 @@ async fn build_post_page<'a>(
     id: i64,
     headers: &HeaderMap,
     ui: Option<&str>,
+    dui: Option<&str>,
+    nui: Option<&str>,
 ) -> AppResult<PostPageTemplate<'a>> {
     // 预览开关：只有开发实例看这个参数（生产恒为样式 1，预览代码不影响线上）
-    let ui_variant = if state.config.server.debug_pages {
-        ui.and_then(|value| value.parse::<u8>().ok())
-            .filter(|value| (1..=3).contains(value))
-            .unwrap_or(1)
-    } else {
-        1
+    // 生产恒用已评审通过的样式：菜单=2（分组下拉）、赞助=1、提示=1
+    let pick = |raw: Option<&str>, fallback: u8| -> u8 {
+        if state.config.server.debug_pages {
+            raw.and_then(|value| value.parse::<u8>().ok())
+                .filter(|value| (1..=3).contains(value))
+                .unwrap_or(fallback)
+        } else {
+            fallback
+        }
     };
+    let ui_variant = pick(ui, 2);
+    let donate_variant = pick(dui, 1);
+    let notice_variant = pick(nui, 1);
     let user = session::current_user(state, headers).await?;
     let viewer_id = user.as_ref().map(|u| u.id);
     let is_staff = user.as_ref().is_some_and(CurrentUser::is_staff);
@@ -312,6 +320,8 @@ async fn build_post_page<'a>(
         .collect();
     Ok(PostPageTemplate {
         ui_variant,
+        donate_variant,
+        notice_variant,
         site_name: &state.config.server.site_name,
         donation_visible: showcase.donation_visible && !donation_channels.is_empty(),
         donation_channels,
@@ -390,6 +400,9 @@ async fn build_post_page<'a>(
 pub struct UiQuery {
     /// 预览用的界面样式编号（1/2/3）。
     ui: Option<String>,
+    /// 赞助弹窗 / 提示的预览样式编号。
+    dui: Option<String>,
+    nui: Option<String>,
 }
 
 pub async fn post_page(
@@ -398,7 +411,16 @@ pub async fn post_page(
     headers: HeaderMap,
     axum::extract::Query(query): axum::extract::Query<UiQuery>,
 ) -> Response {
-    match build_post_page(&state, id, &headers, query.ui.as_deref()).await {
+    match build_post_page(
+        &state,
+        id,
+        &headers,
+        query.ui.as_deref(),
+        query.dui.as_deref(),
+        query.nui.as_deref(),
+    )
+    .await
+    {
         Ok(template) => render(template),
         Err(e) => e.into_page_response(wants_html(&headers)),
     }
