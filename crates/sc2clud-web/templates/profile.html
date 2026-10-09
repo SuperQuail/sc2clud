@@ -14,9 +14,8 @@
   const show = (v) => { modal.hidden = !v; };
   openBtn.addEventListener('click', () => {
     show(true);
-    // 关键：文件输入在 hidden 容器里时，浏览器**不会**打开选择框（点不动就是这个原因）
+    // 容器不能是 hidden：否则里面的文件输入点不动（浏览器不给隐藏元素弹选择框）
     document.getElementById('avatar-editor').hidden = false;
-    document.getElementById('avatar-input').click();
   });
   // 头衔：点一下弹出「我持有的头衔」
   const titleBtn = document.getElementById('title-toggle');
@@ -56,6 +55,7 @@
       <h1 class="profile-name">{{ display_name }}
       {% if !my_titles.is_empty() %}
       {# 本人：点头衔弹出「我持有的头衔」列表 #}
+      <span class="title-wrap">
       <button type="button" class="title-badge tv{{ title_variant }} title-toggle" id="title-toggle"{% if let Some(t) = title %} style="--tc: {{ t.color }}"{% endif %}>{% if let Some(t) = title %}{{ t.name }}{% else %}佩戴头衔{% endif %}</button>
       <div class="title-picker" id="title-picker" hidden>
         {% for item in my_titles %}
@@ -71,6 +71,7 @@
           <button class="title-option" type="submit">不佩戴</button>
         </form>
       </div>
+      </span>
       {% else if let Some(title) = title %}<span class="title-badge tv{{ title_variant }}"{% if !title.color.is_empty() %} style="--tc: {{ title.color }}"{% endif %}>{{ title.name }}</span>{% endif %}
       </h1>
       <p class="meta">@{{ handle }} · {{ role_label }} · 加入于 {{ joined_at }}</p>
@@ -94,7 +95,9 @@
   .profile-bio{margin:10px 0 0;line-height:1.8;opacity:.92;white-space:pre-wrap}
   /* 头衔：三套设计（?tui=1/2/3；生产用 1） */
   .title-toggle{cursor:pointer;font:inherit}
-  .title-picker{position:absolute;z-index:40;margin-top:6px;background:var(--card,#fff);border:1px solid var(--line,#e5e7eb);border-radius:10px;padding:6px;display:flex;flex-direction:column;gap:4px;box-shadow:0 10px 28px rgba(0,0,0,.16)}
+  .title-wrap{position:relative;display:inline-block;vertical-align:middle}
+  /* 紧贴胶囊正下方展开（之前没定位容器，所以飘到别处去了） */
+  .title-picker{position:absolute;top:100%;left:0;margin-top:6px;z-index:40;min-width:160px;background:var(--card,#fff);border:1px solid var(--line,#e5e7eb);border-radius:10px;padding:6px;display:flex;flex-direction:column;gap:4px;box-shadow:0 10px 28px rgba(0,0,0,.16)}
   .title-picker[hidden]{display:none}
   .title-option{padding:6px 12px;border:1px solid var(--line,#e5e7eb);border-radius:999px;background:none;color:var(--tc,inherit);font:inherit;font-size:13px;cursor:pointer;text-align:left}
   .title-option.active{border-color:var(--tc,#2563eb);font-weight:600}
