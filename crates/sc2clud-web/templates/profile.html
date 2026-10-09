@@ -22,9 +22,9 @@
   </div>
 {# 简介 + 赞助入口：三种头部样式（header_variant），生产用样式 1 #}
   {% if header_variant == 2 %}
+  {# 方案 2：简介单独一行，赞助按钮由卡片右下角承载（见下） #}
   <div class="profile-head-2">
     <div>{% if let Some(text) = bio %}<p class="profile-bio">{{ text }}</p>{% endif %}</div>
-    {% if donation_visible %}<button type="button" class="donate-cta aside" id="donate-open"><span class="donate-cta-title">赞助作者</span><span class="donate-cta-sub">支持 {{ display_name }} 继续创作</span></button>{% endif %}
   </div>
   {% else if header_variant == 3 %}
   {% if let Some(text) = bio %}<blockquote class="profile-bio-quote">{{ text }}</blockquote>{% endif %}
@@ -39,8 +39,17 @@
   .profile-head-2{display:flex;gap:18px;align-items:flex-start;justify-content:space-between;margin-top:12px;flex-wrap:wrap}
   .donate-cta{margin-top:14px}
   .donate-cta.aside{margin-top:0;min-width:220px;width:auto}
+  /* 右下角定位：卡片底部整行右对齐 */
+  .profile-donate-corner{display:flex;justify-content:flex-end;margin-top:16px}
   .donate-cta.center{max-width:320px;margin-left:auto;margin-right:auto}
   </style>
+
+  {% if header_variant == 2 && donation_visible %}
+  {# 右下角赞助入口：右对齐固定在卡片底部 #}
+  <div class="profile-donate-corner">
+    <button type="button" class="donate-cta aside" id="donate-open"><span class="donate-cta-title">赞助作者</span><span class="donate-cta-sub">支持 {{ display_name }} 继续创作</span></button>
+  </div>
+  {% endif %}
 
   {% if can_interact %}
   <div class="actions-inline" style="margin-top:14px">
