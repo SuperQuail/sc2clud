@@ -1049,6 +1049,8 @@ pub async fn list_feed_filtered(
                 (SELECT COUNT(*) FROM post_bookmarks pb WHERE pb.post_id = p.id) AS bookmark_count \
          FROM posts p JOIN users u ON u.id = p.author_id \
          WHERE p.deleted_at IS NULL AND p.archived_at IS NULL \
+           -- 归档分区的内容不再出现在列表里（内容本身保留，取回分区即恢复）
+           AND NOT EXISTS (SELECT 1 FROM sections sec WHERE sec.key = p.section AND sec.archived_at IS NOT NULL) \
            AND (?5 = '' OR p.section = ?5) \
            AND (?6 = '' OR instr(lower(p.title || ' ' || p.body), lower(?6)) > 0) \
            AND (p.review_state = 'approved' \
@@ -1120,7 +1122,9 @@ pub async fn list_posts_by_author(
                 (SELECT COUNT(*) FROM post_likes pl WHERE pl.post_id = p.id) AS like_count, \
                 (SELECT COUNT(*) FROM post_bookmarks pb WHERE pb.post_id = p.id) AS bookmark_count \
          FROM posts p JOIN users u ON u.id = p.author_id \
-         WHERE p.deleted_at IS NULL AND p.archived_at IS NULL AND p.author_id = ?1 \
+         WHERE p.deleted_at IS NULL AND p.archived_at IS NULL \
+           AND NOT EXISTS (SELECT 1 FROM sections sec WHERE sec.key = p.section AND sec.archived_at IS NOT NULL) \
+           AND p.author_id = ?1 \
            AND (p.review_state = 'approved' OR ?2 = 1) \
          ORDER BY p.created_at DESC, p.id DESC LIMIT ?3",
     )
@@ -2635,14 +2639,33 @@ pub async fn set_group_section_rule(
     can_post: bool,
     can_reply: bool,
 ) -> Result<()> {
+    // 兼容旧调用：只给「允许」时禁止位清零
+    set_group_section_rule_full(pool, group_id, section, can_post, can_reply, false, false).await
+}
+
+/// 完整版：允许 / 禁止 一起设（禁止优先）。
+pub async fn set_group_section_rule_full(
+    pool: &SqlitePool,
+    group_id: i64,
+    section: &str,
+    can_post: bool,
+    can_reply: bool,
+    deny_post: bool,
+    deny_reply: bool,
+) -> Result<()> {
     query(
-        "INSERT INTO group_section_rules (group_id, section, can_post, can_reply) VALUES (?, ?, ?, ?) \
-         ON CONFLICT(group_id, section) DO UPDATE SET can_post = excluded.can_post, can_reply = excluded.can_reply",
+        "INSERT INTO group_section_rules (group_id, section, can_post, can_reply, deny_post, deny_reply) \
+         VALUES (?, ?, ?, ?, ?, ?) \
+         ON CONFLICT(group_id, section) DO UPDATE SET can_post = excluded.can_post, \
+             can_reply = excluded.can_reply, deny_post = excluded.deny_post, \
+             deny_reply = excluded.deny_reply",
     )
     .bind(group_id)
     .bind(section)
     .bind(i64::from(can_post))
     .bind(i64::from(can_reply))
+    .bind(i64::from(deny_post))
+    .bind(i64::from(deny_reply))
     .execute(pool)
     .await
     .map_err(db_err)?;
@@ -2993,6 +3016,7 @@ pub async fn search_posts(
                 (SELECT COUNT(*) FROM comments c WHERE c.post_id = p.id AND c.deleted_at IS NULL) AS comment_count \
          FROM posts p JOIN users u ON u.id = p.author_id \
          WHERE p.deleted_at IS NULL AND p.archived_at IS NULL AND p.review_state = 'approved' \
+           AND NOT EXISTS (SELECT 1 FROM sections sec WHERE sec.key = p.section AND sec.archived_at IS NOT NULL) \
            AND (? = '' OR p.section = ?) \
            AND (p.title LIKE ? ESCAPE '\\' OR p.body LIKE ? ESCAPE '\\') \
          ORDER BY (p.title LIKE ? ESCAPE '\\') DESC, p.pinned_rank DESC, p.created_at DESC \
@@ -3025,7 +3049,9 @@ pub async fn list_featured_posts(
                 (SELECT COUNT(*) FROM comments c WHERE c.post_id = p.id AND c.deleted_at IS NULL) AS comment_count \
          FROM posts p JOIN users u ON u.id = p.author_id \
          WHERE p.deleted_at IS NULL AND p.archived_at IS NULL AND p.review_state = 'approved' \
-           AND p.featured_at IS NOT NULL AND (? = '' OR p.section = ?) \
+           AND p.featured_at IS NOT NULL \
+           AND NOT EXISTS (SELECT 1 FROM sections sec WHERE sec.key = p.section AND sec.archived_at IS NOT NULL) \
+           AND (? = '' OR p.section = ?) \
          ORDER BY p.featured_at DESC LIMIT ?",
     )
     .bind(section)
@@ -3301,7 +3327,28 @@ pub async fn create_issue(pool: &SqlitePool, issue: NewIssue<'_>) -> Result<i64>
     .execute(pool)
     .await
     .map_err(db_err)?;
-    Ok(affected.last_insert_rowid())
+    let issue_id = affected.last_insert_rowid();
+    // 通知帖作者：有人给他提了 issue（自己提的不通知）
+    let author: Option<(i64, String)> = query_as("SELECT author_id, title FROM posts WHERE id = ?")
+        .bind(issue.post_id)
+        .fetch_optional(pool)
+        .await
+        .map_err(db_err)?;
+    if let Some((post_author, post_title)) = author
+        && post_author != issue.author_id
+    {
+        let _ = notify(
+            pool,
+            post_author,
+            "issue",
+            &format!("《{post_title}》收到新的 {}：{}", issue.kind, issue.title),
+            Some(issue.body),
+            Some(&format!("/p/{}", issue.post_id)),
+            issue.now,
+        )
+        .await;
+    }
+    Ok(issue_id)
 }
 
 /// 列出某帖的 issue；`include_closed = false` 时只看待处理的。
@@ -3408,6 +3455,27 @@ pub async fn add_issue_comment(
         .execute(pool)
         .await
         .map_err(db_err)?;
+    // 通知 issue 提出者：有人回复了（自己回自己的不通知）
+    let issue: Option<(i64, i64, String)> =
+        query_as("SELECT post_id, author_id, title FROM post_issues WHERE id = ?")
+            .bind(issue_id)
+            .fetch_optional(pool)
+            .await
+            .map_err(db_err)?;
+    if let Some((post_id, issue_author, issue_title)) = issue
+        && issue_author != author_id
+    {
+        let _ = notify(
+            pool,
+            issue_author,
+            "issue_reply",
+            &format!("你的 issue「{issue_title}」有新回复"),
+            Some(body),
+            Some(&format!("/p/{post_id}")),
+            now,
+        )
+        .await;
+    }
     Ok(res.last_insert_rowid())
 }
 
@@ -3454,6 +3522,143 @@ pub async fn list_banner_groups(pool: &SqlitePool, banner_id: i64) -> Result<Vec
             .await
             .map_err(db_err)?;
     Ok(rows.into_iter().map(|r| r.0).collect())
+}
+// ---------------------------------------------------------------- 后端补完：能力判定 / 通知 / 推送 / 头衔 / 经验
+
+/// 某人在某分区的完整能力：**角色门槛 + 用户组规则（含禁止）+ 是否分区管理员**。
+///
+/// 一个函数给出全部判定，避免调用方自己拼（拼错一处就是一个越权口子）。
+pub async fn section_capabilities(
+    pool: &SqlitePool,
+    user_id: i64,
+    role: sc2clud_core::auth::Role,
+    section: &str,
+) -> Result<Option<sc2clud_core::community::SectionCapabilities>> {
+    use sc2clud_core::community::{RuleVerdict, SectionCapabilities, resolve_section_action};
+    let Some(record) = get_section(pool, section).await? else {
+        return Ok(None);
+    };
+    let rules = group_rules_for_user_section(pool, user_id, section).await?;
+    let post_verdicts: Vec<RuleVerdict> = rules
+        .iter()
+        .map(|rule| RuleVerdict::from_flags(rule.deny_post, rule.can_post))
+        .collect();
+    let reply_verdicts: Vec<RuleVerdict> = rules
+        .iter()
+        .map(|rule| RuleVerdict::from_flags(rule.deny_reply, rule.can_reply))
+        .collect();
+    let is_moderator = is_section_moderator(pool, section, user_id).await?;
+    Ok(Some(SectionCapabilities {
+        can_post: resolve_section_action(record.can_post(Some(role)), &post_verdicts),
+        can_reply: resolve_section_action(record.can_reply(Some(role)), &reply_verdicts),
+        is_moderator,
+    }))
+}
+
+/// 按用户组推送帖子：标记 pushed_at + 给这些组的成员写通知（跳过作者自己）。
+///
+/// 一条 SQL 扇出，避免按成员逐个 insert（组可能几百人）。
+pub async fn push_post_to_groups(
+    pool: &SqlitePool,
+    post_id: i64,
+    group_ids: &[i64],
+    now: i64,
+) -> Result<u64> {
+    if group_ids.is_empty() {
+        return Ok(0);
+    }
+    let placeholders = group_ids.iter().map(|_| "?").collect::<Vec<_>>().join(",");
+    let title: Option<(String, i64)> =
+        query_as("SELECT title, author_id FROM posts WHERE id = ? AND deleted_at IS NULL")
+            .bind(post_id)
+            .fetch_optional(pool)
+            .await
+            .map_err(db_err)?;
+    let Some((post_title, author_id)) = title else {
+        return Ok(0);
+    };
+    let sql = format!(
+        "INSERT INTO notifications (user_id, kind, title, body, link, created_at) \
+         SELECT DISTINCT m.user_id, 'push', ?, NULL, ?, ? \
+         FROM user_group_members m JOIN user_groups g ON g.id = m.group_id \
+         WHERE m.group_id IN ({placeholders}) AND g.archived_at IS NULL AND m.user_id <> ?"
+    );
+    let mut q = query(&sql).bind(format!("新帖：{post_title}"));
+    q = q.bind(format!("/p/{post_id}"));
+    q = q.bind(now);
+    for group_id in group_ids {
+        q = q.bind(group_id);
+    }
+    q = q.bind(author_id);
+    let sent = q.execute(pool).await.map_err(db_err)?.rows_affected();
+    query("UPDATE posts SET pushed_at = ? WHERE id = ?")
+        .bind(now)
+        .bind(post_id)
+        .execute(pool)
+        .await
+        .map_err(db_err)?;
+    Ok(sent)
+}
+
+/// 某人当前佩戴的头衔（没戴或没头衔则为 None）。
+pub async fn equipped_title_for(pool: &SqlitePool, user_id: i64) -> Result<Option<TitleRow>> {
+    query_as::<_, TitleRow>(
+        "SELECT t.* FROM titles t JOIN users u ON u.equipped_title_id = t.id WHERE u.id = ?",
+    )
+    .bind(user_id)
+    .fetch_optional(pool)
+    .await
+    .map_err(db_err)
+}
+
+/// 批量取「用户 → 佩戴的头衔」，给列表渲染用（一次查询，不做 N+1）。
+pub async fn equipped_titles_for(
+    pool: &SqlitePool,
+    user_ids: &[i64],
+) -> Result<Vec<(i64, TitleRow)>> {
+    if user_ids.is_empty() {
+        return Ok(Vec::new());
+    }
+    let placeholders = user_ids.iter().map(|_| "?").collect::<Vec<_>>().join(",");
+    let sql = format!(
+        "SELECT u.id AS uid, t.id, t.key, t.name, t.color, t.description, t.archived_at \
+         FROM users u JOIN titles t ON t.id = u.equipped_title_id WHERE u.id IN ({placeholders})"
+    );
+    let mut q = query_as::<_, (i64, i64, String, String, String, String, Option<i64>)>(&sql);
+    for user_id in user_ids {
+        q = q.bind(user_id);
+    }
+    let rows: Vec<(i64, i64, String, String, String, String, Option<i64>)> =
+        q.fetch_all(pool).await.map_err(db_err)?;
+    Ok(rows
+        .into_iter()
+        .map(
+            |(user_id, id, key, name, color, description, archived_at)| {
+                (
+                    user_id,
+                    TitleRow {
+                        id,
+                        key,
+                        name,
+                        color,
+                        description,
+                        archived_at,
+                    },
+                )
+            },
+        )
+        .collect())
+}
+
+/// 按动作发经验（数值来自 `core::community::ExpAction`，触发点由业务层决定）。
+pub async fn award_exp(
+    pool: &SqlitePool,
+    user_id: i64,
+    action: sc2clud_core::community::ExpAction,
+    reference: Option<&str>,
+    now: i64,
+) -> Result<(i64, i64)> {
+    add_exp(pool, user_id, action.exp(), action.as_str(), reference, now).await
 }
 
 pub async fn counter_value(pool: &SqlitePool, key: &str) -> Result<i64> {

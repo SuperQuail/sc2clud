@@ -110,6 +110,9 @@ pub struct GroupSectionRuleRow {
     pub section: String,
     pub can_post: i64,
     pub can_reply: i64,
+    /// 明确禁止（优先于允许与角色门槛）。
+    pub deny_post: i64,
+    pub deny_reply: i64,
 }
 
 /// 头衔。

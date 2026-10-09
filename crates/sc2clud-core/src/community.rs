@@ -271,6 +271,118 @@ impl IssueState {
     }
 }
 
+/// 一条组规则在「发帖 / 回帖」上的态度。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum RuleVerdict {
+    /// 没表态（不影响判定）。
+    Neutral,
+    /// 明确允许（白名单加成）。
+    Allow,
+    /// 明确禁止（优先于允许与角色门槛）。
+    Deny,
+}
+
+impl RuleVerdict {
+    /// 由组规则的三个整数位拼出态度（禁止 > 允许 > 不表态）。
+    pub fn from_flags(deny: i64, allow: i64) -> Self {
+        if deny != 0 {
+            RuleVerdict::Deny
+        } else if allow != 0 {
+            RuleVerdict::Allow
+        } else {
+            RuleVerdict::Neutral
+        }
+    }
+}
+
+/// 分区发言的最终判定：**角色门槛 + 用户组规则**。
+///
+/// 规则：任一组明确禁止 → 拒绝（禁止优先）；角色门槛过了就行；
+/// 门槛没过但任一组明确允许 → 放行。
+pub fn resolve_section_action(role_allowed: bool, verdicts: &[RuleVerdict]) -> bool {
+    if verdicts.contains(&RuleVerdict::Deny) {
+        return false;
+    }
+    role_allowed || verdicts.contains(&RuleVerdict::Allow)
+}
+
+/// 用户在某个分区里「能做什么」的完整画像（权限树的后端形状）。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct SectionCapabilities {
+    pub can_post: bool,
+    pub can_reply: bool,
+    /// 是否被指派为分区管理员（当前不附带额外权限，供之后扩展）。
+    pub is_moderator: bool,
+}
+
+/// 经验动作：当前只定义规则，触发点由业务层在合适的时候调用。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ExpAction {
+    PostCreated,
+    CommentCreated,
+    IssueCreated,
+    IssueClosed,
+    LikeReceived,
+}
+
+impl ExpAction {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            ExpAction::PostCreated => "post_created",
+            ExpAction::CommentCreated => "comment_created",
+            ExpAction::IssueCreated => "issue_created",
+            ExpAction::IssueClosed => "issue_closed",
+            ExpAction::LikeReceived => "like_received",
+        }
+    }
+
+    /// 一次动作给多少经验。数值保守：先让等级动起来，之后再调。
+    pub fn exp(self) -> i64 {
+        match self {
+            ExpAction::PostCreated => 20,
+            ExpAction::CommentCreated => 5,
+            ExpAction::IssueCreated => 8,
+            ExpAction::IssueClosed => 10,
+            ExpAction::LikeReceived => 2,
+        }
+    }
+}
+
+#[cfg(test)]
+mod rules_tests {
+    use super::*;
+
+    #[test]
+    fn deny_wins_over_allow_and_role() {
+        use RuleVerdict::*;
+        assert!(resolve_section_action(true, &[Neutral]));
+        assert!(resolve_section_action(false, &[Allow]));
+        assert!(!resolve_section_action(false, &[]));
+        // 禁止优先：哪怕角色够、别的组也说允许
+        assert!(!resolve_section_action(true, &[Allow, Deny]));
+        assert!(!resolve_section_action(false, &[Allow, Allow, Deny]));
+    }
+
+    #[test]
+    fn flags_map_to_verdict() {
+        assert_eq!(RuleVerdict::from_flags(0, 0), RuleVerdict::Neutral);
+        assert_eq!(RuleVerdict::from_flags(0, 1), RuleVerdict::Allow);
+        assert_eq!(RuleVerdict::from_flags(1, 1), RuleVerdict::Deny);
+    }
+
+    #[test]
+    fn exp_actions_are_positive() {
+        for action in [
+            ExpAction::PostCreated,
+            ExpAction::CommentCreated,
+            ExpAction::IssueCreated,
+            ExpAction::IssueClosed,
+            ExpAction::LikeReceived,
+        ] {
+            assert!(action.exp() > 0, "{} 必须给正经验", action.as_str());
+        }
+    }
+}
 #[cfg(test)]
 mod domain_tests {
     use super::*;

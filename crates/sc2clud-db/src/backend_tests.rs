@@ -244,3 +244,249 @@ async fn targeted_banner_only_shows_to_group_members() {
         "取消定向后所有人都能看到"
     );
 }
+
+#[tokio::test]
+async fn group_deny_beats_role_and_allow() {
+    use sc2clud_core::auth::Role;
+    let db = db().await;
+    let now = now_unix();
+    let user = make_user(&db, "banned").await;
+    let group = repo::create_user_group(db.pool(), "muted", "禁言组", "", now)
+        .await
+        .expect("建组");
+    repo::add_group_member(db.pool(), group, user, now)
+        .await
+        .expect("入组");
+
+    // 普通用户本来能在「自制战役」发帖
+    let before = repo::section_capabilities(db.pool(), user, Role::Member, "custom_campaign")
+        .await
+        .expect("查")
+        .expect("存在");
+    assert!(before.can_post && before.can_reply);
+
+    // 组里给他禁言 → 即使角色够、别的组允许也不许
+    repo::set_group_section_rule_full(db.pool(), group, "custom_campaign", true, true, true, true)
+        .await
+        .expect("设禁止");
+    let after = repo::section_capabilities(db.pool(), user, Role::Member, "custom_campaign")
+        .await
+        .expect("查")
+        .expect("存在");
+    assert!(!after.can_post, "禁止应当优先于角色门槛");
+    assert!(!after.can_reply);
+
+    // 超级管理员也照样被禁（禁止就是禁止）
+    let admin = repo::section_capabilities(db.pool(), user, Role::Super, "custom_campaign")
+        .await
+        .expect("查")
+        .expect("存在");
+    assert!(!admin.can_post);
+
+    // 只对某个分区生效：别的分区不受影响（vanilla_mod 的门槛是 member）
+    let other = repo::section_capabilities(db.pool(), user, Role::Member, "vanilla_mod")
+        .await
+        .expect("查")
+        .expect("存在");
+    assert!(other.can_post, "禁言只对配置过的分区生效");
+}
+
+#[tokio::test]
+async fn archived_section_content_leaves_lists_and_search() {
+    let db = db().await;
+    let now = now_unix();
+    let author = make_user(&db, "arch_author").await;
+    let post = make_post(&db, author, "归档前后都在的帖子").await;
+
+    let feed = repo::list_feed_by_section(db.pool(), Some(author), false, None, 20, 0)
+        .await
+        .expect("列表");
+    assert_eq!(feed.len(), 1, "归档前应当在列表里");
+    assert!(
+        !repo::search_posts(db.pool(), "归档前后", None, 20, 0)
+            .await
+            .expect("搜索")
+            .is_empty(),
+        "归档前搜得到"
+    );
+
+    repo::set_section_archived(db.pool(), "custom_campaign", true, now)
+        .await
+        .expect("归档分区");
+    let feed = repo::list_feed_by_section(db.pool(), Some(author), false, None, 20, 0)
+        .await
+        .expect("列表");
+    assert!(feed.is_empty(), "归档分区的内容不该再出现在列表里");
+    assert!(
+        repo::search_posts(db.pool(), "归档前后", None, 20, 0)
+            .await
+            .expect("搜索")
+            .is_empty(),
+        "归档分区的内容也不该被搜到"
+    );
+    // 内容本身没丢：取回分区即恢复
+    repo::set_section_archived(db.pool(), "custom_campaign", false, now)
+        .await
+        .expect("取回");
+    let feed = repo::list_feed_by_section(db.pool(), Some(author), false, None, 20, 0)
+        .await
+        .expect("列表");
+    assert_eq!(feed.len(), 1, "取回后内容原样回来");
+    assert!(feed[0].id == post);
+}
+
+#[tokio::test]
+async fn filing_an_issue_notifies_the_post_author() {
+    let db = db().await;
+    let now = now_unix();
+    let author = make_user(&db, "notify_author").await;
+    let reporter = make_user(&db, "notify_reporter").await;
+    let post = make_post(&db, author, "会被提 issue 的帖子").await;
+
+    repo::create_issue(
+        db.pool(),
+        repo::NewIssue {
+            post_id: post,
+            author_id: reporter,
+            kind: "bug",
+            title: "进不去第二关",
+            body: "点击就崩",
+            now,
+        },
+    )
+    .await
+    .expect("提 issue");
+    let rows: Vec<(i64,)> =
+        sqlx::query_as("SELECT COUNT(*) FROM notifications WHERE user_id = ? AND kind = 'issue'")
+            .bind(author)
+            .fetch_all(db.pool())
+            .await
+            .expect("查通知");
+    assert_eq!(rows[0].0, 1, "帖作者应当收到一条 issue 通知");
+
+    // 自己给自己的帖子提 issue 不通知自己
+    repo::create_issue(
+        db.pool(),
+        repo::NewIssue {
+            post_id: post,
+            author_id: author,
+            kind: "feature",
+            title: "自己的备忘",
+            body: "",
+            now,
+        },
+    )
+    .await
+    .expect("提 issue");
+    let rows: Vec<(i64,)> =
+        sqlx::query_as("SELECT COUNT(*) FROM notifications WHERE user_id = ? AND kind = 'issue'")
+            .bind(author)
+            .fetch_all(db.pool())
+            .await
+            .expect("查通知");
+    assert_eq!(rows[0].0, 1, "自己提的不该再给自己发一条");
+}
+
+#[tokio::test]
+async fn pushing_a_post_notifies_only_that_group() {
+    let db = db().await;
+    let now = now_unix();
+    let author = make_user(&db, "push_author").await;
+    let insider = make_user(&db, "push_insider").await;
+    let outsider = make_user(&db, "push_outsider").await;
+    let group = repo::create_user_group(db.pool(), "watchers", "关注者", "", now)
+        .await
+        .expect("建组");
+    repo::add_group_member(db.pool(), group, insider, now)
+        .await
+        .expect("入组");
+    let post = make_post(&db, author, "只想推给关注者的帖子").await;
+
+    let sent = repo::push_post_to_groups(db.pool(), post, &[group], now)
+        .await
+        .expect("推送");
+    assert_eq!(sent, 1, "只推给该组成员，作者自己被排除");
+    let insider_count: Vec<(i64,)> =
+        sqlx::query_as("SELECT COUNT(*) FROM notifications WHERE user_id = ? AND kind = 'push'")
+            .bind(insider)
+            .fetch_all(db.pool())
+            .await
+            .expect("查");
+    assert_eq!(insider_count[0].0, 1);
+    let outsider_count: Vec<(i64,)> =
+        sqlx::query_as("SELECT COUNT(*) FROM notifications WHERE user_id = ? AND kind = 'push'")
+            .bind(outsider)
+            .fetch_all(db.pool())
+            .await
+            .expect("查");
+    assert_eq!(outsider_count[0].0, 0, "组外的人不该被打扰");
+    let author_count: Vec<(i64,)> =
+        sqlx::query_as("SELECT COUNT(*) FROM notifications WHERE user_id = ? AND kind = 'push'")
+            .bind(author)
+            .fetch_all(db.pool())
+            .await
+            .expect("查");
+    assert_eq!(author_count[0].0, 0, "作者不该收到自己的推送");
+    assert_eq!(
+        repo::post_resource_status(db.pool(), post)
+            .await
+            .expect("查状态")
+            .as_deref(),
+        Some("active")
+    );
+}
+
+#[tokio::test]
+async fn titles_and_exp_are_readable_from_the_backend() {
+    use sc2clud_core::community::ExpAction;
+    let db = db().await;
+    let now = now_unix();
+    let user = make_user(&db, "titled_read").await;
+    let other = make_user(&db, "untitled").await;
+
+    let title = repo::create_title(db.pool(), "vip", "VIP", "#f80", "", now)
+        .await
+        .expect("建头衔");
+    assert!(
+        repo::equipped_title_for(db.pool(), user)
+            .await
+            .expect("查")
+            .is_none()
+    );
+    repo::grant_title(db.pool(), user, title, None, now)
+        .await
+        .expect("授予");
+    repo::set_equipped_title(db.pool(), user, Some(title))
+        .await
+        .expect("佩戴");
+    let equipped = repo::equipped_title_for(db.pool(), user).await.expect("查");
+    assert_eq!(equipped.expect("戴着").key, "vip");
+
+    // 批量查询：只有戴了的人出现（列表渲染用，不做 N+1）
+    let batch = repo::equipped_titles_for(db.pool(), &[user, other])
+        .await
+        .expect("批量查");
+    assert_eq!(batch.len(), 1);
+    assert_eq!(batch[0].0, user);
+
+    // 经验：按动作给分，等级跟着曲线走
+    let (exp, level) =
+        repo::award_exp(db.pool(), user, ExpAction::PostCreated, Some("post:1"), now)
+            .await
+            .expect("发经验");
+    assert_eq!(exp, ExpAction::PostCreated.exp());
+    assert_eq!(level, 1);
+    for _ in 0..6 {
+        repo::award_exp(db.pool(), user, ExpAction::PostCreated, None, now)
+            .await
+            .expect("发经验");
+    }
+    let (exp, level) = repo::award_exp(db.pool(), user, ExpAction::CommentCreated, None, now)
+        .await
+        .expect("发经验");
+    assert_eq!(
+        level,
+        sc2clud_core::community::level_for_exp(exp),
+        "等级必须跟曲线一致"
+    );
+}
