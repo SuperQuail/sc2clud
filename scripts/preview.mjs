@@ -1,0 +1,262 @@
+#!/usr/bin/env node
+// ============================================================
+// 前端预览：把**真实数据下的整页**渲染成 PNG，供人（和 AI）看图确认。
+//
+// 为什么需要它：askama 模板改动只有真跑起来才看得见；只看代码/空壳截图会漏掉
+// 「同页面其它内容被挤坏」这类问题。所以这里：
+//   1. 拉一份 **dev 库的只读快照**（VACUUM INTO，不碰 dev/生产）；
+//   2. 本地起实例（独立数据目录 + 独立端口 + 独立 Cookie 名）；
+//   3. 用真实账号**登录**，CDP 设 Cookie，整页截图（含登录态页面）；
+//   4. **断言页面里有真实内容**（空壳直接报错退出）。
+//
+// 用法：
+//   node scripts/preview.mjs [--server root@host] [--handle tangtian] [--out ../../shots/preview]
+//                                 [--port 18120] [--theme light|dark|both] [--pages /,/p/11]
+//
+// 只会读服务器数据；密码只写进**本地临时副本**，不会碰 dev 与生产。
+// ============================================================
+
+import { spawn, spawnSync } from 'node:child_process'
+import { mkdirSync, copyFileSync, writeFileSync, existsSync, openSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join, dirname } from 'node:path'
+import { fileURLToPath } from 'node:url'
+
+const args = process.argv.slice(2)
+const arg = (name, fallback) => {
+  const i = args.indexOf('--' + name)
+  return i >= 0 && args[i + 1] ? args[i + 1] : fallback
+}
+const repo = join(dirname(fileURLToPath(import.meta.url)), '..')
+const server = arg('server', process.env.SC2CLUD_SERVER ?? '')
+// 私钥在仓库外（secrets/），用环境变量传，别写进脚本
+const sshKey = process.env.SC2CLUD_SSH_KEY ?? ''
+const sshOpts = ['-o', 'BatchMode=yes', '-o', 'ConnectTimeout=20', ...(sshKey ? ['-i', sshKey, '-o', 'IdentitiesOnly=yes'] : [])]
+const handle = arg('handle', 'tangtian')
+const password = arg('password', 'preview-pass-' + Math.random().toString(36).slice(2, 8))
+const port = Number(arg('port', '18120'))
+const theme = arg('theme', 'both')
+const outDir = arg('out', join(repo, '..', 'shots', 'preview'))
+const pagesArg = arg('pages', '')
+
+const run = (cmd, cmdArgs, opts = {}) => {
+  const res = spawnSync(cmd, cmdArgs, { encoding: 'utf8', ...opts })
+  if (res.status !== 0) {
+    throw new Error(`${cmd} ${cmdArgs.join(' ')} 失败：${res.stderr || res.stdout}`)
+  }
+  return res.stdout
+}
+
+// askama 模板与迁移都是**编译期**内嵌的：不重建就会「模板是旧的 / 迁移认不出来」，
+// 预览与上线也就不是同一份代码了。所以这里强制重建（增量，通常几秒）。
+console.log('==> 构建（模板与迁移内嵌，必须重建才能反映当前代码）')
+const build = spawnSync('cargo', ['build', '-p', 'sc2clud-app', '-q'], { cwd: repo, stdio: 'inherit' })
+if (build.status !== 0) throw new Error('构建失败，先手动 cargo build -p sc2clud-app 看错误')
+
+// 与上面的构建一致：先找 debug（cargo build 默认产物），再退到 release
+const exe = ['target/debug/sc2clud.exe', 'target/release/sc2clud.exe'].map((p) => join(repo, p)).find(existsSync)
+if (!exe) throw new Error('构建产物没找到')
+
+const browser = [
+  'C:/Program Files/Google/Chrome/Application/chrome.exe',
+  'C:/Program Files (x86)/Microsoft/Edge/msedge.exe',
+].find(existsSync)
+if (!browser) throw new Error('找不到 Chrome/Edge')
+
+// ---------- 1. 准备数据：dev 库的只读快照 ----------
+const work = join(tmpdir(), 'sc2clud-preview-' + Date.now())
+mkdirSync(work, { recursive: true })
+const dbPath = join(work, 'sc2clud.sqlite3')
+if (server) {
+  console.log('==> 拉取 dev 库快照（VACUUM INTO，只读）')
+  const remote = '/tmp/preview-snap.sqlite3'
+  run('ssh', [...sshOpts, server,
+    `sqlite3 /srv/sc2clud-dev/data/sc2clud.sqlite3 "VACUUM INTO '${remote}'" && echo ok`])
+  run('scp', ['-q', ...sshOpts, `${server}:${remote}`, dbPath])
+  run('ssh', [...sshOpts, server, `rm -f ${remote}`])
+  // 图片/头像走内容寻址：把 dev 的 blob 也拉一份（只读），否则页面里图片是空的
+  run('scp', ['-q', '-r', ...sshOpts, `${server}:/srv/sc2clud-dev/data/blobs`, join(work, 'blobs')])
+} else if (existsSync(join(repo, 'preview-seed.sqlite3'))) {
+  copyFileSync(join(repo, 'preview-seed.sqlite3'), dbPath)
+  console.log('==> 用本地 preview-seed.sqlite3')
+} else {
+  console.log('==> 没有 --server 也没有 preview-seed.sqlite3：用空库（页面会很空，仅供布局自检）')
+}
+
+// ---------- 2. 起本地实例（独立端口 / 数据目录 / Cookie 名） ----------
+const env = {
+  ...process.env,
+  SC2CLUD_BIND: `127.0.0.1:${port}`,
+  SC2CLUD_BASE_URL: `http://127.0.0.1:${port}`,
+  SC2CLUD_DATA_DIR: work,
+  SC2CLUD_COOKIE_NAME: 'sc2clud_preview_session',
+  SC2CLUD_DEBUG_PAGES: '1',
+  SC2CLUD_SERVE_BLOBS_LOCALLY: '1',
+  SC2CLUD_DOWNLOAD_SECRET: 'preview-secret-not-a-real-one',
+  SC2CLUD_LOG: 'warn',
+}
+if (existsSync(dbPath)) {
+  // 只改本地副本里的口令：dev/生产完全不受影响
+  spawnSync(exe, ['set-password', handle, password], { env, encoding: 'utf8' })
+}
+// 应用输出落日志：起不来时能直接看到原因，不要吞掉
+const appLog = openSync(join(work, 'app.log'), 'a')
+const app = spawn(exe, ['serve'], { env, stdio: ['ignore', appLog, appLog] })
+const base = `http://127.0.0.1:${port}`
+const waitUp = async () => {
+  for (let i = 0; i < 40; i++) {
+    try {
+      const res = await fetch(base + '/healthz')
+      if (res.ok) return
+    } catch {}
+    await new Promise((r) => setTimeout(r, 250))
+  }
+  throw new Error('本地实例没起来，看日志：' + join(work, 'app.log'))
+}
+
+// ---------- 3. CDP：登录 + 整页截图 ----------
+class Cdp {
+  constructor(ws) { this.ws = ws; this.id = 0; this.pending = new Map() }
+  static async open(port) {
+    // 必须连**页面级** target：/json/version 是浏览器级，没有 Page/Network 域
+    const list = await (await fetch(`http://127.0.0.1:${port}/json/list`)).json()
+    const page = list.find((t) => t.type === 'page') ?? list[0]
+    if (!page?.webSocketDebuggerUrl) throw new Error('没有可用的页面 target')
+    const ws = new WebSocket(page.webSocketDebuggerUrl)
+    await new Promise((resolve, reject) => {
+      ws.onopen = () => resolve()
+      ws.onerror = () => reject(new Error('CDP WebSocket 连接失败'))
+    })
+    const cdp = new Cdp(ws)
+    ws.onmessage = (event) => {
+      try {
+        const msg = JSON.parse(event.data)
+        const slot = cdp.pending.get(msg.id)
+        if (!slot) return
+        cdp.pending.delete(msg.id)
+        // 别吞 CDP 错误：吞了只会得到「undefined 不是字符串」这种没头没脑的报错
+        if (msg.error) slot.reject(new Error(msg.error.message))
+        else slot.resolve(msg.result ?? {})
+      } catch (err) {
+        console.error('CDP 回包处理失败：' + err.message)
+      }
+    }
+    return cdp
+  }
+  send(method, params = {}) {
+    const id = ++this.id
+    this.ws.send(JSON.stringify({ id, method, params }))
+    return new Promise((resolve, reject) => this.pending.set(id, { resolve, reject }))
+  }
+  close() { this.ws.close() }
+}
+
+const shots = []
+let failed = 0
+
+const main = async () => {
+  await waitUp()
+  console.log('==> 本地实例已就绪：' + base)
+
+  // 登录：拿会话 Cookie（失败也不致命，游客页面照样能截）
+  let cookie = null
+  if (existsSync(dbPath)) {
+    const form = new URLSearchParams({ account: handle, password })
+    const res = await fetch(base + '/login', {
+      method: 'POST',
+      headers: { 'content-type': 'application/x-www-form-urlencoded', origin: base },
+      body: form,
+      redirect: 'manual',
+    })
+    const raw = res.headers.getSetCookie?.() ?? []
+    const line = raw.find((c) => c.startsWith('sc2clud_preview_session='))
+    cookie = line ? line.split(';')[0] : null
+    console.log(cookie ? `==> 已登录：${handle}` : '==> 登录失败，只截游客视图')
+  }
+
+  // 页面清单：默认覆盖「首页 / 分区 / 帖子 / 编辑页 / 后台 / 我的」
+  let pages = pagesArg ? pagesArg.split(',') : []
+  if (!pages.length) {
+    const home = await (await fetch(base + '/')).text()
+    const postId = (home.match(/\/p\/(\d+)/) ?? [])[1] ?? '1'
+    pages = ['/', '/?section=custom_campaign', `/p/${postId}`, `/p/${postId}/edit`, '/new', '/admin/users/overview', '/me']
+  }
+
+  const chromePort = port + 1
+  const chrome = spawn(browser, [
+    '--headless=new', '--disable-gpu', '--hide-scrollbars', '--no-first-run',
+    `--remote-debugging-port=${chromePort}`, `--user-data-dir=${join(work, 'chrome')}`,
+    'about:blank',
+  ], { stdio: 'ignore' })
+  let cdp
+  for (let i = 0; i < 40 && !cdp; i++) {
+    try { cdp = await Cdp.open(chromePort) } catch { await new Promise((r) => setTimeout(r, 250)) }
+  }
+  if (!cdp) throw new Error('连不上 Chrome 调试端口')
+  await cdp.send('Network.enable')
+  await cdp.send('Page.enable')
+  if (cookie) {
+    await cdp.send('Network.setCookie', {
+      name: 'sc2clud_preview_session', value: cookie.split('=')[1],
+      domain: '127.0.0.1', path: '/', httpOnly: true,
+    })
+  }
+
+  mkdirSync(outDir, { recursive: true })
+  const themes = theme === 'both' ? ['light', 'dark'] : [theme]
+  for (const t of themes) {
+    await cdp.send('Emulation.setEmulatedMedia', {
+      features: [{ name: 'prefers-color-scheme', value: t === 'dark' ? 'dark' : 'light' }],
+    })
+    for (const path of pages) {
+      await cdp.send('Page.navigate', { url: base + path })
+      await new Promise((r) => setTimeout(r, 700))
+      const html = await (await fetch(base + path, { headers: cookie ? { cookie } : {} })).text()
+      // 空壳检查：页面必须有真实内容（帖子卡片 / 标题 / 表格），否则这次预览不算数
+      // 空壳判据只看「有没有真实数据」，不猜具体类名（样式/类名天天改，靠不住）：
+      //   1. 不是错误页；2. 有基本体量；3. 该页该有的真实内容确实出现了。
+      const ok =
+        html.length > 3000 &&
+        !html.includes('页面或接口不存在') &&
+        !html.includes('not_found') &&
+        (path === '/new'
+          ? html.includes('<form') && html.includes('csrf')
+          : path.startsWith('/admin')
+            ? html.includes('csrf') && /<table|<form/.test(html)
+            : path === '/me'
+              ? html.includes('csrf') || html.includes('/p/')
+              // 分区页可能本来就是空的（该分区还没有帖子）——空态也算真实渲染
+              : /\/p\/\d+/.test(html) || /(empty|还没有|暂无|没有匹配)/.test(html))
+      const shot = await cdp.send('Page.captureScreenshot', { format: 'png', captureBeyondViewport: true })
+      const name = (path === '/' ? 'home' : path.replace(/[^a-z0-9]+/gi, '_').replace(/^_|_$/g, '')) + '-' + t + '.png'
+      writeFileSync(join(outDir, name), Buffer.from(shot.data, 'base64'))
+      shots.push({ name, path, theme: t, ok, bytes: Buffer.from(shot.data, 'base64').length })
+      if (!ok) failed++
+    }
+  }
+  cdp.close()
+  chrome.kill()
+}
+
+const cleanup = () => {
+  try { app.kill() } catch {}
+}
+
+main()
+  .then(() => {
+    console.log('\n页面预览（整页，真实数据）：')
+    for (const s of shots) {
+      console.log(`  ${s.ok ? '✓' : '✗ 空壳'} ${s.name}  ${(s.bytes / 1024).toFixed(0)} KB  ${s.path} [${s.theme}]`)
+    }
+    console.log('\n输出目录：' + outDir)
+    cleanup()
+    if (failed) {
+      console.error(`\n有 ${failed} 张是空壳（页面没有真实内容）——预览不算通过，先查数据或模板`)
+      process.exit(1)
+    }
+  })
+  .catch((err) => {
+    console.error('预览失败：' + err.message)
+    cleanup()
+    process.exit(1)
+  })
