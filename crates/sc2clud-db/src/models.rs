@@ -159,6 +159,17 @@ pub struct PostRevisionRow {
     pub note: Option<String>,
 }
 
+/// 搜索命中的用户。
+#[derive(Debug, Clone, FromRow)]
+pub struct UserHitRow {
+    pub handle: String,
+    pub display_name: String,
+    pub avatar_hash: Option<String>,
+    pub role: String,
+    pub bio: String,
+    pub post_count: i64,
+}
+
 /// 站点域名（统一管理「哪些域名是我们的」）。
 #[derive(Debug, Clone, FromRow)]
 pub struct SiteDomainRow {

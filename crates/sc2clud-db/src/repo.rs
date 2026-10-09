@@ -15,7 +15,8 @@ use crate::models::{
     GroupSectionRuleRow, ImageJobRow, IssueCommentRow, MessageRow, NotificationRow,
     PaymentChannelRow, PostImageRow, PostIssueRow, PostRevisionRow, PostRow, PostSearchRow,
     PostSourceRow, PostWithAuthorRow, ReleaseAssetRow, ReleaseRow, SectionModeratorRow, SectionRow,
-    SessionRow, SiteDomainRow, TitleRow, UploadSessionRow, UserGroupRow, UserRow, UserTitleRow,
+    SessionRow, SiteDomainRow, TitleRow, UploadSessionRow, UserGroupRow, UserHitRow, UserRow,
+    UserTitleRow,
 };
 
 // ---------------------------------------------------------------- 用户
@@ -3415,6 +3416,28 @@ pub async fn set_site_text(
     .map_err(db_err)?;
     Ok(())
 }
+// ---------------------------------------------------------------- 用户搜索
+
+/// 按登录名 / 显示名搜用户（只搜已激活；按发帖数排序）。
+pub async fn search_users(pool: &SqlitePool, term: &str, limit: i64) -> Result<Vec<UserHitRow>> {
+    let pattern = like_pattern(term);
+    query_as::<_, UserHitRow>(
+        "SELECT u.handle, u.display_name, u.avatar_hash, u.role, u.bio, \
+                (SELECT COUNT(*) FROM posts p WHERE p.author_id = u.id \
+                   AND p.deleted_at IS NULL AND p.review_state = 'approved') AS post_count \
+         FROM users u \
+         WHERE u.activated_at IS NOT NULL \
+           AND (u.handle LIKE ? ESCAPE '\\' OR u.display_name LIKE ? ESCAPE '\\') \
+         ORDER BY post_count DESC, u.id LIMIT ?",
+    )
+    .bind(&pattern)
+    .bind(&pattern)
+    .bind(limit.clamp(1, 50))
+    .fetch_all(pool)
+    .await
+    .map_err(db_err)
+}
+
 // ---------------------------------------------------------------- 个人简介
 
 /// 写个人简介。作者自己改时 `state` 传审核结论（当前一律 `approved`），

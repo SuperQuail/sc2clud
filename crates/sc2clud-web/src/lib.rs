@@ -12,6 +12,7 @@ pub mod pages_debug;
 pub mod pages_messages;
 pub mod pages_posts;
 pub mod pages_profile;
+pub mod pages_search;
 pub mod pages_settings;
 pub mod pages_social;
 pub mod routes;

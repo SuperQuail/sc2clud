@@ -256,6 +256,46 @@ pub struct TitleChoice {
     pub equipped: bool,
 }
 
+/// 搜索页（B 站式：搜索框 + 分类标签 + 结果）。
+#[derive(Template)]
+#[template(path = "search.html")]
+pub struct SearchPageTemplate<'a> {
+    pub site_name: &'a str,
+    pub user_label: Option<String>,
+    pub is_staff: bool,
+    pub csrf: String,
+    pub q: String,
+    pub tab: String,
+    /// 版式编号：1 一行标签栏 / 2 两行筛选 + 右侧相关用户 / 3 左侧筛选栏（预览用，生产恒 1）。
+    pub search_variant: u8,
+    pub posts: Vec<PostHitView>,
+    pub users: Vec<UserHitView>,
+    pub post_count: i64,
+    pub user_count: i64,
+}
+
+/// 搜索命中的帖子（结果行）。
+#[derive(Debug, Clone)]
+pub struct PostHitView {
+    pub id: i64,
+    pub title: String,
+    pub section_label: String,
+    pub author: String,
+    pub date: String,
+    pub comment_count: i64,
+}
+
+/// 搜索命中的用户卡片。
+#[derive(Debug, Clone)]
+pub struct UserHitView {
+    pub handle: String,
+    pub display_name: String,
+    pub avatar: Option<String>,
+    pub role_label: String,
+    pub bio: String,
+    pub post_count: i64,
+}
+
 /// 用户名后面的头衔徽章。
 #[derive(Debug, Clone)]
 pub struct TitleBadgeView {
