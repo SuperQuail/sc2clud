@@ -76,6 +76,8 @@ pub enum Permission {
     /// **当前阶段只对网站管理员及以上开放**：网盘是后续施工内容，
     /// 等路径、配额、分享与清理策略定稿后再下调到普通用户。
     UseNetdisk,
+    /// 上传自己的收款码（认证开发者及以上）。
+    SetPaymentChannel,
     /// 人工复核被审核机拦下的帖子。
     ReviewPost,
     /// 激活 / 停用用户。
@@ -97,6 +99,8 @@ impl Permission {
             Permission::UseNetdisk => Some(Role::Admin),
             // 讨论 / 资源 / 转载三类帖子对**所有已激活用户**开放（产品决定：不设发布门槛）。
             Permission::CreateResource => Some(Role::Member),
+            // 收款码涉及钱财，只给认证开发者及以上（产品要求）。
+            Permission::SetPaymentChannel => Some(Role::Developer),
             // 人工复核是管理动作，仍要求开发者及以上。
             Permission::ReviewPost => Some(Role::Developer),
             Permission::ManageUsers => Some(Role::Admin),
