@@ -100,6 +100,7 @@ async fn build<'a>(
         })
         .collect();
     let (notice, error) = notice_of(&query);
+    let (bio_text, _, _) = repo::user_bio(state.db.pool(), user.id).await?;
     let can_donate = session::allows_for(
         Some(&user),
         sc2clud_core::auth::Permission::SetPaymentChannel,
@@ -109,6 +110,7 @@ async fn build<'a>(
     let (notice_visible, notice_text) =
         repo::donation_notice_settings(state.db.pool(), user.id).await?;
     Ok(SettingsTemplate {
+        bio: bio_text,
         can_donate,
         donation_visible,
         donation_notice_visible: notice_visible,
@@ -208,6 +210,32 @@ pub async fn update_password(
     .await;
     tracing::info!(user.id = user.id, "用户改密码");
     Ok(Redirect::to("/settings?ok=password"))
+}
+
+#[derive(Debug, Deserialize)]
+pub struct BioForm {
+    pub csrf: String,
+    pub bio: Option<String>,
+}
+
+/// 保存个人简介。**当前自动放行**（走审核的状态列已就位，接审核机时只改这一处）。
+/// shortcut: 现在无条件写 approved，等审核机支持简介后改成先过审核。
+pub async fn bio_save(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Form(form): Form<BioForm>,
+) -> AppResult<Redirect> {
+    let user = require_user(&state, &headers).await?;
+    session::guard(Some(&user), sc2clud_core::auth::Permission::SetAvatar)?;
+    session::check_csrf(&user, &form.csrf)?;
+    let bio = sc2clud_core::community::validate_bio(form.bio.as_deref().unwrap_or_default())?;
+    repo::set_bio(state.db.pool(), user.id, &bio, "approved", None, now_unix()).await?;
+    tracing::info!(
+        user.id = user.id,
+        chars = bio.chars().count(),
+        "更新个人简介"
+    );
+    Ok(Redirect::to("/settings?ok=bio"))
 }
 
 #[derive(Debug, Deserialize)]

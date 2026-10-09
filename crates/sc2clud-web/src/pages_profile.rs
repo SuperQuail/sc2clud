@@ -158,12 +158,19 @@ pub async fn me(State(state): State<AppState>, headers: HeaderMap) -> Response {
     }
 }
 
+#[derive(Debug, serde::Deserialize)]
+pub struct ProfileQuery {
+    /// 预览用的头部样式编号（1/2/3）。
+    pui: Option<String>,
+}
+
 pub async fn profile(
     State(state): State<AppState>,
     Path(handle): Path<String>,
     headers: HeaderMap,
+    axum::extract::Query(query): axum::extract::Query<ProfileQuery>,
 ) -> Response {
-    match build_profile(&state, &handle, &headers).await {
+    match build_profile(&state, &handle, &headers, query.pui.as_deref()).await {
         Ok(template) => render(template),
         Err(e) => e.into_page_response(true),
     }
@@ -173,6 +180,7 @@ async fn build_profile<'a>(
     state: &'a AppState,
     handle: &str,
     headers: &HeaderMap,
+    pui: Option<&str>,
 ) -> AppResult<ProfileTemplate<'a>> {
     let viewer = session::current_user(state, headers).await?;
     let owner = repo::find_user_by_handle(state.db.pool(), handle)
@@ -194,7 +202,20 @@ async fn build_profile<'a>(
     } else {
         None
     };
+    let (bio_text, bio_state, _) = repo::user_bio(state.db.pool(), owner.id).await?;
+    // 未通过的简介不给访客看（本人与管理员照常可见）
+    let bio_visible = bio_state == "approved" || is_self || is_staff;
+    let header_variant = if state.config.server.debug_pages {
+        pui.and_then(|v| v.parse::<u8>().ok())
+            .filter(|v| (1..=3).contains(v))
+            .unwrap_or(1)
+    } else {
+        1
+    };
     Ok(ProfileTemplate {
+        bio: (bio_visible && !bio_text.trim().is_empty()).then_some(bio_text),
+        bio_state,
+        header_variant,
         // 与帖子页定版一致：赞助样式 1（左渠道右二维码）+ 提示样式 3（红圆图标卡）
         donate_variant: 1,
         notice_variant: 3,

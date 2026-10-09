@@ -748,3 +748,38 @@ async fn donation_notice_falls_back_to_the_channel_default() {
         1
     );
 }
+
+#[tokio::test]
+async fn bio_round_trip_and_admin_edit() {
+    let db = db().await;
+    let now = now_unix();
+    let user = make_user(&db, "bio_user").await;
+
+    let (text, state, note) = repo::user_bio(db.pool(), user).await.expect("读简介");
+    assert!(text.is_empty());
+    assert_eq!(state, "approved", "默认就是放行态");
+    assert!(note.is_none());
+
+    // 作者自己改：当前自动放行
+    repo::set_bio(db.pool(), user, "做战役 mod 的", "approved", None, now)
+        .await
+        .expect("写简介");
+    let (text, state, _) = repo::user_bio(db.pool(), user).await.expect("读简介");
+    assert_eq!(text, "做战役 mod 的");
+    assert_eq!(state, "approved");
+
+    // 管理员改：同一函数，带审核意见
+    repo::set_bio(
+        db.pool(),
+        user,
+        "由管理员改写的简介",
+        "approved",
+        Some("管理员代为修改"),
+        now,
+    )
+    .await
+    .expect("管理员改简介");
+    let (text, _, note) = repo::user_bio(db.pool(), user).await.expect("读简介");
+    assert_eq!(text, "由管理员改写的简介");
+    assert_eq!(note.as_deref(), Some("管理员代为修改"));
+}

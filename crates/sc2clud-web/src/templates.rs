@@ -559,6 +559,8 @@ pub struct SettingsTemplate<'a> {
     pub notice: Option<String>,
     pub error: Option<String>,
     /// 认证开发者及以上才能开打赏（与上传收款码同一权限）。
+    /// 个人简介（200 字上限；改动走审核，当前自动放行）。
+    pub bio: String,
     pub can_donate: bool,
     pub donation_visible: bool,
     pub donation_notice_visible: bool,
@@ -591,6 +593,12 @@ pub struct ProfileTemplate<'a> {
     /// 打赏弹窗/提示的样式编号（主页没有预览开关，生产值即已评审通过的那套）。
     pub donate_variant: u8,
     pub notice_variant: u8,
+    /// 个人简介（未通过审核时只有本人与管理员看得到）。
+    pub bio: Option<String>,
+    /// 简介的审核态：approved / pending / rejected。
+    pub bio_state: String,
+    /// 预览用的头部样式编号（1/2/3，生产恒为 1）。
+    pub header_variant: u8,
     /// 「支持作者」区块：作者开了展示、且有渠道时才出现。
     pub donation_visible: bool,
     pub donation_channels: Vec<DonationChannelView>,

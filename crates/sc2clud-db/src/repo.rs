@@ -3366,6 +3366,43 @@ pub async fn donation_notice_for(
     }
     Ok(None)
 }
+// ---------------------------------------------------------------- 个人简介
+
+/// 写个人简介。作者自己改时 `state` 传审核结论（当前一律 `approved`），
+/// 管理员直接改也走同一个函数，只是 `note` 里记下原因。
+pub async fn set_bio(
+    pool: &SqlitePool,
+    user_id: i64,
+    bio: &str,
+    state: &str,
+    note: Option<&str>,
+    now: i64,
+) -> Result<()> {
+    query(
+        "UPDATE users SET bio = ?, bio_review_state = ?, bio_review_note = ?, bio_updated_at = ? \
+         WHERE id = ?",
+    )
+    .bind(bio)
+    .bind(state)
+    .bind(note)
+    .bind(now)
+    .bind(user_id)
+    .execute(pool)
+    .await
+    .map_err(db_err)?;
+    Ok(())
+}
+
+/// 读个人简介：`(文本, 审核态, 审核意见)`。
+pub async fn user_bio(pool: &SqlitePool, user_id: i64) -> Result<(String, String, Option<String>)> {
+    let row: Option<(String, String, Option<String>)> =
+        query_as("SELECT bio, bio_review_state, bio_review_note FROM users WHERE id = ?")
+            .bind(user_id)
+            .fetch_optional(pool)
+            .await
+            .map_err(db_err)?;
+    Ok(row.unwrap_or((String::new(), "approved".to_string(), None)))
+}
 // ---------------------------------------------------------------- 打赏展示（作者侧开关 + 页面用的展示块）
 
 /// 作者是否开启「支持作者」展示。

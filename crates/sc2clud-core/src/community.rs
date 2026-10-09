@@ -348,6 +348,34 @@ impl ExpAction {
     }
 }
 
+/// 个人简介字数上限（前后端都按这个数校验）。
+pub const BIO_MAX_CHARS: usize = 200;
+
+/// 校验个人简介：去首尾空白后不得超过 [`BIO_MAX_CHARS`]。
+pub fn validate_bio(raw: &str) -> Result<String, crate::Error> {
+    let text = raw.trim();
+    if text.chars().count() > BIO_MAX_CHARS {
+        return Err(crate::Error::InvalidInput(format!(
+            "个人简介最多 {BIO_MAX_CHARS} 字"
+        )));
+    }
+    Ok(text.to_string())
+}
+
+#[cfg(test)]
+mod bio_tests {
+    use super::*;
+
+    #[test]
+    fn bio_is_trimmed_and_capped() {
+        assert_eq!(validate_bio("  你好  ").expect("ok"), "你好");
+        assert_eq!(validate_bio("").expect("ok"), "");
+        assert!(validate_bio(&"字".repeat(BIO_MAX_CHARS)).is_ok());
+        assert!(validate_bio(&"字".repeat(BIO_MAX_CHARS + 1)).is_err());
+        // 按字符数算，不是字节数：200 个汉字 = 600 字节，也必须通过
+        assert_eq!("字".repeat(BIO_MAX_CHARS).len(), BIO_MAX_CHARS * 3);
+    }
+}
 #[cfg(test)]
 mod rules_tests {
     use super::*;

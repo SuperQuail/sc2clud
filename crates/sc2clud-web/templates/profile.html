@@ -20,6 +20,27 @@
       <p class="meta">@{{ handle }} · {{ role_label }} · 加入于 {{ joined_at }}</p>
     </div>
   </div>
+{# 简介 + 赞助入口：三种头部样式（header_variant），生产用样式 1 #}
+  {% if header_variant == 2 %}
+  <div class="profile-head-2">
+    <div>{% if let Some(text) = bio %}<p class="profile-bio">{{ text }}</p>{% endif %}</div>
+    {% if donation_visible %}<button type="button" class="donate-cta aside" id="donate-open"><span class="donate-cta-title">赞助作者</span><span class="donate-cta-sub">支持 {{ display_name }} 继续创作</span></button>{% endif %}
+  </div>
+  {% else if header_variant == 3 %}
+  {% if let Some(text) = bio %}<blockquote class="profile-bio-quote">{{ text }}</blockquote>{% endif %}
+  {% if donation_visible %}<button type="button" class="donate-cta center" id="donate-open"><span class="donate-cta-title">赞助作者</span><span class="donate-cta-sub">支持 {{ display_name }} 继续创作</span></button>{% endif %}
+  {% else %}
+  {% if let Some(text) = bio %}<p class="profile-bio">{{ text }}</p>{% endif %}
+  {% if donation_visible %}<button type="button" class="donate-cta" id="donate-open"><span class="donate-cta-title">赞助作者</span><span class="donate-cta-sub">支持 {{ display_name }} 继续创作</span></button>{% endif %}
+  {% endif %}
+  <style>
+  .profile-bio{margin:10px 0 0;line-height:1.8;opacity:.92;white-space:pre-wrap}
+  .profile-bio-quote{margin:12px 0 0;padding:10px 16px;border-left:4px solid #2563eb;background:rgba(37,99,235,.07);border-radius:0 8px 8px 0;line-height:1.8;white-space:pre-wrap}
+  .profile-head-2{display:flex;gap:18px;align-items:flex-start;justify-content:space-between;margin-top:12px;flex-wrap:wrap}
+  .donate-cta{margin-top:14px}
+  .donate-cta.aside{margin-top:0;min-width:220px;width:auto}
+  .donate-cta.center{max-width:320px;margin-left:auto;margin-right:auto}
+  </style>
 
   {% if can_interact %}
   <div class="actions-inline" style="margin-top:14px">
@@ -78,11 +99,7 @@
   {% if donation_visible %}
   <section class="card">
     <h2>支持 {{ display_name }}</h2>
-    {# 与帖子页一致：大按钮 → 弹窗，不直接摊二维码 #}
-    <button type="button" class="donate-cta" id="donate-open">
-      <span class="donate-cta-title">赞助作者</span>
-      <span class="donate-cta-sub">支持 {{ display_name }} 继续创作</span>
-    </button>
+    {# 赞助入口已挪到页头名字下方；这里只保留弹窗本身 #}
     {% if let Some(text) = donation_notice %}
     <p class="donate-profile-notice">{{ text }}</p>
     {% endif %}

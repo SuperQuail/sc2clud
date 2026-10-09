@@ -276,6 +276,10 @@ pub fn api_upload() -> Router<AppState> {
         )
         // ---- 收款码（认证开发者及以上；渠道名不限）----
         .route(
+            "/settings/bio",
+            axum::routing::post(crate::pages_settings::bio_save),
+        )
+        .route(
             "/settings/donation",
             axum::routing::post(crate::pages_settings::donation_save),
         )
