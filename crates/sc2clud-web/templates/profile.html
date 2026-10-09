@@ -40,40 +40,38 @@
   .donate-cta{margin-top:14px}
   .donate-cta.aside{margin-top:0;min-width:220px;width:auto}
   /* 右下角定位：卡片底部整行右对齐 */
-  .profile-donate-corner{display:flex;justify-content:flex-end;margin-top:16px}
+  /* 底部一行：左按钮组与右侧赞助按钮**底边对齐** */
+  .profile-foot{display:flex;align-items:flex-end;justify-content:space-between;gap:16px;flex-wrap:wrap;margin-top:16px}
+  .profile-foot .actions-inline{align-items:center}
   .donate-cta.center{max-width:320px;margin-left:auto;margin-right:auto}
   </style>
 
-  {% if can_interact %}
-  <div class="actions-inline" style="margin-top:14px">
-    <a class="btn" href="/messages/{{ handle }}">发私信</a>
-    {% if blocked %}
-    <form method="post" action="/u/{{ handle }}/unblock">
-      <input type="hidden" name="csrf" value="{{ csrf }}">
-      <button class="btn ghost ok" type="submit">解除拉黑</button>
-    </form>
-    {% else %}
-    <form method="post" action="/u/{{ handle }}/block">
-      <input type="hidden" name="csrf" value="{{ csrf }}">
-      <button class="btn ghost danger" type="submit">拉黑 TA</button>
-    </form>
+  {# 卡片底部一行：左侧互动/资料按钮，右侧赞助按钮 —— **底边对齐** #}
+  <div class="profile-foot">
+    <div class="actions-inline">
+      {% if can_interact %}
+      <a class="btn" href="/messages/{{ handle }}">发私信</a>
+      {% if blocked %}
+      <form method="post" action="/u/{{ handle }}/unblock">
+        <input type="hidden" name="csrf" value="{{ csrf }}">
+        <button class="btn ghost ok" type="submit">解除拉黑</button>
+      </form>
+      {% else %}
+      <form method="post" action="/u/{{ handle }}/block">
+        <input type="hidden" name="csrf" value="{{ csrf }}">
+        <button class="btn ghost danger" type="submit">拉黑 TA</button>
+      </form>
+      {% endif %}
+      {% endif %}
+      {% if is_self %}
+      <a class="btn" href="/settings">更换头像 / 修改资料</a>
+      <a class="btn ghost" href="/new">发新帖</a>
+      {% endif %}
+    </div>
+    {% if header_variant == 2 && donation_visible %}
+    <button type="button" class="donate-cta aside" id="donate-open"><span class="donate-cta-title">赞助作者</span><span class="donate-cta-sub">支持 {{ display_name }} 继续创作</span></button>
     {% endif %}
   </div>
-  {% endif %}
-
-  {% if is_self %}
-  <div class="actions-inline" style="margin-top:14px">
-    <a class="btn" href="/settings">更换头像 / 修改资料</a>
-    <a class="btn ghost" href="/new">发新帖</a>
-  </div>
-  {% endif %}
-
-  {% if header_variant == 2 && donation_visible %}
-  {# 右下角赞助入口：右对齐，固定在卡片最底部 #}
-  <div class="profile-donate-corner">
-    <button type="button" class="donate-cta aside" id="donate-open"><span class="donate-cta-title">赞助作者</span><span class="donate-cta-sub">支持 {{ display_name }} 继续创作</span></button>
-  </div>
-  {% endif %}
 </section>
 
 <section class="card">
