@@ -99,7 +99,11 @@
   /* 紧贴胶囊正下方展开（之前没定位容器，所以飘到别处去了） */
   .title-picker{position:absolute;top:100%;left:0;margin-top:6px;z-index:40;min-width:160px;background:var(--card,#fff);border:1px solid var(--line,#e5e7eb);border-radius:10px;padding:6px;display:flex;flex-direction:column;gap:4px;box-shadow:0 10px 28px rgba(0,0,0,.16)}
   .title-picker[hidden]{display:none}
-  .title-option{padding:6px 12px;border:1px solid var(--line,#e5e7eb);border-radius:999px;background:none;color:var(--tc,inherit);font:inherit;font-size:13px;cursor:pointer;text-align:left}
+  /* 下拉里的每一项也是胶囊：底色与名字后那颗一致（半透明，取头衔颜色），不是裸边框 */
+  .title-option{padding:6px 14px;border:1px solid var(--tc,#2563eb);border-radius:999px;color:var(--tc,#2563eb);font:inherit;font-size:13px;cursor:pointer;text-align:left;
+    background:color-mix(in srgb, var(--tc,#2563eb) 18%, transparent)}
+  .title-option:hover{background:color-mix(in srgb, var(--tc,#2563eb) 30%, transparent)}
+  .title-option.active{font-weight:600;box-shadow:inset 0 0 0 1px var(--tc,#2563eb)}
   .title-option.active{border-color:var(--tc,#2563eb);font-weight:600}
   .avatar-open{border:0;background:none;padding:0;cursor:pointer;border-radius:50%;line-height:0}
   .avatar-open:hover{box-shadow:0 0 0 3px rgba(37,99,235,.35)}
