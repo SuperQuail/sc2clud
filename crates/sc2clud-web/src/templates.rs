@@ -247,6 +247,14 @@ pub struct PostPageTemplate<'a> {
     pub donation_notice: Option<String>,
 }
 
+/// 用户名后面的头衔徽章。
+#[derive(Debug, Clone)]
+pub struct TitleBadgeView {
+    pub name: String,
+    /// 头衔自带的颜色（`#rrggbb`），为空则用主题色。
+    pub color: String,
+}
+
 /// 打赏弹窗里的一个渠道。
 #[derive(Debug, Clone)]
 pub struct DonationChannelView {
@@ -593,6 +601,12 @@ pub struct ProfileTemplate<'a> {
     /// 打赏弹窗/提示的样式编号（主页没有预览开关，生产值即已评审通过的那套）。
     pub donate_variant: u8,
     pub notice_variant: u8,
+    /// 佩戴的头衔（名字后面渲染）；没戴就是 None。
+    pub title: Option<TitleBadgeView>,
+    /// 头衔样式编号（1 胶囊 / 2 徽章 / 3 渐变下划线），生产用 1。
+    pub title_variant: u8,
+    /// 本人或管理员可以点简介就地编辑。
+    pub can_edit_bio: bool,
     /// 个人简介（未通过审核时只有本人与管理员看得到）。
     pub bio: Option<String>,
     /// 简介的审核态：approved / pending / rejected。

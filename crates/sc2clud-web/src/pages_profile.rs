@@ -226,7 +226,23 @@ async fn build_profile<'a>(
     } else {
         String::new()
     };
+    let title = repo::equipped_title_for(state.db.pool(), owner.id)
+        .await?
+        .map(|t| crate::templates::TitleBadgeView {
+            name: t.name,
+            color: t.color,
+        });
+    let title_variant = if state.config.server.debug_pages {
+        pui.and_then(|v| v.parse::<u8>().ok())
+            .filter(|v| (1..=3).contains(v))
+            .unwrap_or(1)
+    } else {
+        1
+    };
     Ok(ProfileTemplate {
+        title,
+        title_variant,
+        can_edit_bio: is_self || is_staff,
         bio: (!shown_bio.trim().is_empty()).then_some(shown_bio),
         bio_state,
         header_variant,
