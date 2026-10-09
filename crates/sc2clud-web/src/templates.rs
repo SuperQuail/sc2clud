@@ -235,6 +235,8 @@ pub struct PostPageTemplate<'a> {
     pub is_staff: bool,
     /// 作者是否开了打赏展示（开了才出那个大按钮）。
     pub donation_visible: bool,
+    /// 预览用的界面样式编号（1/2/3，生产恒为 1；见 post_actions.html）。
+    pub ui_variant: u8,
     /// 打赏渠道（弹窗左栏用；没有渠道时为空，前端不显示入口）。
     pub donation_channels: Vec<DonationChannelView>,
     /// 打赏前必须点「确定」的那段醒目提示（作者/渠道默认都没配则为 None）。

@@ -1,0 +1,38 @@
+{# 帖子右上角的「⋯」菜单：编辑与审核动作收进来，不再常驻页面。 #}
+{# ui_variant 只由预览/开发实例驱动（生产恒为 1），用来对比三种呈现。 #}
+{% if post.can_edit || is_staff %}
+<div class="post-actions" data-menu>
+  <button type="button" class="post-actions-btn" data-menu-toggle aria-haspopup="true" aria-expanded="false" aria-label="更多操作">⋯</button>
+  <div class="post-actions-panel variant-{{ ui_variant }}" data-menu-panel hidden>
+    {% if ui_variant == 1 %}
+    {# 样式 1：紧凑下拉，一行一个动作 #}
+    {% if post.can_edit %}<a class="pa-item" href="/p/{{ post.id }}/edit">编辑帖子</a>{% endif %}
+    {% if is_staff && post.state != "approved" %}<form method="post" action="/admin/posts/{{ post.id }}/approve" data-async data-after="refresh"><input type="hidden" name="csrf" value="{{ csrf }}"><button class="pa-item ok" type="submit">通过审核</button></form>{% endif %}
+    {% if is_staff %}<form method="post" action="/admin/posts/{{ post.id }}/revision" data-async data-after="refresh"><input type="hidden" name="csrf" value="{{ csrf }}"><button class="pa-item" type="submit">打回修改</button><input class="pa-input" type="text" name="note" placeholder="修改意见" maxlength="80"></form>{% endif %}
+    {% if is_staff && post.state != "approved" %}<form method="post" action="/admin/posts/{{ post.id }}/reject" data-async data-after="refresh"><input type="hidden" name="csrf" value="{{ csrf }}"><button class="pa-item danger" type="submit">拒绝</button></form>{% endif %}
+    {% if is_staff %}{% if post.archived %}<form method="post" action="/admin/posts/{{ post.id }}/unarchive" data-async data-after="refresh"><input type="hidden" name="csrf" value="{{ csrf }}"><button class="pa-item ok" type="submit">取消归档</button></form>{% else %}<form method="post" action="/admin/posts/{{ post.id }}/archive" data-async data-after="refresh"><input type="hidden" name="csrf" value="{{ csrf }}"><button class="pa-item danger" type="submit">归档</button></form>{% endif %}{% endif %}
+    {% else if ui_variant == 2 %}
+    {# 样式 2：分组下拉，编辑 / 审核两组，带小标题与分隔线 #}
+    {% if post.can_edit %}<p class="pa-group">内容</p><a class="pa-item" href="/p/{{ post.id }}/edit">编辑帖子</a>{% endif %}
+    {% if is_staff %}<p class="pa-group">审核</p>
+      <p class="pa-status">当前状态：{{ post.state_label }}{% if post.archived %}（已归档）{% endif %}</p>
+      {% if post.state != "approved" %}<form method="post" action="/admin/posts/{{ post.id }}/approve" data-async data-after="refresh"><input type="hidden" name="csrf" value="{{ csrf }}"><button class="pa-item ok" type="submit">通过审核</button></form>{% endif %}
+      <form method="post" action="/admin/posts/{{ post.id }}/revision" data-async data-after="refresh"><input type="hidden" name="csrf" value="{{ csrf }}"><button class="pa-item" type="submit">打回修改</button><input class="pa-input" type="text" name="note" placeholder="修改意见" maxlength="80"></form>
+      {% if post.state != "approved" %}<form method="post" action="/admin/posts/{{ post.id }}/reject" data-async data-after="refresh"><input type="hidden" name="csrf" value="{{ csrf }}"><button class="pa-item danger" type="submit">拒绝</button></form>{% endif %}
+      {% if post.archived %}<form method="post" action="/admin/posts/{{ post.id }}/unarchive" data-async data-after="refresh"><input type="hidden" name="csrf" value="{{ csrf }}"><button class="pa-item ok" type="submit">取消归档</button></form>{% else %}<form method="post" action="/admin/posts/{{ post.id }}/archive" data-async data-after="refresh"><input type="hidden" name="csrf" value="{{ csrf }}"><button class="pa-item danger" type="submit">归档</button></form>{% endif %}
+    {% endif %}
+    {% else %}
+    {# 样式 3：带说明的双列卡片，每项一行标题 + 一行解释 #}
+    <div class="pa-grid">
+    {% if post.can_edit %}<a class="pa-card" href="/p/{{ post.id }}/edit"><b>编辑帖子</b><span>改标题、正文、下载来源</span></a>{% endif %}
+    {% if is_staff %}
+      {% if post.state != "approved" %}<form method="post" action="/admin/posts/{{ post.id }}/approve" data-async data-after="refresh"><input type="hidden" name="csrf" value="{{ csrf }}"><button class="pa-card ok" type="submit"><b>通过审核</b><span>立即对所有人可见</span></button></form>{% endif %}
+      <form method="post" action="/admin/posts/{{ post.id }}/revision" data-async data-after="refresh"><input type="hidden" name="csrf" value="{{ csrf }}"><button class="pa-card" type="submit"><b>打回修改</b><span>通知作者按意见改</span></button><input class="pa-input" type="text" name="note" placeholder="修改意见" maxlength="80"></form>
+      {% if post.state != "approved" %}<form method="post" action="/admin/posts/{{ post.id }}/reject" data-async data-after="refresh"><input type="hidden" name="csrf" value="{{ csrf }}"><button class="pa-card danger" type="submit"><b>拒绝</b><span>作者与管理员可见</span></button></form>{% endif %}
+      {% if post.archived %}<form method="post" action="/admin/posts/{{ post.id }}/unarchive" data-async data-after="refresh"><input type="hidden" name="csrf" value="{{ csrf }}"><button class="pa-card ok" type="submit"><b>取消归档</b><span>回到列表可见</span></button></form>{% else %}<form method="post" action="/admin/posts/{{ post.id }}/archive" data-async data-after="refresh"><input type="hidden" name="csrf" value="{{ csrf }}"><button class="pa-card danger" type="submit"><b>归档</b><span>列表不再展示</span></button></form>{% endif %}
+    {% endif %}
+    </div>
+    {% endif %}
+  </div>
+</div>
+{% endif %}

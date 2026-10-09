@@ -29,7 +29,8 @@
 
   {# 中栏：正文主体 #}
   <div class="post-main">
-<section class="card">
+<section class="card" style="position:relative">
+  {% include "post_actions.html" %}
   <div class="head" style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px">
     <span class="tag">{{ post.section_label }}</span>
     <span class="kind kind-{{ post.kind }}">{{ post.kind_label }}</span>
@@ -46,51 +47,6 @@
     {% if post.image_count > 0 %} · {{ post.image_count }} 张图{% endif %}</div>
   {% if post.archived %}
   <p class="alert" style="margin-top:12px">此帖已归档：列表里不再展示，只有作者与管理员能通过直链打开。</p>
-  {% endif %}
-
-  {% if post.can_edit %}
-  <div class="actions-inline" style="margin-top:14px">
-    <a class="btn ghost sm" href="/p/{{ post.id }}/edit">编辑帖子</a>
-  </div>
-  {% endif %}
-
-  {% if is_staff %}
-  <div class="review-bar">
-    {% if post.state == "approved" %}
-    <span class="hint">此帖已通过审核{% if post.archived %}，且处于归档状态{% endif %}。</span>
-    {% else %}
-    <span class="hint">此帖当前状态「{{ post.state_label }}」：只有作者与管理员看得到。</span>
-    {% endif %}
-    {% if post.state != "approved" %}
-    <form method="post" action="/admin/posts/{{ post.id }}/approve" data-async data-after="refresh" class="inline-form">
-      <input type="hidden" name="csrf" value="{{ csrf }}">
-      <button class="btn ok sm" type="submit">通过</button>
-    </form>
-    {% endif %}
-    <form method="post" action="/admin/posts/{{ post.id }}/revision" data-async data-after="refresh" class="inline-form">
-      <input type="hidden" name="csrf" value="{{ csrf }}">
-      <button class="btn ghost sm" type="submit">打回修改</button>
-      <input type="text" name="note" placeholder="修改意见" maxlength="80">
-    </form>
-    {% if post.state != "approved" %}
-    <form method="post" action="/admin/posts/{{ post.id }}/reject" data-async data-after="refresh" class="inline-form">
-      <input type="hidden" name="csrf" value="{{ csrf }}">
-      <button class="btn ghost danger sm" type="submit">拒绝</button>
-      <input type="text" name="note" placeholder="拒绝理由" maxlength="80">
-    </form>
-    {% endif %}
-    {% if post.archived %}
-    <form method="post" action="/admin/posts/{{ post.id }}/unarchive" data-async data-after="refresh" class="inline-form">
-      <input type="hidden" name="csrf" value="{{ csrf }}">
-      <button class="btn ghost ok sm" type="submit">取消归档</button>
-    </form>
-    {% else %}
-    <form method="post" action="/admin/posts/{{ post.id }}/archive" data-async data-after="refresh" class="inline-form">
-      <input type="hidden" name="csrf" value="{{ csrf }}">
-      <button class="btn ghost danger sm" type="submit">归档</button>
-    </form>
-    {% endif %}
-  </div>
   {% endif %}
 
   {% if let Some(note) = post.review_note %}
@@ -251,9 +207,12 @@
 .donate-dialog{position:relative;width:min(680px,92vw);max-height:86vh;overflow:auto;background:var(--card,#fff);color:inherit;
   border:1px solid var(--line,#e5e7eb);border-radius:14px;padding:18px}
 .donate-close{position:absolute;top:6px;right:12px;border:0;background:none;font-size:24px;line-height:1;cursor:pointer;color:inherit}
-.donate-notice{border:2px solid #f59e0b;background:rgba(245,158,11,.14);border-radius:10px;padding:14px 16px}
-.donate-notice b{color:#b45309}
-.donate-notice p{margin:8px 0 12px;line-height:1.7}
+.donate-notice-layer{position:fixed;inset:0;z-index:70;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,.5)}
+.donate-notice-layer[hidden]{display:none}
+.donate-notice{width:min(520px,90vw);border:2px solid #f59e0b;background:var(--card,#fff);border-radius:12px;padding:20px 22px;text-align:center}
+.donate-notice b{color:#b45309;font-size:16px}
+.donate-notice p{margin:10px 0 16px;line-height:1.7;text-align:left}
+.donate-notice-actions{display:flex;justify-content:center}
 .donate-body{display:grid;grid-template-columns:150px 1fr;gap:16px;align-items:start}
 .donate-channels{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:8px}
 .donate-channel{width:100%;padding:10px;border:1px solid var(--line,#e5e7eb);border-radius:8px;background:none;color:inherit;cursor:pointer;font:inherit}
@@ -262,17 +221,32 @@
 .donate-pane img{border-radius:10px;background:#fff;padding:8px}
 .donate-hint{font-size:12px;opacity:.8;margin-top:8px}
 .donate-hidden{display:none}
+/* 帖子右上角「⋯」菜单：默认收起，展开才占位 */
+.post-actions{position:absolute;top:10px;right:12px}
+.post-actions-btn{border:1px solid var(--line,#e5e7eb);background:none;color:inherit;border-radius:8px;width:34px;height:30px;font-size:18px;line-height:1;cursor:pointer}
+.post-actions-btn:hover{background:rgba(127,127,127,.12)}
+.post-actions-panel{position:absolute;right:0;top:36px;z-index:50;min-width:210px;max-height:70vh;overflow:auto;
+  background:var(--card,#fff);border:1px solid var(--line,#e5e7eb);border-radius:10px;padding:8px;box-shadow:0 12px 32px rgba(0,0,0,.18)}
+.post-actions-panel[hidden]{display:none}
+.pa-item{display:block;width:100%;text-align:left;padding:8px 10px;border:0;border-radius:8px;background:none;color:inherit;font:inherit;cursor:pointer}
+.pa-item:hover{background:rgba(127,127,127,.12)}
+.pa-item.ok{color:#15803d}.pa-item.danger{color:#b91c1c}
+.pa-input{margin:4px 0 6px;width:100%;padding:6px 8px;border:1px solid var(--line,#e5e7eb);border-radius:8px;background:none;color:inherit}
+.pa-group{margin:8px 10px 4px;font-size:12px;opacity:.65;border-top:1px solid var(--line,#e5e7eb);padding-top:8px}
+.pa-group:first-child{border-top:0;margin-top:2px}
+.pa-status{margin:2px 10px 6px;font-size:12px;opacity:.8}
+/* 样式 3：双列说明卡 */
+.pa-grid{display:grid;grid-template-columns:1fr 1fr;gap:6px;min-width:380px}
+.pa-card{display:flex;flex-direction:column;gap:2px;padding:10px;border:1px solid var(--line,#e5e7eb);border-radius:8px;background:none;color:inherit;font:inherit;text-align:left;cursor:pointer}
+.pa-card:hover{background:rgba(127,127,127,.1)}
+.pa-card span{font-size:12px;opacity:.7}
+.pa-card.ok b{color:#15803d}.pa-card.danger b{color:#b91c1c}
 </style>
 {% if donation_visible %}
 <div class="donate-modal" id="donate-modal" hidden>
   <div class="donate-dialog" role="dialog" aria-modal="true" aria-label="赞助作者">
     <button type="button" class="donate-close" id="donate-close" aria-label="关闭">×</button>
-    <div class="donate-notice" id="donate-notice" {% if donation_notice.is_none() %}hidden{% endif %}>
-      <b>请先看这条提示</b>
-      <p>{% if let Some(text) = donation_notice %}{{ text }}{% endif %}</p>
-      <button type="button" class="btn" id="donate-ack">确定</button>
-    </div>
-    <div class="donate-body" id="donate-body" {% if donation_notice.is_some() %}hidden{% endif %}>
+    <div class="donate-body" id="donate-body">
       <ul class="donate-channels">
         {% for channel in donation_channels %}
         <li>
@@ -291,23 +265,47 @@
     </div>
   </div>
 </div>
+{# 提示是**赞助页的上一层**：独立遮罩 + 更高 z-index，点「确定」只收提示、赞助页留着 #}
+{% if let Some(text) = donation_notice %}
+<div class="donate-notice-layer" id="donate-notice" hidden>
+  <div class="donate-notice" role="alertdialog" aria-modal="true" aria-label="赞助前提示">
+    <b>请先看这条提示</b>
+    <p>{{ text }}</p>
+    <div class="donate-notice-actions"><button type="button" class="btn" id="donate-ack">确定</button></div>
+  </div>
+</div>
+{% endif %}
 {# 一个弹窗不值得引入构建产物：内联脚本，和岛屿一样靠 data 属性驱动 #}
 <script>
 (() => {
+  const qs = new URLSearchParams(location.search);
+  // 右上角「⋯」菜单：点外面关，点一下开
+  const menu = document.querySelector('[data-menu]');
+  if (menu) {
+    const toggle = menu.querySelector('[data-menu-toggle]');
+    const panel = menu.querySelector('[data-menu-panel]');
+    const setOpen = (open) => { panel.hidden = !open; toggle.setAttribute('aria-expanded', String(open)); };
+    toggle.addEventListener('click', (e) => { e.stopPropagation(); setOpen(panel.hidden); });
+    document.addEventListener('click', (e) => { if (!menu.contains(e.target)) setOpen(false); });
+    if (qs.get('menu') === '1') setOpen(true);
+  }
   const open = document.getElementById('donate-open');
   const modal = document.getElementById('donate-modal');
   if (!open || !modal) return;
-  const notice = document.getElementById('donate-notice');
-  const body = document.getElementById('donate-body');
-  const show = () => { modal.hidden = false; };
-  const hide = () => { modal.hidden = true; };
+  const layer = document.getElementById('donate-notice');
+  const show = () => { modal.hidden = false; if (layer) layer.hidden = false; };
+  const hide = () => { modal.hidden = true; if (layer) layer.hidden = true; };
   open.addEventListener('click', show);
   document.getElementById('donate-close').addEventListener('click', hide);
-  modal.addEventListener('click', (e) => { if (e.target === modal) hide(); });
-  document.addEventListener('keydown', (e) => { if (e.key === 'Escape') hide(); });
-  // 提示必须点「确定」：点完才让它消失、也才放出二维码
+  modal.addEventListener('click', (e) => { if (e.target === modal && (!layer || layer.hidden)) hide(); });
+  // 提示是上一层：ESC 先收提示，再按一次才关赞助页
+  document.addEventListener('keydown', (e) => {
+    if (e.key !== 'Escape') return;
+    if (layer && !layer.hidden) { layer.hidden = true; return; }
+    hide();
+  });
   const ack = document.getElementById('donate-ack');
-  if (ack) ack.addEventListener('click', () => { notice.hidden = true; body.hidden = false; });
+  if (ack) ack.addEventListener('click', () => { layer.hidden = true; });
   modal.querySelectorAll('.donate-channel').forEach((btn) => {
     btn.addEventListener('click', () => {
       modal.querySelectorAll('.donate-channel').forEach((b) => b.classList.toggle('active', b === btn));
@@ -317,7 +315,7 @@
     });
   });
   // 预览用：?donate=1 直接打开（正式页面没人会带这个参数）
-  if (new URLSearchParams(location.search).get('donate') === '1') show();
+  if (qs.get('donate') === '1') show();
 })();
 </script>
 {% endif %}

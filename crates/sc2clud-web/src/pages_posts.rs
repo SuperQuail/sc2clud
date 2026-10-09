@@ -302,6 +302,7 @@ async fn build_post_page<'a>(
         })
         .collect();
     Ok(PostPageTemplate {
+        ui_variant,
         site_name: &state.config.server.site_name,
         donation_visible: showcase.donation_visible && !donation_channels.is_empty(),
         donation_channels,
@@ -376,12 +377,19 @@ async fn build_post_page<'a>(
     })
 }
 
+#[derive(Debug, Deserialize)]
+pub struct UiQuery {
+    /// 预览用的界面样式编号（1/2/3）。
+    ui: Option<String>,
+}
+
 pub async fn post_page(
     State(state): State<AppState>,
     Path(id): Path<i64>,
     headers: HeaderMap,
+    axum::extract::Query(query): axum::extract::Query<UiQuery>,
 ) -> Response {
-    match build_post_page(&state, id, &headers).await {
+    match build_post_page(&state, id, &headers, query.ui.as_deref()).await {
         Ok(template) => render(template),
         Err(e) => e.into_page_response(wants_html(&headers)),
     }
