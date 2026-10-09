@@ -12,7 +12,7 @@ export default defineConfig({
     cssCodeSplit: false,
     rollupOptions: {
       // 头像岛是纯 TS（不引 Vue），单独入口，互不牵连
-      input: { uploader: 'src/main.ts', avatar: 'src/avatar.ts', admin: 'src/admin.ts' },
+      input: { uploader: 'src/main.ts', avatar: 'src/avatar.ts', admin: 'src/admin.ts', home: 'src/home.ts', auth: 'src/auth.ts', 'post-images': 'src/post-images.ts', account: 'src/account.ts', theme: 'src/theme.ts' },
       output: {
         format: 'es',
         entryFileNames: '[name].js',

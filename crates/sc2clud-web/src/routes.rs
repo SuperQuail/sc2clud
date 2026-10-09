@@ -46,6 +46,10 @@ pub fn pages() -> Router<AppState> {
     Router::new()
         .route("/", axum::routing::get(index))
         .route(
+            "/auth/dialog",
+            axum::routing::get(crate::pages_auth::auth_dialog),
+        )
+        .route(
             "/register",
             axum::routing::get(crate::pages_auth::register_form)
                 .post(crate::pages_auth::register_submit),
@@ -243,7 +247,10 @@ pub fn api_read() -> Router<AppState> {
 pub fn api_upload() -> Router<AppState> {
     Router::new()
         .route("/api/v1/files", axum::routing::put(upload_file))
-        .route("/api/v1/me/avatar", axum::routing::post(upload_avatar))
+        .route(
+            "/api/v1/me/avatar",
+            axum::routing::post(upload_avatar).get(crate::pages_profile::avatar_info),
+        )
         .route(
             "/api/v1/posts/{post_id}/images",
             axum::routing::post(upload_post_image),
@@ -256,6 +263,12 @@ pub fn api_upload() -> Router<AppState> {
 pub struct IndexQuery {
     #[serde(default)]
     pub section: Option<String>,
+    #[serde(default)]
+    pub q: Option<String>,
+    #[serde(default)]
+    pub sort: Option<String>,
+    #[serde(default)]
+    pub page: Option<i64>,
 }
 
 pub(crate) fn wants_html(headers: &HeaderMap) -> bool {
@@ -363,7 +376,7 @@ pub async fn index(
         .section
         .as_deref()
         .and_then(|raw| PostSection::parse(raw).ok());
-    match build_index(&state, user.as_ref(), section).await {
+    match build_index(&state, user.as_ref(), section, &query).await {
         Ok(template) => render_template(template),
         Err(e) => e.into_page_response(wants_html(&headers)),
     }
@@ -378,16 +391,49 @@ async fn build_index<'a>(
     state: &'a AppState,
     user: Option<&CurrentUser>,
     section: Option<PostSection>,
+    query: &IndexQuery,
 ) -> AppResult<IndexTemplate<'a>> {
     let viewer_id = user.map(|u| u.id);
     let is_staff = user.is_some_and(CurrentUser::is_staff);
-    let feed = repo::list_feed_by_section(
+    let search: String = query
+        .q
+        .as_deref()
+        .unwrap_or("")
+        .trim()
+        .chars()
+        .take(100)
+        .collect();
+    let popular = query.sort.as_deref() == Some("popular");
+    let filter = repo::FeedFilter {
+        section: section.map(PostSection::as_str),
+        search: &search,
+        popular,
+    };
+    let total = repo::count_feed_filtered(state.db.pool(), viewer_id, is_staff, &filter).await?;
+    const PAGE_SIZE: i64 = 12;
+    let last_page = ((total + PAGE_SIZE - 1) / PAGE_SIZE).max(1);
+    let page = query.page.unwrap_or(1).clamp(1, last_page);
+    let page_href = |target: i64| {
+        let mut params = form_urlencoded::Serializer::new(String::new());
+        if let Some(section) = section {
+            params.append_pair("section", section.as_str());
+        }
+        if !search.is_empty() {
+            params.append_pair("q", &search);
+        }
+        if popular {
+            params.append_pair("sort", "popular");
+        }
+        params.append_pair("page", &target.to_string());
+        format!("/?{}#home-feed", params.finish())
+    };
+    let feed = repo::list_feed_filtered(
         state.db.pool(),
         viewer_id,
         is_staff,
-        section.map(PostSection::as_str),
-        20,
-        0,
+        &filter,
+        PAGE_SIZE,
+        (page - 1) * PAGE_SIZE,
     )
     .await?;
 
@@ -410,6 +456,21 @@ async fn build_index<'a>(
     };
 
     Ok(IndexTemplate {
+        is_search: !search.is_empty(),
+        show_discovery: section.is_none() && search.is_empty() && page == 1 && !popular,
+        feed_title: section
+            .map(|s| s.label().to_string())
+            .unwrap_or_else(|| "发现社区新内容".to_string()),
+        active_section: section.map(|s| s.as_str().to_string()).unwrap_or_default(),
+        featured: feed
+            .iter()
+            .find(|p| p.review_state == "approved")
+            .map(|p| feed_view(p, viewer_id)),
+        popular,
+        page,
+        previous_page: (page > 1).then(|| page_href(page - 1)),
+        next_page: (page < last_page).then(|| page_href(page + 1)),
+        search_query: search,
         site_name: &state.config.server.site_name,
         user_label: user.map(|u| u.display_name.clone()),
         user_role_label: user.map(|u| u.role.label().to_string()).unwrap_or_default(),
@@ -436,7 +497,7 @@ async fn build_index<'a>(
                 })
                 .collect()
         },
-        visible_posts: feed.len() as i64,
+        visible_posts: total,
         posts: feed.iter().map(|row| feed_view(row, viewer_id)).collect(),
         is_staff,
         csrf: user.map(|u| u.csrf_token.clone()).unwrap_or_default(),

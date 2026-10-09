@@ -17,7 +17,13 @@ const groups = [
     label: '首屏 CSS',
     limit: 20 * KB,
     dir: STATIC,
-    files: ['app.css'],
+    files: ['app.css', 'home.css', 'forum.css'],
+  },
+  {
+    label: '非首页 CSS',
+    limit: 20 * KB,
+    dir: STATIC,
+    files: ['app.css', 'site.css'],
   },
   {
     label: '首屏 JS（前端岛）',

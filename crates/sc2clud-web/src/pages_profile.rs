@@ -13,6 +13,23 @@ use crate::routes::feed_view;
 use crate::session;
 use crate::templates::{ProfileTemplate, format_date, render};
 
+/// 当前登录者的头像摘要；不暴露其他账号资料或会话信息。
+pub async fn avatar_info(State(state): State<AppState>, headers: HeaderMap) -> AppResult<Response> {
+    let user = crate::routes::require_user(&state, &headers).await?;
+    Ok(avatar_metadata(&user))
+}
+
+fn avatar_metadata(user: &session::CurrentUser) -> Response {
+    (
+        [
+            (header::CACHE_CONTROL, "private, no-store"),
+            (header::VARY, "Cookie"),
+        ],
+        axum::Json(serde_json::json!({"avatar_hash": user.avatar_hash})),
+    )
+        .into_response()
+}
+
 /// `/me` → 自己的主页（不认识 handle 也能直达）。
 pub async fn me(State(state): State<AppState>, headers: HeaderMap) -> Response {
     match session::current_user(&state, &headers).await {
@@ -140,4 +157,34 @@ pub async fn serve_avatar(
         header::HeaderValue::from_static("public, max-age=86400"),
     );
     Ok(response)
+}
+
+#[cfg(test)]
+mod avatar_menu_tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn avatar_metadata_is_private_and_contains_only_the_current_avatar() {
+        let user = session::CurrentUser {
+            id: 42,
+            handle: "menu_test".into(),
+            display_name: "测试用户".into(),
+            avatar_hash: Some("a".repeat(64)),
+            trusted: false,
+            role: Role::Member,
+            activated: true,
+            csrf_token: "不应泄露".into(),
+        };
+        let response = avatar_metadata(&user);
+        assert_eq!(
+            response.headers()[header::CACHE_CONTROL],
+            "private, no-store"
+        );
+        assert_eq!(response.headers()[header::VARY], "Cookie");
+        let bytes = axum::body::to_bytes(response.into_body(), 2048)
+            .await
+            .unwrap();
+        let data: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+        assert_eq!(data, serde_json::json!({"avatar_hash": "a".repeat(64)}));
+    }
 }

@@ -1,10 +1,13 @@
 {% extends "base.html" %}
+{% block body_class %}site-page page-new{% endblock %}
+{% block page_label %}发布创作{% endblock %}
 
 {% block title %}发新帖 · {{ site_name }}{% endblock %}
 
 {% block content %}
-<section class="card auth-card" style="max-width:680px">
+<section class="card page-form-card">
   <h2>发新帖</h2>
+  <aside class="creation-note"><img src="/static/art/miyin/genius-160.webp" width="72" height="72" alt="弥音为你的灵感加油" loading="lazy"><div><strong>把灵感，变成下一段冒险。</strong><p>写清作品的玩法与亮点，让同样热爱星际的人更快发现你。</p></div></aside>
   {% if let Some(message) = error %}
   <p class="alert">{{ message }}</p>
   {% endif %}

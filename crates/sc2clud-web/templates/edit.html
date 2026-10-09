@@ -1,9 +1,11 @@
 {% extends "base.html" %}
+{% block body_class %}site-page page-edit{% endblock %}
+{% block page_label %}编辑帖子{% endblock %}
 
 {% block title %}编辑帖子 · {{ site_name }}{% endblock %}
 
 {% block content %}
-<section class="card" style="max-width:760px">
+<section class="card page-form-card">
   <h2>编辑帖子 <span class="count">{{ state_label }}</span></h2>
   {% if let Some(note) = review_note %}
   <p class="alert">审核意见：{{ note }}</p>
@@ -76,7 +78,7 @@
       <div class="image-manager">
         {% for image in images %}
         <figure class="image-cell">
-          <a href="{{ image.href }}" target="_blank" rel="noopener"><img src="{{ image.href }}" loading="lazy" alt="配图 {{ image.number }}"></a>
+          <a href="{{ image.href }}" target="_blank" rel="noopener"><img data-post-image src="{{ image.href }}" loading="lazy" alt="配图 {{ image.number }}"></a>
           <figcaption>
             <span class="meta">#{{ image.number }}</span>
             <span class="image-actions">

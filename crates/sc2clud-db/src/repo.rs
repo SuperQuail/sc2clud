@@ -999,9 +999,39 @@ pub async fn list_feed_by_section(
     limit: i64,
     offset: i64,
 ) -> Result<Vec<PostWithAuthorRow>> {
+    list_feed_filtered(
+        pool,
+        viewer_id,
+        is_staff,
+        &FeedFilter {
+            section,
+            search: "",
+            popular: false,
+        },
+        limit,
+        offset,
+    )
+    .await
+}
+
+/// 首页筛选。关键词按字面匹配，百分号与下划线不作为通配符。
+pub struct FeedFilter<'a> {
+    pub section: Option<&'a str>,
+    pub search: &'a str,
+    pub popular: bool,
+}
+
+pub async fn list_feed_filtered(
+    pool: &SqlitePool,
+    viewer_id: Option<i64>,
+    is_staff: bool,
+    filter: &FeedFilter<'_>,
+    limit: i64,
+    offset: i64,
+) -> Result<Vec<PostWithAuthorRow>> {
     let viewer = viewer_id.unwrap_or(-1);
     let staff = i64::from(is_staff);
-    let section = section.unwrap_or("");
+    let section = filter.section.unwrap_or("");
     query_as::<_, PostWithAuthorRow>(
         "SELECT p.id, p.title, p.body, p.kind, p.section, p.review_state, p.review_note, \
                 p.image_count, p.created_at, p.author_id, u.handle AS author_handle, \
@@ -1019,19 +1049,50 @@ pub async fn list_feed_by_section(
          FROM posts p JOIN users u ON u.id = p.author_id \
          WHERE p.deleted_at IS NULL AND p.archived_at IS NULL \
            AND (?5 = '' OR p.section = ?5) \
+           AND (?6 = '' OR instr(lower(p.title || ' ' || p.body), lower(?6)) > 0) \
            AND (p.review_state = 'approved' \
                 OR ?2 = 1 \
                 OR (p.review_state = 'pending' AND p.author_id = ?1)) \
-         ORDER BY p.pinned_rank DESC, p.created_at DESC, p.id DESC LIMIT ?3 OFFSET ?4",
+         ORDER BY p.pinned_rank DESC, CASE WHEN ?7 = 1 THEN \
+                    (SELECT COUNT(*) FROM comments c WHERE c.post_id = p.id AND c.deleted_at IS NULL) \
+                    + (SELECT COUNT(*) FROM post_likes pl WHERE pl.post_id = p.id) \
+                  ELSE 0 END DESC, p.created_at DESC, p.id DESC LIMIT ?3 OFFSET ?4",
     )
     .bind(viewer)
     .bind(staff)
     .bind(limit)
     .bind(offset)
     .bind(section)
+    .bind(filter.search)
+    .bind(i64::from(filter.popular))
     .fetch_all(pool)
     .await
     .map_err(db_err)
+}
+
+/// 分页总数必须使用与帖子列表完全相同的权限和筛选条件。
+pub async fn count_feed_filtered(
+    pool: &SqlitePool,
+    viewer_id: Option<i64>,
+    is_staff: bool,
+    filter: &FeedFilter<'_>,
+) -> Result<i64> {
+    let row: (i64,) = query_as(
+        "SELECT COUNT(*) FROM posts p JOIN users u ON u.id = p.author_id \
+         WHERE p.deleted_at IS NULL AND p.archived_at IS NULL \
+           AND (?3 = '' OR p.section = ?3) \
+           AND (?4 = '' OR instr(lower(p.title || ' ' || p.body), lower(?4)) > 0) \
+           AND (p.review_state = 'approved' OR ?2 = 1 \
+                OR (p.review_state = 'pending' AND p.author_id = ?1))",
+    )
+    .bind(viewer_id.unwrap_or(-1))
+    .bind(i64::from(is_staff))
+    .bind(filter.section.unwrap_or(""))
+    .bind(filter.search)
+    .fetch_one(pool)
+    .await
+    .map_err(db_err)?;
+    Ok(row.0)
 }
 
 /// 某个作者的帖子（个人主页用）。
@@ -2982,4 +3043,142 @@ pub async fn counter_value(pool: &SqlitePool, key: &str) -> Result<i64> {
         .await
         .map_err(db_err)?;
     Ok(row.map(|r| r.0).unwrap_or(0))
+}
+
+#[cfg(test)]
+mod discovery_tests {
+    use super::*;
+    use crate::Db;
+
+    #[tokio::test]
+    async fn search_and_pagination_keep_private_posts_private() {
+        let db = Db::in_memory().await.unwrap();
+        db.migrate().await.unwrap();
+        let author = create_user(db.pool(), "author", None, "hash", 0, 1)
+            .await
+            .unwrap();
+        for (title, section, review_state, now) in [
+            ("Alpha 战役", "custom_campaign", "approved", 1),
+            ("ALPHA 工具", "tool_player", "approved", 2),
+            ("Alpha 私密", "custom_campaign", "pending", 3),
+            ("Alpha 被拒", "custom_campaign", "rejected", 4),
+        ] {
+            create_post_reviewed(
+                db.pool(),
+                NewPost {
+                    author_id: author,
+                    kind: "discussion",
+                    section,
+                    title,
+                    body: "内容介绍",
+                    image_count: 0,
+                    review_state,
+                    review_note: None,
+                    now,
+                },
+            )
+            .await
+            .unwrap();
+        }
+        let filter = FeedFilter {
+            section: None,
+            search: "alpha",
+            popular: false,
+        };
+        assert_eq!(
+            count_feed_filtered(db.pool(), None, false, &filter)
+                .await
+                .unwrap(),
+            2
+        );
+        let first = list_feed_filtered(db.pool(), None, false, &filter, 1, 0)
+            .await
+            .unwrap();
+        let second = list_feed_filtered(db.pool(), None, false, &filter, 1, 1)
+            .await
+            .unwrap();
+        assert_eq!(first[0].title, "ALPHA 工具");
+        assert_eq!(second[0].title, "Alpha 战役");
+        assert_eq!(
+            count_feed_filtered(db.pool(), Some(author), false, &filter)
+                .await
+                .unwrap(),
+            3
+        );
+        assert_eq!(
+            count_feed_filtered(db.pool(), None, true, &filter)
+                .await
+                .unwrap(),
+            4
+        );
+        let section_filter = FeedFilter {
+            section: Some("tool_player"),
+            ..filter
+        };
+        assert_eq!(
+            count_feed_filtered(db.pool(), None, false, &section_filter)
+                .await
+                .unwrap(),
+            1
+        );
+        let literal = FeedFilter {
+            section: None,
+            search: "%",
+            popular: false,
+        };
+        assert_eq!(
+            count_feed_filtered(db.pool(), None, false, &literal)
+                .await
+                .unwrap(),
+            0
+        );
+        let body = FeedFilter {
+            section: None,
+            search: "内容介绍",
+            popular: false,
+        };
+        assert_eq!(
+            count_feed_filtered(db.pool(), None, false, &body)
+                .await
+                .unwrap(),
+            2
+        );
+        query("UPDATE posts SET archived_at = 5 WHERE title = 'ALPHA 工具'")
+            .execute(db.pool())
+            .await
+            .unwrap();
+        assert_eq!(
+            count_feed_filtered(db.pool(), None, false, &body)
+                .await
+                .unwrap(),
+            1
+        );
+    }
+
+    #[tokio::test]
+    async fn popular_order_uses_real_interactions() {
+        let db = Db::in_memory().await.unwrap();
+        db.migrate().await.unwrap();
+        let author = create_user(db.pool(), "author", None, "hash", 0, 1)
+            .await
+            .unwrap();
+        let old = create_post(db.pool(), author, "旧帖", "旧帖正文", 1)
+            .await
+            .unwrap();
+        create_post(db.pool(), author, "新帖", "新帖正文", 2)
+            .await
+            .unwrap();
+        create_comment(db.pool(), old, author, "实际回复", 3)
+            .await
+            .unwrap();
+        let filter = FeedFilter {
+            section: None,
+            search: "",
+            popular: true,
+        };
+        let rows = list_feed_filtered(db.pool(), None, false, &filter, 20, 0)
+            .await
+            .unwrap();
+        assert_eq!(rows[0].id, old);
+    }
 }

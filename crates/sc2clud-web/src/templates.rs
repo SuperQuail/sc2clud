@@ -11,6 +11,16 @@ use serde::{Deserialize, Serialize};
 #[derive(Template)]
 #[template(path = "index.html")]
 pub struct IndexTemplate<'a> {
+    pub search_query: String,
+    pub active_section: String,
+    pub is_search: bool,
+    pub popular: bool,
+    pub show_discovery: bool,
+    pub feed_title: String,
+    pub featured: Option<FeedView>,
+    pub page: i64,
+    pub previous_page: Option<String>,
+    pub next_page: Option<String>,
     pub site_name: &'a str,
     /// 已登录用户名（游客为 None）。
     pub user_label: Option<String>,
@@ -653,6 +663,11 @@ pub struct KindOption {
     pub hint: String,
     pub checked: bool,
 }
+
+/// 点击后按需加载的登录注册弹窗，不包含用户数据。
+#[derive(Template)]
+#[template(path = "auth_dialog.html")]
+pub struct AuthDialogTemplate {}
 
 /// 登录页。
 #[derive(Template)]

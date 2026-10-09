@@ -1,4 +1,6 @@
 {% extends "base.html" %}
+{% block body_class %}site-page page-admin{% endblock %}
+{% block page_label %}社区管理{% endblock %}
 
 {% block title %}用户管理 · {{ site_name }}{% endblock %}
 
@@ -10,6 +12,7 @@
       <a href="#pending">待审核{% if !pending.is_empty() %}（{{ pending.len() }}）{% endif %}</a>
       <a href="#users">用户</a>
       {% if is_super %}<a href="#create">添加用户</a>{% endif %}
+      <a href="#covers">分区封面</a>
       <a href="#settings">站点设置</a>
       <a href="/debug">自检面板</a>
     </nav>
@@ -70,6 +73,7 @@
       </form>
     </dialog>
 
+    {% if is_super %}
     <section class="panel" id="create">
       <h2>添加用户</h2>
       <form method="post" action="/admin/users" class="stack" data-async data-after="refresh">
@@ -77,6 +81,21 @@
         <label>登录名<input type="text" name="handle" required minlength="3" maxlength="24" pattern="[A-Za-z0-9_-]+" autocomplete="off">
           <span class="hint">3–24 位字母、数字、下划线或连字符；账号标识，用于登录</span></label>
         <label>显示名<input type="text" name="display_name" required maxlength="20" autocomplete="off"></label>
+
+        <label>初始口令<input type="text" name="password" required minlength="8" autocomplete="off">
+          <span class="hint">至少 8 位；交给对方后建议让他自己在账户设置里改</span></label>
+        <label>权限等级
+          <select name="role">
+            {% for role in roles %}
+            <option value="{{ role.0 }}"{% if role.0 == "member" %} selected{% endif %}>{{ role.1 }}</option>
+            {% endfor %}
+          </select>
+        </label>
+        <label class="kind-picker"><input type="checkbox" name="activated" value="1" checked> 创建后立即激活</label>
+        <button class="btn" type="submit">创建账号</button>
+      </form>
+    </section>
+    {% endif %}
 
     {% if !pending.is_empty() %}
     <section class="panel" id="pending">
@@ -203,21 +222,7 @@
     </table>
     </div>
     {% endif %}
-    {% if is_super %}
-        <label>初始口令<input type="text" name="password" required minlength="8" autocomplete="off">
-          <span class="hint">至少 8 位；交给对方后建议让他自己在账户设置里改</span></label>
-        <label>权限等级
-          <select name="role">
-            {% for role in roles %}
-            <option value="{{ role.0 }}"{% if role.0 == "member" %} selected{% endif %}>{{ role.1 }}</option>
-            {% endfor %}
-          </select>
-        </label>
-        <label class="kind-picker"><input type="checkbox" name="activated" value="1" checked> 创建后立即激活</label>
-        <button class="btn" type="submit">创建账号</button>
-      </form>
     </section>
-    {% endif %}
 
     {% if is_super %}
     <section class="panel" id="quota">
@@ -235,19 +240,27 @@
     </section>
     {% endif %}
 
-    <section class="panel" id="covers">
-      <h2>分区封面 <span class="spacer">管理员及以上可设置</span></h2>
-      <p class="hint">上传后立刻生效：显示在首页分区导航与分区横幅上。</p>
+    <section class="panel cover-manager" id="covers" aria-labelledby="covers-title">
+      <header class="covers-heading"><h2 id="covers-title">分区封面</h2></header>
       <div class="cover-grid" data-cover-csrf="{{ csrf }}">
         {% for section in sections %}
-        <div class="cover-cell">
-          <div class="thumb" {% if let Some(cover) = section.cover %}style="background-image:url('/img/{{ cover }}')"{% endif %}></div>
-          <strong>{{ section.label }}</strong>
-          <input type="file" accept="image/*" data-cover-section="{{ section.value }}">
-        </div>
+        <article class="cover-cell" data-cover-card data-state="idle" data-has-cover="{% if section.cover.is_some() %}true{% else %}false{% endif %}" aria-label="{{ section.label }}封面管理">
+          <button class="cover-preview" type="button" data-cover-pick aria-label="为{{ section.label }}选择封面" aria-describedby="cover-note-{{ section.value }}">
+            {% if let Some(cover) = section.cover %}<img data-cover-image src="/img/{{ cover }}" alt="{{ section.label }}当前封面">{% else %}<img data-cover-image alt="{{ section.label }}待选封面" hidden>{% endif %}
+            <span class="cover-placeholder"><img src="/static/art/starcraft/nav-{{ section.value }}.webp" alt=""><span>暂无封面</span></span>
+            <span class="cover-hover" aria-hidden="true">选择新封面 ↗</span>
+          </button>
+          <div class="cover-body">
+            <div class="cover-title"><h3>{{ section.label }}</h3><button class="cover-select" type="button" data-cover-pick>更换</button></div>
+            <span class="cover-badge" data-cover-badge hidden></span>
+            <p class="cover-note" id="cover-note-{{ section.value }}" data-cover-note role="status" aria-live="polite" hidden></p>
+            <input class="cover-file" id="cover-file-{{ section.value }}" type="file" accept="image/png,image/jpeg,image/gif,image/webp" data-cover-input data-cover-action="/admin/sections/{{ section.value }}/cover" aria-label="{{ section.label }}封面图片">
+            <div class="cover-actions"><button class="btn" type="button" data-cover-save hidden>确认更换</button><button class="cover-cancel" type="button" data-cover-cancel hidden>取消</button></div>
+          </div>
+        </article>
         {% endfor %}
       </div>
-      <p class="hint" data-cover-status></p>
+      <noscript><p class="hint">请启用 JavaScript 以预览和上传分区封面。</p></noscript>
     </section>
 
     <section class="panel" id="settings">
@@ -265,29 +278,4 @@
 </div>
 {% endblock %}
 
-{% block scripts %}<script type="module" src="/static/islands/admin.js"></script>
-<script>
-  // 分区封面：直接把文件当请求体发（服务端按魔数认类型）
-  (function () {
-    var grid = document.querySelector('[data-cover-csrf]');
-    if (!grid) return;
-    var csrf = grid.dataset.coverCsrf;
-    var status = document.querySelector('[data-cover-status]');
-    grid.addEventListener('change', function (event) {
-      var input = event.target;
-      if (!input || input.type !== 'file' || !input.files || !input.files[0]) return;
-      var section = input.dataset.coverSection;
-      var file = input.files[0];
-      if (status) status.textContent = '上传中…';
-      fetch('/admin/sections/' + section + '/cover', {
-        method: 'POST',
-        headers: { 'x-csrf-token': csrf },
-        body: file,
-        credentials: 'same-origin',
-      })
-        .then(function (r) { return r.ok ? r.json() : Promise.reject(r.status); })
-        .then(function () { location.reload(); })
-        .catch(function (code) { if (status) status.textContent = '上传失败（' + code + '）'; });
-    });
-  })();
-</script>{% endblock %}
+{% block scripts %}<script type="module" src="/static/islands/admin.js?v=20261009-covers-v14"></script>{% endblock %}

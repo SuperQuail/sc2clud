@@ -19,7 +19,11 @@ use sc2clud_db::repo;
 use crate::AppState;
 use crate::error::{AppError, AppResult};
 use crate::session;
-use crate::templates::{LoginTemplate, RegisterTemplate};
+use crate::templates::{AuthDialogTemplate, LoginTemplate, RegisterTemplate};
+
+pub async fn auth_dialog() -> Response {
+    crate::templates::render(AuthDialogTemplate {})
+}
 
 #[derive(Debug, Deserialize)]
 pub struct RegisterForm {
@@ -91,6 +95,29 @@ fn with_cookie(mut response: Response, cookie: String) -> Response {
     response
 }
 
+// 弹窗显式请求 JSON，普通浏览器表单继续使用原来的页面和重定向。
+fn wants_auth_json(headers: &HeaderMap) -> bool {
+    headers
+        .get(header::ACCEPT)
+        .and_then(|value| value.to_str().ok())
+        .is_some_and(|accept| {
+            accept.split(',').any(|item| {
+                item.split(';')
+                    .next()
+                    .is_some_and(|mime| mime.trim() == "application/json")
+            })
+        })
+}
+
+fn auth_redirect(headers: &HeaderMap, target: &str, needs_activation: bool) -> Response {
+    if wants_auth_json(headers) {
+        axum::Json(serde_json::json!({ "ok": true, "needs_activation": needs_activation }))
+            .into_response()
+    } else {
+        Redirect::to(target).into_response()
+    }
+}
+
 // ---------------------------------------------------------------- 注册
 
 pub async fn register_form(State(state): State<AppState>, headers: HeaderMap) -> Response {
@@ -120,6 +147,10 @@ pub async fn register_submit(
     Form(form): Form<RegisterForm>,
 ) -> Response {
     let page = |state: &AppState, error: &str| {
+        if wants_auth_json(&headers) {
+            return axum::Json(serde_json::json!({ "ok": false, "message": error }))
+                .into_response();
+        }
         crate::templates::render(RegisterTemplate {
             site_name: &state.config.server.site_name,
             is_staff: false,
@@ -201,11 +232,11 @@ pub async fn register_submit(
 
     if needs_activation {
         // 默认未激活：登录后会被引导到「待激活」提示
-        Redirect::to("/login?registered=1").into_response()
+        auth_redirect(&headers, "/login?registered=1", true)
     } else {
         match session::start_session(&state, user_id, None).await {
             Ok((token, _csrf)) => with_cookie(
-                Redirect::to("/").into_response(),
+                auth_redirect(&headers, "/", false),
                 session::session_cookie(&state, &token),
             ),
             Err(e) => e.into_response(),
@@ -239,6 +270,10 @@ pub async fn login_submit(
     Form(form): Form<LoginForm>,
 ) -> Response {
     let page = |state: &AppState, error: &str| {
+        if wants_auth_json(&headers) {
+            return axum::Json(serde_json::json!({ "ok": false, "message": error }))
+                .into_response();
+        }
         crate::templates::render(LoginTemplate {
             site_name: &state.config.server.site_name,
             is_staff: false,
@@ -275,7 +310,7 @@ pub async fn login_submit(
         .map(|value| value.chars().take(160).collect::<String>());
     match session::start_session(&state, user.id, user_agent.as_deref()).await {
         Ok((token, _csrf)) => with_cookie(
-            Redirect::to("/").into_response(),
+            auth_redirect(&headers, "/", false),
             session::session_cookie(&state, &token),
         ),
         Err(e) => e.into_response(),
@@ -294,6 +329,44 @@ pub async fn logout(State(state): State<AppState>, headers: HeaderMap) -> Respon
 #[cfg(test)]
 mod origin_tests {
     use super::*;
+
+    #[tokio::test]
+    async fn dialog_success_keeps_cookie_without_redirecting_to_production() {
+        let mut headers = HeaderMap::new();
+        headers.insert(header::ACCEPT, HeaderValue::from_static("application/json"));
+        let response = with_cookie(
+            auth_redirect(&headers, "/", false),
+            "preview=session; HttpOnly; SameSite=Lax".to_string(),
+        );
+        assert_eq!(response.status(), axum::http::StatusCode::OK);
+        assert!(!response.headers().contains_key(header::LOCATION));
+        assert!(response.headers().contains_key(header::SET_COOKIE));
+        let bytes = axum::body::to_bytes(response.into_body(), 1024)
+            .await
+            .unwrap();
+        let value: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+        assert_eq!(value["ok"], true);
+        assert_eq!(value["needs_activation"], false);
+
+        let response = auth_redirect(&headers, "/login?registered=1", true);
+        let bytes = axum::body::to_bytes(response.into_body(), 1024)
+            .await
+            .unwrap();
+        let value: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+        assert_eq!(value["needs_activation"], true);
+    }
+
+    #[test]
+    fn ordinary_forms_keep_their_existing_redirects() {
+        let mut headers = HeaderMap::new();
+        headers.insert(
+            header::ACCEPT,
+            HeaderValue::from_static("text/html,application/xhtml+xml"),
+        );
+        let response = auth_redirect(&headers, "/login?registered=1", true);
+        assert_eq!(response.status(), axum::http::StatusCode::SEE_OTHER);
+        assert_eq!(response.headers()[header::LOCATION], "/login?registered=1");
+    }
 
     #[test]
     fn same_host_passes() {

@@ -1,9 +1,10 @@
 {% extends "base.html" %}
+{% block body_class %}site-page page-profile{% endblock %}
+{% block page_label %}玩家主页{% endblock %}
 
 {% block title %}{{ display_name }} · {{ site_name }}{% endblock %}
 
 {% block bar_stats %}<span>帖子 {{ accepted }}</span><span>加入于 {{ joined_at }}</span>{% endblock %}
-{% block bar_avatar %}{% if let Some(hash) = avatar %}/avatar/{{ hash }}{% else %}/static/art/miyin-chibi-80.webp{% endif %}{% endblock %}
 
 
 {% block content %}
@@ -21,7 +22,7 @@
   </div>
 
   {% if can_interact %}
-  <p class="actions-inline" style="margin-top:14px">
+  <div class="actions-inline" style="margin-top:14px">
     <a class="btn" href="/messages/{{ handle }}">发私信</a>
     {% if blocked %}
     <form method="post" action="/u/{{ handle }}/unblock">
@@ -34,14 +35,14 @@
       <button class="btn ghost danger" type="submit">拉黑 TA</button>
     </form>
     {% endif %}
-  </p>
+  </div>
   {% endif %}
 
   {% if is_self %}
-  <p class="actions-inline" style="margin-top:14px">
+  <div class="actions-inline" style="margin-top:14px">
     <a class="btn" href="/settings">更换头像 / 修改资料</a>
     <a class="btn ghost" href="/new">发新帖</a>
-  </p>
+  </div>
   {% endif %}
 </section>
 

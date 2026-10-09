@@ -1,4 +1,6 @@
 {% extends "base.html" %}
+{% block body_class %}site-page page-notifications{% endblock %}
+{% block page_label %}通知中心{% endblock %}
 
 {% block title %}通知 · {{ site_name }}{% endblock %}
 
@@ -6,7 +8,7 @@
 <section class="card">
   <h2>通知 <span class="count">{{ items.len() }}</span></h2>
   {% if items.is_empty() %}
-  <p class="empty">还没有通知。</p>
+  <div class="community-empty"><img src="/static/art/miyin/smile-160.webp" width="96" height="96" alt="" loading="lazy"><p class="empty">还没有通知。新的互动会出现在这里。</p></div>
   {% else %}
   <div class="notify-list">
     {% for n in items %}

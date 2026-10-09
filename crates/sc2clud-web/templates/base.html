@@ -18,54 +18,35 @@
     })();
   </script>
   <title>{% block title %}{{ site_name }}{% endblock %}</title>
-  <link rel="stylesheet" href="/static/app.css">
+  <link rel="stylesheet" href="/static/app.css?v=20261009-theme-v12">
   {# 给个真图标：否则浏览器会去要 /favicon.ico，落到 nginx 的 404 #}
   <link rel="icon" href="/static/art/miyin-chibi-80.webp" type="image/webp">
   <link rel="apple-touch-icon" href="/static/art/miyin-chibi-160.webp">
-  {% block head %}{% endblock %}
+  {% block head %}<link rel="stylesheet" href="/static/site.css?v=20261009-covers-v14">{% endblock %}
 </head>
-<body>
+<body class="{% block body_class %}site-page{% endblock %}">
+  {% block header %}
+  <a class="site-skip" href="#site-main">跳到主要内容</a>
   <header class="topbar">
     <a class="brand" href="/">
       <img class="mascot" src="/static/art/miyin-chibi-80.webp"
            srcset="/static/art/miyin-chibi-80.webp 80w, /static/art/miyin-chibi-160.webp 160w"
            sizes="40px" width="40" height="40" alt="弥音" fetchpriority="high">
-      <span>{{ site_name }}<small>COMMUNITY &amp; CLOUD</small></span>
+      <span>{{ site_name }}<small>星际争霸 II 社区</small></span>
     </a>
-    <a class="home-btn" href="/" title="回到社区首页">
-      <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><path d="M2 7.2L8 2l6 5.2V14H9.8v-4H6.2v4H2z" fill="currentColor"/></svg>
-      社区
-    </a>
+    <form class="site-search" role="search" method="get" action="/">
+      <input type="search" name="q" placeholder="搜索战役、Mod、工具与讨论" aria-label="搜索社区帖子">
+      <button type="submit" aria-label="搜索"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="10.8" cy="10.8" r="6.8"/><path d="m16 16 5 5"/></svg></button>
+    </form>
+    <div class="site-header-links"><a href="/">发现</a><a href="/announcements">公告</a><a href="/new">创作</a></div>
+    <button class="site-theme-button" id="theme-toggle" type="button" aria-label="切换日间与夜间主题"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20.5 14.2A9 9 0 0 1 9.8 3.5 9 9 0 1 0 20.5 14.2Z"/></svg></button>
     <div class="bar-stats">{% block bar_stats %}{% endblock %}</div>
     <div class="bar-user">
       {% if let Some(name) = user_label %}
-      <div class="usermenu" id="usermenu">
-        <button class="user-chip" type="button" id="usermenu-toggle" aria-haspopup="menu" aria-expanded="false">
-          <img class="avatar" src="{% block bar_avatar %}/static/art/miyin-chibi-80.webp{% endblock %}" alt="" width="28" height="28">
-          <span class="ellipsis" title="{{ name }}">{{ name }}</span>
-          <svg class="chev" viewBox="0 0 16 16" width="12" height="12" aria-hidden="true"><path d="M4 6l4 4 4-4" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
-        </button>
-        <div class="usermenu-panel" id="usermenu-panel" role="menu">
-          <div class="usermenu-head">
-            <img class="avatar" src="{% block menu_avatar %}/static/art/miyin-chibi-80.webp{% endblock %}" alt="" width="44" height="44">
-            <div><strong>{{ name }}</strong><div class="meta">已登录</div></div>
-          </div>
-          <a href="/me" role="menuitem">我的主页</a>
-          <a href="/notifications" role="menuitem">通知<span class="badge" id="notify-badge" hidden></span></a>
-          <a href="/messages" role="menuitem">私信</a>
-          <a href="/bookmarks" role="menuitem">我的收藏</a>
-          <a href="/announcements" role="menuitem">系统公告</a>
-          <a href="/settings" role="menuitem">账户设置</a>
-          {% if is_staff %}<a href="/admin" role="menuitem">管理面板</a>{% endif %}
-          <form method="post" action="/logout" class="menu-form">
-            <input type="hidden" name="csrf" value="{{ csrf }}">
-            <button type="submit" class="menu-btn" role="menuitem">退出登录</button>
-          </form>
-        </div>
-      </div>
+      {% let account_avatar = "" %}
+      {% include "account_menu.html" %}
       {% else %}
-      <a class="btn ghost" href="/login">登录</a>
-      <a class="btn" href="/register">注册</a>
+      <a class="btn" href="/login">登录 / 注册</a>
       {% endif %}
     </div>
   </header>
@@ -93,25 +74,15 @@
     </button>
   </div>
 
-  <main>
+  {% endblock %}
+  <main id="site-main">
+  {% block page_intro %}<nav class="site-context" aria-label="当前位置"><div class="site-trail"><img src="/static/art/starcraft/terran.webp" width="64" height="64" alt=""><small>SC2 COMMUNITY</small><span>/</span><span>{% block page_label %}社区{% endblock %}</span></div><a href="/">返回社区首页 ↗</a></nav>{% endblock %}
 {% block content %}{% endblock %}
   </main>
-  <footer>{{ site_name }} · 星际争霸 II 社区</footer>
+  {% if user_label.is_none() %}<div id="auth-dialog-host"></div>{% endif %}
+  <footer class="site-footer"><span>{{ site_name }} · 星际争霸 II 玩家社区</span><span>由热爱连接 · 自由创作</span><a href="/">回到社区 ↗</a></footer>
   <script>
     (function () {
-      // 用户下拉
-      var menu = document.getElementById('usermenu');
-      var toggle = document.getElementById('usermenu-toggle');
-      if (menu && toggle) {
-        var close = function () { menu.classList.remove('open'); toggle.setAttribute('aria-expanded', 'false'); };
-        toggle.addEventListener('click', function (event) {
-          event.stopPropagation();
-          var open = menu.classList.toggle('open');
-          toggle.setAttribute('aria-expanded', open ? 'true' : 'false');
-        });
-        document.addEventListener('click', function (event) { if (!menu.contains(event.target)) close(); });
-        document.addEventListener('keydown', function (event) { if (event.key === 'Escape') close(); });
-      }
       // 右下角按钮
       var fab = document.getElementById('fab');
       var fabBtn = document.getElementById('fab-btn');
@@ -123,34 +94,6 @@
         });
         document.addEventListener('click', function (event) { if (!fab.contains(event.target)) fab.classList.remove('open'); });
       }
-      // 主题三态：日间 / 夜间 / 跟随系统（默认）
-      var media = window.matchMedia('(prefers-color-scheme: dark)');
-      var modeButtons = document.querySelectorAll('[data-theme-mode]');
-      function applyTheme(mode, persist) {
-        var dark = mode === 'dark' || (mode === 'system' && media.matches);
-        document.documentElement.setAttribute('data-theme', dark ? 'dark' : 'light');
-        document.documentElement.setAttribute('data-theme-mode', mode);
-        Array.prototype.forEach.call(modeButtons, function (button) {
-          button.classList.toggle('active', button.getAttribute('data-theme-mode') === mode);
-        });
-        if (persist) {
-          try { localStorage.setItem('sc2clud-theme', mode); } catch (e) {}
-        }
-      }
-      applyTheme(document.documentElement.getAttribute('data-theme-mode') || 'system', false);
-      Array.prototype.forEach.call(modeButtons, function (button) {
-        button.addEventListener('click', function () {
-          applyTheme(button.getAttribute('data-theme-mode'), true);
-        });
-      });
-      // 选了「跟随系统」就跟着系统实时变
-      var onSystemChange = function () {
-        if ((document.documentElement.getAttribute('data-theme-mode') || 'system') === 'system') {
-          applyTheme('system', false);
-        }
-      };
-      if (media.addEventListener) media.addEventListener('change', onSystemChange);
-      else if (media.addListener) media.addListener(onSystemChange);
       // 回到最上面
       var toTop = document.getElementById('to-top');
       if (toTop) {
@@ -184,6 +127,10 @@
       }
     })();
   </script>
+<script type="module" src="/static/islands/theme.js?v=20261009-theme-v12"></script>
 {% block scripts %}{% endblock %}
+{% if user_label.is_some() %}<script type="module" src="/static/islands/account.js?v=20261009-theme-v12"></script>{% endif %}
+<script type="module" src="/static/islands/post-images.js?v=20261009-art-v7"></script>
+{% if user_label.is_none() %}<script type="module" src="/static/islands/auth.js?v=20261009-art-v7"></script>{% endif %}
 </body>
 </html>
