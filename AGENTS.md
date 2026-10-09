@@ -189,3 +189,27 @@ bash deploy/promote.sh
 - `/dev/` 上的路径前缀由 nginx 的 `sub_filter` 处理，应用代码里**不要**写 `/dev`。
 - 生产数据快照进测试库是**只读**操作；反向绝不允许。
 - 出问题的回滚：生产 unit 重启即可回到旧版本（二进制换成上一个 release 的即可）。
+
+### 多人协作约定（都会往 dev 发）
+
+**唯一入口是仓库里的脚本**，不要手工 `systemctl` / 不要给 unit 加覆盖 `ExecStart` 的 drop-in：
+
+| 脚本 | 作用 |
+| --- | --- |
+| `bash deploy/dev.sh` | 拉 `main` → 构建 → 装二进制 → **只重启 /dev** |
+| `bash deploy/dev-restart.sh` | 不重新构建，只重启 /dev（改了 env、排查用） |
+| `bash deploy/dev-sync.sh` | 生产库**只读快照** → /dev 数据目录 |
+| `bash deploy/promote.sh` | 把已在 /dev 验过的版本推给生产 |
+
+规则：
+
+1. **代码改动走 git**：本地/自己的分支改 → 推 `main` → `deploy/dev.sh`。
+   直接在服务器 `/opt/sc2clud` 里改文件会被下一次 `dev.sh` 的 `reset --hard` 覆盖
+   （脚本会先 `git stash` 备份，但别指望它）。
+2. **`/dev` 与生产共用同一个二进制文件**（`/srv/sc2clud/sc2clud`）：`dev.sh` 装上新二进制后，
+   生产进程仍在跑旧代码（持旧 inode），但生产**下一次重启**就会用上新版本 —— 想让它等就别重启它。
+3. 排查「代码改了没效果」先看两条：`systemctl cat sc2clud-debug`（有没有 drop-in 覆盖 ExecStart）
+   与 `git -C /opt/sc2clud log --oneline -1`（服务器上到底是哪个提交）。
+4. 改 unit / vhost 后必须 `systemctl daemon-reload` / `nginx -s reload`。
+5. 数据与 Cookie 都是隔离的：prod `/srv/sc2clud/data` + `sc2clud_session`，
+   dev `/srv/sc2clud/data-debug` + `sc2clud_dev_session`；**反向同步绝不允许**。
