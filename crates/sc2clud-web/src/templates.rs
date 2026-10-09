@@ -292,6 +292,14 @@ pub struct InboxNoticeView {
     pub date: String,
     pub unread: bool,
     pub active: bool,
+    /// 触发者头像（点赞的人 / 审核人）；没有就用图标兜底。
+    pub avatar: Option<String>,
+    /// 聚合：前几个触发者显示名（最多 3 个）。
+    pub actor_names: Vec<String>,
+    /// 聚合：同一内容上的通知条数（点赞累计）。
+    pub count: i64,
+    /// 聚合：还有更多人没列出来（模板里不比类型，直接给布尔）。
+    pub more: bool,
 }
 
 /// 消息中心的会话项。

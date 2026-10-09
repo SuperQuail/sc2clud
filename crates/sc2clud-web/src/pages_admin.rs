@@ -1040,12 +1040,15 @@ pub async fn request_revision(
     }
     let _ = repo::notify(
         state.db.pool(),
-        post.author_id,
-        "review",
-        &format!("你的帖子「{}」需要修改", post.title),
-        Some(note),
-        Some(&format!("/p/{id}/edit")),
-        now,
+        repo::NewNotification {
+            user_id: post.author_id,
+            actor_id: Some(actor.id),
+            kind: "review",
+            title: &format!("你的帖子「{}」需要修改", post.title),
+            body: Some(note),
+            link: Some(&format!("/p/{id}/edit")),
+            now,
+        },
     )
     .await;
     tracing::info!(post.id = id, actor.id = actor.id, "打回修改");

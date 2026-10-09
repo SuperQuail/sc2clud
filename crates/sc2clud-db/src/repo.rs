@@ -2040,25 +2040,29 @@ pub async fn list_bookmarks(
 
 // ---------------- 通知 ----------------
 
-pub async fn notify(
-    pool: &SqlitePool,
-    user_id: i64,
-    kind: &str,
-    title: &str,
-    body: Option<&str>,
-    link: Option<&str>,
-    now: i64,
-) -> Result<i64> {
+pub struct NewNotification<'a> {
+    pub user_id: i64,
+    /// 谁触发的（点赞者 / 审核人 / 发私信的人）；系统通知传 None。
+    pub actor_id: Option<i64>,
+    pub kind: &'a str,
+    pub title: &'a str,
+    pub body: Option<&'a str>,
+    pub link: Option<&'a str>,
+    pub now: i64,
+}
+
+pub async fn notify(pool: &SqlitePool, notice: NewNotification<'_>) -> Result<i64> {
     let res = query(
-        "INSERT INTO notifications (user_id, kind, title, body, link, created_at) \
-         VALUES (?, ?, ?, ?, ?, ?)",
+        "INSERT INTO notifications (user_id, actor_id, kind, title, body, link, created_at) \
+         VALUES (?, ?, ?, ?, ?, ?, ?)",
     )
-    .bind(user_id)
-    .bind(kind)
-    .bind(title)
-    .bind(body)
-    .bind(link)
-    .bind(now)
+    .bind(notice.user_id)
+    .bind(notice.actor_id)
+    .bind(notice.kind)
+    .bind(notice.title)
+    .bind(notice.body)
+    .bind(notice.link)
+    .bind(notice.now)
     .execute(pool)
     .await
     .map_err(db_err)?;
@@ -2096,8 +2100,11 @@ pub async fn list_notifications(
     limit: i64,
 ) -> Result<Vec<NotificationRow>> {
     query_as::<_, NotificationRow>(
-        "SELECT id, kind, title, body, link, read_at, created_at FROM notifications \
-         WHERE user_id = ? ORDER BY created_at DESC, id DESC LIMIT ?",
+        "SELECT n.id, n.kind, n.title, n.body, n.link, n.read_at, n.created_at, \
+                a.handle AS actor_handle, a.display_name AS actor_display_name, \
+                a.avatar_hash AS actor_avatar \
+         FROM notifications n LEFT JOIN users a ON a.id = n.actor_id \
+         WHERE n.user_id = ? ORDER BY n.created_at DESC, n.id DESC LIMIT ?",
     )
     .bind(user_id)
     .bind(limit)
@@ -3736,12 +3743,15 @@ pub async fn create_issue(pool: &SqlitePool, issue: NewIssue<'_>) -> Result<i64>
     {
         let _ = notify(
             pool,
-            post_author,
-            "issue",
-            &format!("《{post_title}》收到新的 {}：{}", issue.kind, issue.title),
-            Some(issue.body),
-            Some(&format!("/p/{}", issue.post_id)),
-            issue.now,
+            NewNotification {
+                user_id: post_author,
+                actor_id: Some(issue.author_id),
+                kind: "issue",
+                title: &format!("《{post_title}》收到新的 {}：{}", issue.kind, issue.title),
+                body: Some(issue.body),
+                link: Some(&format!("/p/{}", issue.post_id)),
+                now: issue.now,
+            },
         )
         .await;
     }
@@ -3864,12 +3874,15 @@ pub async fn add_issue_comment(
     {
         let _ = notify(
             pool,
-            issue_author,
-            "issue_reply",
-            &format!("你的 issue「{issue_title}」有新回复"),
-            Some(body),
-            Some(&format!("/p/{post_id}")),
-            now,
+            NewNotification {
+                user_id: issue_author,
+                actor_id: Some(author_id),
+                kind: "issue_reply",
+                title: &format!("你的 issue「{issue_title}」有新回复"),
+                body: Some(body),
+                link: Some(&format!("/p/{post_id}")),
+                now,
+            },
         )
         .await;
     }

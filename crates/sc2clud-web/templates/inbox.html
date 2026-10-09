@@ -76,9 +76,20 @@
       <div class="feed-group">最新</div>
       {% for n in notices %}
       <div class="feed-row">
+        {# 有触发者头像就用头像，没有（老数据/系统）就用红心 #}
+        {% if let Some(hash) = n.avatar %}
+        <img class="feed-avatar" src="/avatar/{{ hash }}" alt="" width="34" height="34">
+        {% else %}
         <span class="feed-icon like">♥</span>
+        {% endif %}
         <div class="feed-main">
-          <div class="feed-line"><b>{{ n.title }}</b></div>
+          <div class="feed-line">
+            {% if n.count > 1 %}
+            <b>{% for name in n.actor_names %}{% if !loop.first %}、{% endif %}{{ name }}{% endfor %}</b>{% if n.more %} 等{% endif %}总计 {{ n.count }} 人赞了你的帖子
+            {% else %}
+            <b>{{ n.title }}</b>
+            {% endif %}
+          </div>
           <div class="feed-date">{{ n.date }}</div>
         </div>
         {% if !n.body.is_empty() %}<div class="feed-quote">{{ n.body }}</div>{% endif %}
@@ -140,6 +151,7 @@
 .feed-row:last-child{border-bottom:0}
 .feed-icon{width:34px;height:34px;border-radius:50%;display:flex;align-items:center;justify-content:center;flex:none;font-size:16px}
 .feed-icon.like{background:rgba(220,38,38,.12);color:#dc2626}
+.feed-avatar{width:34px;height:34px;border-radius:50%;flex:none;object-fit:cover}
 .feed-main{flex:1;min-width:0}
 .feed-line{font-size:14px;line-height:1.6}
 .feed-line b{font-weight:600}

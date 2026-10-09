@@ -150,12 +150,15 @@ pub async fn send(
     repo::send_message(state.db.pool(), user.id, other.id, &body, now).await?;
     let _ = repo::notify(
         state.db.pool(),
-        other.id,
-        "message",
-        &format!("{} 给你发了私信", user.display_name),
-        Some(body.chars().take(60).collect::<String>().as_str()),
-        Some(&format!("/messages/{}", user.handle)),
-        now,
+        repo::NewNotification {
+            user_id: other.id,
+            actor_id: Some(user.id),
+            kind: "message",
+            title: &format!("{} 给你发了私信", user.display_name),
+            body: Some(body.chars().take(60).collect::<String>().as_str()),
+            link: Some(&format!("/messages/{}", user.handle)),
+            now,
+        },
     )
     .await;
     state.counters.bump("message:sent", 1);
@@ -263,8 +266,17 @@ pub async fn center(
     let mut like_unread = 0i64;
     let mut system_unread = 0i64;
     for row in repo::list_notifications(state.db.pool(), user.id, 100).await? {
+        let actor = row.actor_display_name.clone().unwrap_or_default();
         let view = crate::templates::InboxNoticeView {
             id: row.id,
+            avatar: row.actor_avatar.clone(),
+            actor_names: if actor.is_empty() {
+                Vec::new()
+            } else {
+                vec![actor]
+            },
+            count: 1,
+            more: false,
             title: row.title,
             body: row.body.unwrap_or_default(),
             link: row.link.unwrap_or_default(),
@@ -320,6 +332,25 @@ pub async fn center(
             repo::mark_thread_read(state.db.pool(), user.id, other.id, sc2clud_core::now_unix())
                 .await;
     }
+
+    // 收到的赞按「同一条内容」聚合（B 站那种「A、B 等总计 N 人赞了…」）
+    let mut grouped: Vec<crate::templates::InboxNoticeView> = Vec::new();
+    for view in likes {
+        let key = view.link.clone();
+        match grouped.iter_mut().find(|g| g.link == key) {
+            Some(first) => {
+                first.count += 1;
+                first.more = first.count as usize > first.actor_names.len();
+                for name in view.actor_names {
+                    if first.actor_names.len() < 3 && !first.actor_names.contains(&name) {
+                        first.actor_names.push(name);
+                    }
+                }
+            }
+            None => grouped.push(view),
+        }
+    }
+    let likes = grouped;
 
     // 中栏展示哪一类列表
     let notices = if tab == "likes" {

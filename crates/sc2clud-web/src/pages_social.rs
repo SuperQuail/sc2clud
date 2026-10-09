@@ -61,12 +61,15 @@ pub async fn toggle_like(
     if liked && post.author_id != user.id {
         let _ = repo::notify(
             state.db.pool(),
-            post.author_id,
-            "like",
-            &format!("{} 赞了你的帖子", user.display_name),
-            Some(&post.title),
-            Some(&format!("/p/{id}")),
-            now,
+            repo::NewNotification {
+                user_id: post.author_id,
+                actor_id: Some(user.id),
+                kind: "like",
+                title: &format!("{} 赞了你的帖子", user.display_name),
+                body: Some(&post.title),
+                link: Some(&format!("/p/{id}")),
+                now,
+            },
         )
         .await;
     }

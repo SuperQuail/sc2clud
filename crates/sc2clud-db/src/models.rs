@@ -301,6 +301,10 @@ pub struct NotificationRow {
     pub link: Option<String>,
     pub read_at: Option<i64>,
     pub created_at: i64,
+    /// 触发者（点赞的人、审核的管理员…）；老数据为 NULL。
+    pub actor_handle: Option<String>,
+    pub actor_display_name: Option<String>,
+    pub actor_avatar: Option<String>,
 }
 
 /// 一条系统公告。
