@@ -44,13 +44,6 @@
   .donate-cta.center{max-width:320px;margin-left:auto;margin-right:auto}
   </style>
 
-  {% if header_variant == 2 && donation_visible %}
-  {# 右下角赞助入口：右对齐固定在卡片底部 #}
-  <div class="profile-donate-corner">
-    <button type="button" class="donate-cta aside" id="donate-open"><span class="donate-cta-title">赞助作者</span><span class="donate-cta-sub">支持 {{ display_name }} 继续创作</span></button>
-  </div>
-  {% endif %}
-
   {% if can_interact %}
   <div class="actions-inline" style="margin-top:14px">
     <a class="btn" href="/messages/{{ handle }}">发私信</a>
