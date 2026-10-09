@@ -33,7 +33,11 @@ pub async fn payment_channel_add(
     body: axum::body::Body,
 ) -> AppResult<Response> {
     let user = crate::routes::require_user(&state, &headers).await?;
-    session::guard(Some(&user), sc2clud_core::auth::Permission::CreateResource)?;
+    // 收款码是财产相关动作：认证开发者及以上（与「发资源帖」的开放口径分开）
+    session::guard(
+        Some(&user),
+        sc2clud_core::auth::Permission::SetPaymentChannel,
+    )?;
     let token = headers
         .get("x-csrf-token")
         .and_then(|v| v.to_str().ok())
