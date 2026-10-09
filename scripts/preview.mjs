@@ -44,6 +44,8 @@ const fullPage = args.includes('--full')
 // --qr-test：生成三张不同分辨率的纯蓝测试图，走**真实上传接口**传进本地副本，
 // 用来验证「上传分辨率不同、展示尺寸一致」
 const qrTest = args.includes('--qr-test')
+// --bio "文字"：给登录用户写一段简介（只写本地副本），用来渲染带简介的页面
+const bioArg = arg('bio', '')
 const outDir = arg('out', join(repo, '..', 'shots', 'preview'))
 const pagesArg = arg('pages', '')
 
@@ -221,6 +223,19 @@ const main = async () => {
     const line = raw.find((c) => c.startsWith('sc2clud_preview_session='))
     cookie = line ? line.split(';')[0] : null
     console.log(cookie ? `==> 已登录：${handle}` : '==> 登录失败，只截游客视图')
+  }
+
+  // 写简介（只为预览好看，且只写本地副本）
+  if (bioArg && cookie && existsSync(dbPath)) {
+    const page = await (await fetch(base + '/settings', { headers: { cookie } })).text()
+    const csrf = (page.match(/name="csrf" value="([^"]+)"/) ?? [])[1]
+    const res = await fetch(base + '/settings/bio', {
+      method: 'POST',
+      headers: { 'content-type': 'application/x-www-form-urlencoded', cookie },
+      body: new URLSearchParams({ csrf, bio: bioArg }),
+      redirect: 'manual',
+    })
+    console.log('==> 写入测试简介 → ' + res.status)
   }
 
   // 三张纯蓝测试图（200 / 512 / 1200），走真实上传接口 —— 验证展示尺寸是否一致
