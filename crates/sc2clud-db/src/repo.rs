@@ -3265,6 +3265,8 @@ pub async fn delete_payment_channel(
         .await
         .map_err(db_err)?;
     Ok(Some(hash))
+}
+
 // ---------------------------------------------------------------- 打赏展示（作者侧开关 + 页面用的展示块）
 
 /// 作者是否开启「支持作者」展示。
@@ -3279,14 +3281,15 @@ pub async fn donation_visible(pool: &SqlitePool, user_id: i64) -> Result<bool> {
 
 pub async fn set_donation_visible(pool: &SqlitePool, user_id: i64, visible: bool) -> Result<bool> {
     let value = i64::from(visible);
-    let affected = query("UPDATE users SET donation_visible = ? WHERE id = ? AND donation_visible <> ?")
-        .bind(value)
-        .bind(user_id)
-        .bind(value)
-        .execute(pool)
-        .await
-        .map_err(db_err)?
-        .rows_affected();
+    let affected =
+        query("UPDATE users SET donation_visible = ? WHERE id = ? AND donation_visible <> ?")
+            .bind(value)
+            .bind(user_id)
+            .bind(value)
+            .execute(pool)
+            .await
+            .map_err(db_err)?
+            .rows_affected();
     Ok(affected == 1)
 }
 
