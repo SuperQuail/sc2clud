@@ -195,6 +195,9 @@ async fn build_profile<'a>(
         None
     };
     Ok(ProfileTemplate {
+        // 与帖子页定版一致：赞助样式 1（左渠道右二维码）+ 提示样式 3（红圆图标卡）
+        donate_variant: 1,
+        notice_variant: 3,
         donation_visible: showcase.donation_visible && !showcase.channels.is_empty(),
         donation_channels: showcase
             .channels

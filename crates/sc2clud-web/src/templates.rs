@@ -588,6 +588,9 @@ pub struct ProfileTemplate<'a> {
     pub can_edit_avatar: bool,
     pub posts: Vec<FeedView>,
     pub accepted: i64,
+    /// 打赏弹窗/提示的样式编号（主页没有预览开关，生产值即已评审通过的那套）。
+    pub donate_variant: u8,
+    pub notice_variant: u8,
     /// 「支持作者」区块：作者开了展示、且有渠道时才出现。
     pub donation_visible: bool,
     pub donation_channels: Vec<DonationChannelView>,
