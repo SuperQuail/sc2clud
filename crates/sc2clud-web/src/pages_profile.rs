@@ -208,9 +208,9 @@ async fn build_profile<'a>(
     let header_variant = if state.config.server.debug_pages {
         pui.and_then(|v| v.parse::<u8>().ok())
             .filter(|v| (1..=3).contains(v))
-            .unwrap_or(1)
+            .unwrap_or(2)
     } else {
-        1
+        2
     };
     // 没写（或未过审而访客看不到）时显示默认文案 —— 文案本身超管可在后台改
     let default_bio = repo::site_text(

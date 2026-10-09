@@ -74,6 +74,13 @@
     <a class="btn ghost" href="/new">发新帖</a>
   </div>
   {% endif %}
+
+  {% if header_variant == 2 && donation_visible %}
+  {# 右下角赞助入口：右对齐，固定在卡片最底部 #}
+  <div class="profile-donate-corner">
+    <button type="button" class="donate-cta aside" id="donate-open"><span class="donate-cta-title">赞助作者</span><span class="donate-cta-sub">支持 {{ display_name }} 继续创作</span></button>
+  </div>
+  {% endif %}
 </section>
 
 <section class="card">
