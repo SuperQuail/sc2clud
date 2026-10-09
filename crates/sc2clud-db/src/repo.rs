@@ -3611,6 +3611,9 @@ pub async fn equipped_title_for(pool: &SqlitePool, user_id: i64) -> Result<Optio
     .map_err(db_err)
 }
 
+/// `equipped_titles_for` 的查询行：用户 id + 头衔各列。
+type EquippedTitleRow = (i64, i64, String, String, String, String, Option<i64>);
+
 /// 批量取「用户 → 佩戴的头衔」，给列表渲染用（一次查询，不做 N+1）。
 pub async fn equipped_titles_for(
     pool: &SqlitePool,
@@ -3624,7 +3627,7 @@ pub async fn equipped_titles_for(
         "SELECT u.id AS uid, t.id, t.key, t.name, t.color, t.description, t.archived_at \
          FROM users u JOIN titles t ON t.id = u.equipped_title_id WHERE u.id IN ({placeholders})"
     );
-    let mut q = query_as::<_, (i64, i64, String, String, String, String, Option<i64>)>(&sql);
+    let mut q = query_as::<_, EquippedTitleRow>(&sql);
     for user_id in user_ids {
         q = q.bind(user_id);
     }
