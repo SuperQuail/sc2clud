@@ -21,6 +21,7 @@ if [ -d "$REPO/crates/sc2clud-web/static" ]; then
 fi
 
 log "重启生产实例"
+systemctl daemon-reload
 systemctl restart sc2clud
 sleep 1
 systemctl is-active sc2clud

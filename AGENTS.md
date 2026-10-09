@@ -182,6 +182,9 @@ bash deploy/promote.sh
 
 要点：
 
+- **两个容易踩的部署坑**：① `sqlx::migrate!` 编译期展开，增量编译下新增迁移可能不重编 →
+  `dev.sh` 会先 `touch crates/sc2clud-db/src/lib.rs`；② `/etc/systemd/system/<unit>.service.d/` 里的
+  drop-in 会覆盖 `ExecStart`，改完 unit 必须 `systemctl daemon-reload` 再重启，否则跑的还是旧二进制。
 - **不要在生产的 `/` 上做任何交互式测试或写入**（包括自动化点击、造数据）。
 - `/dev/` 上的路径前缀由 nginx 的 `sub_filter` 处理，应用代码里**不要**写 `/dev`。
 - 生产数据快照进测试库是**只读**操作；反向绝不允许。

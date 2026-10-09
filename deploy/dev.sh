@@ -21,6 +21,9 @@ git fetch --quiet origin "$BRANCH"
 git reset --hard --quiet "origin/$BRANCH"
 
 log "构建（nice 一下，别和线上抢 CPU）"
+# sqlx::migrate! 是编译期展开的：增量编译下新增迁移文件可能不触发重编，
+# 结果就是「二进制装上了、迁移却没跑」（踩过一次，排查了很久）。
+touch "$REPO/crates/sc2clud-db/src/lib.rs"
 CARGO_BUILD_JOBS=2 nice -n 10 "$CARGO" build --release -p sc2clud-app
 
 log "安装二进制（生产进程仍持有旧 inode，不受影响）"
@@ -37,6 +40,9 @@ if [ -d "$PREFIX/static/islands" ]; then
 fi
 
 log "重启测试实例"
+# 必须先 daemon-reload：/etc/systemd/system/<unit>.service.d/ 里的 drop-in 会覆盖 ExecStart，
+# 不重载的话重启的还是别人那份二进制（踩过一次）。
+systemctl daemon-reload
 systemctl restart sc2clud-debug
 sleep 1
 systemctl is-active sc2clud-debug
