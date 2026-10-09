@@ -3631,8 +3631,7 @@ pub async fn equipped_titles_for(
     for user_id in user_ids {
         q = q.bind(user_id);
     }
-    let rows: Vec<(i64, i64, String, String, String, String, Option<i64>)> =
-        q.fetch_all(pool).await.map_err(db_err)?;
+    let rows: Vec<EquippedTitleRow> = q.fetch_all(pool).await.map_err(db_err)?;
     Ok(rows
         .into_iter()
         .map(
