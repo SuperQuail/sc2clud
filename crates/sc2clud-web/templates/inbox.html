@@ -1,0 +1,121 @@
+{% extends "base.html" %}
+{% block body_class %}site-page page-inbox{% endblock %}
+{% block page_label %}消息中心{% endblock %}
+{% block title %}消息中心 · {{ site_name }}{% endblock %}
+
+{% block content %}
+{# B 站式消息中心。inbox_variant：1 三栏 / 2 两栏 / 3 单栏+会话选择（生产恒 1） #}
+<section class="card inbox-head">
+  <h1>消息中心</h1>
+  <nav class="inbox-tabs">
+    <a href="/inbox?tab=dm" class="{% if tab == "dm" %}active{% endif %}">我的消息 <span class="count">{{ conversations.len() }}</span></a>
+    <a href="/inbox?tab=notifications" class="{% if tab == "notifications" %}active{% endif %}">系统通知 <span class="count">{{ notifications.len() }}</span></a>
+  </nav>
+</section>
+
+{% if inbox_variant == 3 %}
+<section class="card inbox-chips">
+  {% for c in conversations %}
+  <a class="inbox-chip{% if c.active %} active{% endif %}" href="/inbox?tab=dm&with={{ c.handle }}">{{ c.display_name }}</a>
+  {% endfor %}
+  {% if conversations.is_empty() %}<p class="empty">还没有会话。</p>{% endif %}
+</section>
+{% endif %}
+
+<div class="inbox-layout{% if inbox_variant == 1 %} three{% else if inbox_variant == 2 %} two{% endif %}">
+  {% if inbox_variant == 1 %}
+  <aside class="card inbox-cats">
+    <h3>分类</h3>
+    <a href="/inbox?tab=dm" class="{% if tab == "dm" %}active{% endif %}">我的消息</a>
+    <a href="/inbox?tab=notifications" class="{% if tab == "notifications" %}active{% endif %}">系统通知</a>
+  </aside>
+  {% endif %}
+
+  {% if inbox_variant != 3 %}
+  <section class="card inbox-list">
+    {% if tab == "notifications" %}
+    <h3>系统通知</h3>
+    {% for n in notifications %}
+    <a class="inbox-item{% if n.unread %} unread{% endif %}" {% if !n.link.is_empty() %}href="{{ n.link }}"{% endif %}>
+      <div class="inbox-item-top"><b>{{ n.title }}</b><span class="meta">{{ n.date }}</span></div>
+      <p class="inbox-item-body">{{ n.body }}</p>
+    </a>
+    {% endfor %}
+    {% if notifications.is_empty() %}<p class="empty">没有通知。</p>{% endif %}
+    {% else %}
+    <h3>会话</h3>
+    {% for c in conversations %}
+    <a class="inbox-item{% if c.active %} active{% endif %}" href="/inbox?tab=dm&with={{ c.handle }}">
+      {% if let Some(hash) = c.avatar %}
+      <img class="avatar" src="/avatar/{{ hash }}" alt="" width="40" height="40">
+      {% else %}
+      <img class="avatar" src="/static/art/miyin-chibi-80.webp" alt="" width="40" height="40">
+      {% endif %}
+      <div class="inbox-item-main">
+        <div class="inbox-item-top"><b>{{ c.display_name }}</b><span class="meta">{{ c.date }}</span></div>
+        <p class="inbox-item-body">{{ c.last_body }}</p>
+      </div>
+    </a>
+    {% endfor %}
+    {% if conversations.is_empty() %}<p class="empty">还没有会话。</p>{% endif %}
+    {% endif %}
+  </section>
+  {% endif %}
+
+  {% if inbox_variant != 1 || tab == "dm" %}
+  <section class="card inbox-thread">
+    {% if other_display.is_empty() %}
+    <p class="empty">从左侧选一个会话，这里显示往来消息。</p>
+    {% else %}
+    <h3>与 {{ other_display }} 的消息</h3>
+    <div class="inbox-bubbles">
+      {% for m in thread %}
+      <div class="bubble{% if m.mine %} mine{% endif %}"><p>{{ m.body }}</p><span class="meta">{{ m.date }}</span></div>
+      {% endfor %}
+      {% if thread.is_empty() %}<p class="empty">还没有消息。</p>{% endif %}
+    </div>
+    <form class="inbox-composer" method="post" action="/messages/{{ selected }}">
+      <input type="hidden" name="csrf" value="{{ csrf }}">
+      <input type="text" name="body" maxlength="500" placeholder="输入消息内容">
+      <button class="btn" type="submit">发送</button>
+    </form>
+    {% endif %}
+  </section>
+  {% endif %}
+</div>
+
+<style>
+.inbox-head{padding:16px 18px}
+.inbox-tabs{display:flex;gap:22px;margin-top:10px;border-bottom:1px solid var(--line,#e5e7eb);flex-wrap:wrap}
+.inbox-tabs a{padding:8px 2px;color:inherit;text-decoration:none;opacity:.75;border-bottom:2px solid transparent}
+.inbox-tabs a.active{opacity:1;font-weight:600;border-bottom-color:#2563eb;color:#2563eb}
+.inbox-tabs .count{font-size:12px;opacity:.7}
+.inbox-chips{display:flex;gap:8px;flex-wrap:wrap;margin-top:14px;padding:12px}
+.inbox-chip{padding:6px 12px;border:1px solid var(--line,#e5e7eb);border-radius:999px;text-decoration:none;color:inherit;font-size:13px}
+.inbox-chip.active{border-color:#2563eb;color:#2563eb;font-weight:600}
+.inbox-layout{display:grid;gap:14px;margin-top:14px;align-items:start}
+.inbox-layout.three{grid-template-columns:160px 320px 1fr}
+.inbox-layout.two{grid-template-columns:320px 1fr}
+.inbox-cats{display:flex;flex-direction:column;gap:6px;padding:14px}
+.inbox-cats h3{margin:0 0 6px;font-size:13px;opacity:.7}
+.inbox-cats a{color:inherit;text-decoration:none;padding:6px 8px;border-radius:8px}
+.inbox-cats a.active{background:rgba(37,99,235,.14);color:#2563eb;font-weight:600}
+.inbox-list{padding:12px;max-height:70vh;overflow:auto}
+.inbox-list h3{margin:0 0 8px;font-size:13px;opacity:.7}
+.inbox-item{display:flex;gap:10px;padding:10px;border-radius:10px;text-decoration:none;color:inherit;border:1px solid transparent}
+.inbox-item:hover{background:rgba(127,127,127,.08)}
+.inbox-item.active{border-color:rgba(37,99,235,.5);background:rgba(37,99,235,.08)}
+.inbox-item.unread b::after{content:" ●";color:#dc2626;font-size:10px}
+.inbox-item-main{min-width:0}
+.inbox-item-top{display:flex;justify-content:space-between;gap:8px;font-size:14px}
+.inbox-item-body{margin:4px 0 0;font-size:13px;opacity:.8;overflow:hidden;display:-webkit-box;-webkit-line-clamp:1;-webkit-box-orient:vertical}
+.inbox-thread{padding:14px;min-height:320px;display:flex;flex-direction:column}
+.inbox-bubbles{display:flex;flex-direction:column;gap:10px;margin:10px 0;flex:1}
+.bubble{max-width:70%;padding:10px 14px;border-radius:12px;background:rgba(127,127,127,.14)}
+.bubble.mine{align-self:flex-end;background:rgba(37,99,235,.16)}
+.bubble p{margin:0 0 4px;line-height:1.6}
+.bubble .meta{font-size:12px;opacity:.7}
+.inbox-composer{display:flex;gap:8px;margin-top:10px}
+.inbox-composer input{flex:1;padding:10px 12px;border:1px solid var(--line,#e5e7eb);border-radius:10px;background:none;color:inherit;font:inherit}
+</style>
+{% endblock %}

@@ -91,6 +91,7 @@ pub async fn search_page(
             .map(|row| PostHitView {
                 id: row.id,
                 title: row.title.clone(),
+                cover_hash: row.cover_hash.clone(),
                 section_label: sc2clud_core::resource::PostSection::parse(&row.section)
                     .map(|s| s.label().to_string())
                     .unwrap_or_else(|_| row.section.clone()),

@@ -279,6 +279,7 @@ pub struct SearchPageTemplate<'a> {
 pub struct PostHitView {
     pub id: i64,
     pub title: String,
+    pub cover_hash: Option<String>,
     pub section_label: String,
     pub author: String,
     pub date: String,

@@ -3017,7 +3017,9 @@ pub async fn search_posts(
         "SELECT p.id, p.title, p.section, p.created_at, p.pinned_rank, p.featured_at, \
                 p.author_id, u.handle AS author_handle, \
                 COALESCE(NULLIF(u.display_name, ''), u.handle) AS author_display_name, \
-                (SELECT COUNT(*) FROM comments c WHERE c.post_id = p.id AND c.deleted_at IS NULL) AS comment_count \
+                (SELECT COUNT(*) FROM comments c WHERE c.post_id = p.id AND c.deleted_at IS NULL) AS comment_count, \
+                (SELECT COALESCE(i.display_hash, i.original_hash) FROM post_images i \
+                   WHERE i.post_id = p.id ORDER BY i.position LIMIT 1) AS cover_hash \
          FROM posts p JOIN users u ON u.id = p.author_id \
          WHERE p.deleted_at IS NULL AND p.archived_at IS NULL AND p.review_state = 'approved' \
            AND NOT EXISTS (SELECT 1 FROM sections sec WHERE sec.key = p.section AND sec.archived_at IS NOT NULL) \
@@ -3050,7 +3052,9 @@ pub async fn list_featured_posts(
         "SELECT p.id, p.title, p.section, p.created_at, p.pinned_rank, p.featured_at, \
                 p.author_id, u.handle AS author_handle, \
                 COALESCE(NULLIF(u.display_name, ''), u.handle) AS author_display_name, \
-                (SELECT COUNT(*) FROM comments c WHERE c.post_id = p.id AND c.deleted_at IS NULL) AS comment_count \
+                (SELECT COUNT(*) FROM comments c WHERE c.post_id = p.id AND c.deleted_at IS NULL) AS comment_count, \
+                (SELECT COALESCE(i.display_hash, i.original_hash) FROM post_images i \
+                   WHERE i.post_id = p.id ORDER BY i.position LIMIT 1) AS cover_hash \
          FROM posts p JOIN users u ON u.id = p.author_id \
          WHERE p.deleted_at IS NULL AND p.archived_at IS NULL AND p.review_state = 'approved' \
            AND p.featured_at IS NOT NULL \

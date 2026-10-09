@@ -52,8 +52,15 @@
     <div class="search-rows">
       {% for post in posts %}
       <a class="search-row" href="/p/{{ post.id }}">
-        <h3>{{ post.title }}</h3>
-        <p class="meta">{{ post.section_label }} · {{ post.author }} · {{ post.date }}{% if post.comment_count > 0 %} · 回复 {{ post.comment_count }}{% endif %}</p>
+        {% if let Some(cover) = post.cover_hash %}
+        <img class="search-row-cover" src="/img/{{ cover }}" alt="" loading="lazy">
+        {% else %}
+        <img class="search-row-cover" src="/static/art/miyin-chibi-160.webp" alt="" loading="lazy">
+        {% endif %}
+        <div class="search-row-main">
+          <h3>{{ post.title }}</h3>
+          <p class="meta">{{ post.section_label }} · {{ post.author }} · {{ post.date }}{% if post.comment_count > 0 %} · 回复 {{ post.comment_count }}{% endif %}</p>
+        </div>
       </a>
       {% endfor %}
     </div>
@@ -111,7 +118,9 @@
 .search-side{width:260px;flex:none}
 .user-hits{display:flex;flex-direction:column;gap:10px}
 .search-rows{display:flex;flex-direction:column;gap:4px}
-.search-row{display:block;padding:12px 10px;border-radius:10px;text-decoration:none;color:inherit}
+.search-row{display:flex;gap:14px;align-items:center;padding:12px 10px;border-radius:10px;text-decoration:none;color:inherit}
+.search-row-cover{width:150px;height:94px;object-fit:cover;border-radius:8px;flex:none}
+.search-row-main{min-width:0}
 .search-row:hover{background:rgba(127,127,127,.08)}
 .search-row h3{margin:0 0 4px;font-size:16px}
 .search-row .meta{margin:0;font-size:13px;opacity:.8}

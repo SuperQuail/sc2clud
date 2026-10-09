@@ -244,6 +244,8 @@ pub struct PostSearchRow {
     pub author_handle: String,
     pub author_display_name: String,
     pub comment_count: i64,
+    /// 封面（该帖第一张配图；搜索结果带封面卡用）。
+    pub cover_hash: Option<String>,
 }
 
 /// 回复 + 作者。
