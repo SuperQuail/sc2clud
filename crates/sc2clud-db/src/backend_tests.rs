@@ -490,3 +490,136 @@ async fn titles_and_exp_are_readable_from_the_backend() {
         "等级必须跟曲线一致"
     );
 }
+
+#[tokio::test]
+async fn editing_a_post_stages_until_approved() {
+    let db = db().await;
+    let now = now_unix();
+    let author = make_user(&db, "edit_author").await;
+    let post = make_post(&db, author, "原来的标题").await;
+
+    // 审核机没直接放行 → 暂存：posts 保持原样
+    let outcome = repo::submit_post_edit(
+        db.pool(),
+        repo::PostEdit {
+            id: post,
+            title: "改过的标题",
+            body: "改过的正文",
+            kind: "discussion",
+            section: "custom_campaign",
+            review_state: "pending",
+            review_note: Some("含敏感词，待人工"),
+            submitted_by: Some(author),
+            now,
+        },
+        "pending",
+    )
+    .await
+    .expect("提交编辑");
+    assert_eq!(outcome, repo::EditOutcome::Staged);
+    assert!(
+        repo::has_pending_revision(db.pool(), post)
+            .await
+            .expect("查"),
+        "应当有一份待审修改"
+    );
+    // 对外仍是原帖
+    let current = repo::resolved_post_title(db.pool(), post)
+        .await
+        .expect("查标题");
+    assert_eq!(current.as_deref(), Some("原来的标题"), "通过前对外显示原帖");
+    let revision = repo::pending_revision(db.pool(), post)
+        .await
+        .expect("查待审")
+        .expect("存在");
+    assert_eq!(revision.title, "改过的标题");
+    assert!(revision.note.is_some());
+
+    // 通过 → 替换原帖并清掉待审
+    assert!(
+        repo::apply_pending_revision(db.pool(), post, now)
+            .await
+            .expect("落地")
+    );
+    assert!(
+        !repo::has_pending_revision(db.pool(), post)
+            .await
+            .expect("查")
+    );
+    assert_eq!(
+        repo::resolved_post_title(db.pool(), post)
+            .await
+            .expect("查")
+            .as_deref(),
+        Some("改过的标题")
+    );
+}
+
+#[tokio::test]
+async fn rejecting_an_edit_keeps_the_original() {
+    let db = db().await;
+    let now = now_unix();
+    let author = make_user(&db, "reject_author").await;
+    let post = make_post(&db, author, "不会被改掉的标题").await;
+    repo::submit_post_edit(
+        db.pool(),
+        repo::PostEdit {
+            id: post,
+            title: "坏标题",
+            body: "坏正文",
+            kind: "discussion",
+            section: "custom_campaign",
+            review_state: "pending",
+            review_note: None,
+            submitted_by: Some(author),
+            now,
+        },
+        "pending",
+    )
+    .await
+    .expect("提交编辑");
+    assert!(
+        repo::drop_pending_revision(db.pool(), post)
+            .await
+            .expect("丢弃")
+    );
+    assert!(
+        !repo::has_pending_revision(db.pool(), post)
+            .await
+            .expect("查")
+    );
+    assert_eq!(
+        repo::resolved_post_title(db.pool(), post)
+            .await
+            .expect("查")
+            .as_deref(),
+        Some("不会被改掉的标题"),
+        "拒绝修改后原帖必须完好"
+    );
+    // 通过时直接生效（管理员编辑走这条路）
+    let outcome = repo::submit_post_edit(
+        db.pool(),
+        repo::PostEdit {
+            id: post,
+            title: "管理员直接改的标题",
+            body: "正文",
+            kind: "discussion",
+            section: "custom_campaign",
+            review_state: "approved",
+            review_note: None,
+            submitted_by: Some(author),
+            now,
+        },
+        "approved",
+    )
+    .await
+    .expect("提交编辑");
+    assert_eq!(outcome, repo::EditOutcome::Applied);
+    assert_eq!(
+        repo::resolved_post_title(db.pool(), post)
+            .await
+            .expect("查")
+            .as_deref(),
+        Some("管理员直接改的标题")
+    );
+}

@@ -13,9 +13,9 @@ use crate::models::{
     AdminUserRow, AnnouncementRow, AuditRow, BannerRow, BlobRow, BlockRow, BookmarkRow,
     CommentWithAuthorRow, ConversationRow, ExpEventRow, FileRow, FileWithOwnerRow,
     GroupSectionRuleRow, ImageJobRow, IssueCommentRow, MessageRow, NotificationRow,
-    PaymentChannelRow, PostImageRow, PostIssueRow, PostRow, PostSearchRow, PostSourceRow,
-    PostWithAuthorRow, ReleaseAssetRow, ReleaseRow, SectionModeratorRow, SectionRow, SessionRow,
-    SiteDomainRow, TitleRow, UploadSessionRow, UserGroupRow, UserRow, UserTitleRow,
+    PaymentChannelRow, PostImageRow, PostIssueRow, PostRevisionRow, PostRow, PostSearchRow,
+    PostSourceRow, PostWithAuthorRow, ReleaseAssetRow, ReleaseRow, SectionModeratorRow, SectionRow,
+    SessionRow, SiteDomainRow, TitleRow, UploadSessionRow, UserGroupRow, UserRow, UserTitleRow,
 };
 
 // ---------------------------------------------------------------- 用户
@@ -1783,6 +1783,7 @@ pub async fn list_pending_posts(pool: &SqlitePool, limit: i64) -> Result<Vec<Pos
 }
 
 /// 编辑帖子的入参（作者或管理员编辑后调用）。
+#[derive(Debug, Clone, Copy)]
 pub struct PostEdit<'a> {
     pub id: i64,
     pub title: &'a str,
@@ -1791,6 +1792,8 @@ pub struct PostEdit<'a> {
     pub section: &'a str,
     pub review_state: &'a str,
     pub review_note: Option<&'a str>,
+    /// 编辑者（待审修改要记提交人）。
+    pub submitted_by: Option<i64>,
     pub now: i64,
 }
 
@@ -3262,7 +3265,130 @@ pub async fn delete_payment_channel(
         .await
         .map_err(db_err)?;
     Ok(Some(hash))
+} // ---------------------------------------------------------------- 待审修改（编辑帖子先不动原帖）
+
+/// 提交一次编辑的结果。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum EditOutcome {
+    /// 直接生效（管理员编辑，或审核机直接放行）。
+    Applied,
+    /// 先存为待审修改，原帖保持不变。
+    Staged,
 }
+
+/// 提交编辑：`review_state` 是审核机给的结论。
+///
+/// - `approved` → 直接写回 posts（原行为）；
+/// - 其余（`pending`）→ **只写 post_revisions**，posts 保持原样，
+///   对外仍显示原帖，发布者侧看到「修改内容审核中」。
+pub async fn submit_post_edit(
+    pool: &SqlitePool,
+    edit: PostEdit<'_>,
+    review_state: &str,
+) -> Result<EditOutcome> {
+    if review_state == "approved" {
+        let ok = update_post(pool, edit).await?;
+        if !ok {
+            return Ok(EditOutcome::Applied);
+        }
+        let _ = drop_pending_revision(pool, edit.id).await;
+        return Ok(EditOutcome::Applied);
+    }
+    query(
+        "INSERT INTO post_revisions (post_id, title, body, kind, section, submitted_by, submitted_at, note) \
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?) \
+         ON CONFLICT(post_id) DO UPDATE SET title = excluded.title, body = excluded.body, \
+             kind = excluded.kind, section = excluded.section, \
+             submitted_by = excluded.submitted_by, submitted_at = excluded.submitted_at, \
+             note = excluded.note",
+    )
+    .bind(edit.id)
+    .bind(edit.title)
+    .bind(edit.body)
+    .bind(edit.kind)
+    .bind(edit.section)
+    .bind(edit.submitted_by)
+    .bind(edit.now)
+    .bind(edit.review_note)
+    .execute(pool)
+    .await
+    .map_err(db_err)?;
+    Ok(EditOutcome::Staged)
+}
+
+/// 某帖是否有待审修改。
+pub async fn has_pending_revision(pool: &SqlitePool, post_id: i64) -> Result<bool> {
+    Ok(pending_revision(pool, post_id).await?.is_some())
+}
+
+pub async fn pending_revision(pool: &SqlitePool, post_id: i64) -> Result<Option<PostRevisionRow>> {
+    query_as::<_, PostRevisionRow>("SELECT * FROM post_revisions WHERE post_id = ?")
+        .bind(post_id)
+        .fetch_optional(pool)
+        .await
+        .map_err(db_err)
+}
+
+/// 审核通过：把待审内容写回 posts 并清掉待审记录。
+pub async fn apply_pending_revision(pool: &SqlitePool, post_id: i64, now: i64) -> Result<bool> {
+    let Some(revision) = pending_revision(pool, post_id).await? else {
+        return Ok(false);
+    };
+    let mut tx = pool.begin().await.map_err(db_err)?;
+    query(
+        "UPDATE posts SET title = ?, body = ?, kind = ?, section = ?, updated_at = ? WHERE id = ?",
+    )
+    .bind(&revision.title)
+    .bind(&revision.body)
+    .bind(&revision.kind)
+    .bind(&revision.section)
+    .bind(now)
+    .bind(post_id)
+    .execute(&mut *tx)
+    .await
+    .map_err(db_err)?;
+    query("DELETE FROM post_revisions WHERE post_id = ?")
+        .bind(post_id)
+        .execute(&mut *tx)
+        .await
+        .map_err(db_err)?;
+    tx.commit().await.map_err(db_err)?;
+    Ok(true)
+}
+
+/// 拒绝 / 打回：丢掉待审修改（原帖内容不受影响）。
+pub async fn drop_pending_revision(pool: &SqlitePool, post_id: i64) -> Result<bool> {
+    let affected = query("DELETE FROM post_revisions WHERE post_id = ?")
+        .bind(post_id)
+        .execute(pool)
+        .await
+        .map_err(db_err)?
+        .rows_affected();
+    Ok(affected == 1)
+}
+
+/// 待审修改队列（管理端审核用）：帖子标题 + 修改标题 + 提交时间 + 提交人。
+pub async fn list_pending_revisions(
+    pool: &SqlitePool,
+    limit: i64,
+    offset: i64,
+) -> Result<Vec<(i64, String, String, i64, String)>> {
+    query_as(
+        "SELECT r.post_id, p.title, r.title, r.submitted_at, \
+                COALESCE(NULLIF(u.display_name, ''), u.handle) \
+         FROM post_revisions r \
+         JOIN posts p ON p.id = r.post_id \
+         LEFT JOIN users u ON u.id = r.submitted_by \
+         WHERE p.deleted_at IS NULL \
+         ORDER BY r.submitted_at LIMIT ? OFFSET ?",
+    )
+    .bind(limit.clamp(1, 100))
+    .bind(offset.max(0))
+    .fetch_all(pool)
+    .await
+    .map_err(db_err)
+}
+
 // ---------------------------------------------------------------- 站点域名 / issue / 横幅定向
 
 /// 登记一个站点域名（规范化后）；已存在返回 `false`。

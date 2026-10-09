@@ -90,6 +90,9 @@ cargo run -p sc2clud -- check                     # 配置与依赖自检
 5. **所有落盘路径必须过 `safety.rs`**：拼接后 `ensure_within` 白名单校验，用户文件名先过 `safe_file_name`。
 6. **页面体积是硬预算**（见 `docs/BUDGETS.md`）：列表页 HTML ≤ 30 KB、首屏 JS ≤ 60 KB（brotli 后）。
    不要为了「方便」引入整站 SPA、CSS-in-JS 或整套 UI 组件库。
+6.5 **权限树以 `docs/PERMISSIONS.md` 为准**（角色 × 权限位 × 分区门槛 × 用户组规则 × 资源级规则）。
+   改权限必须同时改三处：`core::auth::min_role()`、`permission_tests`、那份文档。
+
 7. **发帖权限与可见性**（`core::review`，改动请同步 `AGENTS.md` 与测试）：
    - 讨论 / 资源 / 转载三类帖子对**所有已激活用户**开放，不设发布门槛；
    - **管理员及以上发帖跳过审核机**，直接发布（`review_for_author`，`automatic: false`）；

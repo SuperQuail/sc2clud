@@ -452,10 +452,12 @@ pub async fn edit_submit(
         Err(e) => return e.into_response(),
     };
     let form = parse_post_form(&body);
-    if let Err(e) = save_edit(&state, id, &user, &form).await {
-        return e.into_page_response(true);
+    match save_edit(&state, id, &user, &form).await {
+        // 暂存（等待审核）与直接生效，去的地方不同：编辑页会显示「修改内容审核中」
+        Ok(true) => Redirect::to(&format!("/p/{id}/edit?staged=1")).into_response(),
+        Ok(false) => Redirect::to(&format!("/p/{id}")).into_response(),
+        Err(e) => e.into_page_response(true),
     }
-    Redirect::to(&format!("/p/{id}")).into_response()
 }
 
 async fn save_edit(
@@ -463,7 +465,7 @@ async fn save_edit(
     id: i64,
     user: &CurrentUser,
     form: &ParsedPostForm,
-) -> AppResult<()> {
+) -> AppResult<bool> {
     let row = repo::get_post_for(state.db.pool(), id, Some(user.id), user.is_staff())
         .await?
         .ok_or_else(|| AppError::not_found("帖子不存在或不可见"))?;
@@ -491,7 +493,9 @@ async fn save_edit(
         row.image_count.max(0) as usize,
     );
     let now = now_unix();
-    if !repo::update_post(
+    // 审核机放行 → 直接生效；否则只写「待审修改」：
+    // 通过前对外仍是原帖，作者侧看到「修改内容审核中」。
+    let staged = match repo::submit_post_edit(
         state.db.pool(),
         repo::PostEdit {
             id,
@@ -501,12 +505,19 @@ async fn save_edit(
             section: section.as_str(),
             review_state: outcome.state.as_str(),
             review_note: outcome.note.as_deref(),
+            submitted_by: Some(user.id),
             now,
         },
+        outcome.state.as_str(),
     )
     .await?
     {
-        return Err(AppError::not_found("帖子不存在"));
+        repo::EditOutcome::Applied => false,
+        repo::EditOutcome::Staged => true,
+    };
+    if staged {
+        tracing::info!(post.id = id, editor.id = user.id, "编辑已暂存，等待审核");
+        return Ok(true);
     }
     // 下载来源整体重写：编辑页允许增删，逐个 diff 反而更容易出错
     let sources = form_sources(form).unwrap_or_default();
@@ -547,7 +558,7 @@ async fn save_edit(
         now,
     )
     .await;
-    Ok(())
+    Ok(false)
 }
 
 #[derive(Debug, Deserialize)]

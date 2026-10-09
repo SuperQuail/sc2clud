@@ -230,7 +230,8 @@ pub async fn create_announcement(
     Form(form): Form<AnnouncementForm>,
 ) -> AppResult<Response> {
     let user = require_user(&state, &headers).await?;
-    session::guard(Some(&user), Permission::ManageUsers)?;
+    // 系统公告：产品要求只有超级管理员能发
+    session::guard(Some(&user), Permission::PostAnnouncement)?;
     session::check_csrf(&user, &form.csrf)?;
     let title = form.title.trim();
     let body = form.body.trim();

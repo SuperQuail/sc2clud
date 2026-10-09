@@ -267,7 +267,7 @@ pub async fn list_domains(
     headers: HeaderMap,
 ) -> AppResult<Response> {
     let actor = require_user(&state, &headers).await?;
-    session::guard(Some(&actor), Permission::ManageUsers)?;
+    session::guard(Some(&actor), Permission::ManageDomains)?;
     let rows = repo::list_site_domains(state.db.pool()).await?;
     let domains: Vec<serde_json::Value> = rows
         .into_iter()
@@ -288,7 +288,7 @@ pub async fn add_domain(
     Form(form): Form<DomainForm>,
 ) -> AppResult<Response> {
     let actor = require_user(&state, &headers).await?;
-    session::guard(Some(&actor), Permission::ManageUsers)?;
+    session::guard(Some(&actor), Permission::ManageDomains)?;
     session::check_csrf(&actor, &form.csrf)?;
     let domain = sc2clud_core::community::normalize_domain(&form.domain).ok_or_else(|| {
         AppError::Domain(DomainError::InvalidInput(
@@ -315,7 +315,7 @@ pub async fn remove_domain(
     Form(form): Form<CsrfForm>,
 ) -> AppResult<Response> {
     let actor = require_user(&state, &headers).await?;
-    session::guard(Some(&actor), Permission::ManageUsers)?;
+    session::guard(Some(&actor), Permission::ManageDomains)?;
     session::check_csrf(&actor, &form.csrf)?;
     let domain = sc2clud_core::community::normalize_domain(&domain).unwrap_or(domain);
     repo::remove_site_domain(state.db.pool(), &domain).await?;
@@ -342,7 +342,7 @@ pub async fn create_banner(
     Form(form): Form<BannerForm>,
 ) -> AppResult<Response> {
     let actor = require_user(&state, &headers).await?;
-    session::guard(Some(&actor), Permission::ManageUsers)?;
+    session::guard(Some(&actor), Permission::PublishBanner)?;
     session::check_csrf(&actor, &form.csrf)?;
     let title = form.title.trim();
     if title.is_empty() || title.chars().count() > 60 {
@@ -415,7 +415,7 @@ pub async fn set_banner_active(
     Form(form): Form<BannerActiveForm>,
 ) -> AppResult<Response> {
     let actor = require_user(&state, &headers).await?;
-    session::guard(Some(&actor), Permission::ManageUsers)?;
+    session::guard(Some(&actor), Permission::PublishBanner)?;
     session::check_csrf(&actor, &form.csrf)?;
     let active = matches!(form.active.as_deref(), Some("1") | Some("on"));
     repo::set_banner_active(state.db.pool(), id, active).await?;
@@ -859,7 +859,7 @@ pub async fn reject(
     review(&state, id, &headers, &form, false).await
 }
 
-/// 人工过审 / 拒绝。管理员与开发者都能做（`Permission::ReviewPost`）。
+/// 人工过审 / 拒绝。**管理员及以上**（`Permission::ReviewPost`，产品要求从开发者上调）。
 async fn review(
     state: &AppState,
     id: i64,
@@ -883,6 +883,12 @@ async fn review(
     let note = typed.unwrap_or(fallback);
     let state_str = if allow { "approved" } else { "rejected" };
     let now = now_unix();
+    // 待审修改：通过就落地（替换原帖），拒绝就丢弃（原帖不受影响）
+    if allow {
+        let _ = repo::apply_pending_revision(state.db.pool(), id, now).await;
+    } else {
+        let _ = repo::drop_pending_revision(state.db.pool(), id).await;
+    }
     if !repo::set_post_review_state(state.db.pool(), id, state_str, Some(note), actor.id, now)
         .await?
     {
@@ -992,6 +998,8 @@ pub async fn request_revision(
     let Some(post) = repo::get_post_for(state.db.pool(), id, Some(actor.id), true).await? else {
         return Err(AppError::not_found("帖子不存在"));
     };
+    // 打回时把待审修改丢掉：作者改完再提交（避免旧修改一直挂着）
+    let _ = repo::drop_pending_revision(state.db.pool(), id).await;
     if !repo::set_post_review_state(state.db.pool(), id, "revision", Some(note), actor.id, now)
         .await?
     {

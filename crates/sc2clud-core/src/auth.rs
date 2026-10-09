@@ -78,6 +78,12 @@ pub enum Permission {
     UseNetdisk,
     /// 上传自己的收款码（认证开发者及以上）。
     SetPaymentChannel,
+    /// 域名管理（统一域名表增删）。
+    ManageDomains,
+    /// 发布 / 启停横幅。
+    PublishBanner,
+    /// 发系统公告。
+    PostAnnouncement,
     /// 人工复核被审核机拦下的帖子。
     ReviewPost,
     /// 激活 / 停用用户。
@@ -101,10 +107,14 @@ impl Permission {
             Permission::CreateResource => Some(Role::Member),
             // 收款码涉及钱财，只给认证开发者及以上（产品要求）。
             Permission::SetPaymentChannel => Some(Role::Developer),
-            // 人工复核是管理动作，仍要求开发者及以上。
-            Permission::ReviewPost => Some(Role::Developer),
+            // 人工复核：管理员及以上（原为开发者，产品要求上调）。
+            Permission::ReviewPost => Some(Role::Admin),
             Permission::ManageUsers => Some(Role::Admin),
-            Permission::ManageRoles => Some(Role::Super),
+            // 域名 / 横幅 / 系统公告：只有超级管理员能动（产品要求上调）。
+            Permission::ManageDomains
+            | Permission::PublishBanner
+            | Permission::PostAnnouncement
+            | Permission::ManageRoles => Some(Role::Super),
         }
     }
 }
@@ -270,6 +280,53 @@ pub fn new_csrf_token() -> String {
 }
 
 #[cfg(test)]
+mod permission_tests {
+    use super::*;
+
+    #[test]
+    fn permission_tree_matches_the_documented_matrix() {
+        // 这份期望值就是 docs/PERMISSIONS.md 的表格；改权限必须同时改这里与文档。
+        let expected: [(Permission, Option<Role>); 12] = [
+            (Permission::ViewContent, None),
+            (Permission::CreateDiscussion, Some(Role::Member)),
+            (Permission::CreateResource, Some(Role::Member)),
+            (Permission::CreateRepost, Some(Role::Member)),
+            (Permission::Comment, Some(Role::Member)),
+            (Permission::SetAvatar, Some(Role::Member)),
+            (Permission::SetPaymentChannel, Some(Role::Developer)),
+            (Permission::ReviewPost, Some(Role::Admin)),
+            (Permission::UseNetdisk, Some(Role::Admin)),
+            (Permission::ManageUsers, Some(Role::Admin)),
+            (Permission::ManageDomains, Some(Role::Super)),
+            (Permission::PublishBanner, Some(Role::Super)),
+        ];
+        for (permission, want) in expected {
+            assert_eq!(permission.min_role(), want, "{permission:?} 的门槛变了");
+        }
+        assert_eq!(Permission::PostAnnouncement.min_role(), Some(Role::Super));
+        assert_eq!(Permission::ManageRoles.min_role(), Some(Role::Super));
+    }
+
+    #[test]
+    fn unactivated_users_cannot_write_but_staff_can_review() {
+        assert!(!allows(
+            Some(Role::Member),
+            false,
+            Permission::CreateDiscussion
+        ));
+        assert!(!allows(Some(Role::Member), false, Permission::SetAvatar));
+        assert!(allows(
+            Some(Role::Member),
+            true,
+            Permission::CreateDiscussion
+        ));
+        assert!(allows(Some(Role::Admin), false, Permission::ReviewPost));
+        assert!(allows(None, false, Permission::ViewContent));
+        assert!(!allows(None, false, Permission::Comment));
+    }
+}
+
+#[cfg(test)]
 mod tests {
     use super::*;
 
@@ -312,7 +369,35 @@ mod tests {
 
     #[test]
     fn developer_and_admin_tiers() {
-        assert!(allows(Some(Role::Developer), true, Permission::ReviewPost));
+        // 人工复核：管理员及以上（产品要求上调，原为开发者）
+        assert!(!allows(Some(Role::Developer), true, Permission::ReviewPost));
+        assert!(allows(Some(Role::Admin), true, Permission::ReviewPost));
+        // 收款码：认证开发者及以上
+        assert!(allows(
+            Some(Role::Developer),
+            true,
+            Permission::SetPaymentChannel
+        ));
+        assert!(!allows(
+            Some(Role::Member),
+            true,
+            Permission::SetPaymentChannel
+        ));
+        // 域名 / 横幅 / 公告：只有超级管理员
+        for permission in [
+            Permission::ManageDomains,
+            Permission::PublishBanner,
+            Permission::PostAnnouncement,
+        ] {
+            assert!(
+                !allows(Some(Role::Admin), true, permission),
+                "{permission:?} 不该给管理员"
+            );
+            assert!(
+                allows(Some(Role::Super), true, permission),
+                "{permission:?} 应给超管"
+            );
+        }
         assert!(allows(Some(Role::Member), true, Permission::SetAvatar));
         assert!(
             !allows(Some(Role::Member), false, Permission::SetAvatar),

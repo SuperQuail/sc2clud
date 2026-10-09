@@ -146,6 +146,19 @@ pub struct ExpEventRow {
     pub created_at: i64,
 }
 
+/// 一份待审的帖子修改（通过前原帖内容保持不变）。
+#[derive(Debug, Clone, FromRow)]
+pub struct PostRevisionRow {
+    pub post_id: i64,
+    pub title: String,
+    pub body: String,
+    pub kind: String,
+    pub section: String,
+    pub submitted_by: Option<i64>,
+    pub submitted_at: i64,
+    pub note: Option<String>,
+}
+
 /// 站点域名（统一管理「哪些域名是我们的」）。
 #[derive(Debug, Clone, FromRow)]
 pub struct SiteDomainRow {
