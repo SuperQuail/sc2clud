@@ -156,12 +156,12 @@ pwsh -File scripts/smoke.ps1     # 改动触及上传/下载/存储/计数时必
 
 ## 11. 开发与测试流程：先 dev，后生产
 
-站点有**两个实例**，同一份二进制、两套数据：
+站点有**两个实例**，**各自的二进制与数据**（`dev.sh` 只写测试端，`promote.sh` 才发布到生产）：
 
 | 实例 | 端点 | 数据目录 | 用途 |
 | --- | --- | --- | --- |
-| 生产 | `/`（对外） | `/srv/sc2clud/data` | 只放已验证的版本 |
-| 测试 | `/dev/`（对外，nginx `sub_filter` 补前缀） | `/srv/sc2clud/data-debug` | **所有开发与测试都在这里** |
+| 生产 | `/`（对外） | `/srv/sc2clud/data`（二进制 `/srv/sc2clud/sc2clud`） | 只放已验证的版本 |
+| 测试 | `/dev/`（对外，nginx `sub_filter` 补前缀） | `/srv/sc2clud-dev/data`（二进制 `/srv/sc2clud-dev/sc2clud`） | **所有开发与测试都在这里** |
 
 流程：
 
@@ -213,4 +213,4 @@ bash deploy/promote.sh
    与 `git -C /opt/sc2clud log --oneline -1`（服务器上到底是哪个提交）。
 4. 改 unit / vhost 后必须 `systemctl daemon-reload` / `nginx -s reload`。
 5. 数据与 Cookie 都是隔离的：prod `/srv/sc2clud/data` + `sc2clud_session`，
-   dev `/srv/sc2clud/data-debug` + `sc2clud_dev_session`；**反向同步绝不允许**。
+   dev `/srv/sc2clud-dev/data` + `sc2clud_dev_session`；**反向同步绝不允许**。
