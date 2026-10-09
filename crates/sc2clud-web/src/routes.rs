@@ -276,6 +276,10 @@ pub fn api_upload() -> Router<AppState> {
         )
         // ---- 收款码（认证开发者及以上；渠道名不限）----
         .route(
+            "/settings/donation",
+            axum::routing::post(crate::pages_settings::donation_save),
+        )
+        .route(
             "/api/v1/me/payment-channels",
             axum::routing::post(crate::pages_profile::payment_channel_add),
         )

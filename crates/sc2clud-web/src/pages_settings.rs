@@ -6,7 +6,7 @@
 use axum::Form;
 use axum::extract::State;
 use axum::http::HeaderMap;
-use axum::response::{Redirect, Response};
+use axum::response::{IntoResponse, Redirect, Response};
 use serde::Deserialize;
 
 use sc2clud_core::auth::Role;
@@ -100,7 +100,32 @@ async fn build<'a>(
         })
         .collect();
     let (notice, error) = notice_of(&query);
+    let can_donate = session::allows_for(
+        Some(&user),
+        sc2clud_core::auth::Permission::SetPaymentChannel,
+    );
+    let donation_visible = repo::donation_visible(state.db.pool(), user.id).await?;
+    let channels = repo::list_payment_channels(state.db.pool(), user.id).await?;
+    let (notice_visible, notice_text) =
+        repo::donation_notice_settings(state.db.pool(), user.id).await?;
     Ok(SettingsTemplate {
+        can_donate,
+        donation_visible,
+        donation_notice_visible: notice_visible,
+        donation_notice_text: notice_text,
+        donation_channels: channels
+            .iter()
+            .map(|c| crate::templates::DonationChannelView {
+                id: c.id,
+                channel: c.channel.clone(),
+                label: if c.label.trim().is_empty() {
+                    c.channel.clone()
+                } else {
+                    c.label.clone()
+                },
+                image_hash: c.image_hash.clone(),
+            })
+            .collect(),
         site_name: &state.config.server.site_name,
         user_label: Some(user.display_name.clone()),
         is_staff: user.is_staff(),
@@ -183,4 +208,38 @@ pub async fn update_password(
     .await;
     tracing::info!(user.id = user.id, "用户改密码");
     Ok(Redirect::to("/settings?ok=password"))
+}
+
+#[derive(Debug, Deserialize)]
+pub struct DonationForm {
+    pub csrf: String,
+    pub visible: Option<String>,
+    pub notice_visible: Option<String>,
+    pub notice_text: Option<String>,
+}
+
+/// 保存打赏设置：展示开关、赞助前提示开关、自定义提示文案。
+pub async fn donation_save(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Form(form): Form<DonationForm>,
+) -> AppResult<Response> {
+    let user = require_user(&state, &headers).await?;
+    session::guard(
+        Some(&user),
+        sc2clud_core::auth::Permission::SetPaymentChannel,
+    )?;
+    session::check_csrf(&user, &form.csrf)?;
+    let visible = matches!(form.visible.as_deref(), Some("1") | Some("on"));
+    let notice_visible = matches!(form.notice_visible.as_deref(), Some("1") | Some("on"));
+    let text = form.notice_text.as_deref().unwrap_or_default().trim();
+    if text.chars().count() > 500 {
+        return Err(AppError::from(sc2clud_core::Error::InvalidInput(
+            "提示文案最多 500 字".to_string(),
+        )));
+    }
+    repo::set_donation_visible(state.db.pool(), user.id, visible).await?;
+    repo::set_donation_notice(state.db.pool(), user.id, notice_visible, text).await?;
+    tracing::info!(user.id = user.id, visible, notice_visible, "更新打赏设置");
+    Ok(Redirect::to("/settings?ok=donation").into_response())
 }

@@ -3267,6 +3267,20 @@ pub async fn delete_payment_channel(
     Ok(Some(hash))
 }
 
+/// 读作者的赞助提示设置：`(显示开关, 自定义文本)`。
+/// 没配过就返回默认（开 + 空）。
+pub async fn donation_notice_settings(pool: &SqlitePool, user_id: i64) -> Result<(bool, String)> {
+    let row: Option<(i64, String)> =
+        query_as("SELECT donation_notice_visible, donation_notice_text FROM users WHERE id = ?")
+            .bind(user_id)
+            .fetch_optional(pool)
+            .await
+            .map_err(db_err)?;
+    Ok(row
+        .map(|(visible, text)| (visible != 0, text))
+        .unwrap_or((true, String::new())))
+}
+
 /// 作者自己的赞助提示设置：显示开关 + 自定义文本（空 = 用渠道默认）。
 pub async fn set_donation_notice(
     pool: &SqlitePool,

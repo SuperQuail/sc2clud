@@ -309,6 +309,7 @@ async fn build_post_page<'a>(
         .channels
         .iter()
         .map(|c| crate::templates::DonationChannelView {
+            id: c.id,
             channel: c.channel.clone(),
             label: if c.label.trim().is_empty() {
                 c.channel.clone()

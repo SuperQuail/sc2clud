@@ -188,7 +188,29 @@ async fn build_profile<'a>(
         .filter(|p| p.review_state == "approved")
         .count() as i64;
     let role = Role::parse(&owner.role).unwrap_or(Role::Member);
+    let showcase = repo::author_showcase(state.db.pool(), owner.id).await?;
+    let donation_notice = if showcase.donation_visible {
+        repo::donation_notice_for(state.db.pool(), owner.id, &showcase.channels).await?
+    } else {
+        None
+    };
     Ok(ProfileTemplate {
+        donation_visible: showcase.donation_visible && !showcase.channels.is_empty(),
+        donation_channels: showcase
+            .channels
+            .iter()
+            .map(|c| crate::templates::DonationChannelView {
+                id: c.id,
+                channel: c.channel.clone(),
+                label: if c.label.trim().is_empty() {
+                    c.channel.clone()
+                } else {
+                    c.label.clone()
+                },
+                image_hash: c.image_hash.clone(),
+            })
+            .collect(),
+        donation_notice,
         site_name: &state.config.server.site_name,
         user_label: viewer.as_ref().map(|v| v.display_name.clone()),
         is_staff,

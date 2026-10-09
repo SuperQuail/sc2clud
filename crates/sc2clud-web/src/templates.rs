@@ -250,6 +250,7 @@ pub struct PostPageTemplate<'a> {
 /// 打赏弹窗里的一个渠道。
 #[derive(Debug, Clone)]
 pub struct DonationChannelView {
+    pub id: i64,
     pub channel: String,
     pub label: String,
     pub image_hash: String,
@@ -557,6 +558,12 @@ pub struct SettingsTemplate<'a> {
     pub blocks: Vec<BlockView>,
     pub notice: Option<String>,
     pub error: Option<String>,
+    /// 认证开发者及以上才能开打赏（与上传收款码同一权限）。
+    pub can_donate: bool,
+    pub donation_visible: bool,
+    pub donation_notice_visible: bool,
+    pub donation_notice_text: String,
+    pub donation_channels: Vec<DonationChannelView>,
 }
 
 /// 用户主页。
@@ -581,6 +588,10 @@ pub struct ProfileTemplate<'a> {
     pub can_edit_avatar: bool,
     pub posts: Vec<FeedView>,
     pub accepted: i64,
+    /// 「支持作者」区块：作者开了展示、且有渠道时才出现。
+    pub donation_visible: bool,
+    pub donation_channels: Vec<DonationChannelView>,
+    pub donation_notice: Option<String>,
 }
 
 /// 调试页（开发自检；生产实例不注册该路由）。

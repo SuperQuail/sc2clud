@@ -75,6 +75,30 @@
     {% endfor %}
   </div>
   {% endif %}
+  {% if donation_visible %}
+  <section class="card">
+    <h2>支持 {{ display_name }}</h2>
+    {% if let Some(text) = donation_notice %}
+    <p class="donate-profile-notice">{{ text }}</p>
+    {% endif %}
+    <div class="donate-profile-grid">
+      {% for channel in donation_channels %}
+      <figure class="donate-profile-item">
+        <img src="/img/{{ channel.image_hash }}" alt="{{ channel.label }} 收款码" width="160" height="160">
+        <figcaption>{{ channel.label }}</figcaption>
+      </figure>
+      {% endfor %}
+    </div>
+    <style>
+    .donate-profile-notice{border-left:4px solid #dc2626;background:rgba(220,38,38,.08);padding:10px 14px;border-radius:0 8px 8px 0;line-height:1.7}
+    .donate-profile-grid{display:flex;flex-wrap:wrap;gap:16px;margin-top:12px}
+    .donate-profile-item{margin:0;text-align:center}
+    /* 展示尺寸锁死：上传分辨率不同也保持同样大小 */
+    .donate-profile-item img{width:160px;height:160px;object-fit:contain;background:#fff;border:1px solid var(--line,#e5e7eb);border-radius:10px;padding:6px;box-sizing:content-box}
+    .donate-profile-item figcaption{margin-top:6px;font-size:13px;opacity:.85}
+    </style>
+  </section>
+  {% endif %}
 </section>
 {% endblock %}
 
