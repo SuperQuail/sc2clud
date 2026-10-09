@@ -287,6 +287,15 @@ pub fn api_upload() -> Router<AppState> {
             "/api/v1/users/{handle}/payment-channels",
             axum::routing::get(crate::pages_profile::payment_channels_json),
         )
+        // ---- 横幅管理（管理员及以上）----
+        .route(
+            "/admin/banners",
+            axum::routing::post(crate::pages_admin::create_banner),
+        )
+        .route(
+            "/admin/banners/{id}/active",
+            axum::routing::post(crate::pages_admin::set_banner_active),
+        )
 }
 
 // ------------------------------------------------------------ 工具

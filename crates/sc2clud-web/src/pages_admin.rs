@@ -254,6 +254,101 @@ async fn build_user_edit<'a>(
     })
 }
 
+#[derive(Debug, Deserialize)]
+pub struct BannerForm {
+    pub csrf: String,
+    pub title: String,
+    pub body: Option<String>,
+    pub kind: Option<String>,
+    pub url: Option<String>,
+    /// 有效期天数（留空 = 不过期）。
+    pub days: Option<String>,
+}
+
+/// 新建横幅：对登录用户展示，用户点「确认」后不再看到。
+pub async fn create_banner(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Form(form): Form<BannerForm>,
+) -> AppResult<Response> {
+    let actor = require_user(&state, &headers).await?;
+    session::guard(Some(&actor), Permission::ManageUsers)?;
+    session::check_csrf(&actor, &form.csrf)?;
+    let title = form.title.trim();
+    if title.is_empty() || title.chars().count() > 60 {
+        return Err(AppError::Domain(DomainError::InvalidInput(
+            "标题必填，且不超过 60 个字符".to_string(),
+        )));
+    }
+    let now = now_unix();
+    // 只认 info / warning / promo，别的一律当 info（横幅是展示位，不校验没意义）
+    let kind = match form.kind.as_deref().map(str::trim) {
+        Some("warning") => "warning",
+        Some("promo") => "promo",
+        _ => "info",
+    };
+    let days: Option<i64> = form
+        .days
+        .as_deref()
+        .map(str::trim)
+        .filter(|v| !v.is_empty())
+        .and_then(|v| v.parse().ok());
+    let id = repo::create_banner(
+        state.db.pool(),
+        repo::NewBanner {
+            title,
+            body: form.body.as_deref().unwrap_or_default().trim(),
+            kind,
+            url: form.url.as_deref().map(str::trim).filter(|v| !v.is_empty()),
+            starts_at: None,
+            ends_at: days.map(|d| now + d.clamp(1, 365) * 86_400),
+            created_by: Some(actor.id),
+            now,
+        },
+    )
+    .await?;
+    tracing::info!(banner.id = id, actor.id = actor.id, "新建横幅");
+    let _ = repo::record_audit(
+        state.db.pool(),
+        Some(actor.id),
+        "banner.create",
+        Some(&format!("banner:{id}")),
+        Some(title),
+        now,
+    )
+    .await;
+    Ok(done(&headers, "横幅已发布", "/admin/users/overview"))
+}
+
+#[derive(Debug, Deserialize)]
+pub struct BannerActiveForm {
+    pub csrf: String,
+    pub active: Option<String>,
+}
+
+/// 开 / 停某条横幅。
+pub async fn set_banner_active(
+    State(state): State<AppState>,
+    Path(id): Path<i64>,
+    headers: HeaderMap,
+    Form(form): Form<BannerActiveForm>,
+) -> AppResult<Response> {
+    let actor = require_user(&state, &headers).await?;
+    session::guard(Some(&actor), Permission::ManageUsers)?;
+    session::check_csrf(&actor, &form.csrf)?;
+    let active = matches!(form.active.as_deref(), Some("1") | Some("on"));
+    repo::set_banner_active(state.db.pool(), id, active).await?;
+    Ok(done(
+        &headers,
+        if active {
+            "横幅已启用"
+        } else {
+            "横幅已停用"
+        },
+        "/admin/users/overview",
+    ))
+}
+
 pub async fn panel(
     State(state): State<AppState>,
     headers: HeaderMap,
