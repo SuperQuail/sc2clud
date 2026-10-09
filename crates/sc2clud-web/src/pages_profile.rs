@@ -162,6 +162,8 @@ pub async fn me(State(state): State<AppState>, headers: HeaderMap) -> Response {
 pub struct ProfileQuery {
     /// 预览用的头部样式编号（1/2/3）。
     pui: Option<String>,
+    /// 预览用的头衔样式编号（1 胶囊 / 2 徽章 / 3 下划线）。
+    tui: Option<String>,
 }
 
 pub async fn profile(
@@ -170,7 +172,15 @@ pub async fn profile(
     headers: HeaderMap,
     axum::extract::Query(query): axum::extract::Query<ProfileQuery>,
 ) -> Response {
-    match build_profile(&state, &handle, &headers, query.pui.as_deref()).await {
+    match build_profile(
+        &state,
+        &handle,
+        &headers,
+        query.pui.as_deref(),
+        query.tui.as_deref(),
+    )
+    .await
+    {
         Ok(template) => render(template),
         Err(e) => e.into_page_response(true),
     }
@@ -181,6 +191,7 @@ async fn build_profile<'a>(
     handle: &str,
     headers: &HeaderMap,
     pui: Option<&str>,
+    tui: Option<&str>,
 ) -> AppResult<ProfileTemplate<'a>> {
     let viewer = session::current_user(state, headers).await?;
     let owner = repo::find_user_by_handle(state.db.pool(), handle)
@@ -233,7 +244,7 @@ async fn build_profile<'a>(
             color: t.color,
         });
     let title_variant = if state.config.server.debug_pages {
-        pui.and_then(|v| v.parse::<u8>().ok())
+        tui.and_then(|v| v.parse::<u8>().ok())
             .filter(|v| (1..=3).contains(v))
             .unwrap_or(1)
     } else {
