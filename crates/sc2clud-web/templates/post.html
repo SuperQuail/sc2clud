@@ -374,6 +374,8 @@
   });
   // 预览用：?donate=1 直接打开（正式页面没人会带这个参数）
   if (qs.get('donate') === '1') show();
+  // 预览用：ack=1 等同于点过「确定」，用于渲染「不带提示」的赞助页
+  if (qs.get('ack') === '1' && layer) layer.hidden = true;
 })();
 </script>
 {% endif %}
