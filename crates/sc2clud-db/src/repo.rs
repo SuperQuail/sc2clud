@@ -10,11 +10,12 @@ use sqlx::{SqlitePool, query, query_as};
 
 use crate::db_err;
 use crate::models::{
-    AdminUserRow, AnnouncementRow, AuditRow, BlobRow, BlockRow, BookmarkRow, CommentWithAuthorRow,
-    ConversationRow, ExpEventRow, FileRow, FileWithOwnerRow, GroupSectionRuleRow, ImageJobRow,
-    MessageRow, NotificationRow, PostImageRow, PostRow, PostSearchRow, PostSourceRow,
-    PostWithAuthorRow, ReleaseAssetRow, ReleaseRow, SectionModeratorRow, SectionRow, SessionRow,
-    TitleRow, UploadSessionRow, UserGroupRow, UserRow, UserTitleRow,
+    AdminUserRow, AnnouncementRow, AuditRow, BannerRow, BlobRow, BlockRow, BookmarkRow,
+    CommentWithAuthorRow, ConversationRow, ExpEventRow, FileRow, FileWithOwnerRow,
+    GroupSectionRuleRow, ImageJobRow, MessageRow, NotificationRow, PaymentChannelRow, PostImageRow,
+    PostRow, PostSearchRow, PostSourceRow, PostWithAuthorRow, ReleaseAssetRow, ReleaseRow,
+    SectionModeratorRow, SectionRow, SessionRow, TitleRow, UploadSessionRow, UserGroupRow, UserRow,
+    UserTitleRow,
 };
 
 // ---------------------------------------------------------------- 用户
@@ -3034,6 +3035,201 @@ pub async fn list_featured_posts(
     .await
     .map_err(db_err)?;
     Ok(rows)
+}
+// ---------------------------------------------------------------- 横幅 / 资源帖状态 / 收款码
+
+/// 该用户**当前应该看到**的横幅：生效中 + 在时间窗内 + 他没点过确认。
+///
+/// 一条 SQL 解决，不做「先查全部再逐个过滤」——横幅数量少但请求频繁。
+pub async fn visible_banners(pool: &SqlitePool, user_id: i64, now: i64) -> Result<Vec<BannerRow>> {
+    query_as::<_, BannerRow>(
+        "SELECT b.* FROM banners b \
+         WHERE b.active = 1 \
+           AND (b.starts_at IS NULL OR b.starts_at <= ?) \
+           AND (b.ends_at IS NULL OR b.ends_at > ?) \
+           AND NOT EXISTS (SELECT 1 FROM banner_dismissals d WHERE d.banner_id = b.id AND d.user_id = ?) \
+         ORDER BY b.id DESC",
+    )
+    .bind(now)
+    .bind(now)
+    .bind(user_id)
+    .fetch_all(pool)
+    .await
+    .map_err(db_err)
+}
+
+/// 新建横幅的入参。
+pub struct NewBanner<'a> {
+    pub title: &'a str,
+    pub body: &'a str,
+    pub kind: &'a str,
+    pub url: Option<&'a str>,
+    pub starts_at: Option<i64>,
+    pub ends_at: Option<i64>,
+    pub created_by: Option<i64>,
+    pub now: i64,
+}
+
+pub async fn create_banner(pool: &SqlitePool, banner: NewBanner<'_>) -> Result<i64> {
+    let res = query(
+        "INSERT INTO banners (title, body, kind, url, active, starts_at, ends_at, created_at, created_by) \
+         VALUES (?, ?, ?, ?, 1, ?, ?, ?, ?)",
+    )
+    .bind(banner.title)
+    .bind(banner.body)
+    .bind(banner.kind)
+    .bind(banner.url)
+    .bind(banner.starts_at)
+    .bind(banner.ends_at)
+    .bind(banner.now)
+    .bind(banner.created_by)
+    .execute(pool)
+    .await
+    .map_err(db_err)?;
+    Ok(res.last_insert_rowid())
+}
+
+pub async fn set_banner_active(pool: &SqlitePool, id: i64, active: bool) -> Result<bool> {
+    let affected = query("UPDATE banners SET active = ? WHERE id = ? AND active <> ?")
+        .bind(i64::from(active))
+        .bind(id)
+        .bind(i64::from(active))
+        .execute(pool)
+        .await
+        .map_err(db_err)?
+        .rows_affected();
+    Ok(affected == 1)
+}
+
+/// 用户点「确认」：记一条，之后不再给他看（幂等）。
+pub async fn dismiss_banner(
+    pool: &SqlitePool,
+    banner_id: i64,
+    user_id: i64,
+    now: i64,
+) -> Result<bool> {
+    let affected = query(
+        "INSERT OR IGNORE INTO banner_dismissals (banner_id, user_id, dismissed_at) VALUES (?, ?, ?)",
+    )
+    .bind(banner_id)
+    .bind(user_id)
+    .bind(now)
+    .execute(pool)
+    .await
+    .map_err(db_err)?
+    .rows_affected();
+    Ok(affected == 1)
+}
+
+/// 发帖时解析链接、或做占用检查用：只认「已通过、未删除、未归档」的帖子。
+pub async fn resolved_post_title(pool: &SqlitePool, id: i64) -> Result<Option<String>> {
+    let row: Option<(String,)> = query_as(
+        "SELECT title FROM posts \
+         WHERE id = ? AND deleted_at IS NULL AND archived_at IS NULL AND review_state = 'approved'",
+    )
+    .bind(id)
+    .fetch_optional(pool)
+    .await
+    .map_err(db_err)?;
+    Ok(row.map(|r| r.0))
+}
+
+/// 设置资源帖状态；非资源帖也能存（展示由前台决定）。
+pub async fn set_post_resource_status(
+    pool: &SqlitePool,
+    post_id: i64,
+    status: &str,
+    now: i64,
+) -> Result<bool> {
+    let affected = query(
+        "UPDATE posts SET resource_status = ?, resource_status_at = ? \
+         WHERE id = ? AND deleted_at IS NULL",
+    )
+    .bind(status)
+    .bind(now)
+    .bind(post_id)
+    .execute(pool)
+    .await
+    .map_err(db_err)?
+    .rows_affected();
+    Ok(affected == 1)
+}
+
+pub async fn post_resource_status(pool: &SqlitePool, post_id: i64) -> Result<Option<String>> {
+    let row: Option<(String,)> =
+        query_as("SELECT resource_status FROM posts WHERE id = ? AND deleted_at IS NULL")
+            .bind(post_id)
+            .fetch_optional(pool)
+            .await
+            .map_err(db_err)?;
+    Ok(row.map(|r| r.0))
+}
+
+/// 加一个收款渠道（渠道名自由填，不限定支付宝/微信）。
+pub async fn add_payment_channel(
+    pool: &SqlitePool,
+    user_id: i64,
+    channel: &str,
+    label: &str,
+    image_hash: &str,
+    mime: &str,
+    now: i64,
+) -> Result<i64> {
+    let res = query(
+        "INSERT INTO payment_channels (user_id, channel, label, image_hash, mime, created_at) \
+         VALUES (?, ?, ?, ?, ?, ?)",
+    )
+    .bind(user_id)
+    .bind(channel)
+    .bind(label)
+    .bind(image_hash)
+    .bind(mime)
+    .bind(now)
+    .execute(pool)
+    .await
+    .map_err(db_err)?;
+    Ok(res.last_insert_rowid())
+}
+
+pub async fn list_payment_channels(
+    pool: &SqlitePool,
+    user_id: i64,
+) -> Result<Vec<PaymentChannelRow>> {
+    query_as::<_, PaymentChannelRow>("SELECT * FROM payment_channels WHERE user_id = ? ORDER BY id")
+        .bind(user_id)
+        .fetch_all(pool)
+        .await
+        .map_err(db_err)
+}
+
+/// 删除收款码，返回图片摘要（调用方负责回收文件）；不是自己的则返回 None。
+pub async fn delete_payment_channel(
+    pool: &SqlitePool,
+    user_id: i64,
+    id: i64,
+) -> Result<Option<String>> {
+    let row: Option<(String,)> =
+        query_as("SELECT image_hash FROM payment_channels WHERE id = ? AND user_id = ?")
+            .bind(id)
+            .bind(user_id)
+            .fetch_optional(pool)
+            .await
+            .map_err(db_err)?;
+    let Some((hash,)) = row else {
+        return Ok(None);
+    };
+    query("DELETE FROM payment_channels WHERE id = ? AND user_id = ?")
+        .bind(id)
+        .bind(user_id)
+        .execute(pool)
+        .await
+        .map_err(db_err)?;
+    query("UPDATE blobs SET refcount = refcount - 1 WHERE hash = ?")
+        .bind(&hash)
+        .execute(pool)
+        .await
+        .map_err(db_err)?;
+    Ok(Some(hash))
 }
 
 pub async fn counter_value(pool: &SqlitePool, key: &str) -> Result<i64> {

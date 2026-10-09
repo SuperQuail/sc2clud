@@ -14,12 +14,14 @@ async fn db() -> Db {
 }
 
 async fn make_user(db: &Db, handle: &str) -> i64 {
+    // 邮箱有唯一索引：一个用例里建多个用户时必须各不相同
+    let email = format!("{handle}@test.local");
     repo::register_user(
         db.pool(),
         repo::NewUser {
             handle,
             display_name: handle,
-            email: "",
+            email: &email,
             password_hash: "h",
             activated: true,
             now: now_unix(),
@@ -446,5 +448,222 @@ async fn posts_can_be_pinned_featured_and_searched() {
             .expect("搜索")
             .is_empty(),
         "LIKE 通配符必须被转义，% 不该匹配所有帖子"
+    );
+}
+
+#[tokio::test]
+async fn banners_respect_dismissal_window_and_activation() {
+    let db = db().await;
+    let now = now_unix();
+    let user = make_user(&db, "banner_user").await;
+    let other = make_user(&db, "banner_other").await;
+
+    let live = repo::create_banner(
+        db.pool(),
+        repo::NewBanner {
+            title: "站点维护",
+            body: "今晚 2 点维护",
+            kind: "warning",
+            url: None,
+            starts_at: None,
+            ends_at: None,
+            created_by: None,
+            now,
+        },
+    )
+    .await
+    .expect("建横幅");
+    // 已过期 / 未开始 / 已停用的都不该出现
+    repo::create_banner(
+        db.pool(),
+        repo::NewBanner {
+            title: "过期",
+            body: "",
+            kind: "info",
+            url: None,
+            starts_at: None,
+            ends_at: Some(now - 10),
+            created_by: None,
+            now,
+        },
+    )
+    .await
+    .expect("建横幅");
+    repo::create_banner(
+        db.pool(),
+        repo::NewBanner {
+            title: "未开始",
+            body: "",
+            kind: "info",
+            url: None,
+            starts_at: Some(now + 3600),
+            ends_at: None,
+            created_by: None,
+            now,
+        },
+    )
+    .await
+    .expect("建横幅");
+    let paused = repo::create_banner(
+        db.pool(),
+        repo::NewBanner {
+            title: "停用",
+            body: "",
+            kind: "info",
+            url: None,
+            starts_at: None,
+            ends_at: None,
+            created_by: None,
+            now,
+        },
+    )
+    .await
+    .expect("建横幅");
+    assert!(
+        repo::set_banner_active(db.pool(), paused, false)
+            .await
+            .expect("停用")
+    );
+
+    let mine = repo::visible_banners(db.pool(), user, now)
+        .await
+        .expect("可见");
+    assert_eq!(mine.len(), 1, "只有生效中的那条：{mine:?}");
+    assert_eq!(mine[0].id, live);
+
+    // 点确认后不再出现，且只影响自己
+    assert!(
+        repo::dismiss_banner(db.pool(), live, user, now)
+            .await
+            .expect("确认")
+    );
+    assert!(
+        !repo::dismiss_banner(db.pool(), live, user, now)
+            .await
+            .expect("重复确认幂等")
+    );
+    assert!(
+        repo::visible_banners(db.pool(), user, now)
+            .await
+            .expect("可见")
+            .is_empty()
+    );
+    assert_eq!(
+        repo::visible_banners(db.pool(), other, now)
+            .await
+            .expect("别人还看得到")
+            .len(),
+        1
+    );
+}
+
+#[tokio::test]
+async fn payment_channels_round_trip() {
+    let db = db().await;
+    let now = now_unix();
+    let user = make_user(&db, "payee").await;
+    let other = make_user(&db, "stranger").await;
+
+    let alipay = repo::add_payment_channel(
+        db.pool(),
+        user,
+        "alipay",
+        "支付宝",
+        "hash-a",
+        "image/png",
+        now,
+    )
+    .await
+    .expect("加渠道");
+    repo::add_payment_channel(
+        db.pool(),
+        user,
+        "wechat",
+        "微信",
+        "hash-b",
+        "image/webp",
+        now,
+    )
+    .await
+    .expect("加渠道");
+    assert_eq!(
+        repo::list_payment_channels(db.pool(), user)
+            .await
+            .expect("列表")
+            .len(),
+        2
+    );
+
+    // 不是自己的删不掉
+    assert!(
+        repo::delete_payment_channel(db.pool(), other, alipay)
+            .await
+            .expect("越权删除")
+            .is_none()
+    );
+    assert_eq!(
+        repo::list_payment_channels(db.pool(), user)
+            .await
+            .expect("列表")
+            .len(),
+        2
+    );
+
+    assert_eq!(
+        repo::delete_payment_channel(db.pool(), user, alipay)
+            .await
+            .expect("删除")
+            .as_deref(),
+        Some("hash-a"),
+        "删除时要返回图片摘要供回收"
+    );
+    assert_eq!(
+        repo::list_payment_channels(db.pool(), user)
+            .await
+            .expect("列表")
+            .len(),
+        1
+    );
+}
+
+#[tokio::test]
+async fn post_title_and_resource_status_round_trip() {
+    let db = db().await;
+    let author = make_user(&db, "resource_author").await;
+    let post = make_post(&db, author, "custom_campaign", "灰烬归来 v2", "正文").await;
+
+    assert_eq!(
+        repo::resolved_post_title(db.pool(), post)
+            .await
+            .expect("查标题")
+            .as_deref(),
+        Some("灰烬归来 v2")
+    );
+    assert!(
+        repo::resolved_post_title(db.pool(), 999_999)
+            .await
+            .expect("查")
+            .is_none()
+    );
+
+    assert_eq!(
+        repo::post_resource_status(db.pool(), post)
+            .await
+            .expect("查状态")
+            .as_deref(),
+        Some("active"),
+        "默认持续更新"
+    );
+    assert!(
+        repo::set_post_resource_status(db.pool(), post, "maintenance", now_unix())
+            .await
+            .expect("改状态")
+    );
+    assert_eq!(
+        repo::post_resource_status(db.pool(), post)
+            .await
+            .expect("查状态")
+            .as_deref(),
+        Some("maintenance")
     );
 }

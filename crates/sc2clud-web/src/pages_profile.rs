@@ -13,6 +13,121 @@ use crate::routes::feed_view;
 use crate::session;
 use crate::templates::{ProfileTemplate, format_date, render};
 
+// ------------------------------------------------------------ 收款码
+
+/// 收款码图片上限：二维码本身很小，512 KB 足够。
+const MAX_QR_BYTES: usize = 512 * 1024;
+
+#[derive(Debug, serde::Deserialize)]
+pub struct ChannelQuery {
+    /// 渠道名：alipay / wechat / 任意自定义（不写死枚举）。
+    pub channel: String,
+    pub label: Option<String>,
+}
+
+/// 上传自己的收款码：**认证开发者及以上**（沿用「能发资源帖」这条既有权限，不新加枚举）。
+pub async fn payment_channel_add(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    axum::extract::Query(query): axum::extract::Query<ChannelQuery>,
+    body: axum::body::Body,
+) -> AppResult<Response> {
+    let user = crate::routes::require_user(&state, &headers).await?;
+    session::guard(Some(&user), sc2clud_core::auth::Permission::CreateResource)?;
+    let token = headers
+        .get("x-csrf-token")
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or("");
+    session::check_csrf(&user, token)?;
+
+    let channel = query.channel.trim();
+    if channel.is_empty() || channel.chars().count() > 24 {
+        return Err(AppError::Domain(sc2clud_core::Error::InvalidInput(
+            "渠道名必填，且不超过 24 个字符".to_string(),
+        )));
+    }
+    let label = query.label.unwrap_or_default();
+    let label: String = label.trim().chars().take(24).collect();
+
+    let bytes = axum::body::to_bytes(body, MAX_QR_BYTES)
+        .await
+        .map_err(|e| {
+            AppError::Domain(sc2clud_core::Error::InvalidInput(format!(
+                "收款码读取失败或超过 512 KB：{e}"
+            )))
+        })?;
+    let mime = crate::routes::sniff_image_mime(&bytes).ok_or_else(|| {
+        AppError::Domain(sc2clud_core::Error::InvalidInput(
+            "收款码只接受 PNG / JPEG / GIF / WebP".to_string(),
+        ))
+    })?;
+    let size = bytes.len() as i64;
+    let reader: sc2clud_storage::BlobReader = Box::pin(tokio_util::io::StreamReader::new(
+        futures_util::stream::once(async move { Ok::<_, std::io::Error>(bytes) }),
+    ));
+    let outcome = state
+        .storage
+        .put_stream(reader, None)
+        .await
+        .map_err(AppError::from)?;
+    let hash = outcome.stat.hash.to_string();
+    let now = sc2clud_core::now_unix();
+    repo::ensure_blob(state.db.pool(), &hash, size, now).await?;
+    let id = repo::add_payment_channel(state.db.pool(), user.id, channel, &label, &hash, mime, now)
+        .await?;
+    tracing::info!(user.id = user.id, channel, image.id = id, "新增收款码");
+    Ok(axum::Json(
+        serde_json::json!({ "id": id, "channel": channel, "label": label, "url": format!("/img/{hash}") }),
+    )
+    .into_response())
+}
+
+/// 删除自己的收款码（引用归零时顺带回收文件）。
+pub async fn payment_channel_delete(
+    State(state): State<AppState>,
+    Path(id): Path<i64>,
+    headers: HeaderMap,
+) -> AppResult<Response> {
+    let user = crate::routes::require_user(&state, &headers).await?;
+    let token = headers
+        .get("x-csrf-token")
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or("");
+    session::check_csrf(&user, token)?;
+    let Some(hash) = repo::delete_payment_channel(state.db.pool(), user.id, id).await? else {
+        return Err(AppError::not_found("没有这个收款码"));
+    };
+    if let Ok(parsed) = sc2clud_core::BlobHash::parse(&hash)
+        && let Err(e) = state.storage.delete(&parsed).await
+    {
+        tracing::warn!(blob = %hash, error = %e, "回收收款码内容失败（先记着）");
+    }
+    Ok(axum::Json(serde_json::json!({ "ok": true })).into_response())
+}
+
+/// 公开读取某人的收款渠道（主页展示用）。
+pub async fn payment_channels_json(
+    State(state): State<AppState>,
+    Path(handle): Path<String>,
+) -> AppResult<Response> {
+    let Some(owner) = repo::find_user_by_handle(state.db.pool(), &handle).await? else {
+        return Err(AppError::not_found("没有这个用户"));
+    };
+    let rows = repo::list_payment_channels(state.db.pool(), owner.id).await?;
+    let channels: Vec<serde_json::Value> = rows
+        .into_iter()
+        .map(|row| {
+            serde_json::json!({
+                "id": row.id,
+                "channel": row.channel,
+                "label": row.label,
+                "url": format!("/img/{}", row.image_hash),
+            })
+        })
+        .collect();
+    Ok(axum::Json(serde_json::json!({ "channels": channels })).into_response())
+}
+
 /// 当前登录者的头像摘要；不暴露其他账号资料或会话信息。
 pub async fn avatar_info(State(state): State<AppState>, headers: HeaderMap) -> AppResult<Response> {
     let user = crate::routes::require_user(&state, &headers).await?;

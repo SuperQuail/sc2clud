@@ -268,6 +268,46 @@ pub async fn create_announcement(
     Ok(Redirect::to("/announcements").into_response())
 }
 
+// ------------------------------------------------------------ 横幅
+
+/// 当前用户应当看到的横幅。
+///
+/// **未登录一律返回空数组**：横幅只对用户发（用户点「确认」后不再显示）。
+pub async fn banners(State(state): State<AppState>, headers: HeaderMap) -> AppResult<Response> {
+    let Some(user) = session::current_user(&state, &headers).await? else {
+        return Ok(axum::Json(serde_json::json!({ "banners": [] })).into_response());
+    };
+    let rows = repo::visible_banners(state.db.pool(), user.id, now_unix()).await?;
+    let items: Vec<serde_json::Value> = rows
+        .into_iter()
+        .map(|b| {
+            serde_json::json!({
+                "id": b.id,
+                "title": b.title,
+                "body": b.body,
+                "kind": b.kind,
+                "url": b.url,
+            })
+        })
+        .collect();
+    Ok(axum::Json(serde_json::json!({ "banners": items })).into_response())
+}
+
+/// 用户点「确认」：之后不再给他看这条横幅。
+pub async fn banner_dismiss(
+    State(state): State<AppState>,
+    Path(id): Path<i64>,
+    headers: HeaderMap,
+) -> AppResult<Response> {
+    let user = require_user(&state, &headers).await?;
+    let token = headers
+        .get("x-csrf-token")
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or("");
+    session::check_csrf(&user, token)?;
+    let affected = repo::dismiss_banner(state.db.pool(), id, user.id, now_unix()).await?;
+    Ok(axum::Json(serde_json::json!({ "ok": true, "first_time": affected })).into_response())
+}
 // ------------------------------------------------------------ 备份与导出
 
 /// 备份目录：跟随数据目录，便于一起搬走。

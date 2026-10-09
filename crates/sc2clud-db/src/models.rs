@@ -143,6 +143,31 @@ pub struct ExpEventRow {
     pub created_at: i64,
 }
 
+/// 横幅。
+#[derive(Debug, Clone, FromRow)]
+pub struct BannerRow {
+    pub id: i64,
+    pub title: String,
+    pub body: String,
+    pub kind: String,
+    pub url: Option<String>,
+    pub active: i64,
+    pub starts_at: Option<i64>,
+    pub ends_at: Option<i64>,
+    pub created_at: i64,
+}
+
+/// 收款码。
+#[derive(Debug, Clone, FromRow)]
+pub struct PaymentChannelRow {
+    pub id: i64,
+    pub user_id: i64,
+    pub channel: String,
+    pub label: String,
+    pub image_hash: String,
+    pub mime: String,
+    pub created_at: i64,
+}
 /// 搜索结果用的一行（**故意比 [`PostWithAuthorRow`] 瘦**：不动既有查询）。
 #[derive(Debug, Clone, FromRow)]
 pub struct PostSearchRow {

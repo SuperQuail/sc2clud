@@ -105,6 +105,111 @@ pub fn exp_for_level(level: i64) -> i64 {
     EXP_PER_LEVEL_BASE * level * level
 }
 
+/// 从**任意域名、任意路径前缀**的站点链接里解析出帖子 id。
+///
+/// 只认路径里 `…/p/<数字>` 这一段，不看域名——以后加域名（含 `/dev` 这类前缀）都不用改。
+/// shortcut: 不校验域名，站外 `…/p/12` 也会解析成我们的 12 号帖（调用方只用来取标题，风险可接受）。
+pub fn parse_post_link(raw: &str) -> Option<i64> {
+    let path = raw.trim().split(['?', '#']).next()?;
+    let mut segments = path.split('/').peekable();
+    while let Some(segment) = segments.next() {
+        if segment.eq_ignore_ascii_case("p") {
+            return segments.next()?.parse::<i64>().ok();
+        }
+    }
+    None
+}
+
+/// 资源帖状态：作者对外声明这个资源还管不管。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ResourceStatus {
+    /// 持续更新。
+    Active,
+    /// 接受 bug 修复（不再加新功能，但收 bug）。
+    AcceptingFixes,
+    /// 停止维护。
+    Maintenance,
+}
+
+impl ResourceStatus {
+    pub const ALL: [ResourceStatus; 3] = [
+        ResourceStatus::Active,
+        ResourceStatus::AcceptingFixes,
+        ResourceStatus::Maintenance,
+    ];
+
+    pub fn as_str(self) -> &'static str {
+        match self {
+            ResourceStatus::Active => "active",
+            ResourceStatus::AcceptingFixes => "accepting_fixes",
+            ResourceStatus::Maintenance => "maintenance",
+        }
+    }
+
+    pub fn label(self) -> &'static str {
+        match self {
+            ResourceStatus::Active => "持续更新",
+            ResourceStatus::AcceptingFixes => "接受 bug 修复",
+            ResourceStatus::Maintenance => "停止维护",
+        }
+    }
+
+    pub fn parse(raw: &str) -> Result<Self, crate::Error> {
+        match raw.trim() {
+            "active" => Ok(ResourceStatus::Active),
+            "accepting_fixes" => Ok(ResourceStatus::AcceptingFixes),
+            "maintenance" => Ok(ResourceStatus::Maintenance),
+            other => Err(crate::Error::InvalidInput(format!("未知资源状态：{other}"))),
+        }
+    }
+}
+
+#[cfg(test)]
+mod link_tests {
+    use super::*;
+
+    #[test]
+    fn parses_links_from_any_domain_or_prefix() {
+        for (raw, want) in [
+            ("https://sc2clud.example/p/12", 12),
+            ("http://www.叽叽咕咕.fun/p/12", 12),
+            ("http://www.xn--xpra07ba.fun/dev/p/12", 12),
+            ("https://a.b.c/some/prefix/p/12/", 12),
+            ("https://a.b.c/p/12?from=share#top", 12),
+            ("/p/12", 12),
+            ("p/12", 12),
+            ("  https://x.y/P/12  ", 12),
+        ] {
+            assert_eq!(parse_post_link(raw), Some(want), "解析失败：{raw}");
+        }
+    }
+
+    #[test]
+    fn rejects_non_post_links() {
+        for raw in [
+            "",
+            "https://x.y/u/tangtian",
+            "https://x.y/p/",
+            "https://x.y/p/abc",
+            "12",
+            "https://x.y/posts/12",
+            // 超范围数字应当被拒，而不是溢出
+            "https://x.y/p/99999999999999999999",
+        ] {
+            assert_eq!(parse_post_link(raw), None, "不该解析：{raw}");
+        }
+    }
+
+    #[test]
+    fn resource_status_round_trips() {
+        for status in ResourceStatus::ALL {
+            assert_eq!(ResourceStatus::parse(status.as_str()).expect("ok"), status);
+            assert!(!status.label().is_empty());
+        }
+        assert!(ResourceStatus::parse("nope").is_err());
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

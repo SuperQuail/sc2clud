@@ -1,0 +1,19 @@
+{% if let Some(name) = user_label %}
+<details class="account-menu" data-account-menu>
+  <summary class="account-trigger" aria-label="{{ name }} 的账户菜单" aria-expanded="false" aria-controls="account-panel">
+    <img data-account-avatar src="{% if !account_avatar.is_empty() %}/avatar/{{ account_avatar }}{% else %}/static/art/miyin-chibi-80.webp{% endif %}" width="38" height="38" alt="{{ name }}的头像">
+  </summary>
+  <div class="account-panel" id="account-panel">
+    <div class="account-panel-head"><img data-account-avatar src="{% if !account_avatar.is_empty() %}/avatar/{{ account_avatar }}{% else %}/static/art/miyin-chibi-160.webp{% endif %}" width="64" height="64" alt=""><div><strong>{{ name }}</strong><p>已登录星际社区</p></div></div>
+    <nav aria-label="账户快捷入口">
+      <a href="/me"><img src="/static/art/starcraft/nav-profile.webp" width="24" height="24" alt=""><span>个人主页</span><small>↗</small></a>
+      <a href="/notifications"><img class="account-command-icon" src="/static/art/starcraft/nav-announcement.webp" width="24" height="24" alt=""><span>通知</span><small>›</small></a>
+      <a href="/messages"><img class="account-command-icon" src="/static/art/starcraft/nav-announcement.webp" width="24" height="24" alt=""><span>消息与私信</span><small>›</small></a>
+      <a href="/bookmarks"><img src="/static/art/starcraft/nav-bookmarks.webp" width="24" height="24" alt=""><span>我的收藏</span><small>›</small></a>
+      <a href="/settings"><img class="account-command-icon" src="/static/art/starcraft/nav-tool_player.webp" width="24" height="24" alt=""><span>账户设置</span><small>›</small></a>
+      {% if is_staff %}<a href="/admin"><img src="/static/art/starcraft/nav-admin.webp" width="24" height="24" alt=""><span>管理面板</span><small>›</small></a>{% endif %}
+    </nav>
+    <div class="account-panel-footer"><form method="post" action="/logout"><input type="hidden" name="csrf" value="{{ csrf }}"><button type="submit"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10 4H4v16h6M9 12h12m-4-4 4 4-4 4"/></svg><span>退出登录</span></button></form></div>
+  </div>
+</details>
+{% endif %}

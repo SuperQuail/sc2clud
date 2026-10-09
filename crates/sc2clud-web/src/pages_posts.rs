@@ -687,6 +687,84 @@ pub async fn post_image_move(
     Redirect::to(&format!("/p/{id}/edit")).into_response()
 }
 
+#[derive(Debug, Deserialize)]
+pub struct ResolveQuery {
+    pub url: String,
+}
+
+/// 把站内帖子链接解析成帖子标题。
+///
+/// 域名/路径前缀都不看（`core::community::parse_post_link`），所以以后加域名不用改这里；
+/// 只返回「已通过、未删除、未归档」的帖子，避免拿它探测草稿。
+pub async fn resolve_post_link(
+    State(state): State<AppState>,
+    axum::extract::Query(query): axum::extract::Query<ResolveQuery>,
+) -> AppResult<Response> {
+    let Some(id) = sc2clud_core::community::parse_post_link(&query.url) else {
+        return Err(AppError::not_found("链接里没有帖子号"));
+    };
+    let Some(title) = repo::resolved_post_title(state.db.pool(), id).await? else {
+        return Err(AppError::not_found("帖子不存在或不可见"));
+    };
+    Ok(axum::Json(serde_json::json!({ "id": id, "title": title })).into_response())
+}
+
+#[derive(Debug, Deserialize)]
+pub struct ResourceStatusForm {
+    pub csrf: String,
+    pub status: String,
+}
+
+/// 作者（或管理员）标记资源帖状态：持续更新 / 接受 bug 修复 / 停止维护。
+pub async fn set_resource_status(
+    State(state): State<AppState>,
+    Path(id): Path<i64>,
+    headers: HeaderMap,
+    Form(form): Form<ResourceStatusForm>,
+) -> Response {
+    let user = match require_post_editor(&state, &headers, id).await {
+        Ok(user) => user,
+        Err(e) => return e.into_page_response(true),
+    };
+    if let Err(e) = session::check_csrf(&user, &form.csrf) {
+        return e.into_page_response(true);
+    }
+    let status = match sc2clud_core::community::ResourceStatus::parse(&form.status) {
+        Ok(status) => status,
+        Err(e) => return AppError::from(e).into_page_response(true),
+    };
+    match repo::set_post_resource_status(state.db.pool(), id, status.as_str(), now_unix()).await {
+        Ok(true) => tracing::info!(
+            post.id = id,
+            status = status.as_str(),
+            actor.id = user.id,
+            "资源状态变更"
+        ),
+        Ok(false) => return AppError::not_found("帖子不存在").into_page_response(true),
+        Err(e) => return AppError::from(e).into_response(),
+    }
+    Redirect::to(&format!("/p/{id}")).into_response()
+}
+
+#[derive(Debug, Deserialize)]
+pub struct CsrfQuery {
+    pub csrf: String,
+}
+
+/// 资源帖状态的只读接口（前台徽标用）。
+pub async fn resource_status_json(
+    State(state): State<AppState>,
+    Path(id): Path<i64>,
+) -> AppResult<Response> {
+    let raw = repo::post_resource_status(state.db.pool(), id)
+        .await?
+        .ok_or_else(|| AppError::not_found("帖子不存在"))?;
+    let label = sc2clud_core::community::ResourceStatus::parse(&raw)
+        .map(|s| s.label())
+        .unwrap_or("持续更新");
+    Ok(axum::Json(serde_json::json!({ "status": raw, "label": label })).into_response())
+}
+
 pub async fn comment_submit(
     State(state): State<AppState>,
     Path(id): Path<i64>,

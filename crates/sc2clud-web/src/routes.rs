@@ -255,6 +255,38 @@ pub fn api_upload() -> Router<AppState> {
             "/api/v1/posts/{post_id}/images",
             axum::routing::post(upload_post_image),
         )
+        // ---- 横幅（只对登录用户；未登录返回空数组）----
+        .route("/api/v1/banners", axum::routing::get(crate::pages_social::banners))
+        .route(
+            "/api/v1/banners/{id}/dismiss",
+            axum::routing::post(crate::pages_social::banner_dismiss),
+        )
+        // ---- 帖子链接解析 / 资源帖状态 ----
+        .route(
+            "/api/v1/posts/resolve",
+            axum::routing::get(crate::pages_posts::resolve_post_link),
+        )
+        .route(
+            "/api/v1/posts/{id}/resource-status",
+            axum::routing::get(crate::pages_posts::resource_status_json),
+        )
+        .route(
+            "/p/{id}/resource-status",
+            axum::routing::post(crate::pages_posts::set_resource_status),
+        )
+        // ---- 收款码（认证开发者及以上；渠道名不限）----
+        .route(
+            "/api/v1/me/payment-channels",
+            axum::routing::post(crate::pages_profile::payment_channel_add),
+        )
+        .route(
+            "/api/v1/me/payment-channels/{id}",
+            axum::routing::delete(crate::pages_profile::payment_channel_delete),
+        )
+        .route(
+            "/api/v1/users/{handle}/payment-channels",
+            axum::routing::get(crate::pages_profile::payment_channels_json),
+        )
 }
 
 // ------------------------------------------------------------ 工具
