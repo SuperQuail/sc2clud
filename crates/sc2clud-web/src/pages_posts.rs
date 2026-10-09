@@ -203,7 +203,7 @@ async fn build_post_page<'a>(
     nui: Option<&str>,
 ) -> AppResult<PostPageTemplate<'a>> {
     // 预览开关：只有开发实例看这个参数（生产恒为样式 1，预览代码不影响线上）
-    // 生产恒用已评审通过的样式：菜单=2（分组下拉）、赞助=1、提示=1
+    // 生产恒用已评审通过的样式：菜单=2（分组下拉）、赞助=1（左渠道右二维码）、提示=3（红圆图标卡）
     let pick = |raw: Option<&str>, fallback: u8| -> u8 {
         if state.config.server.debug_pages {
             raw.and_then(|value| value.parse::<u8>().ok())
@@ -215,7 +215,7 @@ async fn build_post_page<'a>(
     };
     let ui_variant = pick(ui, 2);
     let donate_variant = pick(dui, 1);
-    let notice_variant = pick(nui, 1);
+    let notice_variant = pick(nui, 3);
     let user = session::current_user(state, headers).await?;
     let viewer_id = user.as_ref().map(|u| u.id);
     let is_staff = user.as_ref().is_some_and(CurrentUser::is_staff);
