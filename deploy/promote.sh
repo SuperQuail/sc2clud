@@ -1,16 +1,20 @@
 #!/usr/bin/env bash
 # ============================================================
 # 把已经在 /dev/ 验证过的版本推给**生产实例**。
-# 只重启生产 unit；二进制此时已是新版（由 deploy/dev.sh 装好）。
+# 两个实例的二进制是**各自独立的**：这里把测试端那份复制成生产那份，再重启生产。
 # ============================================================
 set -euo pipefail
 
 PREFIX="${SC2CLUD_PREFIX:-/srv/sc2clud}"
+DEV_PREFIX="${SC2CLUD_DEV_PREFIX:-/srv/sc2clud-dev}"
 
 log() { printf '\033[1;32m==>\033[0m %s\n' "$*"; }
 
-log "确认二进制存在"
-test -x "$PREFIX/sc2clud"
+log "确认测试端二进制存在（它就是待发布的版本）"
+test -x "$DEV_PREFIX/sc2clud"
+ls -l --time-style=+%m-%d_%H:%M "$DEV_PREFIX/sc2clud" "$PREFIX/sc2clud" 2>/dev/null | awk '{print "  " $NF "  " $6}'
+install -m 0755 "$DEV_PREFIX/sc2clud" "$PREFIX/sc2clud"
+log "已把测试端二进制发布为生产二进制"
 
 log "同步静态资源（保留 islands：那份由本地 push-islands 维护）"
 REPO="${SC2CLUD_REPO:-/opt/sc2clud}"

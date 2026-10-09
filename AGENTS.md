@@ -206,8 +206,9 @@ bash deploy/promote.sh
 1. **代码改动走 git**：本地/自己的分支改 → 推 `main` → `deploy/dev.sh`。
    直接在服务器 `/opt/sc2clud` 里改文件会被下一次 `dev.sh` 的 `reset --hard` 覆盖
    （脚本会先 `git stash` 备份，但别指望它）。
-2. **`/dev` 与生产共用同一个二进制文件**（`/srv/sc2clud/sc2clud`）：`dev.sh` 装上新二进制后，
-   生产进程仍在跑旧代码（持旧 inode），但生产**下一次重启**就会用上新版本 —— 想让它等就别重启它。
+2. **两个实例各自独立**：测试端前缀 `/srv/sc2clud-dev`（二进制/静态/env 都在这里），
+   生产端 `/srv/sc2clud`。`dev.sh` 只写测试前缀，碰不到生产；`promote.sh` 才把测试端那份二进制
+   复制成生产二进制并重启生产 —— 所以「验证过再发布」是真的两道关。
 3. 排查「代码改了没效果」先看两条：`systemctl cat sc2clud-debug`（有没有 drop-in 覆盖 ExecStart）
    与 `git -C /opt/sc2clud log --oneline -1`（服务器上到底是哪个提交）。
 4. 改 unit / vhost 后必须 `systemctl daemon-reload` / `nginx -s reload`。

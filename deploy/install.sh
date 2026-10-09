@@ -218,6 +218,9 @@ fi
 # ---------- 8. systemd ----------
 log '安装并启动 systemd unit'
 install -m 644 "$REPO_ROOT/deploy/systemd/sc2clud.service" /etc/systemd/system/sc2clud.service
+# 测试实例：独立前缀 + 独立 unit（与生产完全隔离）
+install -d -m 0755 "${SC2CLUD_DEV_PREFIX:-/srv/sc2clud-dev}"
+install -m 644 "$REPO_ROOT/deploy/systemd/sc2clud-debug.service" /etc/systemd/system/sc2clud-debug.service
 systemctl daemon-reload
 systemctl enable sc2clud.service
 # 升级场景务必显式 restart：enable --now 对**已在运行**的服务不会重启，
