@@ -1,7 +1,7 @@
 //! 账户设置：基本资料、账号安全、变动日志。
 //!
 //! 形态参考常见的云服务控制台：左侧分栏 + 右侧内容。
-//! 头像的裁剪与压缩在浏览器里做（前端岛），这里只负责改显示名与改口令。
+//! 头像的裁剪与压缩在浏览器里做（前端岛），这里只负责改显示名与改密码。
 
 use axum::Form;
 use axum::extract::State;
@@ -47,13 +47,13 @@ pub struct NoticeQuery {
 fn notice_of(query: &NoticeQuery) -> (Option<String>, Option<String>) {
     let ok = match query.ok.as_deref() {
         Some("display") => Some("显示名已更新".to_string()),
-        Some("password") => Some("口令已更新".to_string()),
+        Some("password") => Some("密码已更新".to_string()),
         _ => None,
     };
     let err = match query.err.as_deref() {
-        Some("current") => Some("当前口令不正确".to_string()),
-        Some("confirm") => Some("两次输入的新口令不一致".to_string()),
-        Some("weak") => Some("新口令不符合要求（至少 8 位）".to_string()),
+        Some("current") => Some("当前密码不正确".to_string()),
+        Some("confirm") => Some("两次输入的新密码不一致".to_string()),
+        Some("weak") => Some("新密码不符合要求（至少 8 位）".to_string()),
         _ => None,
     };
     (ok, err)
@@ -181,6 +181,6 @@ pub async fn update_password(
         now,
     )
     .await;
-    tracing::info!(user.id = user.id, "用户改口令");
+    tracing::info!(user.id = user.id, "用户改密码");
     Ok(Redirect::to("/settings?ok=password"))
 }

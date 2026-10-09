@@ -623,3 +623,31 @@ async fn rejecting_an_edit_keeps_the_original() {
         Some("管理员直接改的标题")
     );
 }
+
+#[tokio::test]
+async fn donation_showcase_respects_the_authors_switch() {
+    let db = db().await;
+    let now = now_unix();
+    let author = make_user(&db, "donation_author").await;
+    repo::add_payment_channel(db.pool(), author, "alipay", "支付宝", "hash-qr", "image/png", now)
+        .await
+        .expect("加收款码");
+
+    // 默认不展示：收款码涉及钱财，必须作者自己开
+    let off = repo::author_showcase(db.pool(), author).await.expect("展示块");
+    assert!(!off.donation_visible);
+    assert!(off.channels.is_empty(), "没开就不该把渠道带出去");
+
+    assert!(repo::set_donation_visible(db.pool(), author, true).await.expect("开"));
+    assert!(!repo::set_donation_visible(db.pool(), author, true).await.expect("重复开是幂等的"));
+    let on = repo::author_showcase(db.pool(), author).await.expect("展示块");
+    assert!(on.donation_visible);
+    assert_eq!(on.channels.len(), 1);
+    assert_eq!(on.channels[0].channel, "alipay");
+    assert_eq!(on.channels[0].image_hash, "hash-qr");
+
+    repo::set_donation_visible(db.pool(), author, false).await.expect("关");
+    let off = repo::author_showcase(db.pool(), author).await.expect("展示块");
+    assert!(!off.donation_visible && off.channels.is_empty());
+}
+

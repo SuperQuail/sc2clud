@@ -296,12 +296,12 @@ pub async fn login_submit(
     };
     let user = match found {
         Ok(Some(user)) => user,
-        Ok(None) => return page(&state, "用户名或口令不正确"),
+        Ok(None) => return page(&state, "用户名或密码不正确"),
         Err(e) => return AppError::from(e).into_response(),
     };
-    // 刻意不区分「账号不存在」与「口令错误」，避免账号枚举。
+    // 刻意不区分「账号不存在」与「密码错误」，避免账号枚举。
     if !verify_password(&form.password, &user.password_hash) {
-        return page(&state, "用户名或口令不正确");
+        return page(&state, "用户名或密码不正确");
     }
 
     let user_agent = headers

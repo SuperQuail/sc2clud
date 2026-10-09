@@ -386,7 +386,7 @@ pub async fn create_backup(
     let snapshot = dir.join(format!("{stamp}-sc2clud.sqlite3"));
     repo::backup_to(state.db.pool(), &snapshot.display().to_string()).await?;
 
-    // 用户数据导出（给「备份当前网站用户数据」用；不含口令哈希）
+    // 用户数据导出（给「备份当前网站用户数据」用；不含密码哈希）
     let rows = repo::admin_list_users(state.db.pool(), "", 10_000).await?;
     let export: Vec<serde_json::Value> = rows
         .into_iter()

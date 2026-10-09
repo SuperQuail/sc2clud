@@ -137,7 +137,7 @@ pub fn allows(role: Option<Role>, activated: bool, permission: Permission) -> bo
     role >= required
 }
 
-// ---------------------------------------------------------------- 口令
+// ---------------------------------------------------------------- 密码
 
 use argon2::Argon2;
 use argon2::password_hash::{PasswordHash, PasswordHasher, PasswordVerifier, SaltString};
@@ -155,16 +155,16 @@ pub fn random_hex(bytes: usize) -> String {
     out
 }
 
-/// Argon2id 口令哈希（默认参数 m=19 MiB / t=2 / p=1，2 核上约几十毫秒）。
+/// Argon2id 密码哈希（默认参数 m=19 MiB / t=2 / p=1，2 核上约几十毫秒）。
 pub fn hash_password(password: &str) -> Result<String> {
     let salt = SaltString::generate(&mut OsRng);
     Argon2::default()
         .hash_password(password.as_bytes(), &salt)
         .map(|hash| hash.to_string())
-        .map_err(|e| Error::InvalidInput(format!("口令哈希失败：{e}")))
+        .map_err(|e| Error::InvalidInput(format!("密码哈希失败：{e}")))
 }
 
-/// 校验口令。故意只回 bool：调用方不该区分「口令错」与「哈希串损坏」。
+/// 校验密码。故意只回 bool：调用方不该区分「密码错」与「哈希串损坏」。
 pub fn verify_password(password: &str, stored_hash: &str) -> bool {
     let Ok(parsed) = PasswordHash::new(stored_hash) else {
         return false;
@@ -247,13 +247,13 @@ pub fn validate_display_name(raw: &str) -> Result<String> {
     Ok(name.to_string())
 }
 
-/// 口令：8..=128 字节，且不能全是空白。
+/// 密码：8..=128 字节，且不能全是空白。
 pub fn validate_password(raw: &str) -> Result<()> {
     if raw.trim().is_empty() || raw.len() < 8 {
-        return Err(Error::InvalidInput("口令至少 8 位".to_string()));
+        return Err(Error::InvalidInput("密码至少 8 位".to_string()));
     }
     if raw.len() > 128 {
-        return Err(Error::InvalidInput("口令最长 128 位".to_string()));
+        return Err(Error::InvalidInput("密码最长 128 位".to_string()));
     }
     Ok(())
 }

@@ -512,7 +512,7 @@ pub struct CreateUserForm {
 
 /// 新建账号：只有超级管理员。
 ///
-/// 口令用 argon2id 现算；邮箱自动给 `<登录名>@local`（users.email 有唯一约束，
+/// 密码用 argon2id 现算；邮箱自动给 `<登录名>@local`（users.email 有唯一约束，
 /// 不能一堆空串撞在一起）。命中唯一约束时给一句人话，不暴露 SQL。
 pub async fn create_user(
     State(state): State<AppState>,
@@ -680,7 +680,7 @@ pub async fn update_user(
     )
     .await?;
     if password_hash.is_some() {
-        // 改了口令就把该用户的会话全踢掉
+        // 改了密码就把该用户的会话全踢掉
         let _ = repo::delete_user_sessions(state.db.pool(), id).await;
     }
     tracing::info!(user.id = id, actor.id = actor.id, %role, "管理端更新用户");

@@ -96,7 +96,7 @@ const env = {
   SC2CLUD_LOG: 'warn',
 }
 if (existsSync(dbPath)) {
-  // 只改本地副本里的口令：dev/生产完全不受影响
+  // 只改本地副本里的密码：dev/生产完全不受影响
   spawnSync(exe, ['set-password', handle, password], { env, encoding: 'utf8' })
 }
 // 应用输出落日志：起不来时能直接看到原因，不要吞掉

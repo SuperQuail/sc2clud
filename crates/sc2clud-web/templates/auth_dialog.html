@@ -15,7 +15,7 @@
         <p class="auth-modal-status" id="auth-status" role="status" aria-live="polite" hidden></p>
         <form id="auth-panel-login" class="auth-modal-form" role="tabpanel" aria-labelledby="auth-tab-login" method="post" action="/login">
           <label>用户名或邮箱<input name="account" type="text" required autocomplete="username" placeholder="你的社区账号"></label>
-          <label>口令<span class="auth-password-field"><input name="password" type="password" required autocomplete="current-password" placeholder="输入登录口令"><button type="button" data-auth-password aria-label="显示口令" aria-pressed="false"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2 12s3.5-6 10-6 10 6 10 6-3.5 6-10 6S2 12 2 12Z"/><circle cx="12" cy="12" r="3"/></svg></button></span></label>
+          <label>密码<span class="auth-password-field"><input name="password" type="password" required autocomplete="current-password" placeholder="输入登录密码"><button type="button" data-auth-password aria-label="显示密码" aria-pressed="false"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2 12s3.5-6 10-6 10 6 10 6-3.5 6-10 6S2 12 2 12Z"/><circle cx="12" cy="12" r="3"/></svg></button></span></label>
           <button class="auth-modal-submit" type="submit"><span>登录社区</span></button>
           <p class="auth-modal-note">还没有账号？<button type="button" data-auth-mode="register">创建你的社区账号 ↗</button></p>
         </form>
@@ -23,7 +23,7 @@
           <label>登录名<input name="handle" type="text" required minlength="3" maxlength="24" pattern="[A-Za-z0-9_-]+" autocomplete="username" placeholder="3–24 位字母、数字、下划线或连字符"></label>
           <label>显示名<input name="display_name" type="text" required maxlength="20" autocomplete="nickname" placeholder="社区里的称呼，最多 20 字"></label>
           <label>邮箱<input name="email" type="email" required autocomplete="email" placeholder="用于账号找回的邮箱"></label>
-          <label>口令<span class="auth-password-field"><input name="password" type="password" required minlength="8" autocomplete="new-password" placeholder="至少 8 位"><button type="button" data-auth-password aria-label="显示口令" aria-pressed="false"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2 12s3.5-6 10-6 10 6 10 6-3.5 6-10 6S2 12 2 12Z"/><circle cx="12" cy="12" r="3"/></svg></button></span></label>
+          <label>密码<span class="auth-password-field"><input name="password" type="password" required minlength="8" autocomplete="new-password" placeholder="至少 8 位"><button type="button" data-auth-password aria-label="显示密码" aria-pressed="false"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2 12s3.5-6 10-6 10 6 10 6-3.5 6-10 6S2 12 2 12Z"/><circle cx="12" cy="12" r="3"/></svg></button></span></label>
           <button class="auth-modal-submit" type="submit"><span>加入星际社区</span></button>
           <p class="auth-modal-note">注册后可能需要管理员激活，才能发帖与上传。</p>
         </form>

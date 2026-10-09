@@ -71,7 +71,7 @@ function setup(dialog: HTMLDialogElement) {
 
   function clearPasswords() {
     dialog.querySelectorAll<HTMLInputElement>('input[name="password"]').forEach(input => { input.value = ''; input.type = 'password' })
-    dialog.querySelectorAll<HTMLButtonElement>('[data-auth-password]').forEach(button => { button.setAttribute('aria-pressed', 'false'); button.setAttribute('aria-label', '显示口令') })
+    dialog.querySelectorAll<HTMLButtonElement>('[data-auth-password]').forEach(button => { button.setAttribute('aria-pressed', 'false'); button.setAttribute('aria-label', '显示密码') })
   }
 
   function close() {
@@ -147,7 +147,7 @@ function setup(dialog: HTMLDialogElement) {
       const visible = input.type === 'password'
       input.type = visible ? 'text' : 'password'
       button.setAttribute('aria-pressed', String(visible))
-      button.setAttribute('aria-label', visible ? '隐藏口令' : '显示口令')
+      button.setAttribute('aria-label', visible ? '隐藏密码' : '显示密码')
     })
   })
 

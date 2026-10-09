@@ -56,8 +56,8 @@ pub async fn add_used_bytes(pool: &SqlitePool, user_id: i64, delta: i64) -> Resu
 
 /// 保证站点始终有一个可用的**超级管理员**账号（启动时调用）。
 ///
-/// 该账号的口令默认是不可用的占位哈希，必须由运维执行
-/// `sc2clud set-password <用户名> <口令>` 之后才能登录——所以不存在「默认口令」风险。
+/// 该账号的密码默认是不可用的占位哈希，必须由运维执行
+/// `sc2clud set-password <用户名> <密码>` 之后才能登录——所以不存在「默认密码」风险。
 /// 已存在的账号若角色不是 super 或被停用，会在这里被纠正并记录一条警告。
 pub async fn ensure_super_admin(
     pool: &SqlitePool,
@@ -87,7 +87,7 @@ pub async fn ensure_super_admin(
                 .map_err(db_err)?;
                 tracing::warn!(
                     user.id = user.id,
-                    "引导账号已提升为超级管理员并激活（口令仍需 set-password 设置）"
+                    "引导账号已提升为超级管理员并激活（密码仍需 set-password 设置）"
                 );
             }
             Ok(user.id)
@@ -112,7 +112,7 @@ pub async fn ensure_super_admin(
                 .execute(pool)
                 .await
                 .map_err(db_err)?;
-            tracing::info!(user.id = id, %handle, "已创建引导超级管理员（口令待设置）");
+            tracing::info!(user.id = id, %handle, "已创建引导超级管理员（密码待设置）");
             Ok(id)
         }
     }
@@ -131,7 +131,7 @@ pub async fn ensure_bootstrap_user(
     if let Some(user) = find_user_by_handle(pool, handle).await? {
         return Ok(user.id);
     }
-    // 口令哈希留空：该账号不允许口令登录（没有登录路径），只能由会话绑定。
+    // 密码哈希留空：该账号不允许密码登录（没有登录路径），只能由会话绑定。
     create_user(pool, handle, None, "!", quota_bytes, now).await
 }
 
@@ -925,7 +925,7 @@ pub async fn delete_session(pool: &SqlitePool, id_hash: &str) -> Result<bool> {
     Ok(affected == 1)
 }
 
-/// 踢掉某个用户的所有会话（改口令、停用、封禁时用）。
+/// 踢掉某个用户的所有会话（改密码、停用、封禁时用）。
 pub async fn delete_user_sessions(pool: &SqlitePool, user_id: i64) -> Result<u64> {
     let affected = query("DELETE FROM sessions WHERE user_id = ?")
         .bind(user_id)
@@ -1442,7 +1442,7 @@ pub async fn set_user_activated(
     Ok(affected == 1)
 }
 
-/// 重置口令（命令行运维工具用）。
+/// 重置密码（命令行运维工具用）。
 pub async fn set_user_password(pool: &SqlitePool, user_id: i64, password_hash: &str) -> Result<()> {
     query("UPDATE users SET password_hash = ? WHERE id = ?")
         .bind(password_hash)
@@ -1846,13 +1846,13 @@ pub struct AdminUserUpdate<'a> {
     pub quota_bytes: i64,
     pub trusted: bool,
     pub activated: bool,
-    /// `None` = 不改口令。
+    /// `None` = 不改密码。
     pub password_hash: Option<&'a str>,
 }
 
 /// 一次 UPDATE 改完弹窗里的所有字段（省得前端为每个字段各提交一次）。
 ///
-/// 激活时写入激活时间，停用时清空；口令用 `COALESCE` 保持原值。
+/// 激活时写入激活时间，停用时清空；密码用 `COALESCE` 保持原值。
 pub async fn admin_update_user(pool: &SqlitePool, update: AdminUserUpdate<'_>) -> Result<bool> {
     let trusted: i64 = i64::from(update.trusted);
     let activated: i64 = i64::from(update.activated);
@@ -3265,7 +3265,63 @@ pub async fn delete_payment_channel(
         .await
         .map_err(db_err)?;
     Ok(Some(hash))
-} // ---------------------------------------------------------------- 待审修改（编辑帖子先不动原帖）
+// ---------------------------------------------------------------- 打赏展示（作者侧开关 + 页面用的展示块）
+
+/// 作者是否开启「支持作者」展示。
+pub async fn donation_visible(pool: &SqlitePool, user_id: i64) -> Result<bool> {
+    let row: Option<(i64,)> = query_as("SELECT donation_visible FROM users WHERE id = ?")
+        .bind(user_id)
+        .fetch_optional(pool)
+        .await
+        .map_err(db_err)?;
+    Ok(row.map(|r| r.0).unwrap_or(0) != 0)
+}
+
+pub async fn set_donation_visible(pool: &SqlitePool, user_id: i64, visible: bool) -> Result<bool> {
+    let value = i64::from(visible);
+    let affected = query("UPDATE users SET donation_visible = ? WHERE id = ? AND donation_visible <> ?")
+        .bind(value)
+        .bind(user_id)
+        .bind(value)
+        .execute(pool)
+        .await
+        .map_err(db_err)?
+        .rows_affected();
+    Ok(affected == 1)
+}
+
+/// 页面用的「作者展示块」：头衔 + 等级经验 + 打赏开关与渠道。
+/// 一次取齐，帖子页/主页直接渲染，不用为每张卡片各查四遍。
+pub struct AuthorShowcase {
+    pub title: Option<TitleRow>,
+    pub level: i64,
+    pub exp: i64,
+    pub donation_visible: bool,
+    pub channels: Vec<PaymentChannelRow>,
+}
+
+pub async fn author_showcase(pool: &SqlitePool, user_id: i64) -> Result<AuthorShowcase> {
+    let row: Option<(i64, i64, i64)> =
+        query_as("SELECT level, exp, donation_visible FROM users WHERE id = ?")
+            .bind(user_id)
+            .fetch_optional(pool)
+            .await
+            .map_err(db_err)?;
+    let (level, exp, donation) = row.unwrap_or((1, 0, 0));
+    let channels = if donation != 0 {
+        list_payment_channels(pool, user_id).await?
+    } else {
+        Vec::new()
+    };
+    Ok(AuthorShowcase {
+        title: equipped_title_for(pool, user_id).await?,
+        level,
+        exp,
+        donation_visible: donation != 0,
+        channels,
+    })
+}
+// ---------------------------------------------------------------- 待审修改（编辑帖子先不动原帖）
 
 /// 提交一次编辑的结果。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
