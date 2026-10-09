@@ -348,6 +348,9 @@ impl ExpAction {
     }
 }
 
+/// 个人简介的字数上限与「没写简介」时的默认文案（超管可在后台改后一句）。
+pub const DEFAULT_BIO: &str = "该用户很懒，没有写简介";
+
 /// 个人简介字数上限（前后端都按这个数校验）。
 pub const BIO_MAX_CHARS: usize = 200;
 

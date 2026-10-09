@@ -3366,6 +3366,39 @@ pub async fn donation_notice_for(
     }
     Ok(None)
 }
+// ---------------------------------------------------------------- 站点文本（超管可改的默认文案）
+
+/// 读一条站点文本；没有就用 `fallback`。
+pub async fn site_text(pool: &SqlitePool, key: &str, fallback: &str) -> Result<String> {
+    let row: Option<(String,)> = query_as("SELECT value FROM site_texts WHERE key = ?")
+        .bind(key)
+        .fetch_optional(pool)
+        .await
+        .map_err(db_err)?;
+    Ok(row.map(|r| r.0).unwrap_or_else(|| fallback.to_string()))
+}
+
+pub async fn set_site_text(
+    pool: &SqlitePool,
+    key: &str,
+    value: &str,
+    by: Option<i64>,
+    now: i64,
+) -> Result<()> {
+    query(
+        "INSERT INTO site_texts (key, value, updated_at, updated_by) VALUES (?, ?, ?, ?) \
+         ON CONFLICT(key) DO UPDATE SET value = excluded.value, \
+             updated_at = excluded.updated_at, updated_by = excluded.updated_by",
+    )
+    .bind(key)
+    .bind(value)
+    .bind(now)
+    .bind(by)
+    .execute(pool)
+    .await
+    .map_err(db_err)?;
+    Ok(())
+}
 // ---------------------------------------------------------------- 个人简介
 
 /// 写个人简介。作者自己改时 `state` 传审核结论（当前一律 `approved`），

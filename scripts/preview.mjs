@@ -46,6 +46,8 @@ const fullPage = args.includes('--full')
 const qrTest = args.includes('--qr-test')
 // --bio "文字"：给登录用户写一段简介（只写本地副本），用来渲染带简介的页面
 const bioArg = arg('bio', '')
+// --donate-test：给登录用户开启打赏展示（只写本地副本），用来渲染带赞助按钮的页面
+const donateTest = args.includes('--donate-test')
 const outDir = arg('out', join(repo, '..', 'shots', 'preview'))
 const pagesArg = arg('pages', '')
 
@@ -223,6 +225,19 @@ const main = async () => {
     const line = raw.find((c) => c.startsWith('sc2clud_preview_session='))
     cookie = line ? line.split(';')[0] : null
     console.log(cookie ? `==> 已登录：${handle}` : '==> 登录失败，只截游客视图')
+  }
+
+  // 开打赏（本地副本）：让作者主页/帖子页出现「赞助作者」
+  if (donateTest && cookie && existsSync(dbPath)) {
+    const page = await (await fetch(base + '/settings', { headers: { cookie } })).text()
+    const csrf = (page.match(/name="csrf" value="([^"]+)"/) ?? [])[1]
+    const res = await fetch(base + '/settings/donation', {
+      method: 'POST',
+      headers: { 'content-type': 'application/x-www-form-urlencoded', cookie },
+      body: new URLSearchParams({ csrf, visible: '1', notice_visible: '1' }),
+      redirect: 'manual',
+    })
+    console.log('==> 开启打赏展示 → ' + res.status)
   }
 
   // 写简介（只为预览好看，且只写本地副本）

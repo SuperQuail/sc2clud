@@ -430,6 +430,39 @@ pub async fn set_banner_active(
     ))
 }
 
+#[derive(Debug, Deserialize)]
+pub struct SiteTextForm {
+    pub csrf: String,
+    pub default_bio: Option<String>,
+}
+
+/// 改站点默认文案（当前只有默认个人简介）。只有超级管理员能动。
+pub async fn site_texts_save(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Form(form): Form<SiteTextForm>,
+) -> AppResult<Response> {
+    let actor = require_user(&state, &headers).await?;
+    session::guard(Some(&actor), Permission::ManageRoles)?;
+    session::check_csrf(&actor, &form.csrf)?;
+    let text =
+        sc2clud_core::community::validate_bio(form.default_bio.as_deref().unwrap_or_default())?;
+    if text.is_empty() {
+        return Err(AppError::from(sc2clud_core::Error::InvalidInput(
+            "默认简介不能为空".to_string(),
+        )));
+    }
+    repo::set_site_text(
+        state.db.pool(),
+        "default_bio",
+        &text,
+        Some(actor.id),
+        now_unix(),
+    )
+    .await?;
+    tracing::info!(actor.id = actor.id, "更新站点默认文案 default_bio");
+    Ok(done(&headers, "默认简介已保存", "/admin/users/overview"))
+}
 pub async fn panel(
     State(state): State<AppState>,
     headers: HeaderMap,

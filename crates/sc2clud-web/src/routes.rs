@@ -304,6 +304,10 @@ pub fn api_upload() -> Router<AppState> {
             "/admin/banners/{id}/active",
             axum::routing::post(crate::pages_admin::set_banner_active),
         )
+        .route(
+            "/admin/site-texts",
+            axum::routing::post(crate::pages_admin::site_texts_save),
+        )
         // ---- 统一域名管理（管理员及以上）----
         .route(
             "/admin/domains",

@@ -212,8 +212,22 @@ async fn build_profile<'a>(
     } else {
         1
     };
+    // 没写（或未过审而访客看不到）时显示默认文案 —— 文案本身超管可在后台改
+    let default_bio = repo::site_text(
+        state.db.pool(),
+        "default_bio",
+        sc2clud_core::community::DEFAULT_BIO,
+    )
+    .await?;
+    let shown_bio = if bio_visible && !bio_text.trim().is_empty() {
+        bio_text
+    } else if bio_visible {
+        default_bio
+    } else {
+        String::new()
+    };
     Ok(ProfileTemplate {
-        bio: (bio_visible && !bio_text.trim().is_empty()).then_some(bio_text),
+        bio: (!shown_bio.trim().is_empty()).then_some(shown_bio),
         bio_state,
         header_variant,
         // 与帖子页定版一致：赞助样式 1（左渠道右二维码）+ 提示样式 3（红圆图标卡）
