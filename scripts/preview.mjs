@@ -319,6 +319,10 @@ const main = async () => {
 
   // 无感发送验证：在页面里触发提交，然后数一数气泡有没有就地多出来（没有发生跳转）
   if (sendTest) {
+    // 先真的打开消息中心页（否则脚本跑在 about:blank 上，抓不到 composer）
+    const target = '/inbox?tab=dm' + (dmTo ? '&with=' + dmTo : '')
+    await cdp.send('Page.navigate', { url: base + target })
+    await new Promise((r) => setTimeout(r, 900))
     const before = await cdp.send('Runtime.evaluate', { expression: "location.pathname + location.search" })
     await cdp.send('Runtime.evaluate', {
       expression: `(async () => {
