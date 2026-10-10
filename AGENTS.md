@@ -139,7 +139,7 @@ pwsh -File scripts/smoke.ps1     # 改动触及上传/下载/存储/计数时必
 | 调试页 | ✅ 已完成（`/debug`，默认关闭；独立实例见 `deploy/systemd/sc2clud-debug.service`） | — |
 | 启动器下载页 | `releases` 索引与转链函数已就绪，页面与 API 未接 | 补 `/download` 与 `/api/v1/launcher/latest` |
 | **用户头像** | ✅ 已完成（浏览器侧裁剪压缩 ≤64KB；`/u/{handle}` 主页里换） | — |
-| 前端岛发布 | 产物在 .gitignore 里，服务器无 Node | `pwsh -File scripts/push-islands.ps1`（构建 + 同步） |
+| 前端岛发布 | 产物在 .gitignore 里，服务器无 Node | 本机构建带校验清单，经 ssh-skill 上传完整目录；见 §11 |
 
 ### 头像实现（已完成，留档）
 
@@ -174,7 +174,7 @@ pwsh -File scripts/smoke.ps1     # 改动触及上传/下载/存储/计数时必
 
 ```bash
 # 1. 在 /dev 上发布新版本（只重启测试实例，生产继续跑旧进程）
-bash deploy/dev.sh
+SC2CLUD_BRANCH=dev bash deploy/dev.sh
 
 # 2. 在 http://<域名>/dev/ 上验证（登录、点按钮、看页面）
 #    /dev 与生产同域，所以 Cookie 名必须不同（SC2CLUD_COOKIE_NAME），
@@ -195,7 +195,7 @@ bash deploy/promote.sh
 - **不要在生产的 `/` 上做任何交互式测试或写入**（包括自动化点击、造数据）。
 - `/dev/` 上的路径前缀由 nginx 的 `sub_filter` 处理，应用代码里**不要**写 `/dev`。
 - 生产数据快照进测试库是**只读**操作；反向绝不允许。
-- 出问题的回滚：生产 unit 重启即可回到旧版本（二进制换成上一个 release 的即可）。
+- 出问题的回滚：从生产 `releases/<时间.随机后缀>/` 恢复 `sc2clud`、完整 `static/` 与存在时的 `SHA256SUMS` 后再重启；不得只回退二进制。
 
 ### 前端预览规矩（强制）
 
@@ -228,11 +228,11 @@ SC2CLUD_SSH_KEY=<私钥路径> node scripts/preview.mjs --server root@<dev 机> 
 | `bash deploy/dev.sh` | 拉 `main` → 构建 → 装二进制 → **只重启 /dev** |
 | `bash deploy/dev-restart.sh` | 不重新构建，只重启 /dev（改了 env、排查用） |
 | `bash deploy/dev-sync.sh` | 生产库**只读快照** → /dev 数据目录 |
-| `bash deploy/promote.sh` | 把已在 /dev 验过的版本推给生产 |
+| `bash deploy/promote.sh` | 把已在 /dev 验过的二进制与完整静态推给生产 |
 
 规则：
 
-1. **代码改动走 git**：本地/自己的分支改 → 推 `main` → `deploy/dev.sh`。
+1. **代码改动走 git**：本地/自己的分支改 → PR 合入 `dev` → `SC2CLUD_BRANCH=dev bash deploy/dev.sh` → 用户验收 `/dev/` → PR 合入 `main`。
    直接在服务器 `/opt/sc2clud` 里改文件会被下一次 `dev.sh` 的 `reset --hard` 覆盖
    （脚本会先 `git stash` 备份，但别指望它）。
 2. **两个实例各自独立**：测试端前缀 `/srv/sc2clud-dev`（二进制/静态/env 都在这里），
@@ -243,3 +243,11 @@ SC2CLUD_SSH_KEY=<私钥路径> node scripts/preview.mjs --server root@<dev 机> 
 4. 改 unit / vhost 后必须 `systemctl daemon-reload` / `nginx -s reload`。
 5. 数据与 Cookie 都是隔离的：prod `/srv/sc2clud/data` + `sc2clud_session`，
    dev `/srv/sc2clud-dev/data` + `sc2clud_dev_session`；**反向同步绝不允许**。
+
+### 前端产物交付与版本校验
+
+- 本机先执行 `pnpm -C web typecheck`、`pnpm -C web build` 和 Rust 门禁；真实预览通过后，经 ssh-skill 将完整 `crates/sc2clud-web/static/islands/` 上传到服务器仓库同路径（替换整个目录，避免遗留旧文件）。服务器没有 Node，不在服务器构建前端；不要执行 `push-islands.ps1` 或 `preview.mjs` 的 raw ssh/scp 路径。
+- `build` 清空 islands 后生成 `SOURCE.sha256`（按 Git 规范化后的全部已跟踪 web 输入内容计算，与整个 HEAD 无关）和 `SHA256SUMS`。只运行 watch 不产生可发布证明；新文件须先 git add 再 build。
+- `deploy/dev.sh` reset 到 `SC2CLUD_BRANCH`（默认 main）；走 PR→dev 后使用 `SC2CLUD_BRANCH=dev bash deploy/dev.sh` 验证，用户验收后再 PR→main。指纹必须与 reset 后前端源码一致。缺精华入口、清单、哈希不符均在替换 DEV 活跃产物前中止。
+- DEV 暂存完整二进制与 static，生成整套 `SHA256SUMS`；只重启测试实例。`promote.sh` 只从这份 DEV 整套复制，校验后先备份生产旧整套到 `releases/`，再替换及重启。预检查失败不改活跃文件、不重启。生产 promote 仍须按项目流程获得用户确认。
+- 本地部署行为回归：`bash scripts/test-deploy.sh`，临时目录与桩命令，不操作真实服务器。

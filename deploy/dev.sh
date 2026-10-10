@@ -8,7 +8,6 @@
 # ============================================================
 set -euo pipefail
 
-PREFIX="${SC2CLUD_PREFIX:-/srv/sc2clud}"
 # 测试实例自己的前缀：二进制 / 静态 / env 都在这里，与生产目录无关
 DEV_PREFIX="${SC2CLUD_DEV_PREFIX:-/srv/sc2clud-dev}"
 REPO="${SC2CLUD_REPO:-/opt/sc2clud}"
@@ -22,24 +21,32 @@ cd "$REPO"
 git fetch --quiet origin "$BRANCH"
 git reset --hard --quiet "origin/$BRANCH"
 
+source "$REPO/deploy/artifacts.sh"
+log "校验本机上传的前端产物及来源"
+verify_islands "$REPO/crates/sc2clud-web/static/islands"
+verify_source "$REPO" "$REPO/crates/sc2clud-web/static/islands"
+
 log "构建（nice 一下，别和线上抢 CPU）"
 # sqlx::migrate! 是编译期展开的：增量编译下新增迁移文件可能不触发重编，
 # 结果就是「二进制装上了、迁移却没跑」（踩过一次，排查了很久）。
 touch "$REPO/crates/sc2clud-db/src/lib.rs"
 CARGO_BUILD_JOBS=2 nice -n 10 "$CARGO" build --release -p sc2clud-app
 
-log "安装二进制到测试前缀（生产那份不碰）"
+log "准备完整测试产物（全部校验后才替换活跃文件）"
 install -d -m 0755 "$DEV_PREFIX"
-install -m 0755 "$REPO/target/release/sc2clud" "$DEV_PREFIX/sc2clud"
-
-log "同步静态资源到测试前缀"
-DEV_STATIC="$DEV_PREFIX/static"
-rm -rf "$DEV_STATIC"
-cp -a "$REPO/crates/sc2clud-web/static" "$DEV_STATIC"
-# 前端岛不在 git 里（服务器没有 Node），从生产那份**只读**拷过来
-if [ -d "$PREFIX/static/islands" ]; then
-  cp -a "$PREFIX/static/islands" "$DEV_STATIC/islands"
-fi
+STAGE=$(mktemp -d "$DEV_PREFIX/.release.XXXXXX")
+trap 'rm -rf "$STAGE"' EXIT
+install -m 0755 "$REPO/target/release/sc2clud" "$STAGE/sc2clud"
+cp -a "$REPO/crates/sc2clud-web/static" "$STAGE/static"
+verify_islands "$STAGE/static/islands"
+verify_source "$REPO" "$STAGE/static/islands"
+seal_release "$STAGE"
+verify_release "$STAGE"
+# 数据和 env 不在产物内；仅替换二进制与整套静态。
+mv -f "$STAGE/sc2clud" "$DEV_PREFIX/sc2clud"
+rm -rf "$DEV_PREFIX/static"
+mv "$STAGE/static" "$DEV_PREFIX/static"
+mv -f "$STAGE/SHA256SUMS" "$DEV_PREFIX/SHA256SUMS"
 
 log "重启测试实例"
 # 必须先 daemon-reload：/etc/systemd/system/<unit>.service.d/ 里的 drop-in 会覆盖 ExecStart，

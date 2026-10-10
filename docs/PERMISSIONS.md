@@ -91,3 +91,7 @@
 - 精华最终判定唯一入口：`core::auth::allows_feature_post(role, activated, is_section_moderator)`；Web 页面与提交共用 `pages_featured::can_feature_post`，任职从 `section_capabilities` 查询，每次提交重新校验。
 - `POST /p/{id}/featured` 接收 CSRF 与严格的 `featured=0/1`；显式目标状态使重复请求幂等。实际变化在同一事务记录 `post.featured.set` / `post.featured.clear` 审计；重复提交不覆盖原操作者及时间，不重复审计。
 - 新增权限位：`Permission` 加一个变体 → `min_role()` 给门槛 → 更新 `permission_tests` → 更新本文档。
+
+## 八、精华排序边界
+
+精华管理不改变角色或审核、编辑他人、归档权限。综合分采用 B = 有效点赞数 + 3 × 有效一级评论数，普通帖 B，精华帖 1.2 × B + 20。普通评论当前均为单层；issue 回复不计分，只参与最新互动。互动仅包括发布时间、有效普通评论、新建 issue 与有效 issue 回复；关闭/重开 issue、编辑正文、点赞与收藏不改变互动时间。

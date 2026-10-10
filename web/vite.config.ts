@@ -7,7 +7,7 @@ export default defineConfig({
   plugins: [vue()],
   build: {
     outDir: '../crates/sc2clud-web/static/islands',
-    emptyOutDir: false,
+    emptyOutDir: true,
     target: 'es2020',
     cssCodeSplit: false,
     rollupOptions: {

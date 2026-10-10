@@ -10,19 +10,24 @@ DEV_PREFIX="${SC2CLUD_DEV_PREFIX:-/srv/sc2clud-dev}"
 
 log() { printf '\033[1;32m==>\033[0m %s\n' "$*"; }
 
-log "确认测试端二进制存在（它就是待发布的版本）"
-test -x "$DEV_PREFIX/sc2clud"
-ls -l --time-style=+%m-%d_%H:%M "$DEV_PREFIX/sc2clud" "$PREFIX/sc2clud" 2>/dev/null | awk '{print "  " $NF "  " $6}'
-install -m 0755 "$DEV_PREFIX/sc2clud" "$PREFIX/sc2clud"
-log "已把测试端二进制发布为生产二进制"
-
-log "同步静态资源（保留 islands：那份由本地 push-islands 维护）"
-REPO="${SC2CLUD_REPO:-/opt/sc2clud}"
-if [ -d "$REPO/crates/sc2clud-web/static" ]; then
-  command -v rsync >/dev/null 2>&1 \
-    && rsync -a --delete --exclude "islands/" "$REPO/crates/sc2clud-web/static/" "$PREFIX/static/" \
-    || find "$REPO/crates/sc2clud-web/static" -maxdepth 1 -type f -exec cp -f {} "$PREFIX/static/" \;
-fi
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/artifacts.sh"
+log "校验已验收的 DEV 整套产物"
+verify_release "$DEV_PREFIX"
+install -d -m 0755 "$PREFIX"
+STAGE=$(mktemp -d "$PREFIX/.release.XXXXXX")
+trap 'rm -rf "$STAGE"' EXIT
+cp -a "$DEV_PREFIX/sc2clud" "$DEV_PREFIX/static" "$DEV_PREFIX/SHA256SUMS" "$STAGE/"
+verify_release "$STAGE"
+# 备份必须成功后才开始替换，保留原二进制、完整静态及已有校验清单。
+install -d -m 0755 "$PREFIX/releases"
+BACKUP=$(mktemp -d "$PREFIX/releases/$(date +%Y%m%d-%H%M%S).XXXXXX")
+cp -a "$PREFIX/sc2clud" "$PREFIX/static" "$BACKUP/"
+if [ -f "$PREFIX/SHA256SUMS" ]; then cp -a "$PREFIX/SHA256SUMS" "$BACKUP/"; fi
+log "上一套产物备份：$BACKUP"
+mv -f "$STAGE/sc2clud" "$PREFIX/sc2clud"
+rm -rf "$PREFIX/static"
+mv "$STAGE/static" "$PREFIX/static"
+mv -f "$STAGE/SHA256SUMS" "$PREFIX/SHA256SUMS"
 
 log "重启生产实例"
 systemctl daemon-reload
