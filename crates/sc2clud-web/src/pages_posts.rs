@@ -367,6 +367,8 @@ async fn build_post_page<'a>(
             likes: c.likes,
             dislikes: c.dislikes,
             my_vote: c.my_vote,
+            // 自己的楼层给不了「加入黑名单」，服务端也会拒；别在界面上摆个点了就报错的项
+            can_block: user.as_ref().is_some_and(|u| u.activated) && viewer_id != Some(c.author_id),
             replies: Vec::new(),
         };
         match c.parent_id {

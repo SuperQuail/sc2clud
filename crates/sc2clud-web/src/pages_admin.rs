@@ -43,7 +43,7 @@ pub struct RenameForm {
 /// 这个请求是前端 fetch 发来的吗？
 ///
 /// 是就回 JSON（页面就地更新，不刷新）；否则回跳转（无 JS 也能用）。
-fn wants_json(headers: &HeaderMap) -> bool {
+pub(crate) fn wants_json(headers: &HeaderMap) -> bool {
     let by_flag = headers
         .get("x-requested-with")
         .and_then(|v| v.to_str().ok())
@@ -116,6 +116,21 @@ async fn build_panel<'a>(
             .into_iter()
             .map(|section| (section.key, section.group_mode))
             .collect();
+    // 生效中的处罚（kind:section:until；同样逐个查，量小）
+    let mut member_sanctions: std::collections::HashMap<i64, String> =
+        std::collections::HashMap::new();
+    for row in &rows {
+        let list = repo::active_sanctions(state.db.pool(), row.id, now).await?;
+        if !list.is_empty() {
+            member_sanctions.insert(
+                row.id,
+                list.iter()
+                    .map(|item| format!("{}:{}:{}", item.kind, item.section, item.until))
+                    .collect::<Vec<_>>()
+                    .join(";"),
+            );
+        }
+    }
     // 每个用户所属的用户组（人数少，逐个查即可；将来量大再换成一条 JOIN）
     let mut member_groups: std::collections::HashMap<i64, Vec<i64>> =
         std::collections::HashMap::new();
@@ -133,6 +148,7 @@ async fn build_panel<'a>(
                 .filter(|until| *until > now)
                 .map(|until| format!("禁言至 {}", crate::templates::format_date(until)))
                 .unwrap_or_default(),
+            sanctions: member_sanctions.get(&row.id).cloned().unwrap_or_default(),
             groups: member_groups.get(&row.id).cloned().unwrap_or_default(),
             trusted: row.trusted != 0,
             initial: row
@@ -313,6 +329,7 @@ async fn build_user_edit<'a>(
         user: AdminUserView {
             groups: Vec::new(),
             ban_label: String::new(),
+            sanctions: String::new(),
             id: row.id,
             trusted: row.trusted != 0,
             initial: row
@@ -1208,6 +1225,125 @@ pub async fn set_block_reply(
     ))
 }
 
+/// 把后台输入的到期时间解析成 unix 秒：
+/// - 纯数字 = 小时数（兼容老的「禁言 N 小时」下拉）；
+/// - 时长：3d / 12h / 30m / 90s（相对现在）；
+/// - 日期：2026-10-20 12:00 或 2026-10-20（按 UTC 解释，服务器就是 UTC）。
+pub fn parse_instant(raw: &str, now: i64) -> Option<i64> {
+    let text = raw.trim();
+    if text.is_empty() {
+        return None;
+    }
+    if let Ok(hours) = text.parse::<i64>() {
+        return Some(now + hours.clamp(0, 24 * 365) * 3600);
+    }
+    let (digits, unit) = text.split_at(text.len().saturating_sub(1));
+    if let Ok(amount) = digits.trim().parse::<i64>() {
+        let seconds = match unit {
+            "m" | "M" => Some(amount * 60),
+            "h" | "H" => Some(amount * 3600),
+            "d" | "D" => Some(amount * 86400),
+            "s" | "S" => Some(amount),
+            _ => None,
+        };
+        if let Some(seconds) = seconds {
+            return Some(now + seconds.clamp(60, 365 * 86400));
+        }
+    }
+    for format in [
+        "%Y-%m-%d %H:%M:%S",
+        "%Y-%m-%d %H:%M",
+        "%Y-%m-%dT%H:%M",
+        "%Y-%m-%d",
+    ] {
+        if let Ok(naive) = chrono::NaiveDateTime::parse_from_str(text, format) {
+            return Some(naive.and_utc().timestamp());
+        }
+        if let Ok(date) = chrono::NaiveDate::parse_from_str(text, format) {
+            return Some(date.and_hms_opt(0, 0, 0)?.and_utc().timestamp());
+        }
+    }
+    None
+}
+
+#[derive(Debug, Deserialize)]
+pub struct SanctionForm {
+    pub csrf: String,
+    /// post / reply
+    pub kind: String,
+    /// 空串 = 全局，否则是分区 key
+    #[serde(default)]
+    pub section: String,
+    /// 到期时间：3d / 12h / 2026-10-20 12:00；留空表示解除
+    #[serde(default)]
+    pub until: String,
+}
+
+/// 设置或解除一条处罚。until 留空 = 撤销同类同范围的处罚。
+pub async fn set_sanction(
+    State(state): State<AppState>,
+    Path(id): Path<i64>,
+    headers: HeaderMap,
+    Form(form): Form<SanctionForm>,
+) -> AppResult<Response> {
+    let actor = require_user(&state, &headers).await?;
+    session::guard(Some(&actor), Permission::ManageUsers)?;
+    session::check_csrf(&actor, &form.csrf)?;
+    let kind = if form.kind == "reply" {
+        "reply"
+    } else {
+        "post"
+    };
+    let section = form.section.trim();
+    if !section.is_empty() {
+        repo::get_section(state.db.pool(), section)
+            .await?
+            .ok_or_else(|| AppError::Domain(DomainError::InvalidInput("分区不存在".to_string())))?;
+    }
+    let target = repo::find_user_by_id(state.db.pool(), id)
+        .await?
+        .ok_or_else(|| AppError::not_found("用户不存在"))?;
+    if sc2clud_core::auth::Role::parse(&target.role)
+        .is_ok_and(|role| role >= sc2clud_core::auth::Role::Admin)
+    {
+        return Err(AppError::Domain(DomainError::InvalidInput(
+            "管理员及以上不接受处罚".to_string(),
+        )));
+    }
+    let now = now_unix();
+    let message = match parse_instant(&form.until, now) {
+        Some(until) if until > now => {
+            repo::add_sanction(
+                state.db.pool(),
+                id,
+                kind,
+                section,
+                until,
+                Some(actor.id),
+                now,
+            )
+            .await?;
+            "处罚已生效"
+        }
+        Some(_) => {
+            repo::revoke_sanctions(state.db.pool(), id, kind, section, now).await?;
+            "时间已过，按解除处理"
+        }
+        None => {
+            repo::revoke_sanctions(state.db.pool(), id, kind, section, now).await?;
+            "已解除"
+        }
+    };
+    tracing::info!(
+        user.id = id,
+        kind,
+        section,
+        raw = form.until,
+        actor.id = actor.id,
+        "设置处罚"
+    );
+    Ok(done(&headers, message, "/admin/users/overview"))
+}
 pub async fn create_group(
     State(state): State<AppState>,
     headers: HeaderMap,

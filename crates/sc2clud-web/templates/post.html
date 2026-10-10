@@ -105,7 +105,7 @@
     {% for c in comments %}
     <div class="comment" id="c{{ c.id }}">
       {% if let Some(small) = c.avatar_small %}
-      <img class="avatar c-avatar" src="/avatar/{{ small }}"
+      <img class="avatar c-avatar" src="/avatar/{{ small }}" alt="" width="40" height="40" loading="lazy" onerror="this.src='/static/art/miyin/image-unavailable-480.webp'">
       {% else if let Some(avatar) = c.avatar %}
       <img class="avatar c-avatar" src="/avatar/{{ avatar }}" alt="" width="40" height="40" loading="lazy" onerror="this.src='/static/art/miyin/image-unavailable-480.webp'">
       {% else %}
@@ -122,13 +122,21 @@
           <time class="meta">{{ c.created_at }}</time>
           {% if can_reply %}<button class="c-act c-like{% if c.my_vote == 1 %} on{% endif %}" type="button" data-vote="{{ c.id }}" title="点赞" aria-label="点赞"><svg class="c-ico i-off" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M6.633 10.25c.806 0 1.533-.446 2.031-1.08a9.041 9.041 0 0 1 2.861-2.4c.723-.384 1.35-.956 1.653-1.715a4.498 4.498 0 0 0 .322-1.672V3a.75.75 0 0 1 .75-.75 2.25 2.25 0 0 1 2.25 2.25c0 1.152-.26 2.243-.723 3.218-.266.558.107 1.282.725 1.282h3.126c1.026 0 1.945.694 2.054 1.715.045.422.068.85.068 1.285a11.95 11.95 0 0 1-2.649 7.521c-.388.482-.987.729-1.605.729H13.48c-.483 0-.964-.078-1.423-.23l-3.114-1.04a4.501 4.501 0 0 0-1.423-.23H5.904M14.25 9h2.25M5.904 18.75c.083.205.173.405.27.602.197.4-.078.898-.523.898h-.908c-.889 0-1.713-.518-1.972-1.368a12 12 0 0 1-.521-3.507c0-1.553.295-3.036.831-4.398C3.387 9.953 4.167 9.5 5 9.5h1.053c.472 0 .745.556.5.96a8.958 8.958 0 0 0-1.302 4.665c0 1.194.232 2.333.654 3.375Z"/></svg><svg class="c-ico i-on" viewBox="0 0 24 24" width="16" height="16" fill="currentColor" aria-hidden="true"><path d="M6.633 10.25c.806 0 1.533-.446 2.031-1.08a9.041 9.041 0 0 1 2.861-2.4c.723-.384 1.35-.956 1.653-1.715a4.498 4.498 0 0 0 .322-1.672V3a.75.75 0 0 1 .75-.75 2.25 2.25 0 0 1 2.25 2.25c0 1.152-.26 2.243-.723 3.218-.266.558.107 1.282.725 1.282h3.126c1.026 0 1.945.694 2.054 1.715.045.422.068.85.068 1.285a11.95 11.95 0 0 1-2.649 7.521c-.388.482-.987.729-1.605.729H13.48c-.483 0-.964-.078-1.423-.23l-3.114-1.04a4.501 4.501 0 0 0-1.423-.23H5.904M14.25 9h2.25M5.904 18.75c.083.205.173.405.27.602.197.4-.078.898-.523.898h-.908c-.889 0-1.713-.518-1.972-1.368a12 12 0 0 1-.521-3.507c0-1.553.295-3.036.831-4.398C3.387 9.953 4.167 9.5 5 9.5h1.053c.472 0 .745.556.5.96a8.958 8.958 0 0 0-1.302 4.665c0 1.194.232 2.333.654 3.375Z"/></svg><span class="c-like-count">{{ c.likes }}</span></button>
             <button class="c-act" type="button" data-reply-id="{{ c.id }}" data-reply-user="{{ c.author_id }}" data-reply-name="{{ c.author }}">回复</button>{% endif %}
+          {# 楼层「⋯」：照 B 站收成下拉，只放我们真有的两项 #}
+          <span class="c-more" data-cmenu>
+            <button class="c-act c-more-btn" type="button" data-cmenu-toggle aria-haspopup="true" aria-expanded="false" aria-label="更多操作" title="更多操作"><svg viewBox="0 0 20 20" width="14" height="14" aria-hidden="true" fill="currentColor"><circle cx="10" cy="4" r="1.7"/><circle cx="10" cy="10" r="1.7"/><circle cx="10" cy="16" r="1.7"/></svg></button>
+            <span class="c-more-panel" data-cmenu-panel hidden>
+              <button class="c-more-item" type="button" data-copy-comment="c{{ c.id }}">复制评论链接</button>
+              {% if c.can_block %}<button class="c-more-item danger" type="button" data-block-handle="{{ c.handle }}" data-block-name="{{ c.author }}">加入黑名单</button>{% endif %}
+            </span>
+          </span>
         </div>
         {% if !c.replies.is_empty() %}
         <div class="c-subs">
           {% for r in c.replies %}
           <div class="c-sub" id="c{{ r.id }}">
             {% if let Some(small) = r.avatar_small %}
-            <img class="avatar c-avatar sm" src="/avatar/{{ small }}"
+            <img class="avatar c-avatar sm" src="/avatar/{{ small }}" alt="" width="26" height="26" loading="lazy" onerror="this.src='/static/art/miyin/image-unavailable-480.webp'">
             {% else if let Some(avatar) = r.avatar %}
             <img class="avatar c-avatar sm" src="/avatar/{{ avatar }}" alt="" width="26" height="26" loading="lazy" onerror="this.src='/static/art/miyin/image-unavailable-480.webp'">
             {% else %}
@@ -141,6 +149,14 @@
                 <time class="meta">{{ r.created_at }}</time>
                 {% if can_reply %}<button class="c-act c-like{% if r.my_vote == 1 %} on{% endif %}" type="button" data-vote="{{ r.id }}" title="点赞" aria-label="点赞"><svg class="c-ico i-off" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M6.633 10.25c.806 0 1.533-.446 2.031-1.08a9.041 9.041 0 0 1 2.861-2.4c.723-.384 1.35-.956 1.653-1.715a4.498 4.498 0 0 0 .322-1.672V3a.75.75 0 0 1 .75-.75 2.25 2.25 0 0 1 2.25 2.25c0 1.152-.26 2.243-.723 3.218-.266.558.107 1.282.725 1.282h3.126c1.026 0 1.945.694 2.054 1.715.045.422.068.85.068 1.285a11.95 11.95 0 0 1-2.649 7.521c-.388.482-.987.729-1.605.729H13.48c-.483 0-.964-.078-1.423-.23l-3.114-1.04a4.501 4.501 0 0 0-1.423-.23H5.904M14.25 9h2.25M5.904 18.75c.083.205.173.405.27.602.197.4-.078.898-.523.898h-.908c-.889 0-1.713-.518-1.972-1.368a12 12 0 0 1-.521-3.507c0-1.553.295-3.036.831-4.398C3.387 9.953 4.167 9.5 5 9.5h1.053c.472 0 .745.556.5.96a8.958 8.958 0 0 0-1.302 4.665c0 1.194.232 2.333.654 3.375Z"/></svg><svg class="c-ico i-on" viewBox="0 0 24 24" width="16" height="16" fill="currentColor" aria-hidden="true"><path d="M6.633 10.25c.806 0 1.533-.446 2.031-1.08a9.041 9.041 0 0 1 2.861-2.4c.723-.384 1.35-.956 1.653-1.715a4.498 4.498 0 0 0 .322-1.672V3a.75.75 0 0 1 .75-.75 2.25 2.25 0 0 1 2.25 2.25c0 1.152-.26 2.243-.723 3.218-.266.558.107 1.282.725 1.282h3.126c1.026 0 1.945.694 2.054 1.715.045.422.068.85.068 1.285a11.95 11.95 0 0 1-2.649 7.521c-.388.482-.987.729-1.605.729H13.48c-.483 0-.964-.078-1.423-.23l-3.114-1.04a4.501 4.501 0 0 0-1.423-.23H5.904M14.25 9h2.25M5.904 18.75c.083.205.173.405.27.602.197.4-.078.898-.523.898h-.908c-.889 0-1.713-.518-1.972-1.368a12 12 0 0 1-.521-3.507c0-1.553.295-3.036.831-4.398C3.387 9.953 4.167 9.5 5 9.5h1.053c.472 0 .745.556.5.96a8.958 8.958 0 0 0-1.302 4.665c0 1.194.232 2.333.654 3.375Z"/></svg><span class="c-like-count">{{ r.likes }}</span></button>
                   <button class="c-act" type="button" data-reply-id="{{ c.id }}" data-reply-user="{{ r.author_id }}" data-reply-name="{{ r.author }}">回复</button>{% endif %}
+                {# 楼层「⋯」：照 B 站收成下拉，只放我们真有的两项 #}
+                <span class="c-more" data-cmenu>
+                  <button class="c-act c-more-btn" type="button" data-cmenu-toggle aria-haspopup="true" aria-expanded="false" aria-label="更多操作" title="更多操作"><svg viewBox="0 0 20 20" width="14" height="14" aria-hidden="true" fill="currentColor"><circle cx="10" cy="4" r="1.7"/><circle cx="10" cy="10" r="1.7"/><circle cx="10" cy="16" r="1.7"/></svg></button>
+                  <span class="c-more-panel" data-cmenu-panel hidden>
+                    <button class="c-more-item" type="button" data-copy-comment="c{{ r.id }}">复制评论链接</button>
+                    {% if r.can_block %}<button class="c-more-item danger" type="button" data-block-handle="{{ r.handle }}" data-block-name="{{ r.author }}">加入黑名单</button>{% endif %}
+                  </span>
+                </span>
               </div>
             </div>
           </div>
@@ -205,6 +221,13 @@
 .c-actions{display:flex;align-items:center;gap:14px;font-size:12px;opacity:.75}
 .c-act{border:0;background:none;color:inherit;font:inherit;font-size:12px;cursor:pointer;padding:0}
 .c-act:hover{color:#2563eb}
+.c-more{position:relative;margin-left:auto;display:inline-flex}
+.c-more-btn{display:inline-flex;align-items:center;padding:2px 4px;line-height:1}
+.c-more-panel{position:absolute;right:0;top:calc(100% + 6px);z-index:50;min-width:150px;padding:6px;border:1px solid var(--line,#e5e7eb);border-radius:10px;background:var(--card,#fff);box-shadow:0 12px 32px rgba(0,0,0,.18)}
+.c-more-panel[hidden]{display:none}
+.c-more-item{display:block;width:100%;text-align:left;padding:7px 10px;border:0;border-radius:8px;background:none;color:inherit;font:inherit;font-size:13px;cursor:pointer;white-space:nowrap}
+.c-more-item:hover{background:rgba(127,127,127,.12)}
+.c-more-item.danger{color:#b91c1c}
 .c-subs{margin-top:12px;display:flex;flex-direction:column;gap:12px}
 .c-sub{display:flex;gap:10px}
 .c-sub .c-body{margin:4px 0 2px}
@@ -452,6 +475,48 @@
     });
   });
 
+  // 楼层「⋯」：照 B 站收成下拉，只放我们真有的两项（复制评论链接 / 加入黑名单）
+  // 走事件委托：发完评论评论区会整块换 innerHTML，挂在按钮上的监听会跟着一起没
+  const closeMenus = () => document.querySelectorAll('[data-cmenu-panel]').forEach((panel) => { panel.hidden = true; });
+  document.addEventListener('click', (event) => {
+    const target = event.target;
+    if (!(target instanceof Element)) { closeMenus(); return; }
+    const toggle = target.closest('[data-cmenu-toggle]');
+    if (toggle) {
+      const panel = toggle.parentElement.querySelector('[data-cmenu-panel]');
+      const open = panel.hidden;
+      closeMenus();
+      panel.hidden = !open;
+      toggle.setAttribute('aria-expanded', String(open));
+      return;
+    }
+    const copy = target.closest('[data-copy-comment]');
+    if (copy) {
+      const link = location.href.split('#')[0] + '#' + copy.dataset.copyComment;
+      window.copyText(link).then(() => {
+        copy.textContent = '已复制 ✓';
+        window.setTimeout(() => { copy.textContent = '复制评论链接'; closeMenus(); }, 1200);
+      }).catch(() => { window.prompt('自动复制不可用，请按 Ctrl+C 复制：', link); });
+      return;
+    }
+    const block = target.closest('[data-block-handle]');
+    if (block) {
+      if (!window.confirm('把 ' + block.dataset.blockName + ' 加入黑名单？之后你不再看到 TA 的评论与私信。')) return;
+      block.disabled = true;
+      fetch('/u/' + encodeURIComponent(block.dataset.blockHandle) + '/block', {
+        method: 'POST',
+        headers: { 'x-requested-with': 'fetch', 'content-type': 'application/x-www-form-urlencoded;charset=UTF-8' },
+        body: new URLSearchParams({ csrf: csrfInput ? csrfInput.value : '' }),
+      })
+        .then((res) => res.json().catch(() => ({})).then((data) => { if (!res.ok) throw new Error(data.message || '操作失败'); }))
+        .then(refreshComments)
+        .catch((error) => { block.disabled = false; window.alert('加入黑名单失败：' + error.message); })
+        .finally(closeMenus);
+      return;
+    }
+    closeMenus();
+  });
+
   // 发评论无感：POST JSON，成功后只重取评论区（不整页刷新、不丢滚动位置）
   const commentsSection = document.getElementById('comments');
   const refreshComments = async () => {
@@ -630,6 +695,8 @@
       ok ? resolve() : reject(new Error('execCommand 复制失败'));
     });
   }
+  // 楼层菜单的「复制评论链接」也用它：那段是普通 script，读不到模块作用域，只能挂出来
+  window.copyText = copyText;
   for (var copyButton of document.querySelectorAll('[data-copy-github]')) {
     copyButton.addEventListener('click', function () {
       var self = this;

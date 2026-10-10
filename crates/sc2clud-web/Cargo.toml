@@ -11,6 +11,8 @@ sc2clud-core.workspace = true
 sc2clud-storage.workspace = true
 sc2clud-db.workspace = true
 axum = "0.8.9"
+# 时间解析：业界标准时间库（要同时处理「日期」与「时长」两种输入，不自己造轮子）
+chrono = { version = "0.4", default-features = false, features = ["std", "clock"] }
 askama = "0.14.0"
 tokio = { version = "1.53.2", features = ["rt", "net", "macros", "time", "fs", "io-util"] }
 tower-http = { version = "0.7.1", features = ["trace", "timeout", "limit", "catch-panic", "request-id", "fs"] }

@@ -481,6 +481,8 @@ pub struct CommentView {
     pub likes: i64,
     pub dislikes: i64,
     pub my_vote: i64,
+    /// 这一层能不能「加入黑名单」（已登录激活、且不是自己的楼层）。
+    pub can_block: bool,
     /// 楼中楼：挂在这一层下面的回复。
     pub replies: Vec<CommentView>,
 }
@@ -817,6 +819,8 @@ pub struct AdminUserView {
     pub id: i64,
     /// 限期禁言的显示文案（空串 = 没被禁）。
     pub ban_label: String,
+    /// 当前生效的处罚，编码成 kind:section:until 分号分隔（界面渲染与解除用）。
+    pub sanctions: String,
     /// 所属用户组 id（可多个）。
     pub groups: Vec<i64>,
     /// 是否被信任（发帖只走自动审核）。

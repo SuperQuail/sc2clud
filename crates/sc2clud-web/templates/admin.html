@@ -70,6 +70,17 @@
           <a class="btn ghost sm" id="modal-more" href="#">更多设置</a>
           <button class="btn sm" type="submit">保存</button>
         </footer>
+        <fieldset class="modal-sanctions">
+          <legend>处罚（禁止发帖 / 禁止评论，可限定分区）</legend>
+          <p class="hint" data-sanction-list>（点用户行后显示当前处罚）</p>
+          <div class="sanction-add">
+            <select data-sanction-kind><option value="post">禁止发帖</option><option value="reply">禁止评论</option></select>
+            <select data-sanction-scope><option value="">全站</option>{% for section in sections %}<option value="{{ section.value }}">{{ section.label }}</option>{% endfor %}</select>
+            <input type="text" data-sanction-until placeholder="到期：3d / 12h / 2026-10-20 12:00" maxlength="32">
+            <button class="btn sm" type="button" data-sanction-apply>设置</button>
+          </div>
+          <p class="hint" data-sanction-note></p>
+        </fieldset>
         <label>禁言（限期禁止发帖）<select data-modal-ban>{% for option in ban_options %}<option value="{{ option.0 }}">{{ option.1 }}</option>{% endfor %}</select></label>
         <fieldset class="modal-groups">
           <legend>用户组（可多选）</legend>
@@ -157,6 +168,7 @@
             data-id="{{ user.id }}"
             data-handle="{{ user.handle }}"
         data-user-id="{{ user.id }}"
+        data-sanctions="{{ user.sanctions }}"
         data-groups="{% for g in user.groups %}{{ g }}{% if !loop.last %},{% endif %}{% endfor %}"
             data-name="{{ user.display_name }}"
             data-role="{{ user.role }}"
@@ -362,6 +374,9 @@
 .group-card{border:1px solid var(--line,#e5e7eb);border-radius:10px;padding:10px 12px}
 .group-card.archived{opacity:.6}
 .tag.ban{border:1px solid #dc2626;background:#fee2e2;color:#991b1b}
+.sanction-add{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin:6px 0}
+.sanction-add input{padding:6px 10px;border:1px solid var(--line,#e5e7eb);border-radius:8px;background:none;color:inherit;font:inherit;font-size:13px}
+.sanction-row{display:inline-flex;align-items:center;gap:6px;margin:0 8px 6px 0;padding:3px 8px;border:1px solid var(--line,#e5e7eb);border-radius:999px;font-size:12px}
 .group-head{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
 .group-actions{margin-left:auto;display:flex;gap:6px;align-items:center}
 .group-actions form{display:inline}
@@ -488,10 +503,13 @@
   const dialog = document.getElementById('user-dialog');
   let pendingGroups = [];
   let pendingUser = '';
+  let pendingSanctions = '';
   document.querySelectorAll('tr[data-groups]').forEach((row) => {
     row.addEventListener('click', () => {
       pendingGroups = (row.dataset.groups || '').split(',').filter(Boolean);
       pendingUser = row.dataset.userId || '';
+      pendingSanctions = row.dataset.sanctions || '';
+      if (typeof renderSanctions === 'function') renderSanctions();
     });
   });
   // 「组」按钮：记住该用户的组，然后点真正的编辑按钮把弹窗打开（原来是死按钮，点了没反应）
@@ -576,6 +594,56 @@
       setTimeout(() => { btn.textContent = label; }, 1600);
     });
   });
+
+  // 处罚：打开弹窗时列出该用户生效中的处罚，并支持就地设置/解除
+  const sanctionList = document.querySelector('[data-sanction-list]');
+  const sanctionNote = document.querySelector('[data-sanction-note]');
+  const renderSanctions = () => {
+    if (!sanctionList) return;
+    const items = (pendingSanctions || '').split(';').filter(Boolean);
+    if (!items.length) { sanctionList.textContent = '当前没有处罚'; return; }
+    sanctionList.innerHTML = '';
+    items.forEach((item) => {
+      const [kind, section, until] = item.split(':');
+      const row = document.createElement('span');
+      row.className = 'sanction-row';
+      const when = new Date(Number(until) * 1000).toISOString().slice(0, 16).replace('T', ' ');
+      row.textContent = (kind === 'reply' ? '禁止评论' : '禁止发帖') + (section ? ' @ ' + section : '（全站）') + ' 至 ' + when + ' UTC ';
+      const drop = document.createElement('button');
+      drop.className = 'btn ghost sm';
+      drop.type = 'button';
+      drop.textContent = '解除';
+      drop.addEventListener('click', () => sendSanction(kind, section, ''));
+      row.appendChild(drop);
+      sanctionList.appendChild(row);
+    });
+  };
+  const sendSanction = async (kind, section, until) => {
+    const id = pendingUser || (dialog && (dialog.querySelector('#user-form').action.match(/\/users\/(\d+)\//) || [])[1]);
+    if (!id || id === '0') { if (sanctionNote) sanctionNote.textContent = '请先从用户列表点一个用户'; return; }
+    const csrf = dialog && dialog.querySelector('input[name=csrf]');
+    const body = new URLSearchParams();
+    body.set('csrf', csrf ? csrf.value : '');
+    body.set('kind', kind);
+    body.set('section', section || '');
+    body.set('until', until || '');
+    const res = await fetch('/admin/users/' + id + '/sanction', {
+      method: 'POST',
+      headers: { 'content-type': 'application/x-www-form-urlencoded' },
+      body,
+    });
+    if (sanctionNote) sanctionNote.textContent = res.ok ? '已提交（刷新页面后可在列表看到）' : '失败 ' + res.status;
+  };
+  const applySanction = document.querySelector('[data-sanction-apply]');
+  if (applySanction) {
+    applySanction.addEventListener('click', () => {
+      const kind = document.querySelector('[data-sanction-kind]').value;
+      const scope = document.querySelector('[data-sanction-scope]').value;
+      const until = document.querySelector('[data-sanction-until]').value;
+      sendSanction(kind, scope, until);
+    });
+  }
+  new MutationObserver(renderSanctions).observe(document.body, { subtree: true, attributes: true, attributeFilter: ['open'] });
 
   // 用户组：点「编辑」展开就地改名/说明
   document.querySelectorAll('[data-group-edit]').forEach((btn) => {

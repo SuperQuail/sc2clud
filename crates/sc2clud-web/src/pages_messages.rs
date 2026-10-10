@@ -233,6 +233,10 @@ pub async fn block(
         )
         .await;
     }
+    // 楼层「⋯」里点的是 fetch：回 JSON 就地重取评论区，别把人甩到对方主页去
+    if crate::pages_admin::wants_json(&headers) {
+        return Ok(axum::Json(serde_json::json!({ "ok": true })).into_response());
+    }
     Ok(Redirect::to(&format!("/u/{}", other.handle)).into_response())
 }
 
