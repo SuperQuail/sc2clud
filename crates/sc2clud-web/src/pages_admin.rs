@@ -140,7 +140,30 @@ async fn build_panel<'a>(
             is_self: row.id == user.id,
         })
         .collect();
+    // 版式编号从原始查询串里取（面板的 query 是用户搜索词，不能混用）
+    let pool_variant = if state.config.server.debug_pages {
+        query
+            .split('&')
+            .find_map(|part| part.strip_prefix("av="))
+            .and_then(|v| v.parse::<u8>().ok())
+            .filter(|v| (1..=3).contains(v))
+            .unwrap_or(1)
+    } else {
+        1
+    };
+    let default_avatars = repo::list_default_avatars(state.db.pool())
+        .await?
+        .into_iter()
+        .map(|row| crate::templates::DefaultAvatarView {
+            id: row.id,
+            hash: row.hash,
+            note: row.note,
+            date: crate::templates::format_date(row.created_at),
+        })
+        .collect();
     Ok(AdminTemplate {
+        default_avatars,
+        pool_variant,
         server_free_human: human_bytes(free_bytes),
         quota_allocated_human: human_bytes(allocated.max(0) as u64),
         quota_used_human: human_bytes(used.max(0) as u64),

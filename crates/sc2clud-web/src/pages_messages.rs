@@ -226,6 +226,8 @@ pub async fn unblock(
 pub struct InboxParams {
     /// 分类：dm（我的消息）/ likes（收到的赞）/ system（系统通知）。
     tab: Option<String>,
+    /// 预览用：删除确认版式。
+    dv: Option<String>,
     /// 选中的会话对方 handle。
     with: Option<String>,
     /// 选中的通知 id。
@@ -242,6 +244,16 @@ pub async fn center(
     let user = crate::routes::require_user(&state, &headers).await?;
     let tab = params.tab.unwrap_or_else(|| "dm".to_string());
     let selected = params.with.clone().unwrap_or_default();
+    let delete_variant = if state.config.server.debug_pages {
+        params
+            .dv
+            .as_deref()
+            .and_then(|v| v.parse::<u8>().ok())
+            .filter(|v| (1..=3).contains(v))
+            .unwrap_or(1)
+    } else {
+        1
+    };
     // 没头像的用户随机分一个默认头像（分过就固定）
     let _ = repo::ensure_default_avatar(state.db.pool(), user.id).await;
 
@@ -366,6 +378,7 @@ pub async fn center(
     };
 
     Ok(crate::templates::render(InboxTemplate {
+        delete_variant,
         site_name: &state.config.server.site_name,
         user_label: Some(user.display_name.clone()),
         is_staff: user.is_staff(),

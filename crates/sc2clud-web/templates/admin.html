@@ -263,6 +263,80 @@
       <noscript><p class="hint">请启用 JavaScript 以预览和上传分区封面。</p></noscript>
     </section>
 
+    <section class="panel" id="avatar-pool">
+      <h2>默认头像池 <span class="count">{{ default_avatars.len() }}</span></h2>
+      <p class="hint">没设头像的用户会从这里<b>随机分到一张并固定</b>；删除只影响还没分到的人。</p>
+      {% if pool_variant == 3 %}
+      <div class="pool-side">
+        <div class="pool-upload">
+          <h3>上传新的默认头像</h3>
+          <input type="file" id="pool-file" accept="image/*" hidden>
+          <button class="btn" type="button" id="pool-pick">选择图片</button>
+          <input type="text" id="pool-note" placeholder="备注（可选）" maxlength="40">
+          <p class="hint" data-pool-status>建议方形图，PNG / JPEG / WebP，≤512 KB</p>
+          <div class="pool-list">
+      {% else %}
+      <div class="pool-upload">
+        <input type="file" id="pool-file" accept="image/*" hidden>
+        <button class="btn" type="button" id="pool-pick">上传默认头像</button>
+        <input type="text" id="pool-note" placeholder="备注（可选）" maxlength="40">
+        <span class="hint" data-pool-status></span>
+      </div>
+      {% if pool_variant == 1 %}
+      <div class="pool-grid">
+      {% else %}
+      <div class="pool-rows">
+      {% endif %}
+      {% endif %}
+
+      {% for item in default_avatars %}
+      <div class="pool-item">
+        <img src="/avatar/{{ item.hash }}" alt="" onerror="this.src='/static/art/miyin/image-unavailable-480.webp'">
+        <div class="pool-meta"><b>{{ item.note }}</b><span class="meta">{{ item.date }}</span></div>
+        <form method="post" action="/admin/default-avatars/remove">
+          <input type="hidden" name="csrf" value="{{ csrf }}">
+          <input type="hidden" name="id" value="{{ item.id }}">
+          <button class="btn ghost danger sm" type="submit">移出</button>
+        </form>
+      </div>
+      {% endfor %}
+      {% if default_avatars.is_empty() %}<p class="empty">池子是空的：没设头像的用户会用内置兜底图。</p>{% endif %}
+      </div>
+      {% if pool_variant == 3 %}</div></div>{% endif %}
+      <style>
+      .pool-upload{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin:10px 0 14px}
+      .pool-upload input[type=text]{padding:8px 10px;border:1px solid var(--line,#e5e7eb);border-radius:8px;background:none;color:inherit;font:inherit}
+      .pool-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:12px}
+      .pool-grid .pool-item{flex-direction:column;align-items:center;text-align:center;border:1px solid var(--line,#e5e7eb);border-radius:12px;padding:12px}
+      .pool-rows{display:flex;flex-direction:column;gap:8px}
+      .pool-rows .pool-item{border-bottom:1px solid var(--line,#e5e7eb);padding:8px 0}
+      .pool-item{display:flex;gap:12px;align-items:center}
+      .pool-item img{width:56px;height:56px;border-radius:50%;object-fit:cover;flex:none;background:#fff}
+      .pool-meta{flex:1;min-width:0;display:flex;flex-direction:column;gap:2px}
+      .pool-side{display:grid;grid-template-columns:260px 1fr;gap:16px;align-items:start}
+      .pool-list{display:flex;flex-direction:column;gap:8px}
+      </style>
+      <script>
+      (() => {
+        const file = document.getElementById('pool-file');
+        const pick = document.getElementById('pool-pick');
+        const note = document.getElementById('pool-note');
+        const status = document.querySelector('[data-pool-status]');
+        if (!file || !pick) return;
+        pick.addEventListener('click', () => file.click());
+        file.addEventListener('change', async () => {
+          const picked = file.files[0];
+          if (!picked) return;
+          status.textContent = '上传中…';
+          const res = await fetch('/admin/default-avatars?note=' + encodeURIComponent(note.value.trim()), {
+            method: 'POST', headers: { 'x-csrf-token': document.querySelector('input[name="csrf"]').value }, body: picked,
+          });
+          status.textContent = res.ok ? '已加入默认头像池，刷新可见' : '上传失败：' + res.status;
+        });
+      })();
+      </script>
+    </section>
+
     <section class="panel" id="site-texts">
       <h2>默认个人简介</h2>
       <form method="post" action="/admin/site-texts">

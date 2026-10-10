@@ -78,7 +78,7 @@
       <div class="feed-row">
         {# 有触发者头像就用头像，没有（老数据/系统）就用红心 #}
         {% if let Some(hash) = n.avatar %}
-        <img class="feed-avatar" src="/avatar/{{ hash }}" alt="" width="34" height="34">
+        <img class="feed-avatar" src="/avatar/{{ hash }}" alt="" width="34" height="34" onerror="this.src='/static/art/miyin/image-unavailable-480.webp'">
         {% else %}
         <span class="feed-icon like">♥</span>
         {% endif %}
@@ -93,7 +93,17 @@
           <div class="feed-date">{{ n.date }}</div>
           {# B 站那两件事：删除该通知 / 不再通知 #}
           <div class="feed-actions">
-            <form method="post" action="/notifications/{{ n.id }}/delete"><input type="hidden" name="csrf" value="{{ csrf }}"><input type="hidden" name="tab" value="likes"><button class="feed-action" type="submit">删除该通知</button></form>
+            {# 删除确认：1 二次点击 / 2 行内气泡 / 3 系统 confirm #}
+            <form method="post" action="/notifications/{{ n.id }}/delete" data-del-form class="feed-action-form"{% if delete_variant == 3 %} onsubmit="return confirm('删除这条通知？')"{% endif %}>
+              <input type="hidden" name="csrf" value="{{ csrf }}">
+              <input type="hidden" name="tab" value="likes">
+              {% if delete_variant == 2 %}
+              <button class="feed-action" type="button" data-del-modal>删除该通知</button>
+              {% else %}
+              <button class="feed-action" type="button" data-del-ask>删除该通知</button>
+              <span class="del-bubble" data-del-bubble hidden>确认删除？<button class="feed-action danger" type="submit">确认</button><button class="feed-action" type="button" data-del-cancel>取消</button></span>
+              {% endif %}
+            </form>
             <form method="post" action="/notifications/mute"><input type="hidden" name="csrf" value="{{ csrf }}"><input type="hidden" name="tab" value="likes"><input type="hidden" name="kind" value="like"><input type="hidden" name="link" value="{{ n.link }}"><button class="feed-action" type="submit">不再通知</button></form>
           </div>
         </div>
@@ -107,7 +117,17 @@
         <p class="feed-card-body">{{ n.body }}</p>
         <div class="feed-actions">
           {% if !n.link.is_empty() %}<a class="feed-card-link" href="{{ n.link }}">查看详情</a>{% endif %}
-          <form method="post" action="/notifications/{{ n.id }}/delete"><input type="hidden" name="csrf" value="{{ csrf }}"><input type="hidden" name="tab" value="system"><button class="feed-action" type="submit">删除该通知</button></form>
+            {# 删除确认：1 二次点击 / 2 行内气泡 / 3 系统 confirm #}
+            <form method="post" action="/notifications/{{ n.id }}/delete" data-del-form class="feed-action-form"{% if delete_variant == 3 %} onsubmit="return confirm('删除这条通知？')"{% endif %}>
+              <input type="hidden" name="csrf" value="{{ csrf }}">
+              <input type="hidden" name="tab" value="system">
+              {% if delete_variant == 2 %}
+              <button class="feed-action" type="button" data-del-modal>删除该通知</button>
+              {% else %}
+              <button class="feed-action" type="button" data-del-ask>删除该通知</button>
+              <span class="del-bubble" data-del-bubble hidden>确认删除？<button class="feed-action danger" type="submit">确认</button><button class="feed-action" type="button" data-del-cancel>取消</button></span>
+              {% endif %}
+            </form>
           <form method="post" action="/notifications/mute"><input type="hidden" name="csrf" value="{{ csrf }}"><input type="hidden" name="tab" value="system"><input type="hidden" name="kind" value="{{ n.kind }}"><input type="hidden" name="link" value="{{ n.link }}"><button class="feed-action" type="submit">不再通知</button></form>
         </div>
       </article>
@@ -117,6 +137,47 @@
   </section>
   {% endif %}
 </div>
+
+{# 版式 2 的确认弹窗 #}
+<div class="del-modal" id="del-modal" hidden>
+  <div class="del-modal-card" role="alertdialog" aria-modal="true" aria-label="删除确认">
+    <h3>删除这条通知？</h3>
+    <p class="hint">只从你的消息中心移除，不影响其他人。</p>
+    <div class="del-modal-actions"><button class="btn" type="button" id="del-modal-ok">删除</button><button class="btn ghost" type="button" id="del-modal-cancel">取消</button></div>
+  </div>
+</div>
+<script>
+(() => {
+  document.querySelectorAll('[data-del-form]').forEach((form) => {
+    const ask = form.querySelector('[data-del-ask]');
+    const bubble = form.querySelector('[data-del-bubble]');
+    if (!ask || !bubble) return;
+    ask.addEventListener('click', () => { bubble.hidden = false; ask.hidden = true; });
+    form.querySelector('[data-del-cancel]').addEventListener('click', () => { bubble.hidden = true; ask.hidden = false; });
+  });
+  const modal = document.getElementById('del-modal');
+  let pending = null;
+  document.querySelectorAll('[data-del-modal]').forEach((btn) => {
+    btn.addEventListener('click', () => { pending = btn.closest('form'); modal.hidden = false; });
+  });
+  const cancel = document.getElementById('del-modal-cancel');
+  if (cancel) cancel.addEventListener('click', () => { modal.hidden = true; pending = null; });
+  const ok2 = document.getElementById('del-modal-ok');
+  if (ok2) ok2.addEventListener('click', () => { if (pending) pending.submit(); });
+  // 预览用：?dvc=1 自动把第一条的确认态展开，方便出图评审
+  if (new URLSearchParams(location.search).get('dvc') === '1') {
+    const first = document.querySelector('[data-del-form]');
+    if (first) {
+      const m = first.querySelector('[data-del-modal]');
+      if (m) { pending = first; modal.hidden = false; } else {
+        const ask = first.querySelector('[data-del-ask]');
+        const bubble = first.querySelector('[data-del-bubble]');
+        if (ask && bubble) { ask.hidden = true; bubble.hidden = false; }
+      }
+    }
+  }
+})();
+</script>
 <style>
 .inbox{display:grid;grid-template-columns:160px 1fr;gap:12px;align-items:start;min-height:70vh}
 .inbox--dm{grid-template-columns:160px 300px 1fr;align-items:stretch}
@@ -176,6 +237,14 @@
 .feed-actions form{display:inline}
 .feed-action{border:0;background:none;color:inherit;opacity:.65;font:inherit;font-size:12px;cursor:pointer;padding:0}
 .feed-action:hover{opacity:1;text-decoration:underline}
+.feed-action.danger{color:#dc2626;opacity:1}
+.feed-action-form{display:inline-flex;align-items:center;gap:8px}
+.del-bubble{display:inline-flex;align-items:center;gap:8px;padding:2px 8px;border:1px solid #dc2626;border-radius:999px;font-size:12px;color:#dc2626}
+.del-modal{position:fixed;inset:0;z-index:90;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,.5)}
+.del-modal[hidden]{display:none}
+.del-modal-card{width:min(360px,90vw);background:var(--card,#fff);color:inherit;border-radius:14px;padding:20px;text-align:center}
+.del-modal-card h3{margin:0 0 8px;font-size:16px}
+.del-modal-actions{display:flex;justify-content:center;gap:10px;margin-top:14px}
 @media (max-width:900px){.inbox,.inbox--dm{grid-template-columns:1fr}.inbox-rail{flex-direction:row;flex-wrap:wrap;align-items:center}.inbox-nav{flex-direction:row}}
 </style>
 {% endblock %}

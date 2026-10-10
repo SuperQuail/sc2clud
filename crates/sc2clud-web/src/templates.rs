@@ -272,6 +272,8 @@ pub struct InboxTemplate<'a> {
     pub other_display: String,
     pub other_avatar: Option<String>,
     pub thread: Vec<InboxMessageView>,
+    /// 删除确认版式：1 二次点击 / 2 弹窗确认 / 3 系统 confirm（预览用，生产恒 1）。
+    pub delete_variant: u8,
     /// 未读数（左栏徽标）。
     pub like_unread: i64,
     pub system_unread: i64,
@@ -780,11 +782,24 @@ pub struct DebugAuditView {
     pub detail: String,
 }
 
+/// 默认头像池里的一张（后台展示用）。
+#[derive(Debug, Clone)]
+pub struct DefaultAvatarView {
+    pub id: i64,
+    pub hash: String,
+    pub note: String,
+    pub date: String,
+}
+
 /// 管理员面板。
 #[derive(Template)]
 #[template(path = "admin.html")]
 pub struct AdminTemplate<'a> {
     pub is_staff: bool,
+    /// 默认头像池（管理员维护）。
+    pub default_avatars: Vec<DefaultAvatarView>,
+    /// 池子界面版式：1 网格卡 / 2 列表行 / 3 侧栏上传（预览用，生产恒 1）。
+    pub pool_variant: u8,
     /// 磁盘预算总览（仅超级管理员可见）。
     pub server_free_human: String,
     pub quota_allocated_human: String,
