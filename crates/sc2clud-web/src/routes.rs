@@ -432,6 +432,10 @@ pub fn api_upload() -> Router<AppState> {
         )
         // ---- 资源帖 issue（读公开，写要登录）----
         .route(
+            "/p/{id}/issues/new",
+            axum::routing::get(crate::pages_posts::issue_new_page),
+        )
+        .route(
             "/p/{id}/issues",
             axum::routing::get(crate::pages_posts::issues_page)
                 .post(crate::pages_posts::issue_create),

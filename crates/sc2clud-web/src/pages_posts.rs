@@ -1102,6 +1102,35 @@ pub struct IssueForm {
 
 /// 提 issue（bug / 功能建议）。门槛与回帖一致：登录 + 已激活 + 分区允许回帖。
 /// 资源帖的「问题与建议」列表页（issue 的后端早就有了，这个页面是给它做的门面）。
+/// 发布反馈页：与 issue 列表共用同一外壳，中间换成一张表单（对齐 GitHub 的 New issue）。
+pub async fn issue_new_page(
+    State(state): State<AppState>,
+    Path(id): Path<i64>,
+    headers: HeaderMap,
+    Query(query): Query<IssuesQuery>,
+) -> Response {
+    match build_post_page(
+        &state,
+        id,
+        &headers,
+        None,
+        None,
+        None,
+        None,
+        1,
+        None,
+        "new",
+        "open",
+        query.kind.as_deref().unwrap_or(""),
+        "",
+    )
+    .await
+    {
+        Ok(template) => render(template),
+        Err(e) => e.into_response(),
+    }
+}
+
 pub async fn issues_page(
     State(state): State<AppState>,
     Path(id): Path<i64>,

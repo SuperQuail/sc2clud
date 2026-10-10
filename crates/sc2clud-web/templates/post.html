@@ -65,6 +65,15 @@
   <h1 class="site-post-title">{{ post.title }}</h1>
 
   <style>
+/* 分区 / 类型做成页签：上半圆润、下半直线，像文件夹标签 */
+.post-main .card > .head{gap:0;margin-bottom:14px;border-bottom:1px solid var(--line,#e5e7eb)}
+.post-main .card > .head > .tag,
+.post-main .card > .head > .kind{
+  font-size:15px;font-weight:600;padding:12px 26px;border:1px solid var(--line,#e5e7eb);
+  border-bottom:0;border-radius:12px 12px 0 0;background:rgba(37,99,235,.05);margin-bottom:-1px;
+}
+.post-main .card > .head > .kind{background:#fff;border-bottom:0}
+.post-main .card > .head > .tag{background:rgba(37,99,235,.12);color:#1d4ed8}
 .post-tabs{display:flex;align-items:stretch;gap:2px;width:100%;border-bottom:1px solid var(--line,#e5e7eb);margin:12px 0 16px}
 .ptab{display:flex;align-items:center;justify-content:center;padding:14px 26px;font-size:15px;font-weight:500;text-decoration:none;color:inherit;opacity:.7;border-bottom:3px solid transparent}
 .ptab:hover{opacity:1;background:rgba(37,99,235,.05)}
@@ -115,6 +124,20 @@
 .issue-row .meta{margin-left:auto;font-size:12px;opacity:.65;white-space:nowrap}
 .issue-row .comments{font-size:12px;opacity:.75;white-space:nowrap}
 .issue-count{font-size:13px;opacity:.7;margin:10px 2px}
+.issue-new form{display:flex;flex-direction:column;gap:14px}
+.issue-new label{display:block;font-size:14px}
+.issue-new input[type=text],.issue-new textarea{width:100%;margin-top:6px;padding:10px 12px;border:1px solid var(--line,#e5e7eb);border-radius:10px;background:none;color:inherit;font:inherit;font-size:14px}
+.kind-pick{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:10px;border:0;padding:0;margin:0}
+.kind-pick legend{font-size:14px;padding:0 0 8px}
+.kind-pick .kp{display:flex;flex-direction:column;gap:2px;padding:12px 14px;border:1px solid var(--line,#e5e7eb);border-radius:12px;cursor:pointer;font-size:13px}
+.kind-pick .kp b{font-size:15px}
+.kind-pick .kp span{opacity:.8}
+.kind-pick .kp:has(input:checked){border-width:2px}
+.kind-pick .kp.bug:has(input:checked){border-color:#dc2626;background:#fef2f2}
+.kind-pick .kp.idea:has(input:checked){border-color:#2563eb;background:#eff6ff}
+.kind-pick .kp.difficulty:has(input:checked){border-color:#7c3aed;background:#f5f3ff}
+.kind-pick .kp.other:has(input:checked){border-color:#6b7280;background:#f9fafb}
+.kind-pick .kp input{position:absolute;opacity:0;width:0;height:0}
 .issue-empty{border:1px dashed var(--line,#e5e7eb);border-radius:12px;padding:26px;text-align:center}
 .issue-empty p{margin:8px 0 0;font-size:13px;opacity:.7}
 </style>
@@ -130,7 +153,26 @@
   <a class="btn sm" style="margin-left:10px" href="/p/{{ post.id }}/issues/new">发布反馈</a>
 </nav>
 
-{% if tab == "issues" %}
+{% if tab == "new" %}
+<section class="issue-view issue-new">
+  <h2 style="margin:0 0 6px">发布反馈</h2>
+  <p class="hint" style="margin:0 0 14px;font-size:13px;opacity:.8">选一个类型，写清现象或想法；提交后作者与管理员都会看到。</p>
+  <form method="post" action="/p/{{ post.id }}/issues" class="stack">
+    <input type="hidden" name="csrf" value="{{ csrf }}">
+    <fieldset class="kind-pick">
+      <legend>类型（必选）</legend>
+      <label class="kp bug"><input type="radio" name="kind" value="bug"{% if issue_kind == "bug" %} checked{% endif %}><b>报告 Bug</b><span>打不开、崩溃、闪退、卡关</span></label>
+      <label class="kp idea"><input type="radio" name="kind" value="feature"{% if issue_kind == "feature" %} checked{% endif %}><b>改进意见</b><span>希望新增或调整的功能</span></label>
+      <label class="kp difficulty"><input type="radio" name="kind" value="difficulty"{% if issue_kind == "difficulty" %} checked{% endif %}><b>难度建议</b><span>太简单 / 太难 / 想要难度选项</span></label>
+      <label class="kp other"><input type="radio" name="kind" value="other"{% if issue_kind == "other" || issue_kind.is_empty() %} checked{% endif %}><b>其它</b><span>不属于上面三类的问题</span></label>
+    </fieldset>
+    <label>标题<input type="text" name="title" maxlength="80" required placeholder="一句话说清问题，例如：第三关开局就崩溃"></label>
+    <label>正文<textarea name="body" rows="8" maxlength="5000" placeholder="复现步骤 / 你的版本 / 期望的行为。写清这些，作者才好定位。"></textarea></label>
+    <div class="issue-actions"><button class="btn" type="submit">提交反馈</button>
+      <a class="btn ghost" href="/p/{{ post.id }}/issues">取消</a></div>
+  </form>
+</section>
+{% else if tab == "issues" %}
 <section class="issue-view">
   {# 状态是主切换（对齐 GitHub 的 Open/Closed），类型收进下拉 —— 以后加类型只多一行，不会把筛选条撑爆 #}
   <div class="issue-filters">
