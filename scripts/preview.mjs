@@ -105,6 +105,9 @@ const run = (cmd, cmdArgs, opts = {}) => {
   return res.stdout
 }
 
+  // 迁移是编译期内嵌的：增量编译可能不重编，先 touch 一下（与 deploy/dev.sh 同样的坑）
+  const dbLib = join(root, 'crates/sc2clud-db/src/lib.rs')
+  if (existsSync(dbLib)) { const now = new Date(); utimesSync(dbLib, now, now) }
 // askama 模板与迁移都是**编译期**内嵌的：不重建就会「模板是旧的 / 迁移认不出来」，
 // 预览与上线也就不是同一份代码了。所以这里强制重建（增量，通常几秒）。
 console.log('==> 构建（模板与迁移内嵌，必须重建才能反映当前代码）')
