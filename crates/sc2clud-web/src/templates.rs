@@ -794,6 +794,8 @@ pub struct AdminTemplate<'a> {
     pub ai_key_set: bool,
     pub ai_prompt_new_post: String,
     pub ai_prompt_report: String,
+    /// 推理强度（空 = 不传，用服务端默认）。
+    pub ai_reasoning_effort: String,
     pub ai_review_comments: bool,
     pub ai_review_on_report: bool,
     /// 磁盘预算总览（仅超级管理员可见）。

@@ -17,6 +17,9 @@ pub struct AiConfig {
     pub model: String,
     pub prompt_new_post: String,
     pub prompt_report: String,
+    /// 推理强度：none / low / high / max（空 = 不传，用服务端默认）。
+    /// 依据 DeepSeek 文档：none 关思考模式，low/high/max 开启，默认 high。
+    pub reasoning_effort: String,
     pub review_comments: bool,
     pub review_on_report: bool,
 }
@@ -35,6 +38,7 @@ impl AiConfig {
         let prompt_new_post = get("ai_prompt_new_post", "判断这条社区内容是否合规。").await;
         let prompt_report = get("ai_prompt_report", "这条内容被举报，请重新判定。").await;
         let review_comments = get("ai_review_comments", "0").await == "1";
+        let reasoning_effort = get("ai_reasoning_effort", "").await;
         let review_on_report = get("ai_review_on_report", "1").await == "1";
         let api_key = sc2clud_db::repo::ai_key(pool, db_path)
             .await
@@ -46,6 +50,7 @@ impl AiConfig {
             model,
             prompt_new_post,
             prompt_report,
+            reasoning_effort: reasoning_effort.trim().to_string(),
             review_comments,
             review_on_report,
         }
@@ -82,7 +87,7 @@ pub struct AiReview {
 
 /// 拼请求体：工具定义来自 core（三个工具），tool_choice 强制模型调用其中之一。
 fn request_body(config: &AiConfig, system: &str, user: &str, target: &str) -> serde_json::Value {
-    serde_json::json!({
+    let mut body = serde_json::json!({
         "model": config.model,
         "messages": [
             { "role": "system", "content": system },
@@ -91,7 +96,19 @@ fn request_body(config: &AiConfig, system: &str, user: &str, target: &str) -> se
         "tools": ai_tools(target),
         "tool_choice": "required",
         "temperature": 0
-    })
+    });
+    // 只认这四个取值（DeepSeek/OpenAI 都收 reasoning_effort；不传就用服务端默认）
+    if matches!(
+        config.reasoning_effort.as_str(),
+        "none" | "low" | "high" | "max"
+    ) && let Some(map) = body.as_object_mut()
+    {
+        map.insert(
+            "reasoning_effort".to_string(),
+            serde_json::Value::String(config.reasoning_effort.clone()),
+        );
+    }
+    body
 }
 
 /// 把响应里第一个工具调用解析成判词。
@@ -221,6 +238,7 @@ mod ai_client_tests {
             model: "gpt-4o-mini".to_string(),
             prompt_new_post: "审核帖子".to_string(),
             prompt_report: "审核举报".to_string(),
+            reasoning_effort: "high".to_string(),
             review_comments: false,
             review_on_report: true,
         }
@@ -232,6 +250,16 @@ mod ai_client_tests {
         assert_eq!(body["tool_choice"], "required");
         assert_eq!(body["tools"].as_array().map(|tools| tools.len()), Some(3));
         assert_eq!(body["messages"][1]["content"], "u");
+        assert_eq!(body["reasoning_effort"], "high");
+
+        let mut quiet = config();
+        quiet.reasoning_effort = "bullshit".to_string();
+        assert!(
+            request_body(&quiet, "s", "u", "post")
+                .get("reasoning_effort")
+                .is_none(),
+            "非法取值不该发出去"
+        );
     }
 
     #[test]

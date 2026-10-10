@@ -253,6 +253,7 @@ async fn build_panel<'a>(
         ai_key_set: !ai_config.api_key.is_empty(),
         ai_prompt_new_post: ai_config.prompt_new_post.clone(),
         ai_prompt_report: ai_config.prompt_report.clone(),
+        ai_reasoning_effort: ai_config.reasoning_effort.clone(),
         ai_review_comments: ai_config.review_comments,
         ai_review_on_report: ai_config.review_on_report,
         ban_options: BAN_HOUR_OPTIONS
@@ -1367,6 +1368,9 @@ pub struct AiSettingsForm {
     pub api_key: String,
     pub prompt_new_post: String,
     pub prompt_report: String,
+    /// 推理强度：留空 / none / low / high / max。
+    #[serde(default)]
+    pub reasoning_effort: String,
     #[serde(default)]
     pub review_comments: Option<String>,
     #[serde(default)]
@@ -1399,6 +1403,13 @@ pub async fn save_ai_settings(
     repo::set_ai_setting(pool, "ai_model", form.model.trim(), now).await?;
     repo::set_ai_setting(pool, "ai_prompt_new_post", form.prompt_new_post.trim(), now).await?;
     repo::set_ai_setting(pool, "ai_prompt_report", form.prompt_report.trim(), now).await?;
+    repo::set_ai_setting(
+        pool,
+        "ai_reasoning_effort",
+        form.reasoning_effort.trim(),
+        now,
+    )
+    .await?;
     repo::set_ai_setting(
         pool,
         "ai_review_comments",

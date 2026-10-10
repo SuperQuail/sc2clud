@@ -744,6 +744,15 @@
             <label>接口地址<input type="text" name="endpoint" value="{{ ai_endpoint }}" maxlength="200"></label>
             <label>模型<input type="text" name="model" value="{{ ai_model }}" maxlength="80"></label>
             <label class="wide">API 密钥<input type="password" name="api_key" maxlength="200" placeholder="{% if ai_key_set %}已设置，留空表示不改{% else %}还没设置{% endif %}"></label>
+            <label>推理强度（reasoning_effort）
+              <select name="reasoning_effort" class="ui-select">
+                <option value=""{% if ai_reasoning_effort.is_empty() %} selected{% endif %}>不传（用服务端默认：high）</option>
+                <option value="none"{% if ai_reasoning_effort == "none" %} selected{% endif %}>none · 关闭思考模式（最快最省）</option>
+                <option value="low"{% if ai_reasoning_effort == "low" %} selected{% endif %}>low · 开启思考，强度低</option>
+                <option value="high"{% if ai_reasoning_effort == "high" %} selected{% endif %}>high · 开启思考，强度高（默认）</option>
+                <option value="max"{% if ai_reasoning_effort == "max" %} selected{% endif %}>max · 最强（更慢更贵）</option>
+              </select>
+            </label>
             <label class="wide">提示词（帖子）<textarea name="prompt_new_post" rows="3">{{ ai_prompt_new_post }}</textarea></label>
             <label class="wide">提示词（举报复审）<textarea name="prompt_report" rows="3">{{ ai_prompt_report }}</textarea></label>
           </div>
