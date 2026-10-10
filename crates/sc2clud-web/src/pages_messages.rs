@@ -244,15 +244,16 @@ pub async fn center(
     let user = crate::routes::require_user(&state, &headers).await?;
     let tab = params.tab.unwrap_or_else(|| "dm".to_string());
     let selected = params.with.clone().unwrap_or_default();
+    // 已评审通过的是 v2（居中弹窗确认）
     let delete_variant = if state.config.server.debug_pages {
         params
             .dv
             .as_deref()
             .and_then(|v| v.parse::<u8>().ok())
             .filter(|v| (1..=3).contains(v))
-            .unwrap_or(1)
+            .unwrap_or(2)
     } else {
-        1
+        2
     };
     // 没头像的用户随机分一个默认头像（分过就固定）
     let _ = repo::ensure_default_avatar(state.db.pool(), user.id).await;

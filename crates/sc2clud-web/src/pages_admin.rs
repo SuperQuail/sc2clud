@@ -144,12 +144,13 @@ async fn build_panel<'a>(
         })
         .collect();
     // 版式编号从原始查询串里取（面板的 query 是用户搜索词，不能混用）
+    // 已评审通过的是 v2（列表行 + 顶部上传）
     let pool_variant = if state.config.server.debug_pages {
         av.and_then(|v| v.parse::<u8>().ok())
             .filter(|v| (1..=3).contains(v))
-            .unwrap_or(1)
+            .unwrap_or(2)
     } else {
-        1
+        2
     };
     let default_avatars = repo::list_default_avatars(state.db.pool())
         .await?
