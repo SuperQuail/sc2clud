@@ -120,32 +120,34 @@ cargo run -p sc2clud -- check                     # 配置与依赖自检
 反例（都发生过，别再犯）：模板里塞 `<style>` 又被 `{% if %}` 夹住导致样式失效；
 把 `<select>` 写进 `<style>` 块导致浏览器忽略；用行号范围猜模板块边界导致删错内容。
 改模板一律「整块读出来 → 整块替换 → 立刻编译」；改前端一律走岛。
-### 控件库：先查现成的，别自己造（Reka UI）
+### 控件库：先查现成的，别自己造
 
-**禁止**为了一个下拉/弹窗/日期选择器手写键盘与焦点管理。行为标准件统一用 **Reka UI**
-（`web/package.json` → `reka-ui`，前身 Radix Vue）：headless、无样式，键盘/焦点/ARIA/滚动锁定由它负责，
-外观仍由我们的 scoped CSS 决定 —— 这样既现代化又不破坏现有视觉体系。
+**框架：全站前端岛统一 React 18**（2026-10 从 Vue 迁完，`.vue` 已清零）。
+**控件：自建 `web/src/ui/`，行为一律交给 Radix Primitives** —— 我们只写外观与用法，不手写键盘/焦点/ARIA。
+
+| 层 | 放哪 | 规则 |
+| --- | --- | --- |
+| 基础件 | `web/src/ui/` | `Button` / `Field` / `Input` / `Textarea` / `Select`；样式统一在 `ui.css`；**新控件先看这里有没有** |
+| 业务组件 | `web/src/islands/<岛名>/` | 只组合基础件，不重复实现交互 |
+| 数据层 | `web/src/lib/` | 类型 + fetch；**全站只有这里允许出现 fetch** |
+| 岛入口 | `web/src/islands/<岛名>/main.tsx` | 读 `[data-island]` 上的 data-* 初值并挂载 |
 
 | 需求 | 用什么 |
 | --- | --- |
-| 下拉选择、弹窗、气泡、标签页、开关、日期选择 | **Reka UI**（`SelectRoot` / `DialogRoot` / `PopoverRoot` / `TabsRoot` / `SwitchRoot` …） |
-| 图标 | Heroicons（已内联使用，MIT） |
-| 表单校验、状态管理 | 暂不引入；原生 + 组合式函数足够 |
-| 整套 UI 组件库（Element Plus / Naive / Ant Design Vue） | **不要**：会引入第二套视觉与数百 KB 体积 |
-| CSS-in-JS、整站 SPA | **不要**（§6 预算与部署形态都不允许） |
+| 下拉 / 弹窗 / 气泡 / 标签页 / 开关 / 日期 | Radix Primitives（`@radix-ui/react-select` 等，已装） |
+| 图标 | Heroicons（内联 SVG，MIT） |
+| 表单校验 / 状态管理 | 暂不引入；原生 + hooks 足够 |
+| 整套 UI 组件库（Ant Design / MUI …） | **不要**：第二套视觉 + 数百 KB |
+| CSS-in-JS、整站 SPA | **不要**（§6 预算与部署形态不允许） |
 
-体积记录（每次引入新控件后更新）：
+体积台账（引入新控件后更新）：
 
 | 岛 | 原始 | gzip | 说明 |
 | --- | --- | --- | --- |
-| `issues.js` | 84.5 kB | 29.2 kB | 含 Reka UI Select 的浮动定位栈；页面首屏（+Vue 运行时）仍 ≤ 60 KB brotli |
+| `issues.js` | 228 kB | 77.7 kB | React 18 + ReactDOM + Radix Select + 自建 ui/ |
 
-新增控件前先看这张表；超过预算就先谈方案，不要先写完再发现超了。
-
-## 7. 编码约定
-
-- 注释、日志、错误文案一律用中文；错误信息面向用户，不要暴露内部结构（`Storage` / `Database` 一律泛化）。
-- 领域错误统一走 `sc2clud_core::Error`，HTTP 映射集中在 `sc2clud-web/src/error.rs`，不要在处理器里手写状态码。
+**前端改完必须**：`pnpm -C web build` → 上传产物（`deploy/islands-push.ps1`）→ 才跑 `deploy/dev.sh`；
+否则 dev 上是旧 bundle（`static/islands/` 不入库，服务器没有 Node）。
 - 新增配置项：改 `sc2clud-core/src/config.rs`（含默认值与 `validate`），并同步 `.env.example` 与 `docs/`。
 - 新增迁移：加 `migrations/000N_xxx.sql`，不要改动已发布的迁移文件。
 - 有外部副作用的函数必须有测试：流式哈希、限速、路径校验、引用计数、签名都是。

@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, type FormEvent } from 'react'
 import { Button } from '../../ui/Button'
 import { Field } from '../../ui/Field'
 import { Input, Textarea } from '../../ui/Input'
@@ -19,7 +19,7 @@ export function IssuesApp({ postId, csrf, defaultKind }: IssuesAppProps) {
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
 
-  async function onSubmit(event: React.FormEvent) {
+  async function onSubmit(event: FormEvent) {
     event.preventDefault()
     if (!title.trim()) {
       setError('标题不能为空')

@@ -29,3 +29,12 @@
 .ui-select-item[data-state=checked] .ui-select-tick{opacity:1}
 .ui-select-tick{color:#2563eb;font-weight:700;opacity:0}
 .ui-select-caret{width:10px;height:10px;flex:0 0 auto;border-right:2px solid currentColor;border-bottom:2px solid currentColor;transform:rotate(45deg);opacity:.55}
+/* 尺寸 / 块级 / 低调 / 加载态 */
+.ui-btn-sm{padding:6px 12px;font-size:13px;border-radius:8px}
+.ui-btn-md{padding:9px 18px}
+.ui-btn-block{width:100%}
+.ui-btn[data-variant=subtle]{background:rgba(37,99,235,.08);color:#1d4ed8}
+.ui-btn[data-variant=subtle]:hover{background:rgba(37,99,235,.15)}
+.ui-btn-spin{width:12px;height:12px;border:2px solid currentColor;border-right-color:transparent;border-radius:50%;animation:ui-spin .7s linear infinite}
+@keyframes ui-spin{to{transform:rotate(360deg)}}
+
