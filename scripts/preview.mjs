@@ -50,6 +50,8 @@ const bioArg = arg('bio', '')
 const donateTest = args.includes('--donate-test')
 // --dm <handle>：给某人发一条私信（只写本地副本），让消息中心有真实会话可渲染
 const dmTo = arg('dm', '')
+// --send-test：在消息中心里真的发一条（走页面上的无感发送），用来验证「不刷新就地出气泡」
+const sendTest = args.includes('--send-test')
 const outDir = arg('out', join(repo, '..', 'shots', 'preview'))
 const pagesArg = arg('pages', '')
 
@@ -313,6 +315,26 @@ const main = async () => {
       name: 'sc2clud_preview_session', value: cookie.split('=')[1],
       domain: '127.0.0.1', path: '/', httpOnly: true,
     })
+  }
+
+  // 无感发送验证：在页面里触发提交，然后数一数气泡有没有就地多出来（没有发生跳转）
+  if (sendTest) {
+    const before = await cdp.send('Runtime.evaluate', { expression: "location.pathname + location.search" })
+    await cdp.send('Runtime.evaluate', {
+      expression: `(async () => {
+        const form = document.querySelector('[data-composer]');
+        if (!form) return 'no-composer';
+        const input = form.querySelector('input[name=body]');
+        input.value = '无感发送验证：这条没有刷新页面';
+        form.dispatchEvent(new Event('submit', { cancelable: true, bubbles: true }));
+        await new Promise((r) => setTimeout(r, 1200));
+        return document.querySelectorAll('.inbox-msg.mine').length;
+      })()`,
+      awaitPromise: true,
+      returnByValue: true,
+    }).then((r) => console.log('==> 无感发送：气泡数 = ' + (r.result?.value ?? '?')))
+    const after = await cdp.send('Runtime.evaluate', { expression: "location.pathname + location.search" })
+    console.log('==> 地址是否未变：' + (before.result?.value === after.result?.value ? '是（没有跳页）✓' : '否 ✗ ' + before.result?.value + ' → ' + after.result?.value))
   }
 
   mkdirSync(outDir, { recursive: true })
