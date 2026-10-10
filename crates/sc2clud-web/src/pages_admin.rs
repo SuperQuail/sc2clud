@@ -128,6 +128,11 @@ async fn build_panel<'a>(
         .into_iter()
         .map(|row| AdminUserView {
             id: row.id,
+            ban_label: row
+                .post_ban_until
+                .filter(|until| *until > now)
+                .map(|until| format!("禁言至 {}", crate::templates::format_date(until)))
+                .unwrap_or_default(),
             groups: member_groups.get(&row.id).cloned().unwrap_or_default(),
             trusted: row.trusted != 0,
             initial: row
@@ -222,6 +227,10 @@ async fn build_panel<'a>(
         pool_variant,
         acl_variant,
         groups,
+        ban_options: BAN_HOUR_OPTIONS
+            .iter()
+            .map(|(hours, label)| (hours.to_string(), label.to_string()))
+            .collect(),
         server_free_human: human_bytes(free_bytes),
         quota_allocated_human: human_bytes(allocated.max(0) as u64),
         quota_used_human: human_bytes(used.max(0) as u64),
@@ -301,6 +310,7 @@ async fn build_user_edit<'a>(
             .collect(),
         user: AdminUserView {
             groups: Vec::new(),
+            ban_label: String::new(),
             id: row.id,
             trusted: row.trusted != 0,
             initial: row
@@ -789,6 +799,9 @@ pub async fn create_user(
 #[derive(Debug, Deserialize)]
 pub struct EditUserForm {
     pub csrf: String,
+    /// 禁言时长（小时）：空或 "0" = 解禁，其余 = 从现在起禁这么多小时。
+    #[serde(default)]
+    pub ban_hours: Option<String>,
     pub display_name: String,
     pub role: String,
     pub quota_gb: String,
@@ -796,6 +809,16 @@ pub struct EditUserForm {
     pub activated: Option<String>,
     pub new_password: Option<String>,
 }
+
+/// 禁言时长选项（后台下拉用）：(值, 显示名)。0 = 解禁。
+pub const BAN_HOUR_OPTIONS: [(i64, &str); 6] = [
+    (0, "不禁言"),
+    (1, "1 小时"),
+    (24, "1 天"),
+    (72, "3 天"),
+    (168, "7 天"),
+    (720, "30 天"),
+];
 
 /// 管理面板「编辑用户」弹窗的保存：一次把资料改完（等级也就地切换）。
 pub async fn update_user(
@@ -1077,6 +1100,57 @@ pub async fn save_section_acl(
         "保存分区发言权限"
     );
     Ok(axum::Json(serde_json::json!({ "ok": true })).into_response())
+}
+
+#[derive(Debug, Deserialize)]
+pub struct BanForm {
+    pub csrf: String,
+    /// 时长小时数：0 或空 = 解禁。
+    #[serde(default)]
+    pub hours: Option<String>,
+}
+
+/// 限期禁言 / 解禁：hours = 0 解禁，其余为小时数。管理员及以上不能被禁（避免管理员互相锁死）。
+pub async fn ban_user(
+    State(state): State<AppState>,
+    Path(id): Path<i64>,
+    headers: HeaderMap,
+    Form(form): Form<BanForm>,
+) -> AppResult<Response> {
+    let actor = require_user(&state, &headers).await?;
+    session::guard(Some(&actor), Permission::ManageUsers)?;
+    session::check_csrf(&actor, &form.csrf)?;
+    let target = repo::find_user_by_id(state.db.pool(), id)
+        .await?
+        .ok_or_else(|| AppError::not_found("用户不存在"))?;
+    if sc2clud_core::auth::Role::parse(&target.role)
+        .is_ok_and(|role| role >= sc2clud_core::auth::Role::Admin)
+    {
+        return Err(AppError::Domain(DomainError::InvalidInput(
+            "管理员及以上不接受禁言".to_string(),
+        )));
+    }
+    let hours: i64 = form
+        .hours
+        .as_deref()
+        .unwrap_or("0")
+        .trim()
+        .parse()
+        .unwrap_or(0)
+        .clamp(0, 24 * 365);
+    let until = if hours > 0 {
+        Some(now_unix() + hours * 3600)
+    } else {
+        None
+    };
+    repo::set_post_ban(state.db.pool(), id, until).await?;
+    tracing::info!(user.id = id, hours, actor.id = actor.id, "限期禁言");
+    let message = if hours > 0 {
+        "已设置禁言"
+    } else {
+        "已解除禁言"
+    };
+    Ok(done(&headers, message, "/admin/users/overview"))
 }
 
 pub async fn create_group(

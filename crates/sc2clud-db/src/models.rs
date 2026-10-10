@@ -27,6 +27,8 @@ pub struct UserRow {
     /// `None` = 未激活（能登录，但不能发帖/回复/上传）。
     pub activated_at: Option<i64>,
     pub activated_by: Option<i64>,
+    /// 限期禁言：到这个时间之前不能发帖（NULL = 没被禁）。评论不受影响。
+    pub post_ban_until: Option<i64>,
 }
 
 /// 会话行（库里只存令牌摘要）。
@@ -388,6 +390,8 @@ pub struct BlockRow {
 /// 管理页的用户行：比 `UserRow` 多带「最后在线」（取该用户最近一次会话）。
 #[derive(Debug, Clone, FromRow)]
 pub struct AdminUserRow {
+    /// 限期禁言到期时间（NULL = 没被禁）。
+    pub post_ban_until: Option<i64>,
     pub id: i64,
     pub handle: String,
     pub display_name: String,

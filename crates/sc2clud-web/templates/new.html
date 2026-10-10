@@ -9,7 +9,9 @@
   <h2>发新帖</h2>
   <aside class="creation-note"><img src="/static/art/miyin/genius-160.webp" width="72" height="72" alt="弥音为你的灵感加油" loading="lazy"><div><strong>把灵感，变成下一段冒险。</strong><p>写清作品的玩法与亮点，让同样热爱星际的人更快发现你。</p></div></aside>
   {% if let Some(message) = error %}
-  <p class="alert">{{ message }}</p>
+  {# 被禁言这类提示要够醒目：红底红边 #}
+  <p class="alert alert-danger">{{ message }}</p>
+  <style>.alert-danger{border:1px solid #dc2626;background:#fee2e2;color:#991b1b;border-radius:10px;padding:10px 12px}</style>
   {% endif %}
   <form method="post" action="/new" class="stack">
     <input type="hidden" name="csrf" value="{{ csrf }}">

@@ -70,6 +70,7 @@
           <a class="btn ghost sm" id="modal-more" href="#">更多设置</a>
           <button class="btn sm" type="submit">保存</button>
         </footer>
+        <label>禁言（限期禁止发帖）<select data-modal-ban>{% for option in ban_options %}<option value="{{ option.0 }}">{{ option.1 }}</option>{% endfor %}</select></label>
         <fieldset class="modal-groups">
           <legend>用户组（可多选）</legend>
           {% for group in groups %}
@@ -178,6 +179,7 @@
             {% if user.activated %}<span class="tag ok" title="可以登录、发帖与上传">已激活</span>{% else %}<span class="tag warn" title="未激活：不能发帖与上传，需要管理员激活">未激活</span>{% endif %}
             {% if user.online %}<span class="dot on" title="最近 5 分钟有活动"></span>{% endif %}
             {% if user.trusted %}<span class="tag ok" title="发帖只走自动审核">信任</span>{% endif %}
+            {% if !user.ban_label.is_empty() %}<span class="tag ban">{{ user.ban_label }}</span>{% endif %}
             {% if user.is_self %}<span class="tag">我</span>{% endif %}
             </span>
           </td>
@@ -349,6 +351,7 @@
 .group-list{display:flex;flex-direction:column;gap:10px;margin-bottom:12px}
 .group-card{border:1px solid var(--line,#e5e7eb);border-radius:10px;padding:10px 12px}
 .group-card.archived{opacity:.6}
+.tag.ban{border:1px solid #dc2626;background:#fee2e2;color:#991b1b}
 .group-head{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
 .group-actions{margin-left:auto;display:flex;gap:6px;align-items:center}
 .group-actions form{display:inline}
@@ -512,6 +515,18 @@
         body.set('csrf', csrf ? csrf.value : '');
         groupBoxes().filter((box) => box.checked).forEach((box) => body.append('groups', box.value));
         // 与保存并发发出（fire-and-forget）：用户资料照旧由原表单提交
+        // 禁言时长与用户组一起提交（都是并发 fire-and-forget）
+        const banSelect = dialog.querySelector('[data-modal-ban]');
+        if (banSelect) {
+          const banBody = new URLSearchParams();
+          banBody.set('csrf', csrf ? csrf.value : '');
+          banBody.set('hours', banSelect.value);
+          fetch('/admin/users/' + id + '/ban', {
+            method: 'POST',
+            headers: { 'content-type': 'application/x-www-form-urlencoded' },
+            body: banBody,
+          }).catch(() => {});
+        }
         fetch('/admin/users/' + id + '/groups', {
           method: 'POST',
           headers: { 'content-type': 'application/x-www-form-urlencoded' },

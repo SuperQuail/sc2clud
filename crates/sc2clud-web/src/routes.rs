@@ -205,6 +205,10 @@ pub fn pages() -> Router<AppState> {
             axum::routing::post(crate::pages_admin::archive_group),
         )
         .route(
+            "/admin/users/{id}/ban",
+            axum::routing::post(crate::pages_admin::ban_user),
+        )
+        .route(
             "/admin/users/{id}/groups",
             axum::routing::post(crate::pages_admin::set_user_groups),
         )

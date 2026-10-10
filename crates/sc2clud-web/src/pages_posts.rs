@@ -1395,7 +1395,13 @@ pub async fn new_post_form(State(state): State<AppState>, headers: HeaderMap) ->
         Ok(None) => return Redirect::to("/login").into_response(),
         Err(e) => return e.into_response(),
     };
-    let error = if user.activated {
+    let error = if let Some(until) = user.post_ban_until.filter(|until| *until > now_unix()) {
+        // 限期禁言：把解禁时间明说，用户知道什么时候能回来
+        Some(format!(
+            "你已被禁止发帖，解禁时间：{}（到期自动解除；评论不受影响）",
+            crate::templates::format_date(until)
+        ))
+    } else if user.activated {
         None
     } else {
         Some("账号尚未激活，暂时不能发帖".to_string())
@@ -1426,6 +1432,11 @@ pub async fn new_post_submit(
         Err(e) => return e.into_response(),
     };
     let form = parse_post_form(&body);
+
+    // 限期禁言：到期时间之前一律不能发帖（评论不受影响）
+    if user.post_ban_until.is_some_and(|until| until > now_unix()) {
+        return Redirect::to("/new").into_response();
+    }
 
     let kind_raw = if form.kind.is_empty() {
         "discussion"

@@ -428,6 +428,7 @@ mod avatar_menu_tests {
             trusted: false,
             role: Role::Member,
             activated: true,
+            post_ban_until: None,
             csrf_token: "不应泄露".into(),
         };
         let response = avatar_metadata(&user);

@@ -780,6 +780,8 @@ pub struct AdminTemplate<'a> {
     pub acl_variant: u8,
     /// 用户组列表（含人数与规则）。
     pub groups: Vec<AdminGroupView>,
+    /// 禁言时长选项（值, 显示名）。
+    pub ban_options: Vec<(String, String)>,
     /// 磁盘预算总览（仅超级管理员可见）。
     pub server_free_human: String,
     pub quota_allocated_human: String,
@@ -811,6 +813,8 @@ pub struct AdminTemplate<'a> {
 /// 管理员面板里的用户行。
 pub struct AdminUserView {
     pub id: i64,
+    /// 限期禁言的显示文案（空串 = 没被禁）。
+    pub ban_label: String,
     /// 所属用户组 id（可多个）。
     pub groups: Vec<i64>,
     /// 是否被信任（发帖只走自动审核）。

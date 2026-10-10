@@ -1610,6 +1610,18 @@ pub async fn set_avatar_small(pool: &SqlitePool, user_id: i64, hash: Option<&str
     Ok(())
 }
 
+/// 设置/解除限期禁言。传 None 表示解禁。
+pub async fn set_post_ban(pool: &SqlitePool, user_id: i64, until: Option<i64>) -> Result<bool> {
+    let affected = query("UPDATE users SET post_ban_until = ? WHERE id = ?")
+        .bind(until)
+        .bind(user_id)
+        .execute(pool)
+        .await
+        .map_err(db_err)?
+        .rows_affected();
+    Ok(affected == 1)
+}
+
 /// 头像的 MIME（给 `/avatar/{hash}` 定 Content-Type）。
 pub async fn avatar_mime(pool: &SqlitePool, hash: &str) -> Result<Option<String>> {
     let row: Option<(Option<String>,)> =
@@ -1667,6 +1679,7 @@ pub async fn admin_get_user(pool: &SqlitePool, id: i64) -> Result<Option<AdminUs
     query_as::<_, AdminUserRow>(
         "SELECT u.id, u.handle, u.display_name, u.email, u.role, u.created_at, \
                 u.activated_at, u.avatar_hash, u.quota_bytes, u.used_bytes, u.trusted, \
+                u.post_ban_until, \
                 (SELECT MAX(s.last_seen_at) FROM sessions s WHERE s.user_id = u.id) AS last_seen_at \
          FROM users u WHERE u.id = ?",
     )
@@ -1686,6 +1699,7 @@ pub async fn admin_list_users(
     query_as::<_, AdminUserRow>(
         "SELECT u.id, u.handle, u.display_name, u.email, u.role, u.created_at, \
                 u.activated_at, u.avatar_hash, u.quota_bytes, u.used_bytes, u.trusted, \
+                u.post_ban_until, \
                 (SELECT MAX(s.last_seen_at) FROM sessions s WHERE s.user_id = u.id) AS last_seen_at \
          FROM users u \
          WHERE ?1 = '' OR u.handle LIKE ?2 OR u.display_name LIKE ?2 \
