@@ -16,7 +16,7 @@ use crate::models::{
     NotificationRow, PaymentChannelRow, PostImageRow, PostIssueRow, PostRevisionRow, PostRow,
     PostSearchRow, PostSourceRow, PostWithAuthorRow, ReleaseAssetRow, ReleaseRow,
     SectionModeratorRow, SectionRow, SessionRow, SiteDomainRow, TitleRow, UploadSessionRow,
-    UserGroupRow, UserHitRow, UserRow, UserTitleRow,
+    UserGroupRow, UserHitRow, UserRow, UserSanctionRow, UserTitleRow,
 };
 
 // ---------------------------------------------------------------- 用户
@@ -1180,6 +1180,98 @@ pub async fn create_comment(
     .await
     .map_err(db_err)?;
     Ok(res.last_insert_rowid())
+}
+
+// ---------------------------------------------------------------- 处罚（禁言）
+
+/// 某个用户当前生效的处罚（未撤销且未到期）。
+pub async fn active_sanctions(
+    pool: &SqlitePool,
+    user_id: i64,
+    now: i64,
+) -> Result<Vec<UserSanctionRow>> {
+    query_as::<_, UserSanctionRow>(
+        "SELECT * FROM user_sanctions \
+         WHERE user_id = ? AND revoked_at IS NULL AND until > ? ORDER BY until",
+    )
+    .bind(user_id)
+    .bind(now)
+    .fetch_all(pool)
+    .await
+    .map_err(db_err)
+}
+
+/// 这个处罚会不会拦住「某人现在在某分区做某件事」：拦住就返回它的到期时间（用于提示）。
+/// 规则：全局处罚拦一切；限定分区的处罚只拦那个分区。
+pub async fn sanction_until(
+    pool: &SqlitePool,
+    user_id: i64,
+    kind: &str,
+    section: &str,
+    now: i64,
+) -> Result<Option<i64>> {
+    let row: Option<(i64,)> = query_as(
+        "SELECT MAX(until) FROM user_sanctions \
+         WHERE user_id = ? AND kind = ? AND revoked_at IS NULL AND until > ? \
+           AND (section = '' OR section = ?)",
+    )
+    .bind(user_id)
+    .bind(kind)
+    .bind(now)
+    .bind(section)
+    .fetch_optional(pool)
+    .await
+    .map_err(db_err)?;
+    Ok(row.and_then(|(until,)| if until > 0 { Some(until) } else { None }))
+}
+
+/// 新增一条处罚。
+pub async fn add_sanction(
+    pool: &SqlitePool,
+    user_id: i64,
+    kind: &str,
+    section: &str,
+    until: i64,
+    by: Option<i64>,
+    now: i64,
+) -> Result<i64> {
+    let res = query(
+        "INSERT INTO user_sanctions (user_id, kind, section, until, note, created_at, created_by) \
+         VALUES (?, ?, ?, ?, '', ?, ?)",
+    )
+    .bind(user_id)
+    .bind(kind)
+    .bind(section)
+    .bind(until)
+    .bind(now)
+    .bind(by)
+    .execute(pool)
+    .await
+    .map_err(db_err)?;
+    Ok(res.last_insert_rowid())
+}
+
+/// 撤销同一类同范围的处罚（后台「解禁」用）。返回撤销了几条。
+pub async fn revoke_sanctions(
+    pool: &SqlitePool,
+    user_id: i64,
+    kind: &str,
+    section: &str,
+    now: i64,
+) -> Result<u64> {
+    let affected = query(
+        "UPDATE user_sanctions SET revoked_at = ? \
+         WHERE user_id = ? AND kind = ? AND section = ? AND revoked_at IS NULL",
+    )
+    .bind(now)
+    .bind(user_id)
+    .bind(kind)
+    .bind(section)
+    .execute(pool)
+    .await
+    .map_err(db_err)?
+    .rows_affected();
+    Ok(affected)
 }
 
 // ---------------------------------------------------------------- 回复投票（赞 / 踩）

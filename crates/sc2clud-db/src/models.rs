@@ -119,6 +119,21 @@ pub struct GroupSectionRuleRow {
     pub deny_reply: i64,
 }
 
+/// 一条处罚（禁止发帖 / 禁止评论，可限定分区）。
+#[derive(Debug, Clone, FromRow)]
+pub struct UserSanctionRow {
+    pub id: i64,
+    pub user_id: i64,
+    /// post = 禁止发帖；reply = 禁止评论。
+    pub kind: String,
+    /// 空串 = 全局；否则是分区 key。
+    pub section: String,
+    pub until: i64,
+    pub note: String,
+    pub created_at: i64,
+    pub revoked_at: Option<i64>,
+}
+
 /// 头衔。
 #[derive(Debug, Clone, FromRow)]
 pub struct TitleRow {

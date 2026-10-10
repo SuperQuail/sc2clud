@@ -227,6 +227,8 @@ async fn build_panel<'a>(
         pool_variant,
         acl_variant,
         groups,
+        block_reply_enforced: repo::site_text(state.db.pool(), "block_reply_enforced", "0").await?
+            == "1",
         ban_options: BAN_HOUR_OPTIONS
             .iter()
             .map(|(hours, label)| (hours.to_string(), label.to_string()))
@@ -1151,6 +1153,43 @@ pub async fn ban_user(
         "已解除禁言"
     };
     Ok(done(&headers, message, "/admin/users/overview"))
+}
+
+#[derive(Debug, Deserialize)]
+pub struct BlockReplyForm {
+    pub csrf: String,
+    /// "1" 开启 / "0" 关闭。
+    pub enabled: String,
+}
+
+/// 全站开关：被拉黑后能否在对方帖子下回复。
+pub async fn set_block_reply(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Form(form): Form<BlockReplyForm>,
+) -> AppResult<Response> {
+    let actor = require_user(&state, &headers).await?;
+    session::guard(Some(&actor), Permission::ManageUsers)?;
+    session::check_csrf(&actor, &form.csrf)?;
+    let value = if form.enabled == "1" { "1" } else { "0" };
+    repo::set_site_text(
+        state.db.pool(),
+        "block_reply_enforced",
+        value,
+        Some(actor.id),
+        now_unix(),
+    )
+    .await?;
+    tracing::info!(
+        enabled = value,
+        actor.id = actor.id,
+        "设置「被拉黑不能回复」开关"
+    );
+    Ok(done(
+        &headers,
+        "设置已保存",
+        "/admin/users/overview#settings",
+    ))
 }
 
 pub async fn create_group(

@@ -1331,6 +1331,32 @@ async fn add_comment(
         repo::get_post_for(state.db.pool(), post_id, Some(user.id), user.is_staff()).await
     {
         ensure_section_action(state, &user, &post_row.section, false).await?;
+        // 全站开关：被帖子作者拉黑后不能在他帖子下回复（默认关，行为不变）
+        if !user.is_staff()
+            && repo::site_text(state.db.pool(), "block_reply_enforced", "0").await? == "1"
+            && repo::blocked_between(state.db.pool(), post_row.author_id, user.id).await?
+        {
+            return Err(AppError::Domain(DomainError::Forbidden(
+                "你已被作者拉黑，无法在他的帖子下回复".to_string(),
+            )));
+        }
+        // 处罚：禁止评论（全局或限本分区）。管理员及以上不受限。
+        if !user.is_staff()
+            && let Ok(Some(until)) = repo::sanction_until(
+                state.db.pool(),
+                user.id,
+                "reply",
+                &post_row.section,
+                now_unix(),
+            )
+            .await
+        {
+            return Err(AppError::Domain(DomainError::Forbidden(format!(
+                "你在「{}」被禁止评论，解禁时间：{}",
+                post_row.section,
+                crate::templates::format_date(until)
+            ))));
+        }
     }
     session::check_csrf(&user, &form.csrf)?;
 
@@ -1395,7 +1421,16 @@ pub async fn new_post_form(State(state): State<AppState>, headers: HeaderMap) ->
         Ok(None) => return Redirect::to("/login").into_response(),
         Err(e) => return e.into_response(),
     };
-    let error = if let Some(until) = user.post_ban_until.filter(|until| *until > now_unix()) {
+    // 处罚提示：挑最快到期的那个，把解禁时间写给用户
+    let active = repo::active_sanctions(state.db.pool(), user.id, now_unix())
+        .await
+        .unwrap_or_default();
+    let soonest_post = active
+        .iter()
+        .filter(|row| row.kind == "post")
+        .map(|row| row.until)
+        .min();
+    let error = if let Some(until) = soonest_post {
         // 限期禁言：把解禁时间明说，用户知道什么时候能回来
         Some(format!(
             "你已被禁止发帖，解禁时间：{}（到期自动解除；评论不受影响）",
@@ -1433,11 +1468,6 @@ pub async fn new_post_submit(
     };
     let form = parse_post_form(&body);
 
-    // 限期禁言：到期时间之前一律不能发帖（评论不受影响）
-    if user.post_ban_until.is_some_and(|until| until > now_unix()) {
-        return Redirect::to("/new").into_response();
-    }
-
     let kind_raw = if form.kind.is_empty() {
         "discussion"
     } else {
@@ -1447,6 +1477,20 @@ pub async fn new_post_submit(
     let section = PostSection::parse(&form.section).unwrap_or(PostSection::default_section());
     let title = form.title.trim().to_string();
     let body = form.body.trim().to_string();
+
+    // 处罚：禁止发帖（全局或限本分区）；管理员及以上不受限
+    if !user.is_staff()
+        && let Ok(Some(_)) = repo::sanction_until(
+            state.db.pool(),
+            user.id,
+            "post",
+            section.as_str(),
+            now_unix(),
+        )
+        .await
+    {
+        return Redirect::to("/new").into_response();
+    }
 
     // 分区权限优先：公告只有管理员能发
     let checked = session::guard(Some(&user), section.required_permission())

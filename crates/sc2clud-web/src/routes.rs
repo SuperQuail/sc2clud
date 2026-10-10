@@ -193,6 +193,10 @@ pub fn pages() -> Router<AppState> {
             axum::routing::post(crate::pages_admin::save_section_acl),
         )
         .route(
+            "/admin/settings/block-reply",
+            axum::routing::post(crate::pages_admin::set_block_reply),
+        )
+        .route(
             "/admin/groups",
             axum::routing::post(crate::pages_admin::create_group),
         )

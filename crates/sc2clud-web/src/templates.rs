@@ -782,6 +782,8 @@ pub struct AdminTemplate<'a> {
     pub groups: Vec<AdminGroupView>,
     /// 禁言时长选项（值, 显示名）。
     pub ban_options: Vec<(String, String)>,
+    /// 全站开关：被拉黑后不能在对方帖子下回复（默认关）。
+    pub block_reply_enforced: bool,
     /// 磁盘预算总览（仅超级管理员可见）。
     pub server_free_human: String,
     pub quota_allocated_human: String,
