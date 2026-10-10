@@ -207,16 +207,24 @@ pub fn is_site_link(raw: &str, allowed: &[String]) -> bool {
 pub enum IssueKind {
     Bug,
     Feature,
+    /// 难度建议（星际 mod 特有：太简单/太难/希望加难度选项）。
+    Difficulty,
     Other,
 }
 
 impl IssueKind {
-    pub const ALL: [IssueKind; 3] = [IssueKind::Bug, IssueKind::Feature, IssueKind::Other];
+    pub const ALL: [IssueKind; 4] = [
+        IssueKind::Bug,
+        IssueKind::Feature,
+        IssueKind::Difficulty,
+        IssueKind::Other,
+    ];
 
     pub fn as_str(self) -> &'static str {
         match self {
             IssueKind::Bug => "bug",
             IssueKind::Feature => "feature",
+            IssueKind::Difficulty => "difficulty",
             IssueKind::Other => "other",
         }
     }
@@ -225,6 +233,7 @@ impl IssueKind {
         match self {
             IssueKind::Bug => "Bug 反馈",
             IssueKind::Feature => "功能建议",
+            IssueKind::Difficulty => "难度建议",
             IssueKind::Other => "其它",
         }
     }
@@ -233,6 +242,7 @@ impl IssueKind {
         match raw.trim() {
             "bug" => Ok(IssueKind::Bug),
             "feature" => Ok(IssueKind::Feature),
+            "difficulty" => Ok(IssueKind::Difficulty),
             "other" => Ok(IssueKind::Other),
             other => Err(crate::Error::InvalidInput(format!(
                 "未知 issue 类型：{other}"

@@ -44,6 +44,7 @@
     <div class="ib-actions">
       <a class="ib-btn bug" href="/p/{{ post.id }}/issues?kind=bug"><b>报告 Bug</b><span>打不开、崩溃、闪退、卡关</span></a>
       <a class="ib-btn idea" href="/p/{{ post.id }}/issues?kind=feature"><b>改进意见</b><span>希望新增或调整的功能</span></a>
+      <a class="ib-btn difficulty" href="/p/{{ post.id }}/issues?kind=difficulty"><b>难度建议</b><span>太简单 / 太难 / 想要难度选项</span></a>
     </div>
     <span class="ib-count">{% if issue_open > 0 %}{{ issue_open }} 条待处理{% else %}暂无待处理{% endif %}{% if issue_total > issue_open %} · 共 {{ issue_total }} 条{% endif %}</span>
   </section>
@@ -72,6 +73,8 @@
 .ptab-cta{font-size:13px;padding:5px 12px;border-radius:999px;text-decoration:none;margin-left:6px}
 .ptab-cta.bug{border:1px solid #dc2626;color:#b91c1c;background:#fef2f2}
 .ptab-cta.idea{border:1px solid #2563eb;color:#1d4ed8;background:#eff6ff}
+.ptab-cta.difficulty{border:1px solid #7c3aed;color:#6d28d9;background:#f5f3ff}
+.ib-btn.difficulty{border:1px solid #7c3aed;background:#f5f3ff;color:#6d28d9}
 .issue-filters{display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;margin:0 0 12px}
 .issue-filters .chips{display:flex;gap:6px}
 .chip{font-size:13px;padding:4px 12px;border-radius:999px;border:1px solid var(--line,#e5e7eb);text-decoration:none;color:inherit}
@@ -79,11 +82,16 @@
 .issue-view .kind{font-size:12px;padding:2px 9px;border-radius:999px;white-space:nowrap}
 .issue-view .kind-bug{border:1px solid #dc2626;background:#fee2e2;color:#991b1b}
 .issue-view .kind-feature{border:1px solid #2563eb;background:#dbeafe;color:#1d4ed8}
+.issue-view .kind-difficulty{border:1px solid #7c3aed;background:#f5f3ff;color:#6d28d9}
 .issue-view .kind-other{border:1px solid #9ca3af;background:#f3f4f6;color:#4b5563}
 .issue-list{list-style:none;margin:0;padding:0;border:1px solid var(--line,#e5e7eb);border-radius:12px;overflow:hidden}
 .issue-row{display:flex;align-items:center;gap:10px;padding:12px 14px;border-bottom:1px solid var(--line,#e5e7eb);font-size:14px}
 .issue-row:last-child{border-bottom:0}
-.issue-row.closed{opacity:.62}
+/* 已关闭：灰底叠一点原色，别用整行 opacity（对比度太低看不清） */
+.issue-row.closed{background:rgba(107,114,128,.07)}
+.issue-row.closed .issue-title{color:inherit;opacity:.85}
+.issue-row.closed .kind{filter:grayscale(.45)}
+.issue-row.closed .state-dot{background:#9ca3af}
 .state-dot{width:9px;height:9px;border-radius:50%;background:#16a34a;flex:0 0 auto}
 .issue-row.closed .state-dot{background:#9ca3af}
 .issue-title{font-weight:600;color:inherit;text-decoration:none}
@@ -103,6 +111,7 @@
   <span class="ptab-spacer"></span>
   <a class="ptab-cta bug" href="/p/{{ post.id }}/issues?kind=bug">报告 Bug</a>
   <a class="ptab-cta idea" href="/p/{{ post.id }}/issues?kind=feature">改进意见</a>
+  <a class="ptab-cta difficulty" href="/p/{{ post.id }}/issues?kind=difficulty">难度建议</a>
 </nav>
 
 {% if tab == "issues" %}
@@ -117,6 +126,7 @@
       <a class="chip{% if issue_kind.is_empty() %} on{% endif %}" href="/p/{{ post.id }}/issues?state={{ issue_state }}">全部类型</a>
       <a class="chip{% if issue_kind == "bug" %} on{% endif %}" href="/p/{{ post.id }}/issues?state={{ issue_state }}&kind=bug">Bug</a>
       <a class="chip{% if issue_kind == "feature" %} on{% endif %}" href="/p/{{ post.id }}/issues?state={{ issue_state }}&kind=feature">建议</a>
+      <a class="chip{% if issue_kind == "difficulty" %} on{% endif %}" href="/p/{{ post.id }}/issues?state={{ issue_state }}&kind=difficulty">难度</a>
       <a class="chip{% if issue_kind == "other" %} on{% endif %}" href="/p/{{ post.id }}/issues?state={{ issue_state }}&kind=other">其它</a>
     </div>
   </div>
@@ -382,9 +392,7 @@
   </div>{# /post-main #}
 
   {# 右栏：作者 + 资源 + 数据 #}
-  {% endif %}
-
-<aside class="post-aside">
+  <aside class="post-aside">
     <div class="side-card author-card">
       {% if let Some(avatar) = post.avatar %}
       <img class="avatar avatar-lg" src="/avatar/{{ avatar }}" alt="" width="64" height="64">
@@ -447,6 +455,7 @@
   </aside>
 
 <style>
+{% endif %}
 .pa-item{display:block;width:100%;text-align:left;padding:8px 10px;border:0;border-radius:8px;background:none;color:inherit;font:inherit;cursor:pointer}
 .pa-item:hover{background:rgba(127,127,127,.12)}
 .pa-item.ok{color:#15803d}.pa-item.danger{color:#b91c1c}
