@@ -62,6 +62,83 @@
   </style>
 
   <h1 class="site-post-title">{{ post.title }}</h1>
+
+  <style>
+.post-tabs{display:flex;align-items:center;gap:4px;border-bottom:1px solid var(--line,#e5e7eb);margin:10px 0 14px}
+.ptab{padding:8px 14px;font-size:14px;text-decoration:none;color:inherit;opacity:.75;border-bottom:2px solid transparent}
+.ptab.active{opacity:1;font-weight:600;border-bottom-color:#2563eb}
+.ptab b{color:#dc2626}
+.ptab-spacer{flex:1}
+.ptab-cta{font-size:13px;padding:5px 12px;border-radius:999px;text-decoration:none;margin-left:6px}
+.ptab-cta.bug{border:1px solid #dc2626;color:#b91c1c;background:#fef2f2}
+.ptab-cta.idea{border:1px solid #2563eb;color:#1d4ed8;background:#eff6ff}
+.issue-filters{display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;margin:0 0 12px}
+.issue-filters .chips{display:flex;gap:6px}
+.chip{font-size:13px;padding:4px 12px;border-radius:999px;border:1px solid var(--line,#e5e7eb);text-decoration:none;color:inherit}
+.chip.on{border-color:#2563eb;background:rgba(37,99,235,.12);color:#2563eb;font-weight:600}
+.issue-view .kind{font-size:12px;padding:2px 9px;border-radius:999px;white-space:nowrap}
+.issue-view .kind-bug{border:1px solid #dc2626;background:#fee2e2;color:#991b1b}
+.issue-view .kind-feature{border:1px solid #2563eb;background:#dbeafe;color:#1d4ed8}
+.issue-view .kind-other{border:1px solid #9ca3af;background:#f3f4f6;color:#4b5563}
+.issue-list{list-style:none;margin:0;padding:0;border:1px solid var(--line,#e5e7eb);border-radius:12px;overflow:hidden}
+.issue-row{display:flex;align-items:center;gap:10px;padding:12px 14px;border-bottom:1px solid var(--line,#e5e7eb);font-size:14px}
+.issue-row:last-child{border-bottom:0}
+.issue-row.closed{opacity:.62}
+.state-dot{width:9px;height:9px;border-radius:50%;background:#16a34a;flex:0 0 auto}
+.issue-row.closed .state-dot{background:#9ca3af}
+.issue-title{font-weight:600;color:inherit;text-decoration:none}
+.issue-title .num{opacity:.5;font-weight:400}
+.issue-title:hover{color:#2563eb}
+.issue-row .meta{margin-left:auto;font-size:12px;opacity:.65;white-space:nowrap}
+.issue-row .comments{font-size:12px;opacity:.75;white-space:nowrap}
+.issue-count{font-size:13px;opacity:.7;margin:10px 2px}
+.issue-empty{border:1px dashed var(--line,#e5e7eb);border-radius:12px;padding:26px;text-align:center}
+.issue-empty p{margin:8px 0 0;font-size:13px;opacity:.7}
+</style>
+
+{# 与 GitHub 一样：顶部（横幅 + 标题 + 侧栏）不变，只切换中间那块 #}
+<nav class="post-tabs">
+  <a class="ptab{% if tab != "issues" %} active{% endif %}" href="/p/{{ post.id }}">帖子内容</a>
+  <a class="ptab{% if tab == "issues" %} active{% endif %}" href="/p/{{ post.id }}/issues">问题与建议{% if issue_open > 0 %} <b>{{ issue_open }}</b>{% endif %}</a>
+  <span class="ptab-spacer"></span>
+  <a class="ptab-cta bug" href="/p/{{ post.id }}/issues?kind=bug">报告 Bug</a>
+  <a class="ptab-cta idea" href="/p/{{ post.id }}/issues?kind=feature">改进意见</a>
+</nav>
+
+{% if tab == "issues" %}
+<section class="issue-view">
+  <div class="issue-filters">
+    <div class="chips">
+      <a class="chip{% if issue_state == "open" %} on{% endif %}" href="/p/{{ post.id }}/issues?{% if !issue_kind.is_empty() %}kind={{ issue_kind }}&{% endif %}state=open">待处理 {{ issue_open }}</a>
+      <a class="chip{% if issue_state == "closed" %} on{% endif %}" href="/p/{{ post.id }}/issues?{% if !issue_kind.is_empty() %}kind={{ issue_kind }}&{% endif %}state=closed">已关闭</a>
+      <a class="chip{% if issue_state == "all" %} on{% endif %}" href="/p/{{ post.id }}/issues?{% if !issue_kind.is_empty() %}kind={{ issue_kind }}&{% endif %}state=all">全部</a>
+    </div>
+    <div class="chips">
+      <a class="chip{% if issue_kind.is_empty() %} on{% endif %}" href="/p/{{ post.id }}/issues?state={{ issue_state }}">全部类型</a>
+      <a class="chip{% if issue_kind == "bug" %} on{% endif %}" href="/p/{{ post.id }}/issues?state={{ issue_state }}&kind=bug">Bug</a>
+      <a class="chip{% if issue_kind == "feature" %} on{% endif %}" href="/p/{{ post.id }}/issues?state={{ issue_state }}&kind=feature">建议</a>
+      <a class="chip{% if issue_kind == "other" %} on{% endif %}" href="/p/{{ post.id }}/issues?state={{ issue_state }}&kind=other">其它</a>
+    </div>
+  </div>
+  {% if issues.is_empty() %}
+  <div class="issue-empty"><b>这里还没有符合条件的条目。</b><p>发现问题点上面的「报告 Bug」，想要新功能点「改进意见」。</p></div>
+  {% else %}
+  <ul class="issue-list">
+    {% for issue in issues %}
+    <li class="issue-row{% if !issue.open %} closed{% endif %}">
+      <span class="state-dot"></span>
+      <span class="kind kind-{{ issue.kind }}">{{ issue.kind_label }}</span>
+      <a class="issue-title" href="/p/{{ post.id }}/issues/{{ issue.id }}"><span class="num">#{{ issue.id }}</span> {{ issue.title }}</a>
+      {% if !issue.open %}<span class="tag">已关闭</span>{% endif %}
+      <span class="meta">{{ issue.author }} · {{ issue.created }}</span>
+      <span class="comments">💬 {{ issue.comments }}</span>
+    </li>
+    {% endfor %}
+  </ul>
+  <p class="issue-count">显示 {{ issue_shown }} 条{% if issue_state == "open" %}（默认只看待处理；<a href="/p/{{ post.id }}/issues?state=all">查看全部</a>，含已关闭）{% endif %}</p>
+  {% endif %}
+</section>
+{% else %}
   <div class="meta byline">
     {% if let Some(avatar) = post.avatar %}
     <img class="avatar" src="/avatar/{{ avatar }}" alt="" width="24" height="24">
@@ -305,7 +382,9 @@
   </div>{# /post-main #}
 
   {# 右栏：作者 + 资源 + 数据 #}
-  <aside class="post-aside">
+  {% endif %}
+
+<aside class="post-aside">
     <div class="side-card author-card">
       {% if let Some(avatar) = post.avatar %}
       <img class="avatar avatar-lg" src="/avatar/{{ avatar }}" alt="" width="64" height="64">

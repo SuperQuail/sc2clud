@@ -23,9 +23,9 @@ use crate::error::{AppError, AppResult};
 use crate::routes::{require_user, wants_html};
 use crate::session::{self, CurrentUser};
 use crate::templates::{
-    CommentView, EditImageView, EditPostTemplate, ImageView, IssueCardView, IssuesPageTemplate,
-    KindOption, MirrorView, NewPostTemplate, PostDetailView, PostPageTemplate, ProviderOption,
-    SectionOption, SourceSlot, SourceView, format_date, render,
+    CommentView, EditImageView, EditPostTemplate, ImageView, IssueCardView, KindOption, MirrorView,
+    NewPostTemplate, PostDetailView, PostPageTemplate, ProviderOption, SectionOption, SourceSlot,
+    SourceView, format_date, render,
 };
 
 /// 手工解析过的发帖/编辑表单。
@@ -222,6 +222,9 @@ async fn build_post_page<'a>(
     cui: Option<&str>,
     query_page: i64,
     ivi_raw: Option<u8>,
+    tab: &str,
+    issue_state: &str,
+    issue_kind: &str,
 ) -> AppResult<PostPageTemplate<'a>> {
     // 预览开关：只有开发实例看这个参数（生产恒为样式 1，预览代码不影响线上）
     // 生产恒用已评审通过的样式：菜单=2（分组下拉）、赞助=1（左渠道右二维码）、提示=3（红圆图标卡）
@@ -443,6 +446,10 @@ async fn build_post_page<'a>(
         issue_total,
         issues,
         ivi,
+        tab: tab.to_string(),
+        issue_state: issue_state.to_string(),
+        issue_kind: issue_kind.to_string(),
+        issue_shown: issue_total,
         comments_total,
         comments_page,
         comments_pages,
@@ -556,6 +563,9 @@ pub async fn post_page(
             .unwrap_or(1)
             .max(1),
         query.ivi,
+        "content",
+        "open",
+        "",
     )
     .await
     {
@@ -1072,55 +1082,30 @@ pub async fn issues_page(
     State(state): State<AppState>,
     Path(id): Path<i64>,
     headers: HeaderMap,
-    Query(query): Query<crate::pages_posts::IssuesQuery>,
-) -> AppResult<Response> {
-    let user = session::current_user(&state, &headers).await.ok().flatten();
-    let post = repo::get_post_for(
-        state.db.pool(),
-        id,
-        user.as_ref().map(|user| user.id),
-        user.as_ref().is_some_and(|user| user.is_staff()),
-    )
-    .await
-    .ok()
-    .flatten()
-    .ok_or_else(|| AppError::not_found("帖子不存在或不可见"))?;
-    let all_rows = repo::list_issues(state.db.pool(), id, true, 200, 0).await?;
-    let open_count = all_rows.iter().filter(|row| row.state == "open").count() as i64;
-    let closed_count = all_rows.len() as i64 - open_count;
-    // 与 GitHub 一致：默认只看待处理，已关闭的要显式点出来；类型可筛
+    Query(query): Query<IssuesQuery>,
+) -> Response {
+    // 与 GitHub 一样：顶部（横幅 + 标题 + 右侧栏）不变，只把中间那块换成 issue 列表
     let state_filter = query.state.clone().unwrap_or_else(|| "open".to_string());
     let kind_filter = query.kind.clone().unwrap_or_default();
-    let issues = all_rows
-        .into_iter()
-        .filter(|row| match state_filter.as_str() {
-            "all" => true,
-            "closed" => row.state == "closed",
-            _ => row.state == "open",
-        })
-        .filter(|row| kind_filter.is_empty() || row.kind == kind_filter)
-        .map(Parties::card)
-        .collect::<Vec<_>>();
-    let shown_count = issues.len() as i64;
-    Ok(render(IssuesPageTemplate {
-        site_name: &state.config.server.site_name,
-        user_label: user.as_ref().map(|user| user.display_name.clone()),
-        is_staff: user.as_ref().is_some_and(|user| user.is_staff()),
-        csrf: user
-            .as_ref()
-            .map(|user| user.csrf_token.clone())
-            .unwrap_or_default(),
-        post_id: id,
-        post_title: &post.title,
-        open_count,
-        closed_count,
-        shown_count,
-        state_filter: state_filter.clone(),
-        kind_filter: kind_filter.clone(),
-        ivi: query.ivi.unwrap_or(1),
-        issues,
-    })
-    .into_response())
+    match build_post_page(
+        &state,
+        id,
+        &headers,
+        None,
+        None,
+        None,
+        None,
+        1,
+        None,
+        "issues",
+        &state_filter,
+        &kind_filter,
+    )
+    .await
+    {
+        Ok(template) => render(template),
+        Err(e) => e.into_response(),
+    }
 }
 
 /// 版式与数据组装的小工位（放这里免得处理器太长）。

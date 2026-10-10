@@ -245,6 +245,12 @@ pub struct PostPageTemplate<'a> {
     pub issues: Vec<IssueCardView>,
     /// 帖子页「问题与建议」入口版式：1 标签页 / 2 大横幅卡 / 3 双按钮条（预览用，生产恒 1）。
     pub ivi: u8,
+    /// 当前标签：content = 帖子内容（默认）/ issues = 问题与建议（与 GitHub 一样只换中间那块）。
+    pub tab: String,
+    /// issue 筛选（issues 标签用）：状态 open|closed|all 与类型。
+    pub issue_state: String,
+    pub issue_kind: String,
+    pub issue_shown: i64,
     /// 回复区分页（每页 15 个主楼层）。
     pub comments_total: i64,
     pub comments_page: i64,
