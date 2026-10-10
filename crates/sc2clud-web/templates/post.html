@@ -376,8 +376,9 @@
   let active = -1;
   // 预览用：?mention=1 直接展开候选，方便看弹出位置
   if (new URLSearchParams(location.search).get('mention') === '1') {
-    setTimeout(async () => {
-      area.value = '@' + area.value;
+    setTimeout(() => {
+      // 关键词要有内容才会查（空 @ 不弹）
+      area.value = '@t';
       area.dispatchEvent(new Event('input'));
       area.focus();
     }, 300);
