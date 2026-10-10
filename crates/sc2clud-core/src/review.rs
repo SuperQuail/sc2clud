@@ -404,3 +404,167 @@ mod tests {
         );
     }
 }
+
+// ---------------------------------------------------------------- AI 审核（工具调用 / 文本化）
+
+/// AI 审核的判词，与三个工具名一一对应。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum AiVerdict {
+    /// 没问题，直接放行。
+    Approve,
+    /// 拿不准，交人工。
+    Pending,
+    /// 明确违规。
+    Reject,
+}
+
+impl AiVerdict {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            AiVerdict::Approve => "approve",
+            AiVerdict::Pending => "pending",
+            AiVerdict::Reject => "reject",
+        }
+    }
+
+    /// 工具名 → 判词（AI 只能在这三个工具里选一个）。
+    pub fn from_tool_name(name: &str) -> Option<Self> {
+        match name {
+            "approve_post" | "approve_comment" => Some(AiVerdict::Approve),
+            "pending_post" | "pending_comment" => Some(AiVerdict::Pending),
+            "reject_post" | "reject_comment" => Some(AiVerdict::Reject),
+            _ => None,
+        }
+    }
+
+    /// 落到帖子的审核状态：待定 = 不自动放行，留在人工队列。
+    pub fn review_state(&self) -> &'static str {
+        match self {
+            AiVerdict::Approve => "approved",
+            AiVerdict::Pending => "pending",
+            AiVerdict::Reject => "rejected",
+        }
+    }
+}
+
+/// 三个工具的定义，字段照 OpenAI Chat Completions 的 tools 规范（对方的接口就是 OpenAPI 格式）。
+pub fn ai_tools(target: &str) -> serde_json::Value {
+    let what = if target == "comment" {
+        "评论"
+    } else {
+        "帖子"
+    };
+    serde_json::json!([
+        {
+            "type": "function",
+            "function": {
+                "name": format!("approve_{target}"),
+                "description": format!("{what}没有问题，内容合规，直接通过，不需要人工再看。"),
+                "parameters": {
+                    "type": "object",
+                    "properties": { "reason": { "type": "string", "description": "一句话说明为什么通过" } },
+                    "required": ["reason"]
+                }
+            }
+        },
+        {
+            "type": "function",
+            "function": {
+                "name": format!("pending_{target}"),
+                "description": format!("拿不准这条{what}是否违规，交给人工审核；信息不足、边界情况用这个。"),
+                "parameters": {
+                    "type": "object",
+                    "properties": { "reason": { "type": "string", "description": "一句话说明哪里拿不准" } },
+                    "required": ["reason"]
+                }
+            }
+        },
+        {
+            "type": "function",
+            "function": {
+                "name": format!("reject_{target}"),
+                "description": format!("{what}有明确违规行为（广告引流、来源不明的可执行文件、侵权、人身攻击等），不通过。"),
+                "parameters": {
+                    "type": "object",
+                    "properties": { "reason": { "type": "string", "description": "一句话说明违反了哪条" } },
+                    "required": ["reason"]
+                }
+            }
+        }
+    ])
+}
+
+/// 帖子文本化：这就是发给 AI 的全文（后台可预览，保证所见即所发）。
+pub fn post_review_text(
+    title: &str,
+    section_label: &str,
+    body: &str,
+    author: &str,
+    sources: &[String],
+) -> String {
+    let mut out =
+        format!("【帖子】\n标题：{title}\n分区：{section_label}\n作者：{author}\n正文：\n{body}\n");
+    if !sources.is_empty() {
+        out.push_str("下载来源：\n");
+        for source in sources {
+            out.push_str(&format!("- {source}\n"));
+        }
+    }
+    out
+}
+
+/// 评论文本化（评论没有标题与来源）。
+pub fn comment_review_text(body: &str, author: &str, post_title: &str) -> String {
+    format!("【评论】\n所属帖子：{post_title}\n作者：{author}\n正文：\n{body}\n")
+}
+
+#[cfg(test)]
+mod ai_review_tests {
+    use super::*;
+
+    #[test]
+    fn three_tools_map_to_three_verdicts() {
+        assert_eq!(
+            AiVerdict::from_tool_name("approve_post"),
+            Some(AiVerdict::Approve)
+        );
+        assert_eq!(
+            AiVerdict::from_tool_name("pending_comment"),
+            Some(AiVerdict::Pending)
+        );
+        assert_eq!(
+            AiVerdict::from_tool_name("reject_post"),
+            Some(AiVerdict::Reject)
+        );
+        assert_eq!(AiVerdict::from_tool_name("delete_everything"), None);
+        assert_eq!(AiVerdict::Pending.review_state(), "pending");
+        assert_eq!(AiVerdict::Approve.review_state(), "approved");
+    }
+
+    #[test]
+    fn tools_are_openai_shaped() {
+        let tools = ai_tools("post");
+        let list = tools.as_array().expect("工具列表");
+        assert_eq!(list.len(), 3, "通过 / 待定 / 不通过三个工具");
+        for tool in list {
+            assert_eq!(tool["type"], "function");
+            assert!(tool["function"]["description"].is_string());
+            assert_eq!(tool["function"]["parameters"]["type"], "object");
+        }
+    }
+
+    #[test]
+    fn text_is_reproducible() {
+        let text = post_review_text(
+            "标题",
+            "公告",
+            "正文",
+            "唐天",
+            &["百度网盘：https://x".to_string()],
+        );
+        assert!(text.contains("标题：标题"));
+        assert!(text.contains("分区：公告"));
+        assert!(text.contains("百度网盘"));
+        assert!(comment_review_text("回复内容", "爱兰琪尔", "某帖").starts_with("【评论】"));
+    }
+}
