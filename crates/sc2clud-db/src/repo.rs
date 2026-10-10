@@ -11,12 +11,12 @@ use sqlx::{SqlitePool, query, query_as};
 use crate::db_err;
 use crate::models::{
     AdminUserRow, AnnouncementRow, AuditRow, BannerRow, BlobRow, BlockRow, BookmarkRow,
-    CommentWithAuthorRow, ConversationRow, ExpEventRow, FileRow, FileWithOwnerRow,
-    GroupSectionRuleRow, ImageJobRow, IssueCommentRow, MessageRow, NotificationRow,
-    PaymentChannelRow, PostImageRow, PostIssueRow, PostRevisionRow, PostRow, PostSearchRow,
-    PostSourceRow, PostWithAuthorRow, ReleaseAssetRow, ReleaseRow, SectionModeratorRow, SectionRow,
-    SessionRow, SiteDomainRow, TitleRow, UploadSessionRow, UserGroupRow, UserHitRow, UserRow,
-    UserTitleRow,
+    CommentWithAuthorRow, ConversationRow, DefaultAvatarRow, ExpEventRow, FileRow,
+    FileWithOwnerRow, GroupSectionRuleRow, ImageJobRow, IssueCommentRow, MessageRow,
+    NotificationRow, PaymentChannelRow, PostImageRow, PostIssueRow, PostRevisionRow, PostRow,
+    PostSearchRow, PostSourceRow, PostWithAuthorRow, ReleaseAssetRow, ReleaseRow,
+    SectionModeratorRow, SectionRow, SessionRow, SiteDomainRow, TitleRow, UploadSessionRow,
+    UserGroupRow, UserHitRow, UserRow, UserTitleRow,
 };
 
 // ---------------------------------------------------------------- 用户
@@ -2102,9 +2102,13 @@ pub async fn list_notifications(
     query_as::<_, NotificationRow>(
         "SELECT n.id, n.kind, n.title, n.body, n.link, n.read_at, n.created_at, \
                 a.handle AS actor_handle, a.display_name AS actor_display_name, \
-                a.avatar_hash AS actor_avatar \
+                COALESCE(a.avatar_hash, a.default_avatar_hash) AS actor_avatar \
          FROM notifications n LEFT JOIN users a ON a.id = n.actor_id \
-         WHERE n.user_id = ? ORDER BY n.created_at DESC, n.id DESC LIMIT ?",
+         WHERE n.user_id = ? AND n.deleted_at IS NULL \
+           AND NOT EXISTS (SELECT 1 FROM notification_mutes m \
+                           WHERE m.user_id = n.user_id AND m.kind = n.kind \
+                             AND (m.link = '' OR m.link = COALESCE(n.link, ''))) \
+         ORDER BY n.created_at DESC, n.id DESC LIMIT ?",
     )
     .bind(user_id)
     .bind(limit)
@@ -3422,6 +3426,132 @@ pub async fn set_site_text(
     .bind(value)
     .bind(now)
     .bind(by)
+    .execute(pool)
+    .await
+    .map_err(db_err)?;
+    Ok(())
+}
+// ---------------------------------------------------------------- 默认头像池 / 通知删除
+
+pub async fn list_default_avatars(pool: &SqlitePool) -> Result<Vec<DefaultAvatarRow>> {
+    query_as::<_, DefaultAvatarRow>("SELECT * FROM site_default_avatars ORDER BY id")
+        .fetch_all(pool)
+        .await
+        .map_err(db_err)
+}
+
+/// 把一个 blob 加进默认头像池；重复加返回 false。
+pub async fn add_default_avatar(
+    pool: &SqlitePool,
+    hash: &str,
+    mime: &str,
+    note: &str,
+    by: Option<i64>,
+    now: i64,
+) -> Result<bool> {
+    let affected = query(
+        "INSERT OR IGNORE INTO site_default_avatars (hash, mime, note, created_at, created_by) \
+         VALUES (?, ?, ?, ?, ?)",
+    )
+    .bind(hash)
+    .bind(mime)
+    .bind(note)
+    .bind(now)
+    .bind(by)
+    .execute(pool)
+    .await
+    .map_err(db_err)?
+    .rows_affected();
+    Ok(affected == 1)
+}
+
+/// 移出池子，返回被移掉的那张的 hash（调用方负责回收文件）。
+pub async fn remove_default_avatar(pool: &SqlitePool, id: i64) -> Result<Option<String>> {
+    let row: Option<(String,)> = query_as("SELECT hash FROM site_default_avatars WHERE id = ?")
+        .bind(id)
+        .fetch_optional(pool)
+        .await
+        .map_err(db_err)?;
+    let Some((hash,)) = row else { return Ok(None) };
+    query("DELETE FROM site_default_avatars WHERE id = ?")
+        .bind(id)
+        .execute(pool)
+        .await
+        .map_err(db_err)?;
+    Ok(Some(hash))
+}
+
+/// 给还没有头像的用户随机分一个默认头像（分过就固定不变）。
+/// 池子为空时返回 None —— 调用方用内置兜底资源。
+pub async fn ensure_default_avatar(pool: &SqlitePool, user_id: i64) -> Result<Option<String>> {
+    let current: Option<(Option<String>, Option<String>)> =
+        query_as("SELECT default_avatar_hash, avatar_hash FROM users WHERE id = ?")
+            .bind(user_id)
+            .fetch_optional(pool)
+            .await
+            .map_err(db_err)?;
+    let Some((assigned, own)) = current else {
+        return Ok(None);
+    };
+    if let Some(hash) = assigned {
+        return Ok(Some(hash));
+    }
+    // 已经有自己的头像就不用分（默认头像是给「没头像」的人兜底）
+    if own.is_some() {
+        return Ok(None);
+    }
+    let picked: Option<(String,)> =
+        query_as("SELECT hash FROM site_default_avatars ORDER BY RANDOM() LIMIT 1")
+            .fetch_optional(pool)
+            .await
+            .map_err(db_err)?;
+    let Some((hash,)) = picked else {
+        return Ok(None);
+    };
+    query("UPDATE users SET default_avatar_hash = ? WHERE id = ?")
+        .bind(&hash)
+        .bind(user_id)
+        .execute(pool)
+        .await
+        .map_err(db_err)?;
+    Ok(Some(hash))
+}
+
+/// 删除一条通知（只对自己隐藏）。
+pub async fn delete_notification(
+    pool: &SqlitePool,
+    user_id: i64,
+    id: i64,
+    now: i64,
+) -> Result<bool> {
+    let affected = query(
+        "UPDATE notifications SET deleted_at = ? WHERE id = ? AND user_id = ? AND deleted_at IS NULL",
+    )
+    .bind(now)
+    .bind(id)
+    .bind(user_id)
+    .execute(pool)
+    .await
+    .map_err(db_err)?
+    .rows_affected();
+    Ok(affected == 1)
+}
+
+/// 「不再通知」：对某条内容（link）或某类别静音；`link` 传空表示整个类别。
+pub async fn mute_notification(
+    pool: &SqlitePool,
+    user_id: i64,
+    kind: &str,
+    link: &str,
+    now: i64,
+) -> Result<()> {
+    query(
+        "INSERT OR IGNORE INTO notification_mutes (user_id, kind, link, created_at) VALUES (?, ?, ?, ?)",
+    )
+    .bind(user_id)
+    .bind(kind)
+    .bind(link)
+    .bind(now)
     .execute(pool)
     .await
     .map_err(db_err)?;

@@ -286,6 +286,8 @@ pub struct InboxTemplate<'a> {
 #[derive(Debug, Clone)]
 pub struct InboxNoticeView {
     pub id: i64,
+    /// 通知类别（点赞 like / 审核 review / issue / 推送 push…），「不再通知」按它静音。
+    pub kind: String,
     pub title: String,
     pub body: String,
     pub link: String,

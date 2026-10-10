@@ -170,6 +170,16 @@ pub struct UserHitRow {
     pub post_count: i64,
 }
 
+/// 默认头像池里的一张。
+#[derive(Debug, Clone, FromRow)]
+pub struct DefaultAvatarRow {
+    pub id: i64,
+    pub hash: String,
+    pub mime: String,
+    pub note: String,
+    pub created_at: i64,
+}
+
 /// 站点域名（统一管理「哪些域名是我们的」）。
 #[derive(Debug, Clone, FromRow)]
 pub struct SiteDomainRow {

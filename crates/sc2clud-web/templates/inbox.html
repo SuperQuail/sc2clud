@@ -91,6 +91,11 @@
             {% endif %}
           </div>
           <div class="feed-date">{{ n.date }}</div>
+          {# B 站那两件事：删除该通知 / 不再通知 #}
+          <div class="feed-actions">
+            <form method="post" action="/notifications/{{ n.id }}/delete"><input type="hidden" name="csrf" value="{{ csrf }}"><input type="hidden" name="tab" value="likes"><button class="feed-action" type="submit">删除该通知</button></form>
+            <form method="post" action="/notifications/mute"><input type="hidden" name="csrf" value="{{ csrf }}"><input type="hidden" name="tab" value="likes"><input type="hidden" name="kind" value="like"><input type="hidden" name="link" value="{{ n.link }}"><button class="feed-action" type="submit">不再通知</button></form>
+          </div>
         </div>
         {% if !n.body.is_empty() %}<div class="feed-quote">{{ n.body }}</div>{% endif %}
       </div>
@@ -100,7 +105,11 @@
       <article class="feed-card">
         <div class="feed-card-head"><h3>{{ n.title }}</h3><span class="feed-date">{{ n.date }}</span></div>
         <p class="feed-card-body">{{ n.body }}</p>
-        {% if !n.link.is_empty() %}<a class="feed-card-link" href="{{ n.link }}">查看详情</a>{% endif %}
+        <div class="feed-actions">
+          {% if !n.link.is_empty() %}<a class="feed-card-link" href="{{ n.link }}">查看详情</a>{% endif %}
+          <form method="post" action="/notifications/{{ n.id }}/delete"><input type="hidden" name="csrf" value="{{ csrf }}"><input type="hidden" name="tab" value="system"><button class="feed-action" type="submit">删除该通知</button></form>
+          <form method="post" action="/notifications/mute"><input type="hidden" name="csrf" value="{{ csrf }}"><input type="hidden" name="tab" value="system"><input type="hidden" name="kind" value="{{ n.kind }}"><input type="hidden" name="link" value="{{ n.link }}"><button class="feed-action" type="submit">不再通知</button></form>
+        </div>
       </article>
       {% endfor %}
       {% endif %}
@@ -163,6 +172,10 @@
 .feed-card-head h3{margin:0;font-size:14px}
 .feed-card-body{margin:8px 0 0;font-size:13px;line-height:1.8;opacity:.9}
 .feed-card-link{display:inline-block;margin-top:8px;font-size:13px;color:#2563eb;text-decoration:none}
+.feed-actions{display:flex;gap:14px;align-items:center;margin-top:6px;flex-wrap:wrap}
+.feed-actions form{display:inline}
+.feed-action{border:0;background:none;color:inherit;opacity:.65;font:inherit;font-size:12px;cursor:pointer;padding:0}
+.feed-action:hover{opacity:1;text-decoration:underline}
 @media (max-width:900px){.inbox,.inbox--dm{grid-template-columns:1fr}.inbox-rail{flex-direction:row;flex-wrap:wrap;align-items:center}.inbox-nav{flex-direction:row}}
 </style>
 {% endblock %}

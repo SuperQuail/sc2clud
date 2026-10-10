@@ -242,6 +242,8 @@ pub async fn center(
     let user = crate::routes::require_user(&state, &headers).await?;
     let tab = params.tab.unwrap_or_else(|| "dm".to_string());
     let selected = params.with.clone().unwrap_or_default();
+    // 没头像的用户随机分一个默认头像（分过就固定）
+    let _ = repo::ensure_default_avatar(state.db.pool(), user.id).await;
 
     // 左栏「我的消息」：会话列表（最近消息在前）
     let conversations: Vec<crate::templates::InboxConversationView> =
@@ -267,8 +269,10 @@ pub async fn center(
     let mut system_unread = 0i64;
     for row in repo::list_notifications(state.db.pool(), user.id, 100).await? {
         let actor = row.actor_display_name.clone().unwrap_or_default();
+        let kind = row.kind.clone();
         let view = crate::templates::InboxNoticeView {
             id: row.id,
+            kind: kind.clone(),
             avatar: row.actor_avatar.clone(),
             actor_names: if actor.is_empty() {
                 Vec::new()
@@ -378,4 +382,42 @@ pub async fn center(
         notices,
         selected_notice,
     }))
+}
+
+#[derive(Debug, Deserialize)]
+pub struct NoticeActionForm {
+    pub csrf: String,
+    /// 操作完回到哪个分类。
+    pub tab: Option<String>,
+    pub kind: Option<String>,
+    pub link: Option<String>,
+}
+
+/// 删除一条通知（只对自己隐藏）。
+pub async fn notification_delete(
+    State(state): State<AppState>,
+    Path(id): Path<i64>,
+    headers: HeaderMap,
+    Form(form): Form<NoticeActionForm>,
+) -> AppResult<Redirect> {
+    let user = crate::routes::require_user(&state, &headers).await?;
+    session::check_csrf(&user, &form.csrf)?;
+    let _ = repo::delete_notification(state.db.pool(), user.id, id, now_unix()).await?;
+    let tab = form.tab.unwrap_or_else(|| "system".to_string());
+    Ok(Redirect::to(&format!("/inbox?tab={tab}")))
+}
+
+/// 不再通知：对这条内容（link）静音；link 为空表示整个类别。
+pub async fn notification_mute(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Form(form): Form<NoticeActionForm>,
+) -> AppResult<Redirect> {
+    let user = crate::routes::require_user(&state, &headers).await?;
+    session::check_csrf(&user, &form.csrf)?;
+    let kind = form.kind.unwrap_or_default();
+    let link = form.link.unwrap_or_default();
+    repo::mute_notification(state.db.pool(), user.id, &kind, &link, now_unix()).await?;
+    let tab = form.tab.unwrap_or_else(|| "system".to_string());
+    Ok(Redirect::to(&format!("/inbox?tab={tab}")))
 }

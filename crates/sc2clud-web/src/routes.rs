@@ -58,6 +58,14 @@ pub fn pages() -> Router<AppState> {
             "/search",
             axum::routing::get(crate::pages_search::search_page),
         )
+        .route(
+            "/notifications/{id}/delete",
+            axum::routing::post(crate::pages_messages::notification_delete),
+        )
+        .route(
+            "/notifications/mute",
+            axum::routing::post(crate::pages_messages::notification_mute),
+        )
         .route("/inbox", axum::routing::get(crate::pages_messages::center))
         .route(
             "/login",
@@ -318,6 +326,14 @@ pub fn api_upload() -> Router<AppState> {
         .route(
             "/admin/site-texts",
             axum::routing::post(crate::pages_admin::site_texts_save),
+        )
+        .route(
+            "/admin/default-avatars",
+            axum::routing::post(crate::pages_admin::default_avatar_add),
+        )
+        .route(
+            "/admin/default-avatars/remove",
+            axum::routing::post(crate::pages_admin::default_avatar_remove),
         )
         // ---- 统一域名管理（管理员及以上）----
         .route(

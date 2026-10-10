@@ -463,6 +463,82 @@ pub async fn site_texts_save(
     tracing::info!(actor.id = actor.id, "更新站点默认文案 default_bio");
     Ok(done(&headers, "默认简介已保存", "/admin/users/overview"))
 }
+
+#[derive(Debug, Deserialize)]
+pub struct DefaultAvatarQuery {
+    note: Option<String>,
+}
+
+/// 往默认头像池里加一张（原始文件字节，CSRF 走 header，与收款码上传同一套）。
+pub async fn default_avatar_add(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    axum::extract::Query(query): axum::extract::Query<DefaultAvatarQuery>,
+    body: axum::body::Body,
+) -> AppResult<Response> {
+    let actor = require_user(&state, &headers).await?;
+    session::guard(Some(&actor), Permission::ManageUsers)?;
+    let token = headers
+        .get("x-csrf-token")
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or("");
+    session::check_csrf(&actor, token)?;
+    let bytes = axum::body::to_bytes(body, 512 * 1024)
+        .await
+        .map_err(|_| AppError::Domain(DomainError::InvalidInput("图片太大".to_string())))?;
+    let mime = crate::routes::sniff_image_mime(&bytes).ok_or_else(|| {
+        AppError::Domain(DomainError::InvalidInput(
+            "只支持 PNG/JPEG/WebP".to_string(),
+        ))
+    })?;
+    // 与收款码上传同一套：固定缓冲流式落盘 + 内容寻址
+    let size = bytes.len() as i64;
+    let reader: sc2clud_storage::BlobReader = Box::pin(tokio_util::io::StreamReader::new(
+        futures_util::stream::once(async move { Ok::<_, std::io::Error>(bytes) }),
+    ));
+    let outcome = state
+        .storage
+        .put_stream(reader, None)
+        .await
+        .map_err(AppError::from)?;
+    let hash = outcome.stat.hash.to_string();
+    let now = now_unix();
+    repo::ensure_blob(state.db.pool(), &hash, size, now).await?;
+    let note = query.note.as_deref().unwrap_or_default().trim();
+    let added = repo::add_default_avatar(
+        state.db.pool(),
+        &hash,
+        mime,
+        note,
+        Some(actor.id),
+        now_unix(),
+    )
+    .await?;
+    Ok(axum::Json(serde_json::json!({ "ok": true, "added": added })).into_response())
+}
+
+#[derive(Debug, Deserialize)]
+pub struct DefaultAvatarRemoveForm {
+    pub csrf: String,
+    pub id: i64,
+}
+
+/// 把一张默认头像移出池子（引用归零的图片会回收）。
+pub async fn default_avatar_remove(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Form(form): Form<DefaultAvatarRemoveForm>,
+) -> AppResult<Response> {
+    let actor = require_user(&state, &headers).await?;
+    session::guard(Some(&actor), Permission::ManageUsers)?;
+    session::check_csrf(&actor, &form.csrf)?;
+    if let Some(hash) = repo::remove_default_avatar(state.db.pool(), form.id).await?
+        && let Ok(blob) = sc2clud_core::BlobHash::parse(&hash)
+    {
+        let _ = state.storage.delete(&blob).await;
+    }
+    Ok(done(&headers, "已移出默认头像池", "/admin/users/overview"))
+}
 pub async fn panel(
     State(state): State<AppState>,
     headers: HeaderMap,
