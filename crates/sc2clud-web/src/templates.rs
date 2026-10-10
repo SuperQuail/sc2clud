@@ -249,6 +249,8 @@ pub struct PostPageTemplate<'a> {
     pub tab: String,
     /// 标签行由数据生成（每个标签自己声明归属，避免模板里写取反条件）。
     pub tabs: Vec<PostTabView>,
+    /// 当前查看的 issue（tab=issue 时才有）。
+    pub issue_detail: Option<IssueDetailView>,
     /// issue 筛选（issues 标签用）：状态 open|closed|all 与类型。
     pub issue_state: String,
     pub issue_kind: String,
@@ -565,6 +567,21 @@ pub struct PostTabView {
     pub active: bool,
     /// 右侧小红数字（例如待处理条数）。
     pub badge: Option<i64>,
+}
+
+/// issue 详情（tab=issue）。
+#[derive(Debug, Clone)]
+pub struct IssueDetailView {
+    pub id: i64,
+    pub kind: String,
+    pub kind_label: String,
+    pub title: String,
+    pub body: String,
+    pub author: String,
+    pub created: String,
+    pub open: bool,
+    /// 能否关闭/重开：作者本人 / 帖子作者 / 管理员及以上（GitHub 式）。
+    pub can_edit: bool,
 }
 
 /// 列表里的一条 issue。

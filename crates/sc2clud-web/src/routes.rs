@@ -441,6 +441,10 @@ pub fn api_upload() -> Router<AppState> {
                 .post(crate::pages_posts::issue_create),
         )
         .route(
+            "/p/{id}/issues/{issue_id}",
+            axum::routing::get(crate::pages_posts::issue_detail_page),
+        )
+        .route(
             "/p/{id}/issues/{issue_id}/state",
             axum::routing::post(crate::pages_posts::issue_set_state),
         )

@@ -226,6 +226,8 @@ async fn build_post_page<'a>(
     issue_state: &str,
     issue_kind: &str,
     issue_q: &str,
+    issue_id: Option<i64>,
+    viewer_id_for_issue: Option<i64>,
 ) -> AppResult<PostPageTemplate<'a>> {
     // 预览开关：只有开发实例看这个参数（生产恒为样式 1，预览代码不影响线上）
     // 生产恒用已评审通过的样式：菜单=2（分组下拉）、赞助=1（左渠道右二维码）、提示=3（红圆图标卡）
@@ -455,6 +457,29 @@ async fn build_post_page<'a>(
         .map(Parties::card)
         .collect();
     let issue_shown = issues.len() as i64;
+    // 详情（tab=issue）：一条 issue + 谁能改（作者 / 帖子作者 / 管理员，GitHub 式）
+    let issue_detail = match issue_id {
+        Some(want) => repo::get_issue(state.db.pool(), want).await?.map(|issue| {
+            let is_staff_viewer = is_staff;
+            let can_edit = viewer_id_for_issue.is_some_and(|uid| {
+                uid == issue.author_id || uid == row.author_id || is_staff_viewer
+            });
+            crate::templates::IssueDetailView {
+                id: issue.id,
+                kind: issue.kind.clone(),
+                kind_label: sc2clud_core::community::IssueKind::parse(&issue.kind)
+                    .map(|kind| kind.label().to_string())
+                    .unwrap_or_else(|_| "其它".to_string()),
+                title: issue.title,
+                body: issue.body,
+                author: issue.author_display_name,
+                created: crate::templates::format_date(issue.created_at),
+                open: issue.state == "open",
+                can_edit,
+            }
+        }),
+        None => None,
+    };
     // 与其它预览开关一样只在开发实例生效
     let ivi = if state.config.server.debug_pages {
         ivi_raw.unwrap_or(1).clamp(1, 3)
@@ -479,6 +504,7 @@ async fn build_post_page<'a>(
     Ok(PostPageTemplate {
         ui_variant,
         tabs,
+        issue_detail,
         issue_open,
         issue_total,
         issues,
@@ -606,6 +632,8 @@ pub async fn post_page(
         "open",
         "",
         "",
+        None,
+        None,
     )
     .await
     {
@@ -1139,6 +1167,39 @@ pub async fn issue_new_page(
         "open",
         query.kind.as_deref().unwrap_or(""),
         "",
+        None,
+        None,
+    )
+    .await
+    {
+        Ok(template) => render(template),
+        Err(e) => e.into_response(),
+    }
+}
+
+/// 单条 issue 详情（同一外壳，tab=issue）。
+pub async fn issue_detail_page(
+    State(state): State<AppState>,
+    Path((id, issue_id)): Path<(i64, i64)>,
+    headers: HeaderMap,
+) -> Response {
+    let viewer = session::current_user(&state, &headers).await.ok().flatten();
+    match build_post_page(
+        &state,
+        id,
+        &headers,
+        None,
+        None,
+        None,
+        None,
+        1,
+        None,
+        "issue",
+        "open",
+        "",
+        "",
+        Some(issue_id),
+        viewer.as_ref().map(|user| user.id),
     )
     .await
     {
@@ -1170,6 +1231,8 @@ pub async fn issues_page(
         &state_filter,
         &kind_filter,
         query.q.as_deref().unwrap_or(""),
+        None,
+        None,
     )
     .await
     {

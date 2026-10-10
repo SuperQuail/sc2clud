@@ -170,7 +170,8 @@
   {% if post.can_edit %}
   <div class="upload-row" data-post-upload data-post-id="{{ post.id }}" data-csrf="{{ csrf }}">
     <input type="file" accept="image/*" id="post-image-input" multiple hidden>
-    <button class="btn ghost sm" type="button" id="post-image-add">添加配图</button>
+    {# 配图上传：旧的 Vue 上传岛已移除，React 版 Uploader 落地前先不显示（死按钮比没按钮更糟） #}
+{% if false %}<button class="btn ghost sm" type="button" id="post-image-add">添加配图</button>{% endif %}
     <span class="hint" data-post-image-status>最多 10 张，单张 50 MB 以内</span>
   </div>
   {% endif %}
