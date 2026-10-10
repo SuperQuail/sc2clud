@@ -1,0 +1,83 @@
+/* ============================================================
+ * 帖子页 / 问题与建议（issue）页面级样式
+ *
+ * 为什么单独成文件：这些规则以前内联在 post.html 里，被 {% if tab %} 的
+ * 分支夹住 —— 换一个标签页就整段样式失效（还出现过 CSS 被当正文渲染）。
+ * 放进静态文件后，样式不再受模板分支影响。
+ * ============================================================ */
+
+/* ---- 顶部页签：帖子内容 / 问题与建议 / 发布反馈 ---- */
+.post-tabs{display:flex;align-items:stretch;gap:2px;width:100%;border-bottom:1px solid var(--line,#e5e7eb);margin:12px 0 16px}
+.post-tabs .ptab{display:flex;align-items:center;justify-content:center;padding:14px 26px;font-size:15px;font-weight:500;text-decoration:none;color:inherit;opacity:.7;border-bottom:3px solid transparent}
+.post-tabs .ptab:hover{opacity:1;background:rgba(37,99,235,.05)}
+.post-tabs .ptab.active{opacity:1;font-weight:600;border-bottom-color:#2563eb}
+.post-tabs .ptab b{color:#dc2626;margin-left:4px}
+.post-tabs .ptab-spacer{flex:1}
+.post-tabs .ptab-cta{display:flex;align-items:center;font-size:13px;padding:6px 14px;border-radius:999px;text-decoration:none;margin:auto 0 auto 6px}
+.post-tabs .ptab-cta.bug{border:1px solid #dc2626;color:#b91c1c;background:#fef2f2}
+.post-tabs .ptab-cta.idea{border:1px solid #2563eb;color:#1d4ed8;background:#eff6ff}
+.post-tabs .ptab-cta.difficulty{border:1px solid #7c3aed;color:#6d28d9;background:#f5f3ff}
+.post-tabs .btn{margin:auto 0 auto 10px}
+
+/* ---- 反馈横幅卡（帖子页顶部入口） ---- */
+.issue-banner{position:relative;border:1px solid var(--line,#e5e7eb);border-left:4px solid #2563eb;border-radius:12px;padding:14px 16px;margin:0 0 16px;background:rgba(37,99,235,.04)}
+.issue-banner .ib-text b{font-size:15px}
+.issue-banner .ib-text p{margin:6px 0 12px;font-size:13px;opacity:.8;line-height:1.6}
+.issue-banner .ib-actions{display:flex;gap:10px;flex-wrap:wrap}
+.issue-banner .ib-btn{flex:1 1 180px;display:flex;flex-direction:column;gap:2px;padding:12px 14px;border-radius:10px;text-decoration:none}
+.issue-banner .ib-btn b{font-size:15px}
+.issue-banner .ib-btn span{font-size:12px;opacity:.85}
+.issue-banner .ib-btn.bug{border:1px solid #dc2626;background:#fee2e2;color:#991b1b}
+.issue-banner .ib-btn.idea{border:1px solid #2563eb;background:#dbeafe;color:#1d4ed8}
+.issue-banner .ib-btn.difficulty{border:1px solid #7c3aed;background:#f5f3ff;color:#6d28d9}
+.issue-banner .ib-count{position:absolute;top:14px;right:16px;font-size:12px;opacity:.7}
+
+/* ---- 问题与建议：筛选条（状态分段 + 类型下拉 + 搜索） ---- */
+.issue-filters{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin:0 0 14px}
+.state-tabs{display:flex;border:1px solid var(--line,#e5e7eb);border-radius:10px;overflow:hidden}
+.state-tabs .st{padding:8px 16px;font-size:14px;text-decoration:none;color:inherit;opacity:.75;border-right:1px solid var(--line,#e5e7eb)}
+.state-tabs .st:last-child{border-right:0}
+.state-tabs .st.on{background:rgba(37,99,235,.12);color:#2563eb;font-weight:600;opacity:1}
+.kind-menu{position:relative}
+.kind-menu summary{cursor:pointer;list-style:none;font-size:14px;padding:8px 14px;border:1px solid var(--line,#e5e7eb);border-radius:10px}
+.kind-menu summary::-webkit-details-marker{display:none}
+.kind-menu[open] summary{border-color:#2563eb;color:#2563eb}
+.kind-menu .km-panel{position:absolute;z-index:20;top:calc(100% + 4px);left:0;min-width:160px;background:var(--bg,#fff);border:1px solid var(--line,#e5e7eb);border-radius:10px;box-shadow:0 8px 24px rgba(0,0,0,.12);padding:4px}
+.kind-menu .km-panel a{display:block;padding:8px 10px;font-size:14px;text-decoration:none;color:inherit;border-radius:6px}
+.kind-menu .km-panel a:hover{background:rgba(37,99,235,.08);color:#2563eb}
+.issue-search{margin-left:auto;display:flex;gap:6px}
+.issue-search input[type=search]{padding:7px 12px;border:1px solid var(--line,#e5e7eb);border-radius:10px;background:none;color:inherit;font:inherit;font-size:14px;min-width:180px}
+
+/* ---- 问题与建议：列表 ---- */
+.issue-list{list-style:none;margin:0;padding:0;border:1px solid var(--line,#e5e7eb);border-radius:12px;overflow:hidden}
+.issue-list .issue-row{display:flex;align-items:center;gap:10px;padding:12px 14px;border-bottom:1px solid var(--line,#e5e7eb);font-size:14px}
+.issue-list .issue-row:last-child{border-bottom:0}
+.issue-list .state-dot{width:9px;height:9px;border-radius:50%;background:#16a34a;flex:0 0 auto}
+.issue-list .issue-title{font-weight:600;color:inherit;text-decoration:none}
+.issue-list .issue-title .num{opacity:.5;font-weight:400}
+.issue-list .issue-title:hover{color:#2563eb}
+.issue-list .meta{margin-left:auto;font-size:12px;opacity:.65;white-space:nowrap}
+.issue-list .comments{font-size:12px;opacity:.75;white-space:nowrap}
+/* 已关闭：灰底叠一点原色（不用整行 opacity，对比度太低） */
+.issue-list .issue-row.closed{background:rgba(107,114,128,.07)}
+.issue-list .issue-row.closed .issue-title{opacity:.85}
+.issue-list .issue-row.closed .kind{filter:grayscale(.45)}
+.issue-list .issue-row.closed .state-dot{background:#9ca3af}
+
+/* ---- 类型徽章 ---- */
+.issue-view .kind,.issue-list .kind{font-size:12px;padding:2px 9px;border-radius:999px;white-space:nowrap}
+.issue-view .kind-bug,.issue-list .kind-bug{border:1px solid #dc2626;background:#fee2e2;color:#991b1b}
+.issue-view .kind-feature,.issue-list .kind-feature{border:1px solid #2563eb;background:#dbeafe;color:#1d4ed8}
+.issue-view .kind-difficulty,.issue-list .kind-difficulty{border:1px solid #7c3aed;background:#f5f3ff;color:#6d28d9}
+.issue-view .kind-other,.issue-list .kind-other{border:1px solid #9ca3af;background:#f3f4f6;color:#4b5563}
+.issue-view .tag,.issue-list .tag{font-size:12px;padding:1px 8px;border-radius:6px;background:rgba(0,0,0,.06)}
+.issue-count{font-size:13px;opacity:.7;margin:10px 2px}
+.issue-empty{border:1px dashed var(--line,#e5e7eb);border-radius:12px;padding:26px;text-align:center}
+.issue-empty p{margin:8px 0 0;font-size:13px;opacity:.7}
+
+/* ---- 发布反馈表单 ---- */
+.issue-new form{display:flex;flex-direction:column;gap:14px}
+.issue-new label{display:block;font-size:14px}
+.issue-new input[type=text],.issue-new input[type=search],.issue-new textarea{width:100%;margin-top:6px;padding:10px 12px;border:1px solid var(--line,#e5e7eb);border-radius:10px;background:none;color:inherit;font:inherit;font-size:14px}
+.issue-new .issue-actions{display:flex;gap:10px;align-items:center}
+.issue-new .issue-actions .btn{display:inline-flex;align-items:center;text-decoration:none}
