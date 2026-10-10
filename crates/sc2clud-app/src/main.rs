@@ -60,8 +60,8 @@ fn print_help() {
          用法：\n\
            sc2clud serve     启动 HTTP 服务（默认）\n\
            sc2clud check     配置与依赖自检，不监听端口\n\
-           sc2clud set-password <用户名> <新口令>   重置口令（忘记管理员口令时用）\n\
-sc2clud create-admin <登录名> <显示名> <口令>   创建/提升超级管理员\n\
+           sc2clud set-password <用户名> <新密码>   重置密码（忘记管理员密码时用）\n\
+sc2clud create-admin <登录名> <显示名> <密码>   创建/提升超级管理员\n\
            sc2clud version   打印版本\n\n\
          配置：<exe 同级>/sc2clud.toml，环境变量优先（见 .env.example）",
         env!("CARGO_PKG_VERSION")
@@ -111,13 +111,13 @@ async fn check() -> Result<()> {
     Ok(())
 }
 
-/// 重置某个账号的口令，并确保它处于激活状态。
+/// 重置某个账号的密码，并确保它处于激活状态。
 ///
 /// 创建或提升一个**超级管理员**账号（幂等）：
-/// 不存在就建，已存在就提升为 super、激活并改显示名与口令。
+/// 不存在就建，已存在就提升为 super、激活并改显示名与密码。
 async fn create_admin() -> Result<()> {
     let mut args = std::env::args().skip(2);
-    let usage = "用法：sc2clud create-admin <登录名> <显示名> <口令>";
+    let usage = "用法：sc2clud create-admin <登录名> <显示名> <密码>";
     let handle = args.next().context(usage)?;
     let display_name = args.next().context(usage)?;
     let password = args.next().context(usage)?;
@@ -126,7 +126,7 @@ async fn create_admin() -> Result<()> {
         sc2clud_core::auth::validate_handle(&handle).map_err(|e| anyhow::anyhow!("{e}"))?;
     let display_name = sc2clud_core::auth::validate_display_name(&display_name)
         .map_err(|e| anyhow::anyhow!("{e}"))?;
-    // validate_password 只做校验（返回 ()），口令按原样使用。
+    // validate_password 只做校验（返回 ()），密码按原样使用。
     sc2clud_core::auth::validate_password(&password).map_err(|e| anyhow::anyhow!("{e}"))?;
 
     let config = Config::load().context("装载配置失败")?;
@@ -143,7 +143,7 @@ async fn create_admin() -> Result<()> {
     let hash = sc2clud_core::auth::hash_password(&password).map_err(|e| anyhow::anyhow!("{e}"))?;
     repo::set_user_password(db.pool(), user_id, &hash)
         .await
-        .context("写入口令失败")?;
+        .context("写入密码失败")?;
     repo::set_display_name(db.pool(), user_id, &display_name)
         .await
         .context("写入显示名失败")?;
@@ -162,10 +162,10 @@ async fn create_admin() -> Result<()> {
     Ok(())
 }
 
-/// 这是**运维工具**：忘记管理员口令时用，需要在服务器上（有数据目录权限）执行。
+/// 这是**运维工具**：忘记管理员密码时用，需要在服务器上（有数据目录权限）执行。
 async fn set_password() -> Result<()> {
     let mut args = std::env::args().skip(2);
-    let usage = "用法：sc2clud set-password <用户名> <新口令>";
+    let usage = "用法：sc2clud set-password <用户名> <新密码>";
     let handle = args.next().context(usage)?;
     let password = args.next().context(usage)?;
 
@@ -185,7 +185,7 @@ async fn set_password() -> Result<()> {
     let hash = sc2clud_core::auth::hash_password(&password).map_err(|e| anyhow::anyhow!("{e}"))?;
     repo::set_user_password(db.pool(), user.id, &hash)
         .await
-        .context("写入口令失败")?;
+        .context("写入密码失败")?;
 
     // 能登录才有意义：顺手激活（幂等）。
     let now = sc2clud_core::now_unix();
@@ -195,13 +195,13 @@ async fn set_password() -> Result<()> {
         None,
         "user.set_password",
         Some(&format!("user:{}", user.id)),
-        Some("命令行重置口令"),
+        Some("命令行重置密码"),
         now,
     )
     .await
     .ok();
 
-    println!("已重置 {handle} 的口令，并确保账号处于激活状态");
+    println!("已重置 {handle} 的密码，并确保账号处于激活状态");
     db.close().await;
     Ok(())
 }
@@ -226,6 +226,17 @@ async fn serve() -> Result<()> {
         .await
         .context("打开数据库失败")?;
     db.migrate().await.context("执行迁移失败")?;
+
+    // 统一域名管理：站点根域名自动登记，链接解析/以后发信都从这里取名单
+    if let Some(domain) = sc2clud_core::community::normalize_domain(&config.server.base_url) {
+        let _ = sc2clud_db::repo::add_site_domain(
+            db.pool(),
+            &domain,
+            "站点根（自动登记）",
+            sc2clud_core::now_unix(),
+        )
+        .await;
+    }
 
     let now = sc2clud_core::now_unix();
     // 脚手架阶段的归属用户：接入登录后由会话解析替换（见 repo::ensure_bootstrap_user）。

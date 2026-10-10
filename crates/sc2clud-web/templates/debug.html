@@ -1,4 +1,6 @@
 {% extends "base.html" %}
+{% block body_class %}site-page page-debug{% endblock %}
+{% block page_label %}系统自检{% endblock %}
 
 {% block title %}调试 · {{ site_name }}{% endblock %}
 
@@ -31,14 +33,14 @@
   {% if audit.is_empty() %}
   <p class="empty">暂无记录。</p>
   {% else %}
-  <table class="admin-table">
+  <div class="site-table-scroll"><table class="admin-table">
     <thead><tr><th>时间</th><th>动作</th><th>对象</th><th>备注</th></tr></thead>
     <tbody>
       {% for row in audit %}
       <tr><td>{{ row.created_at }}</td><td>{{ row.action }}</td><td><code>{{ row.target }}</code></td><td>{{ row.detail }}</td></tr>
       {% endfor %}
     </tbody>
-  </table>
+  </table></div>
   {% endif %}
 </section>
 {% endblock %}

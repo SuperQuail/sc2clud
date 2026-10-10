@@ -46,10 +46,27 @@ pub fn pages() -> Router<AppState> {
     Router::new()
         .route("/", axum::routing::get(index))
         .route(
+            "/auth/dialog",
+            axum::routing::get(crate::pages_auth::auth_dialog),
+        )
+        .route(
             "/register",
             axum::routing::get(crate::pages_auth::register_form)
                 .post(crate::pages_auth::register_submit),
         )
+        .route(
+            "/search",
+            axum::routing::get(crate::pages_search::search_page),
+        )
+        .route(
+            "/notifications/{id}/delete",
+            axum::routing::post(crate::pages_messages::notification_delete),
+        )
+        .route(
+            "/notifications/mute",
+            axum::routing::post(crate::pages_messages::notification_mute),
+        )
+        .route("/inbox", axum::routing::get(crate::pages_messages::center))
         .route(
             "/login",
             axum::routing::get(crate::pages_auth::login_form).post(crate::pages_auth::login_submit),
@@ -60,9 +77,10 @@ pub fn pages() -> Router<AppState> {
             "/bookmarks",
             axum::routing::get(crate::pages_social::bookmarks),
         )
+        // 老通知页已并入消息中心：GET 重定向过去（保留书签可达）
         .route(
             "/notifications",
-            axum::routing::get(crate::pages_social::notifications),
+            axum::routing::get(crate::pages_messages::notifications_landing),
         )
         .route(
             "/announcements",
@@ -71,6 +89,11 @@ pub fn pages() -> Router<AppState> {
         .route(
             "/api/v1/notifications/unread",
             axum::routing::get(crate::pages_social::unread_badge),
+        )
+        // @ 提及的下拉候选（重名账号会带 dup 标记）
+        .route(
+            "/api/v1/users/search",
+            axum::routing::get(crate::pages_search::mention_candidates),
         )
         .route(
             "/admin/announcements",
@@ -85,13 +108,23 @@ pub fn pages() -> Router<AppState> {
             "/admin/backup/{name}",
             axum::routing::get(crate::pages_social::download_backup),
         )
+        // 老私信页已并入消息中心：列表与对话页 GET 都重定向；发信仍走 POST /messages/{handle}
         .route(
             "/messages",
-            axum::routing::get(crate::pages_messages::inbox),
+            axum::routing::get(crate::pages_messages::messages_landing),
+        )
+        .route(
+            "/api/v1/messages/{handle}/stream",
+            axum::routing::get(crate::pages_messages::messages_stream),
+        )
+        .route(
+            "/api/v1/messages/{handle}",
+            axum::routing::post(crate::pages_messages::send_json)
+                .get(crate::pages_messages::thread_json),
         )
         .route(
             "/messages/{handle}",
-            axum::routing::get(crate::pages_messages::thread).post(crate::pages_messages::send),
+            axum::routing::get(crate::pages_messages::thread_landing).post(crate::pages_messages::send),
         )
         .route(
             "/u/{handle}/block",
@@ -119,6 +152,10 @@ pub fn pages() -> Router<AppState> {
             axum::routing::post(crate::pages_settings::update_password),
         )
         .route(
+            "/u/id/{id}",
+            axum::routing::get(crate::pages_profile::profile_by_id),
+        )
+        .route(
             "/u/{handle}",
             axum::routing::get(crate::pages_profile::profile),
         )
@@ -132,12 +169,60 @@ pub fn pages() -> Router<AppState> {
             axum::routing::get(crate::pages_admin::panel),
         )
         .route(
+            "/admin/users/{id}/update",
+            axum::routing::post(crate::pages_admin::update_user),
+        )
+        .route(
+            "/admin/users/{id}",
+            axum::routing::get(crate::pages_admin::user_edit),
+        )
+        .route(
             "/admin/users/{id}/quota",
             axum::routing::post(crate::pages_admin::set_quota),
         )
         .route(
             "/admin/users",
             axum::routing::post(crate::pages_admin::create_user),
+        )
+        .route(
+            "/admin/users/{id}/trusted",
+            axum::routing::post(crate::pages_admin::set_trusted),
+        )
+        .route(
+            "/admin/sections/{section}/acl",
+            axum::routing::post(crate::pages_admin::save_section_acl),
+        )
+        .route(
+            "/admin/settings/block-reply",
+            axum::routing::post(crate::pages_admin::set_block_reply),
+        )
+        .route(
+            "/admin/groups",
+            axum::routing::post(crate::pages_admin::create_group),
+        )
+        .route(
+            "/admin/groups/update",
+            axum::routing::post(crate::pages_admin::update_group),
+        )
+        .route(
+            "/admin/groups/archive",
+            axum::routing::post(crate::pages_admin::archive_group),
+        )
+        .route(
+            "/admin/users/{id}/ban",
+            axum::routing::post(crate::pages_admin::ban_user),
+        )
+        .route(
+            "/admin/users/{id}/groups",
+            axum::routing::post(crate::pages_admin::set_user_groups),
+        )
+        .route(
+            "/admin/sections/{section}/move",
+            axum::routing::post(crate::pages_admin::move_section),
+        )
+        .route(
+            "/admin/sections/{section}/cover",
+            axum::routing::post(crate::pages_admin::set_section_cover),
         )
         .route(
             "/admin/users/{id}/activate",
@@ -160,6 +245,31 @@ pub fn pages() -> Router<AppState> {
             axum::routing::post(crate::pages_admin::toggle_activation_policy),
         )
         .route("/p/{id}", axum::routing::get(crate::pages_posts::post_page))
+        .route("/p/{id}/featured", axum::routing::post(crate::pages_featured::set_featured))
+        .route(
+            "/p/{id}/images/{image_id}/delete",
+            axum::routing::post(crate::pages_posts::post_image_delete),
+        )
+        .route(
+            "/p/{id}/images/{image_id}/move",
+            axum::routing::post(crate::pages_posts::post_image_move),
+        )
+        .route(
+            "/p/{id}/edit",
+            axum::routing::get(crate::pages_posts::edit_form).post(crate::pages_posts::edit_submit),
+        )
+        .route(
+            "/admin/posts/{id}/archive",
+            axum::routing::post(crate::pages_admin::archive),
+        )
+        .route(
+            "/admin/posts/{id}/unarchive",
+            axum::routing::post(crate::pages_admin::unarchive),
+        )
+        .route(
+            "/admin/posts/{id}/revision",
+            axum::routing::post(crate::pages_admin::request_revision),
+        )
         .route(
             "/p/{id}/like",
             axum::routing::post(crate::pages_social::toggle_like),
@@ -186,6 +296,14 @@ pub fn pages() -> Router<AppState> {
 pub fn api_read() -> Router<AppState> {
     Router::new()
         .route(
+            "/api/v1/posts/{id}/comments",
+            axum::routing::post(crate::pages_posts::comment_json),
+        )
+        .route(
+            "/api/v1/comments/{id}/vote",
+            axum::routing::post(crate::pages_posts::comment_vote),
+        )
+        .route(
             "/api/v1/posts",
             axum::routing::get(list_posts).post(create_post),
         )
@@ -203,10 +321,115 @@ pub fn api_read() -> Router<AppState> {
 pub fn api_upload() -> Router<AppState> {
     Router::new()
         .route("/api/v1/files", axum::routing::put(upload_file))
-        .route("/api/v1/me/avatar", axum::routing::post(upload_avatar))
+        .route(
+            "/api/v1/me/avatar/small",
+            axum::routing::post(upload_avatar_small),
+        )
+        .route(
+            "/api/v1/me/avatar",
+            axum::routing::post(upload_avatar)
+                .get(crate::pages_profile::avatar_info)
+                .delete(crate::pages_profile::avatar_clear),
+        )
         .route(
             "/api/v1/posts/{post_id}/images",
             axum::routing::post(upload_post_image),
+        )
+        // ---- 横幅（只对登录用户；未登录返回空数组）----
+        .route("/api/v1/banners", axum::routing::get(crate::pages_social::banners))
+        .route(
+            "/api/v1/banners/{id}/dismiss",
+            axum::routing::post(crate::pages_social::banner_dismiss),
+        )
+        // ---- 帖子链接解析 / 资源帖状态 ----
+        .route(
+            "/api/v1/posts/resolve",
+            axum::routing::get(crate::pages_posts::resolve_post_link),
+        )
+        .route(
+            "/api/v1/posts/{id}/resource-status",
+            axum::routing::get(crate::pages_posts::resource_status_json),
+        )
+        .route(
+            "/p/{id}/resource-status",
+            axum::routing::post(crate::pages_posts::set_resource_status),
+        )
+        // ---- 收款码（认证开发者及以上；渠道名不限）----
+        .route(
+            "/settings/title",
+            axum::routing::post(crate::pages_settings::title_set),
+        )
+        .route(
+            "/settings/bio",
+            axum::routing::post(crate::pages_settings::bio_save),
+        )
+        .route(
+            "/settings/donation",
+            axum::routing::post(crate::pages_settings::donation_save),
+        )
+        .route(
+            "/api/v1/me/payment-channels",
+            axum::routing::post(crate::pages_profile::payment_channel_add),
+        )
+        .route(
+            "/api/v1/me/payment-channels/{id}",
+            axum::routing::delete(crate::pages_profile::payment_channel_delete),
+        )
+        .route(
+            "/api/v1/users/{handle}/payment-channels",
+            axum::routing::get(crate::pages_profile::payment_channels_json),
+        )
+        // ---- 横幅管理（管理员及以上）----
+        .route(
+            "/admin/banners",
+            axum::routing::post(crate::pages_admin::create_banner),
+        )
+        .route(
+            "/admin/banners/{id}/active",
+            axum::routing::post(crate::pages_admin::set_banner_active),
+        )
+        .route(
+            "/admin/site-texts",
+            axum::routing::post(crate::pages_admin::site_texts_save),
+        )
+        .route(
+            "/admin/default-avatars",
+            axum::routing::post(crate::pages_admin::default_avatar_add),
+        )
+        .route(
+            "/admin/default-avatars/remove",
+            axum::routing::post(crate::pages_admin::default_avatar_remove),
+        )
+        // ---- 统一域名管理（管理员及以上）----
+        .route(
+            "/admin/domains",
+            axum::routing::get(crate::pages_admin::list_domains)
+                .post(crate::pages_admin::add_domain),
+        )
+        .route(
+            "/admin/domains/{domain}/delete",
+            axum::routing::post(crate::pages_admin::remove_domain),
+        )
+        // ---- 资源帖 issue（读公开，写要登录）----
+        .route(
+            "/p/{id}/issues",
+            axum::routing::post(crate::pages_posts::issue_create),
+        )
+        .route(
+            "/p/{id}/issues/{issue_id}/state",
+            axum::routing::post(crate::pages_posts::issue_set_state),
+        )
+        .route(
+            "/p/{id}/issues/{issue_id}/comments",
+            axum::routing::post(crate::pages_posts::issue_comment),
+        )
+        .route(
+            "/api/v1/posts/{id}/issues",
+            axum::routing::get(crate::pages_posts::issues_json),
+        )
+        .route(
+            "/api/v1/posts/{id}/issues/{issue_id}",
+            axum::routing::get(crate::pages_posts::issue_json),
         )
 }
 
@@ -216,6 +439,12 @@ pub fn api_upload() -> Router<AppState> {
 pub struct IndexQuery {
     #[serde(default)]
     pub section: Option<String>,
+    #[serde(default)]
+    pub q: Option<String>,
+    #[serde(default)]
+    pub sort: Option<String>,
+    #[serde(default)]
+    pub page: Option<i64>,
 }
 
 pub(crate) fn wants_html(headers: &HeaderMap) -> bool {
@@ -323,7 +552,7 @@ pub async fn index(
         .section
         .as_deref()
         .and_then(|raw| PostSection::parse(raw).ok());
-    match build_index(&state, user.as_ref(), section).await {
+    match build_index(&state, user.as_ref(), section, &query).await {
         Ok(template) => render_template(template),
         Err(e) => e.into_page_response(wants_html(&headers)),
     }
@@ -338,16 +567,47 @@ async fn build_index<'a>(
     state: &'a AppState,
     user: Option<&CurrentUser>,
     section: Option<PostSection>,
+    query: &IndexQuery,
 ) -> AppResult<IndexTemplate<'a>> {
     let viewer_id = user.map(|u| u.id);
     let is_staff = user.is_some_and(CurrentUser::is_staff);
-    let feed = repo::list_feed_by_section(
+    let search: String = query
+        .q
+        .as_deref()
+        .unwrap_or("")
+        .trim()
+        .chars()
+        .take(100)
+        .collect();
+    let sort = repo::FeedSort::parse(query.sort.as_deref());
+    let filter = repo::FeedFilter {
+        section: section.map(PostSection::as_str),
+        search: &search,
+        sort,
+    };
+    let total = repo::count_feed_filtered(state.db.pool(), viewer_id, is_staff, &filter).await?;
+    const PAGE_SIZE: i64 = 12;
+    let last_page = ((total + PAGE_SIZE - 1) / PAGE_SIZE).max(1);
+    let page = query.page.unwrap_or(1).clamp(1, last_page);
+    let page_href = |target: i64| {
+        let mut params = form_urlencoded::Serializer::new(String::new());
+        if let Some(section) = section {
+            params.append_pair("section", section.as_str());
+        }
+        if !search.is_empty() {
+            params.append_pair("q", &search);
+        }
+        params.append_pair("sort", sort.as_str());
+        params.append_pair("page", &target.to_string());
+        format!("/?{}#home-feed", params.finish())
+    };
+    let feed = repo::list_feed_filtered(
         state.db.pool(),
         viewer_id,
         is_staff,
-        section.map(PostSection::as_str),
-        20,
-        0,
+        &filter,
+        PAGE_SIZE,
+        (page - 1) * PAGE_SIZE,
     )
     .await?;
 
@@ -370,6 +630,24 @@ async fn build_index<'a>(
     };
 
     Ok(IndexTemplate {
+        is_search: !search.is_empty(),
+        show_discovery: section.is_none()
+            && search.is_empty()
+            && page == 1
+            && sort == repo::FeedSort::Recommended,
+        feed_title: section
+            .map(|s| s.label().to_string())
+            .unwrap_or_else(|| "发现社区新内容".to_string()),
+        active_section: section.map(|s| s.as_str().to_string()).unwrap_or_default(),
+        featured: feed
+            .iter()
+            .find(|p| p.review_state == "approved")
+            .map(|p| feed_view(p, viewer_id)),
+        sort: sort.as_str().to_string(),
+        page,
+        previous_page: (page > 1).then(|| page_href(page - 1)),
+        next_page: (page < last_page).then(|| page_href(page + 1)),
+        search_query: search,
         site_name: &state.config.server.site_name,
         user_label: user.map(|u| u.display_name.clone()),
         user_role_label: user.map(|u| u.role.label().to_string()).unwrap_or_default(),
@@ -379,15 +657,26 @@ async fn build_index<'a>(
         announcement: repo::latest_announcement(state.db.pool())
             .await?
             .map(|row| (row.title, row.body)),
-        sections: PostSection::ALL
-            .iter()
-            .map(|s| SectionOption {
-                value: s.as_str().to_string(),
-                label: s.label().to_string(),
-                checked: section == Some(*s),
-            })
-            .collect(),
-        visible_posts: feed.len() as i64,
+        sections: {
+            let covers: std::collections::HashMap<String, String> =
+                repo::list_section_covers(state.db.pool())
+                    .await?
+                    .into_iter()
+                    .map(|(section, hash, _mime)| (section, hash))
+                    .collect();
+            crate::routes::ordered_sections(state)
+                .await
+                .iter()
+                .map(|s| SectionOption {
+                    value: s.as_str().to_string(),
+                    label: s.label().to_string(),
+                    checked: section == Some(*s),
+                    cover: covers.get(s.as_str()).cloned(),
+                    mode: 0,
+                })
+                .collect()
+        },
+        visible_posts: total,
         posts: feed.iter().map(|row| feed_view(row, viewer_id)).collect(),
         is_staff,
         csrf: user.map(|u| u.csrf_token.clone()).unwrap_or_default(),
@@ -408,6 +697,7 @@ pub(crate) fn feed_view(row: &sc2clud_db::PostWithAuthorRow, viewer_id: Option<i
         .unwrap_or("普通用户");
     let section = PostSection::parse(&row.section).unwrap_or(PostSection::default_section());
     FeedView {
+        is_featured: row.featured_at.is_some(),
         id: row.id,
         avatar: row.author_avatar.clone(),
         title: row.title.clone(),
@@ -419,10 +709,12 @@ pub(crate) fn feed_view(row: &sc2clud_db::PostWithAuthorRow, viewer_id: Option<i
         state: state.as_str().to_string(),
         state_label: state.label().to_string(),
         author: row.author_display_name.clone(),
+        author_handle: row.author_handle.clone(),
         author_role_label: author_role.to_string(),
         created_at: format_date(row.created_at),
         image_count: row.image_count,
         comment_count: row.comment_count,
+        archived: row.archived_at.is_some(),
         like_count: row.like_count,
         bookmark_count: row.bookmark_count,
         time_ago: format_relative(row.created_at, sc2clud_core::now_unix()),
@@ -476,6 +768,29 @@ pub async fn not_found(headers: HeaderMap) -> Response {
 // ------------------------------------------------------------ 帖子图片
 
 /// 认图片格式只看魔数，不信客户端声明的 Content-Type。
+/// 分区顺序以库里的 position 为准（后台可调）。
+/// **不做权限过滤**：首页导航与帖子页左栏原本就对所有人显示全部分区；
+/// 按权限筛选只属于发帖下拉那条路（`section_options`）。库里缺的枚举值补在末尾，新分区不会消失。
+pub async fn ordered_sections(state: &AppState) -> Vec<PostSection> {
+    let stored: Vec<String> = repo::list_sections(state.db.pool(), false)
+        .await
+        .map(|rows| rows.into_iter().map(|row| row.key).collect())
+        .unwrap_or_default();
+    let mut ordered: Vec<PostSection> = Vec::new();
+    for key in stored {
+        if let Ok(section) = PostSection::parse(&key) {
+            if !ordered.contains(&section) {
+                ordered.push(section);
+            }
+        }
+    }
+    for section in PostSection::ALL {
+        if !ordered.contains(&section) {
+            ordered.push(section);
+        }
+    }
+    ordered
+}
 pub(crate) fn sniff_image_mime(head: &[u8]) -> Option<&'static str> {
     if head.starts_with(&[0x89, b'P', b'N', b'G']) {
         Some("image/png")
@@ -665,6 +980,46 @@ pub async fn serve_image(
 /// 上传头像。
 ///
 /// 压缩与裁剪**已经在浏览器里做完**（canvas，压到 ≤64KB），服务端只做：
+/// 小图头像上限：48px 的 WebP 正常只有几 KB，32KB 足够且能给坏人兜底。
+const AVATAR_SMALL_LIMIT: usize = 32 * 1024;
+
+/// 列表页用的小图头像（48px）。页面在换头像后自动生成并上传，失败不影响换头像本身。
+/// 体积很小，直接读进内存 + 魔数校验，不走流式那条重路径。
+pub async fn upload_avatar_small(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    body: Body,
+) -> AppResult<Json<serde_json::Value>> {
+    let user = require_user(&state, &headers).await?;
+    session::guard(Some(&user), Permission::SetAvatar)?;
+    let token = headers
+        .get("x-csrf-token")
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or("");
+    session::check_csrf(&user, token)?;
+    let bytes = axum::body::to_bytes(body, AVATAR_SMALL_LIMIT)
+        .await
+        .map_err(|_| invalid("小图太大"))?;
+    let Some(mime) = sniff_image_mime(&bytes) else {
+        return Err(invalid("只接受 PNG / JPEG / GIF / WebP 图片"));
+    };
+    let size = bytes.len() as i64;
+    let reader: BlobReader = Box::pin(StreamReader::new(futures_util::stream::once(async move {
+        Ok::<_, std::io::Error>(bytes)
+    })));
+    let outcome = state
+        .storage
+        .put_stream(reader, None)
+        .await
+        .map_err(AppError::from)?;
+    let hash = outcome.stat.hash.to_string();
+    repo::ensure_blob(state.db.pool(), &hash, size, sc2clud_core::now_unix()).await?;
+    repo::set_avatar_small(state.db.pool(), user.id, Some(&hash)).await?;
+    Ok(axum::Json(
+        serde_json::json!({ "ok": true, "small_hash": hash, "mime": mime, "bytes": size }),
+    ))
+}
+
 /// 登录 + 已激活 + CSRF + 魔数认类型 + 体积上限（流式计数，超了直接断）+ 磁盘闸门。
 pub async fn upload_avatar(
     State(state): State<AppState>,
@@ -757,6 +1112,7 @@ pub async fn list_posts(State(state): State<AppState>) -> AppResult<Json<Vec<Pos
         posts
             .into_iter()
             .map(|p| PostDto {
+                is_featured: p.featured_at.is_some(),
                 id: p.id,
                 title: p.title,
                 body: p.body,
@@ -785,7 +1141,7 @@ pub async fn create_post(
     // 三类帖子对所有已激活用户开放；管理员及以上跳过审核机直接发布。
     let kind = PostKind::parse(req.kind.as_deref().unwrap_or("discussion"))?;
     session::guard(Some(&user), kind.required_permission())?;
-    let outcome = review_for_author(Some(user.role), kind, title, body, 0);
+    let outcome = review_for_author(Some(user.role), user.trusted, kind, title, body, 0);
     if !outcome.state.visible_to(false, false) {
         // 被拒的帖子不进 feed：这里先把结论记下来，由调用方看到 422 的说明。
         tracing::info!(user.id = user.id, note = ?outcome.note, "帖子被审核机拒绝");
@@ -817,6 +1173,7 @@ pub async fn create_post(
     Ok((
         StatusCode::CREATED,
         Json(PostDto {
+            is_featured: false,
             id,
             title: title.to_string(),
             body: body.to_string(),

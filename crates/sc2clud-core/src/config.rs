@@ -74,6 +74,11 @@ pub struct ServerConfig {
     /// 最近审计、配置摘要），**不含密钥**。生产实例保持关闭——
     /// 要用就起一个独立实例（独立数据目录 + 独立端口 + 仅回环监听）。
     pub debug_pages: bool,
+    /// 会话 Cookie 名。
+    ///
+    /// 同一个域名下跑两套实例（生产 `/`、测试 `/dev/`）时**必须不同**，
+    /// 否则浏览器只留一份 Cookie，两边会话会互相顶掉。
+    pub cookie_name: String,
     /// **仅供本地开发/截图**：由应用进程直接回图片字节。
     ///
     /// 生产环境必须保持 false——字节应由 nginx 直出，不经过应用进程。
@@ -89,6 +94,7 @@ impl Default for ServerConfig {
             download_prefix: "/dl".to_string(),
             site_name: "SC2clud".to_string(),
             debug_pages: false,
+            cookie_name: "sc2clud_session".to_string(),
             serve_blobs_locally: false,
         }
     }
@@ -292,6 +298,12 @@ impl Config {
         }
         if let Some(v) = env_var("SC2CLUD_DEBUG_PAGES") {
             self.server.debug_pages = matches!(v.as_str(), "1" | "true" | "yes");
+        }
+        if let Some(v) = env_var("SC2CLUD_COOKIE_NAME") {
+            let name = v.trim();
+            if !name.is_empty() {
+                self.server.cookie_name = name.to_string();
+            }
         }
         if let Some(v) = env_var("SC2CLUD_SERVE_BLOBS_LOCALLY") {
             self.server.serve_blobs_locally = matches!(v.as_str(), "1" | "true" | "yes");

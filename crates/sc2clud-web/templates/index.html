@@ -1,157 +1,77 @@
 {% extends "base.html" %}
-
-{% block title %}{{ site_name }}{% endblock %}
-
+{% block title %}{{ site_name }} · 发现你的下一场战役{% endblock %}
+{% block body_class %}home-page{% endblock %}
+{% block page_intro %}{% endblock %}
 {% block head %}
-  <script>
-    // 显示方式要在首次绘制前定下来，避免卡片/列表闪一下
-    (function () {
-      var view = 'card';
-      try { view = localStorage.getItem('sc2clud-view') || 'card'; } catch (e) {}
-      document.documentElement.setAttribute('data-post-view', view);
-    })();
-  </script>
+<link rel="stylesheet" href="/static/home.css?v=20261009-nav-v10">
+<link rel="stylesheet" href="/static/forum.css?v=20261009-nav-v4">
+<link rel="icon" href="/static/art/miyin-chibi-80.webp" type="image/webp">
+<script>(function(){var v='card',l='forum',d='expanded';try{if(localStorage.getItem('sc2clud-view')==='list')v='list';if(localStorage.getItem('sc2clud-layout')==='portal')l='portal';if(localStorage.getItem('sc2clud-forum-density')==='compact')d='compact';}catch(_){}document.documentElement.setAttribute('data-post-view',v);document.documentElement.setAttribute('data-home-layout',l);document.documentElement.setAttribute('data-forum-density',d);})();</script>
 {% endblock %}
-
-{% block bar_stats %}<span>可见帖子 {{ visible_posts }}</span>{% endblock %}
-{% block bar_avatar %}{% if let Some(hash) = my_avatar %}/avatar/{{ hash }}{% else %}/static/art/miyin-chibi-80.webp{% endif %}{% endblock %}
-
+{% block header %}
+<svg class="home-symbols" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+  <symbol id="i-search" viewBox="0 0 24 24"><circle cx="10.8" cy="10.8" r="6.8"/><path d="m16 16 5 5"/></symbol>
+  <symbol id="i-home" viewBox="0 0 24 24"><path d="m3 10 9-7 9 7v10H3zM9 20v-7h6v7"/></symbol>
+  <symbol id="i-grid" viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></symbol>
+  <symbol id="i-list" viewBox="0 0 24 24"><path d="M8 5h13M8 12h13M8 19h13M3 5h1M3 12h1M3 19h1"/></symbol>
+  <symbol id="i-star" viewBox="0 0 24 24"><path d="m12 3 2.8 5.7 6.2.9-4.5 4.4 1.1 6.2-5.6-3-5.6 3 1.1-6.2L3 9.6l6.2-.9z"/></symbol>
+  <symbol id="i-message" viewBox="0 0 24 24"><path d="M4 4h16v12H9l-5 4zM8 8h8M8 12h5"/></symbol>
+  <symbol id="i-arrow" viewBox="0 0 24 24"><path d="M4 12h15m-6-6 6 6-6 6"/></symbol>
+  <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
+  <symbol id="i-moon" viewBox="0 0 24 24"><path d="M20.5 14A9 9 0 0 1 10 3.5 9 9 0 1 0 20.5 14Z"/></symbol>
+  <symbol id="i-menu" viewBox="0 0 24 24"><path d="M4 6h16M4 12h16M4 18h16"/></symbol>
+  <symbol id="i-bell" viewBox="0 0 24 24"><path d="M5 17h14l-2-4V9a5 5 0 0 0-10 0v4zM10 21h4"/></symbol>
+</svg>
+<a class="home-skip" href="#home-feed">跳到帖子</a>
+<header class="home-header">
+  <div class="home-brand-wrap"><button class="home-icon-btn home-menu-toggle" type="button" aria-label="展开导航" aria-expanded="false" aria-controls="home-sidebar"><svg><use href="#i-menu"/></svg></button><a class="home-brand" href="/" aria-label="SC2clud 首页"><img src="/static/art/miyin-chibi-80.webp" width="38" height="38" alt="弥音"><span>{{ site_name }}<small>星际争霸 II 社区</small></span><span class="home-beta">BETA</span></a></div>
+  <form class="home-search" method="get" action="/" role="search">{% if !active_section.is_empty() %}<input type="hidden" name="section" value="{{ active_section }}">{% endif %}<svg aria-hidden="true"><use href="#i-search"/></svg><input type="search" name="q" value="{{ search_query }}" placeholder="搜索战役、Mod、工具与讨论" aria-label="搜索社区帖子" maxlength="100"><button type="submit" aria-label="搜索"><svg><use href="#i-search"/></svg></button></form>
+  <div class="home-header-actions"><button class="home-layout-toggle" id="layout-toggle" type="button" aria-label="论坛布局" aria-pressed="false" title="切换到论坛布局"><svg aria-hidden="true"><use href="#i-message"/></svg><span data-layout-label>论坛</span></button><button class="home-icon-btn" id="theme-toggle" type="button" aria-label="切换日间与夜间主题" title="切换主题"><svg><use href="#i-moon"/></svg></button>{% if let Some(name) = user_label %}<a class="home-icon-btn" href="/notifications" aria-label="通知"><svg><use href="#i-bell"/></svg><span class="badge" id="notify-badge" hidden></span></a>{% let account_avatar = my_avatar.as_deref().unwrap_or("") %}{% include "account_menu.html" %}{% else %}<a class="home-publish" href="/login"><span>登录 / 注册</span></a>{% endif %}{% if can_post %}<a class="home-publish" href="/new" aria-label="发布内容" title="发布内容"><svg><use href="#i-plus"/></svg><span>发布内容</span></a>{% endif %}</div>
+</header>
+{% endblock %}
 {% block content %}
-{% if let Some((title, body)) = announcement %}
-<section class="card announce-banner">
-  <div class="chips"><span class="chip">系统公告</span></div>
-  <h3>{{ title }}</h3>
-  <p class="announcement-body">{{ body }}</p>
-  <a class="btn ghost" href="/announcements">查看全部公告</a>
-</section>
-{% endif %}
 
-<section class="card" id="posts">
-  <div class="list-toolbar">
-    <nav class="section-nav">
-      <a href="/" class="{% if sections_all_active %}active{% endif %}">全部</a>
-      {% for section in sections %}
-      <a href="/?section={{ section.value }}" class="{% if section.checked %}active{% endif %}">{{ section.label }}</a>
-      {% endfor %}
-    </nav>
-    <div class="view-switch" role="group" aria-label="显示方式">
-      <button type="button" data-view-btn="card" title="卡片视图" aria-label="卡片视图">
-        <svg viewBox="0 0 16 16" width="15" height="15"><rect x="1.5" y="1.5" width="5.5" height="5.5" rx="1.2" fill="currentColor"/><rect x="9" y="1.5" width="5.5" height="5.5" rx="1.2" fill="currentColor"/><rect x="1.5" y="9" width="5.5" height="5.5" rx="1.2" fill="currentColor"/><rect x="9" y="9" width="5.5" height="5.5" rx="1.2" fill="currentColor"/></svg>
-      </button>
-      <button type="button" data-view-btn="list" title="列表视图" aria-label="列表视图">
-        <svg viewBox="0 0 16 16" width="15" height="15"><rect x="1.5" y="2.5" width="13" height="2.4" rx="1.2" fill="currentColor"/><rect x="1.5" y="6.8" width="13" height="2.4" rx="1.2" fill="currentColor"/><rect x="1.5" y="11.1" width="13" height="2.4" rx="1.2" fill="currentColor"/></svg>
-      </button>
+<aside class="home-sidebar" id="home-sidebar" aria-label="社区导航">
+  <div class="forum-nav-heading"><span>SC2CLUD / COMMUNITY</span><strong>创作导航</strong></div>
+  <nav class="home-side-nav"><a href="/" class="{% if sections_all_active %}selected{% endif %}"><img class="sc2-nav-icon" src="/static/art/starcraft/terran.webp" width="48" height="48" alt="" aria-hidden="true" decoding="async"><span>发现</span></a><a href="/announcements"><img class="sc2-nav-icon sc2-command-icon" src="/static/art/starcraft/nav-announcement.webp" width="48" height="48" alt="" aria-hidden="true" decoding="async"><span>社区公告</span></a></nav>
+  <div class="home-side-divider"></div><h2 class="home-side-label">探索频道</h2>
+  <nav class="home-side-nav home-channel-nav">{% for section in sections %}<a href="/?section={{ section.value }}" class="{% if section.checked %}selected{% endif %}"><img class="sc2-nav-icon {% if section.value == "announcement" || section.value == "custom_campaign" || section.value == "tool_player" || section.value == "tool_dev" %}sc2-command-icon{% endif %}" src="/static/art/starcraft/{% if section.value == "announcement" || section.value == "custom_campaign" || section.value == "tool_player" || section.value == "tool_dev" || section.value == "vanilla_mod" %}nav-{{ section.value }}{% else %}terran{% endif %}.webp" width="48" height="48" alt="" aria-hidden="true" decoding="async"><span>{{ section.label }}</span></a>{% endfor %}</nav>
+  <div class="home-side-note"><img src="/static/art/miyin-chibi-80.webp" width="42" height="42" alt=""><strong>让好作品被看见</strong><p>玩家的灵感，开发者的热爱。<br>在这里，一起拓展星际。</p><a href="{% if can_post %}/new{% else if user_label.is_some() %}/settings{% else %}/register{% endif %}">分享你的作品 ↗</a></div><p class="home-side-footer">SC2clud · COMMUNITY & CLOUD<br>星际争霸 II 非官方玩家社区</p>
+</aside>
+<div class="home-content">
+  <section class="forum-channel-heading home-hero" aria-label="社区创作广场"><img class="home-hero-scene" src="/static/art/starcraft/sc2-battle.webp" width="1200" height="953" alt="" aria-hidden="true" decoding="async"><div class="home-hero-orbit" aria-hidden="true"></div><div class="home-hero-copy"><span class="home-eyebrow"><img class="home-game-logo" src="/static/art/starcraft/sc2-logo.webp" width="240" height="101" alt="StarCraft II"><small>星际争霸 II · 玩家创作社区</small></span><h1>{% if sections_all_active %}下一场创作，<br>从这里开始<span>。</span>{% else %}{{ feed_title }}{% endif %}</h1><p>发现社区战役与 Mod，分享你的创作与灵感。<br>和同样热爱星际的人，一起开启新的故事。</p><a class="home-hero-button" href="{% if can_post %}/new{% else if user_label.is_some() %}/settings{% else %}/login{% endif %}">{% if can_post %}分享你的作品{% else %}加入这场创作{% endif %} <svg aria-hidden="true"><use href="#i-arrow"/></svg></a></div><img class="home-hero-mascot" src="/static/art/miyin/wink-520.webp" width="260" height="260" alt="社区看板娘弥音" fetchpriority="high"><div class="home-hero-bottom"><span>SC2 COMMUNITY</span><span class="home-races"><span><img src="/static/art/starcraft/terran.webp" width="64" height="64" alt="">人族</span><span><img src="/static/art/starcraft/protoss.webp" width="64" height="64" alt="">星灵</span><span><img src="/static/art/starcraft/zerg.webp" width="64" height="64" alt="">异虫</span></span><span class="home-hero-mark"><img class="sc2-nav-icon" src="/static/art/starcraft/terran.webp" width="48" height="48" alt="" aria-hidden="true" decoding="async"></span></div></section>
+  <nav class="home-chips" aria-label="帖子分区"><a href="/" class="{% if sections_all_active %}selected{% endif %}">全部内容</a>{% for section in sections %}<a href="/?section={{ section.value }}" class="{% if section.checked %}selected{% endif %}">{{ section.label }}</a>{% endfor %}</nav>
+  {% for section in sections %}{% if section.checked %}{% if let Some(cover) = section.cover %}<section class="home-section-banner" aria-label="{{ section.label }}频道"><img src="/img/{{ cover }}" width="1200" height="240" alt="{{ section.label }}分区封面"><div><span>COMMUNITY CHANNEL</span><h1>{{ section.label }}</h1><p>{{ visible_posts }} 篇社区分享</p></div></section>{% endif %}{% endif %}{% endfor %}
+  {% if show_discovery %}
+  <section class="home-discovery" aria-label="社区焦点">
+    <div class="home-hero"><img class="home-hero-scene" src="/static/art/starcraft/sc2-battle.webp" width="1200" height="953" alt="" aria-hidden="true" decoding="async"><div class="home-hero-orbit" aria-hidden="true"></div><div class="home-hero-copy"><span class="home-eyebrow"><img class="home-game-logo" src="/static/art/starcraft/sc2-logo.webp" width="240" height="101" alt="StarCraft II"><small>星际争霸 II · 玩家创作社区</small></span><h1>下一场战役，<br>从这里开始<span>。</span></h1><p>发现社区战役与 Mod，找到趁手的工具。<br>和同样热爱星际的人，一起创造新的故事。</p><a class="home-hero-button" href="/?section=custom_campaign">探索自制战役 <svg><use href="#i-arrow"/></svg></a></div><img class="home-hero-mascot" src="/static/art/miyin/wink-520.webp" width="260" height="260" alt="社区看板娘弥音" fetchpriority="high"><div class="home-hero-bottom"><span>SC2 COMMUNITY</span><span class="home-races"><span><img src="/static/art/starcraft/terran.webp" width="64" height="64" alt="">人族</span><span><img src="/static/art/starcraft/protoss.webp" width="64" height="64" alt="">星灵</span><span><img src="/static/art/starcraft/zerg.webp" width="64" height="64" alt="">异虫</span></span><span class="home-hero-mark"><img class="sc2-nav-icon" src="/static/art/starcraft/terran.webp" width="48" height="48" alt="" aria-hidden="true" decoding="async"></span></div></div>
+    <div class="home-focus-stack">{% if let Some(post) = featured %}<a class="home-focus" href="/p/{{ post.id }}">{% if let Some(hash) = post.cover_hash %}<img data-post-image src="/img/{{ hash }}" alt="" width="400" height="220" loading="lazy">{% else %}<div class="home-focus-fallback"><span>SC2</span><img src="/static/art/miyin-portrait-320.webp" alt="" width="160" height="180"></div>{% endif %}<div class="home-focus-shade"></div><span class="home-focus-label">社区焦点 · 最新发布</span><div class="home-focus-copy"><span>{{ post.section_label }}</span><h2>{{ post.title }}</h2><small>{{ post.author }} · {{ post.time_ago }}</small></div><span class="home-focus-arrow">↗</span></a>{% else %}<a class="home-focus home-focus-welcome" href="/register"><span class="home-focus-label">欢迎来到 SC2clud</span><div class="home-focus-copy"><span>社区由你开始</span><h2>把你的第一个作品<br>分享给星际玩家</h2><small>战役 · Mod · 工具 · 灵感</small></div><span class="home-focus-arrow">↗</span></a>{% endif %}
+      <a class="home-workshop" href="/?section=tool_dev"><div class="home-workshop-icon"><img class="sc2-nav-icon sc2-command-icon" src="/static/art/starcraft/nav-tool_dev.webp" width="48" height="48" alt="" aria-hidden="true" decoding="async"></div><div><span>CREATOR'S CORNER</span><h2>从玩家，到创造者</h2><p>探索开发工具与创作讨论</p></div><svg class="home-workshop-arrow"><use href="#i-arrow"/></svg></a>
     </div>
-  </div>
-
-  <h2>帖子 <span class="count">{{ visible_posts }}</span>
-    <span class="spacer">
-      {% if can_post %}<a href="/new">发新帖</a>{% else if user_label.is_none() %}<a href="/login">登录后可发帖</a>{% else %}待激活后可发帖{% endif %}
-    </span>
-  </h2>
-
-  {% if posts.is_empty() %}
-  <p class="empty">这个分区还没有帖子。</p>
-  {% else %}
-
-  {# 卡片视图 #}
-  <div class="post-grid">
-    {% for post in posts %}
-    <article class="post-card">
-      {% if let Some(cover) = post.cover_hash %}
-      <div class="post-cover" style="background-image:url('/img/{{ cover }}')"></div>
-      {% else %}
-      <div class="post-cover post-cover-empty"></div>
-      {% endif %}
-      <div class="head">
-        <span class="tag">{{ post.section_label }}</span>
-        <span class="kind kind-{{ post.kind }}">{{ post.kind_label }}</span>
-        {% if post.state != "approved" %}<span class="kind state-{{ post.state }}">{{ post.state_label }}</span>{% endif %}
-      </div>
-      <h3><a href="/p/{{ post.id }}">{{ post.title }}</a></h3>
-      <p class="preview">{{ post.preview }}</p>
-      <div class="foot">
-        <span class="byline">
-          {% if let Some(avatar) = post.avatar %}
-          <img class="avatar" src="/avatar/{{ avatar }}" alt="" width="20" height="20" loading="lazy">
-          {% else %}
-          <img class="avatar" src="/static/art/miyin-chibi-80.webp" alt="" width="20" height="20" loading="lazy">
-          {% endif %}
-          {{ post.author }}
-        </span>
-        <span>{{ post.time_ago }}</span>
-      </div>
-    </article>
-    {% endfor %}
-  </div>
-
-  {# 列表视图（参考社区项目列表：标题 + 一行摘要 + 统计条 + 缩略图） #}
-  <div class="post-list">
-    {% for post in posts %}
-    <article class="post-row">
-      <div class="row-main">
-        <div class="chips">
-          <span class="chip">{{ post.section_label }}</span>
-          <span class="chip">{{ post.kind_label }}</span>
-          {% if post.state != "approved" %}<span class="chip warn">{{ post.state_label }}</span>{% endif %}
-        </div>
-        <h3><a href="/p/{{ post.id }}">{{ post.title }}</a></h3>
-        <p class="row-preview">{{ post.preview }}</p>
-        <div class="row-stats">
-          <span class="stat" title="回复">
-            <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><path d="M2 3.5h12v8H7l-3.4 2.6V11.5H2z" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/></svg>
-            {{ post.comment_count }}
-          </span>
-          {% if post.image_count > 0 %}
-          <span class="stat" title="配图">
-            <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><rect x="1.8" y="2.8" width="12.4" height="10.4" rx="1.6" fill="none" stroke="currentColor" stroke-width="1.4"/><circle cx="5.6" cy="6.4" r="1.2" fill="currentColor"/><path d="M3 11.5l3.4-3 2.6 2.2 2-1.7 2.6 2.5" fill="none" stroke="currentColor" stroke-width="1.3"/></svg>
-            {{ post.image_count }}
-          </span>
-          {% endif %}
-          <span class="stat" title="发布时间">
-            <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><circle cx="8" cy="8" r="6" fill="none" stroke="currentColor" stroke-width="1.4"/><path d="M8 4.6V8l2.4 1.6" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>
-            {{ post.time_ago }}
-          </span>
-          <span class="stat byline">
-            {% if let Some(avatar) = post.avatar %}
-            <img class="avatar" src="/avatar/{{ avatar }}" alt="" width="18" height="18" loading="lazy">
-            {% else %}
-            <img class="avatar" src="/static/art/miyin-chibi-80.webp" alt="" width="18" height="18" loading="lazy">
-            {% endif %}
-            {{ post.author }}
-          </span>
-        </div>
-      </div>
-      {% if let Some(cover) = post.cover_hash %}
-      <a class="row-thumb" href="/p/{{ post.id }}" style="background-image:url('/img/{{ cover }}')" aria-hidden="true"></a>
-      {% endif %}
-    </article>
-    {% endfor %}
-  </div>
+  </section>
+  <nav class="home-channel-tiles" aria-label="频道快捷入口">{% for section in sections %}<a class="home-channel-tile tile-{{ section.value }}" href="/?section={{ section.value }}"><span class="home-tile-icon"><img class="sc2-nav-icon {% if section.value == "announcement" || section.value == "custom_campaign" || section.value == "tool_player" || section.value == "tool_dev" %}sc2-command-icon{% endif %}" src="/static/art/starcraft/{% if section.value == "announcement" || section.value == "custom_campaign" || section.value == "tool_player" || section.value == "tool_dev" || section.value == "vanilla_mod" %}nav-{{ section.value }}{% else %}terran{% endif %}.webp" width="48" height="48" alt="" aria-hidden="true" decoding="async"></span><span><strong>{{ section.label }}</strong><small>{% if section.value == "announcement" %}社区的新鲜事{% else if section.value == "vanilla_mod" %}熟悉的故事，全新体验{% else if section.value == "custom_campaign" %}下一段冒险在这里{% else if section.value == "tool_player" %}让游戏更顺手{% else %}让灵感成为作品{% endif %}</small></span><span class="home-tile-arrow">›</span></a>{% endfor %}</nav>
   {% endif %}
-</section>
-{% endblock %}
+  {% if let Some((title, body)) = announcement %}<a class="home-announcement" href="/announcements"><img class="sc2-nav-icon sc2-command-icon" src="/static/art/starcraft/nav-announcement.webp" width="48" height="48" alt="" aria-hidden="true" decoding="async"><strong>{{ title }}</strong><span>{{ body }}</span><small>查看公告 ↗</small></a>{% endif %}
+  {% if needs_activation %}<p class="home-activation" role="status">账号尚未激活。你可以浏览社区，联系管理员激活后即可发布和回复。</p>{% endif %}
+  <section class="home-feed" id="home-feed" aria-labelledby="home-feed-title">
+    <div class="home-feed-toolbar"><div><span class="home-overline">{% if is_search %}SEARCH RESULTS{% else %}COMMUNITY FEED{% endif %}</span><h2 id="home-feed-title">{% if is_search %}“{{ search_query }}”的搜索结果{% else %}{{ feed_title }}{% endif %}<span>{{ visible_posts }}</span></h2></div><div class="home-feed-controls"><button type="button" class="forum-density-toggle" aria-pressed="false" title="隐藏摘要和配图，快速扫读">紧凑浏览</button><form method="get" action="/#home-feed" class="home-sort-form">{% if !active_section.is_empty() %}<input type="hidden" name="section" value="{{ active_section }}">{% endif %}{% if is_search %}<input type="hidden" name="q" value="{{ search_query }}">{% endif %}<label for="home-sort" class="visually-hidden">帖子排序</label><select id="home-sort" name="sort"><option value="recommended" {% if sort == "recommended" %}selected{% endif %}>综合排序</option><option value="active" {% if sort == "active" %}selected{% endif %}>最新互动</option><option value="likes" {% if sort == "likes" %}selected{% endif %}>点赞最多</option><option value="latest" {% if sort == "latest" %}selected{% endif %}>最新发布</option></select><button type="submit" class="home-sort-submit">排序</button></form><div class="home-view-switch" role="group" aria-label="显示方式"><button type="button" data-view-btn="card" aria-label="卡片视图" aria-pressed="true"><svg><use href="#i-grid"/></svg></button><button type="button" data-view-btn="list" aria-label="列表视图" aria-pressed="false"><svg><use href="#i-list"/></svg></button></div></div></div>
+    <div class="forum-feed-intro"><span>{% if is_search %}找到 {{ visible_posts }} 篇相关分享{% else %}发现作品 · 交流想法 · 一起完善{% endif %}</span><small>每一份分享，都有新的可能</small></div>
+    {% if posts.is_empty() %}<div class="home-empty"><img src="/static/art/miyin/{% if is_search %}wisdom-160{% else %}welcome-400{% endif %}.webp" width="96" height="96" alt="" loading="lazy"><h3>{% if is_search %}暂时没有找到相关内容{% else %}这个频道，等你的第一篇分享{% endif %}</h3><p>{% if is_search %}试试更短的关键词，或浏览全部内容。{% else %}分享一张地图、一段故事，或一个新的灵感。{% endif %}</p><a class="home-hero-button" href="{% if is_search %}/{% else if can_post %}/new{% else %}/register{% endif %}">{% if is_search %}浏览全部内容{% else %}加入创作{% endif %} ↗</a></div>{% else %}
+    <div class="home-posts">{% for post in posts %}<article class="home-post post-section-{{ post.section }} {% if post.cover_hash.is_some() %}has-cover{% endif %}" data-post-url="/p/{{ post.id }}">
+      <a class="home-post-cover {% if post.cover_hash.is_none() %}home-cover-placeholder{% endif %}" href="/p/{{ post.id }}" aria-label="阅读：{{ post.title }}">{% if let Some(hash) = post.cover_hash %}<img data-post-image src="/img/{{ hash }}" alt="" width="480" height="270" loading="lazy" decoding="async">{% else %}<div class="home-cover-pattern" aria-hidden="true"><span class="home-cover-word">{% if post.section == "custom_campaign" %}CAMPAIGN{% else if post.section == "vanilla_mod" %}MOD{% else if post.section == "announcement" %}COMMUNITY{% else %}TOOLKIT{% endif %}</span><img src="/static/art/miyin-chibi-160.webp" width="80" height="80" alt=""><span class="home-cover-sub">{{ post.section_label }}</span></div>{% endif %}<span class="home-cover-tag">{{ post.section_label }}</span><div class="home-cover-stats"><span><svg><use href="#i-message"/></svg>{{ post.comment_count }} 回复</span><span><svg><use href="#i-star"/></svg>{{ post.like_count }} 赞</span></div><span class="home-cover-open"><svg><use href="#i-arrow"/></svg></span></a>
+      <div class="home-post-info"><a class="home-author-avatar" href="/u/{{ post.author_handle }}" aria-label="{{ post.author }} 的主页"><img src="{% if let Some(hash) = post.avatar %}/avatar/{{ hash }}{% else %}/static/art/miyin-chibi-80.webp{% endif %}" width="32" height="32" alt="" loading="lazy"></a><div class="home-post-copy"><h3><a href="/p/{{ post.id }}">{{ post.title }}</a>{% if post.is_featured %} <span class="tag" data-feature-badge>精华</span>{% endif %}</h3><p class="home-post-excerpt">{{ post.preview }}</p><div class="home-post-meta"><a href="/u/{{ post.author_handle }}">{{ post.author }}</a><span>·</span><time>{{ post.time_ago }}</time></div><div class="home-post-tags"><span class="home-kind kind-{{ post.kind }}">{{ post.kind_label }}</span>{% if post.state != "approved" %}<span class="home-review-state">{{ post.state_label }}</span>{% endif %}<a class="forum-post-channel" href="/?section={{ post.section }}">{{ post.section_label }}</a><span class="home-list-stats">{{ post.comment_count }} 回复 · {{ post.like_count }} 赞</span><button class="forum-preview-button" type="button" aria-haspopup="dialog">快速预览 <svg aria-hidden="true"><use href="#i-grid"/></svg></button><a class="forum-thread-link" href="/p/{{ post.id }}">进入讨论 <svg aria-hidden="true"><use href="#i-arrow"/></svg></a></div></div></div>
+    </article>{% endfor %}</div>
+    <nav class="home-pagination" aria-label="帖子分页">{% if let Some(href) = previous_page %}<a href="{{ href }}">← 上一页</a>{% endif %}<span>第 {{ page }} 页</span>{% if let Some(href) = next_page %}<a href="{{ href }}">下一页 →</a>{% endif %}</nav>
+    {% endif %}
+  </section>
 
-{% block scripts %}
-<script>
-  (function () {
-    var root = document.documentElement;
-    var buttons = document.querySelectorAll('[data-view-btn]');
-    var sync = function () {
-      var view = root.getAttribute('data-post-view') || 'card';
-      buttons.forEach(function (b) {
-        b.classList.toggle('active', b.getAttribute('data-view-btn') === view);
-      });
-    };
-    sync();
-    buttons.forEach(function (b) {
-      b.addEventListener('click', function () {
-        var view = b.getAttribute('data-view-btn');
-        root.setAttribute('data-post-view', view);
-        try { localStorage.setItem('sc2clud-view', view); } catch (e) {}
-        sync();
-      });
-    });
-  })();
-</script>
+  <div class="home-bottom-note"><span>一起，拓展星际的边界。</span><span>SC2clud · 由热爱连接</span><a href="#home-feed">回到帖子 ↑</a></div>
+</div>
 {% endblock %}
+{% block scripts %}
+<dialog class="forum-reader" aria-labelledby="forum-reader-title">
+  <div class="forum-reader-top"><span>SC2CLUD / 阅读工作台</span><div><button type="button" data-reader-prev aria-label="预览上一篇">←</button><span data-reader-position></span><button type="button" data-reader-next aria-label="预览下一篇">→</button><button type="button" data-reader-close aria-label="关闭预览">×</button></div></div>
+  <div class="forum-reader-scroll"><span class="forum-reader-category" data-reader-category></span><h2 id="forum-reader-title"></h2><p class="forum-reader-meta" data-reader-meta></p><div class="forum-reader-status" role="status" aria-live="polite"></div><div class="forum-reader-content" aria-busy="false"><p data-reader-body></p><div class="forum-reader-images"></div></div></div>
+  <div class="forum-reader-bottom"><span>阅读后，给创作者一点回响。</span><a data-reader-link href="/">进入讨论与回复 <svg aria-hidden="true"><use href="#i-arrow"/></svg></a></div>
+</dialog>
+<script type="module" src="/static/islands/home.js"></script>{% endblock %}

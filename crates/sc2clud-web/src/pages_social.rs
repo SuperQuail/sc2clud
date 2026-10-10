@@ -15,8 +15,8 @@ use crate::error::{AppError, AppResult};
 use crate::routes::require_user;
 use crate::session;
 use crate::templates::{
-    AnnouncementView, AnnouncementsTemplate, BookmarkView, BookmarksTemplate, NotificationView,
-    NotificationsTemplate, format_date, format_relative, render,
+    AnnouncementView, AnnouncementsTemplate, BookmarkView, BookmarksTemplate, format_date,
+    format_relative, render,
 };
 
 #[derive(Debug, Deserialize)]
@@ -61,12 +61,15 @@ pub async fn toggle_like(
     if liked && post.author_id != user.id {
         let _ = repo::notify(
             state.db.pool(),
-            post.author_id,
-            "like",
-            &format!("{} 赞了你的帖子", user.display_name),
-            Some(&post.title),
-            Some(&format!("/p/{id}")),
-            now,
+            repo::NewNotification {
+                user_id: post.author_id,
+                actor_id: Some(user.id),
+                kind: "like",
+                title: &format!("{} 赞了你的帖子", user.display_name),
+                body: Some(&post.title),
+                link: Some(&format!("/p/{id}")),
+                now,
+            },
         )
         .await;
     }
@@ -144,43 +147,6 @@ async fn build_bookmarks<'a>(
     })
 }
 
-/// 通知中心（打开即标记已读）。
-pub async fn notifications(State(state): State<AppState>, headers: HeaderMap) -> Response {
-    match build_notifications(&state, &headers).await {
-        Ok(template) => render(template),
-        Err(e) => e.into_page_response(true),
-    }
-}
-
-async fn build_notifications<'a>(
-    state: &'a AppState,
-    headers: &HeaderMap,
-) -> AppResult<NotificationsTemplate<'a>> {
-    let user = require_user(state, headers).await?;
-    let now = now_unix();
-    let rows = repo::list_notifications(state.db.pool(), user.id, 100).await?;
-    let items = rows
-        .into_iter()
-        .map(|row| NotificationView {
-            kind: row.kind,
-            title: row.title,
-            body: row.body.unwrap_or_default(),
-            link: row.link,
-            when: format_relative(row.created_at, now),
-            unread: row.read_at.is_none(),
-        })
-        .collect();
-    let _ = repo::mark_notifications_read(state.db.pool(), user.id, now).await;
-    Ok(NotificationsTemplate {
-        site_name: &state.config.server.site_name,
-        user_label: Some(user.display_name.clone()),
-        is_staff: user.is_staff(),
-        csrf: user.csrf_token.clone(),
-        items,
-    })
-}
-
-/// 未读通知数（顶栏红点用，前端定时问一次）。
 pub async fn unread_badge(
     State(state): State<AppState>,
     headers: HeaderMap,
@@ -230,7 +196,8 @@ pub async fn create_announcement(
     Form(form): Form<AnnouncementForm>,
 ) -> AppResult<Response> {
     let user = require_user(&state, &headers).await?;
-    session::guard(Some(&user), Permission::ManageUsers)?;
+    // 系统公告：产品要求只有超级管理员能发
+    session::guard(Some(&user), Permission::PostAnnouncement)?;
     session::check_csrf(&user, &form.csrf)?;
     let title = form.title.trim();
     let body = form.body.trim();
@@ -268,6 +235,46 @@ pub async fn create_announcement(
     Ok(Redirect::to("/announcements").into_response())
 }
 
+// ------------------------------------------------------------ 横幅
+
+/// 当前用户应当看到的横幅。
+///
+/// **未登录一律返回空数组**：横幅只对用户发（用户点「确认」后不再显示）。
+pub async fn banners(State(state): State<AppState>, headers: HeaderMap) -> AppResult<Response> {
+    let Some(user) = session::current_user(&state, &headers).await? else {
+        return Ok(axum::Json(serde_json::json!({ "banners": [] })).into_response());
+    };
+    let rows = repo::visible_banners(state.db.pool(), user.id, now_unix()).await?;
+    let items: Vec<serde_json::Value> = rows
+        .into_iter()
+        .map(|b| {
+            serde_json::json!({
+                "id": b.id,
+                "title": b.title,
+                "body": b.body,
+                "kind": b.kind,
+                "url": b.url,
+            })
+        })
+        .collect();
+    Ok(axum::Json(serde_json::json!({ "banners": items })).into_response())
+}
+
+/// 用户点「确认」：之后不再给他看这条横幅。
+pub async fn banner_dismiss(
+    State(state): State<AppState>,
+    Path(id): Path<i64>,
+    headers: HeaderMap,
+) -> AppResult<Response> {
+    let user = require_user(&state, &headers).await?;
+    let token = headers
+        .get("x-csrf-token")
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or("");
+    session::check_csrf(&user, token)?;
+    let affected = repo::dismiss_banner(state.db.pool(), id, user.id, now_unix()).await?;
+    Ok(axum::Json(serde_json::json!({ "ok": true, "first_time": affected })).into_response())
+}
 // ------------------------------------------------------------ 备份与导出
 
 /// 备份目录：跟随数据目录，便于一起搬走。
@@ -345,7 +352,7 @@ pub async fn create_backup(
     let snapshot = dir.join(format!("{stamp}-sc2clud.sqlite3"));
     repo::backup_to(state.db.pool(), &snapshot.display().to_string()).await?;
 
-    // 用户数据导出（给「备份当前网站用户数据」用；不含口令哈希）
+    // 用户数据导出（给「备份当前网站用户数据」用；不含密码哈希）
     let rows = repo::admin_list_users(state.db.pool(), "", 10_000).await?;
     let export: Vec<serde_json::Value> = rows
         .into_iter()

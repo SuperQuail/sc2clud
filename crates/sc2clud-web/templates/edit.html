@@ -1,0 +1,189 @@
+{% extends "base.html" %}
+{% block body_class %}site-page page-edit{% endblock %}
+{% block page_label %}编辑帖子{% endblock %}
+
+{% block title %}编辑帖子 · {{ site_name }}{% endblock %}
+
+{% block content %}
+<section class="card page-form-card">
+  <h2>编辑帖子 <span class="count">{{ state_label }}</span></h2>
+  {% if let Some(note) = review_note %}
+  <p class="alert">审核意见：{{ note }}</p>
+  {% endif %}
+  {% if let Some(message) = error %}
+  <p class="alert">{{ message }}</p>
+  {% endif %}
+  <p class="hint">保存后会**重新过一遍审核机**（内容变了，审核结论要重算）；管理员编辑则直接发布。</p>
+  <form method="post" action="/p/{{ id }}/edit" class="stack">
+    <input type="hidden" name="csrf" value="{{ csrf }}">
+    <label>标题<input type="text" name="title" value="{{ title }}" required minlength="2" maxlength="120"></label>
+    <fieldset style="border:0;padding:0;margin:0">
+      <legend style="font-size:14px;font-weight:600;margin-bottom:8px">类型</legend>
+      <div class="kind-picker">
+        {% for kind in kinds %}
+        <label><input type="radio" name="kind" value="{{ kind.value }}"{% if kind.checked %} checked{% endif %}> {{ kind.label }}<span class="hint">{{ kind.hint }}</span></label>
+        {% endfor %}
+      </div>
+    </fieldset>
+    <fieldset style="border:0;padding:0;margin:0">
+      <legend style="font-size:14px;font-weight:600;margin-bottom:8px">分区</legend>
+      <select name="section">
+        {% for section in sections %}
+        <option value="{{ section.value }}"{% if section.checked %} selected{% endif %}>{{ section.label }}</option>
+        {% endfor %}
+      </select>
+    </fieldset>
+    <fieldset style="border:0;padding:0;margin:0">
+      <legend style="font-size:14px;font-weight:600;margin-bottom:8px">下载来源（数量不限，名称可自定义）</legend>
+      <div class="source-rows" id="source-rows">
+        {% for slot in sources %}
+        <div class="source-row">
+          <select name="provider">
+            {% for provider in providers %}
+            <option value="{{ provider.value }}"{% if provider.value == slot.provider %} selected{% endif %}>{{ provider.label }}</option>
+            {% endfor %}
+          </select>
+          <input type="text" name="label" value="{{ slot.label }}" placeholder="显示名（可留空）" maxlength="24">
+          <input type="text" name="code" value="{{ slot.code }}" placeholder="提取码" maxlength="8">
+          <input type="url" name="url" value="{{ slot.url }}" placeholder="https:// 下载地址">
+          <button class="icon-btn" type="button" data-source-remove title="删除这一行">
+            <svg viewBox="0 0 16 16" width="15" height="15"><path d="M4 4l8 8M12 4l-8 8" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg>
+          </button>
+        </div>
+        {% endfor %}
+      </div>
+      <template id="source-row-template">
+        <div class="source-row">
+          <select name="provider">
+            {% for provider in providers %}
+            <option value="{{ provider.value }}">{{ provider.label }}</option>
+            {% endfor %}
+          </select>
+          <input type="text" name="label" placeholder="显示名（可留空）" maxlength="24">
+          <input type="text" name="code" placeholder="提取码" maxlength="8">
+          <input type="url" name="url" placeholder="https:// 下载地址">
+          <button class="icon-btn" type="button" data-source-remove title="删除这一行">
+            <svg viewBox="0 0 16 16" width="15" height="15"><path d="M4 4l8 8M12 4l-8 8" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg>
+          </button>
+        </div>
+      </template>
+      <div class="actions-inline" style="margin-top:10px">
+        <button class="btn ghost sm" type="button" id="source-add">＋ 添加一个来源</button>
+        <span class="hint">留空的整行会被忽略；保存后按这里的顺序重写</span>
+      </div>
+    </fieldset>
+    <fieldset style="border:0;padding:0;margin:0">
+      <legend style="font-size:14px;font-weight:600;margin-bottom:8px">配图 <span class="hint">{{ image_count }} / 10</span></legend>
+      {% if !images.is_empty() %}
+      <div class="image-manager">
+        {% for image in images %}
+        <figure class="image-cell">
+          <a href="{{ image.href }}" target="_blank" rel="noopener"><img data-post-image src="{{ image.href }}" loading="lazy" alt="配图 {{ image.number }}"></a>
+          <figcaption>
+            <span class="meta">#{{ image.number }}</span>
+            <span class="image-actions">
+              <form method="post" action="/p/{{ id }}/images/{{ image.id }}/move">
+                <input type="hidden" name="csrf" value="{{ csrf }}">
+                <input type="hidden" name="dir" value="forward">
+                <button class="icon-btn" type="submit" title="往前挪一位"{% if image.is_first %} disabled{% endif %}>
+                  <svg viewBox="0 0 16 16" width="15" height="15"><path d="M10 3L5 8l5 5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                </button>
+              </form>
+              <form method="post" action="/p/{{ id }}/images/{{ image.id }}/move">
+                <input type="hidden" name="csrf" value="{{ csrf }}">
+                <input type="hidden" name="dir" value="back">
+                <button class="icon-btn" type="submit" title="往后挪一位"{% if image.is_last %} disabled{% endif %}>
+                  <svg viewBox="0 0 16 16" width="15" height="15"><path d="M6 3l5 5-5 5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                </button>
+              </form>
+              <form method="post" action="/p/{{ id }}/images/{{ image.id }}/delete" data-confirm="删除这张配图？">
+                <input type="hidden" name="csrf" value="{{ csrf }}">
+                <button class="icon-btn danger" type="submit" title="删除这张配图">
+                  <svg viewBox="0 0 16 16" width="15" height="15"><path d="M4 4l8 8M12 4l-8 8" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
+                </button>
+              </form>
+            </span>
+          </figcaption>
+        </figure>
+        {% endfor %}
+      </div>
+      <p class="hint">用 ← / → 调整顺序，✕ 删除；顺序就是帖子页里的展示顺序。</p>
+      {% endif %}
+      <div class="upload-row" data-post-upload data-post-id="{{ id }}" data-csrf="{{ csrf }}">
+        <input type="file" accept="image/*" id="post-image-input" multiple hidden>
+        <button class="btn ghost sm" type="button" id="post-image-add">添加配图</button>
+        <span class="hint" data-post-image-status>最多 10 张，单张 50 MB 以内；上传后立即生效</span>
+      </div>
+    </fieldset>
+    <label>正文<textarea name="body" required minlength="2" maxlength="20000">{{ body }}</textarea></label>
+    <div class="actions-inline">
+      <button class="btn" type="submit">保存</button>
+      <a class="btn ghost" href="/p/{{ id }}">取消</a>
+    </div>
+  </form>
+</section>
+{% endblock %}
+
+{% block scripts %}
+<script>
+  // 下载来源：数量不限、可增删；用 <template> 复制，所以「本来没有来源」的帖子也能加
+  (function () {
+    var rows = document.getElementById('source-rows');
+    var add = document.getElementById('source-add');
+    var tpl = document.getElementById('source-row-template');
+    if (!rows || !add || !tpl) return;
+    function bind(row) {
+      var remove = row.querySelector('[data-source-remove]');
+      if (remove) {
+        remove.addEventListener('click', function () {
+          if (rows.querySelectorAll('.source-row').length > 1) row.remove();
+        });
+      }
+    }
+    function makeRow() {
+      var row = tpl.content.firstElementChild.cloneNode(true);
+      bind(row);
+      return row;
+    }
+    if (!rows.querySelector('.source-row')) rows.appendChild(makeRow());
+    Array.prototype.forEach.call(rows.querySelectorAll('.source-row'), bind);
+    add.addEventListener('click', function () { rows.appendChild(makeRow()); });
+  })();
+</script>
+<script>
+  // 编辑页也能加配图：直接传文件本体，走同一个接口
+  (function () {
+    var box = document.querySelector('[data-post-upload]');
+    if (!box) return;
+    var input = document.getElementById('post-image-input');
+    var button = document.getElementById('post-image-add');
+    var status = box.querySelector('[data-post-image-status]');
+    if (!input || !button) return;
+    var csrf = box.dataset.csrf;
+    var id = box.dataset.postId;
+    button.addEventListener('click', function () { input.click(); });
+    input.addEventListener('change', function () {
+      var files = Array.prototype.slice.call(input.files || []);
+      if (!files.length) return;
+      var send = function (index) {
+        if (index >= files.length) {
+          if (status) status.textContent = '已上传，刷新中…';
+          location.reload();
+          return;
+        }
+        if (status) status.textContent = '上传中 ' + (index + 1) + '/' + files.length + '…';
+        fetch('/api/v1/posts/' + id + '/images', {
+          method: 'POST',
+          headers: { 'x-csrf-token': csrf },
+          body: files[index],
+          credentials: 'same-origin',
+        })
+          .then(function (r) { return r.ok ? r.json() : r.json().then(function (d) { return Promise.reject(d.message || r.status); }); })
+          .then(function () { send(index + 1); })
+          .catch(function (message) { if (status) status.textContent = '上传失败：' + message; });
+      };
+      send(0);
+    });
+  })();
+</script>
+{% endblock %}

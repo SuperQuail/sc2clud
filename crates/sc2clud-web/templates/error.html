@@ -4,9 +4,12 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>{{ status }} · SC2clud</title>
-  <link rel="stylesheet" href="/static/app.css">
+  <link rel="stylesheet" href="/static/app.css?v=20261009-site-v5">
+<link rel="stylesheet" href="/static/site.css?v=20261009-site-v5">
+  <script>(function(){var mode='system';try{mode=localStorage.getItem('sc2clud-theme')||'system';}catch(e){}document.documentElement.setAttribute('data-theme',mode==='dark'||(mode==='system'&&matchMedia('(prefers-color-scheme: dark)').matches)?'dark':'light');})();</script>
 </head>
-<body>
+<body class="site-page page-error">
+  <header class="topbar"><a class="brand" href="/"><img class="mascot" src="/static/art/miyin-chibi-80.webp" width="40" height="40" alt="弥音"><span>SC2clud<small>星际争霸 II 社区</small></span></a><div class="bar-user"><a class="btn ghost" href="/">返回社区</a></div></header>
   <main>
     <section class="card oops">
       <img src="/static/art/miyin-cry-120.webp"
@@ -18,5 +21,6 @@
       <p><a class="btn" href="/">返回首页</a></p>
     </section>
   </main>
+<footer class="site-footer"><span>SC2clud · 星际争霸 II 玩家社区</span><a href="/">回到社区 ↗</a></footer>
 </body>
 </html>

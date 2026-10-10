@@ -1,8 +1,16 @@
 {% extends "base.html" %}
+{% block body_class %}site-page page-login{% endblock %}
+{% block page_label %}登录社区{% endblock %}
 
 {% block title %}登录 · {{ site_name }}{% endblock %}
 
 {% block content %}
+<div class="auth-layout"><aside class="auth-story" aria-label="星际玩家社区">
+  <img class="auth-scene" src="/static/art/starcraft/sc2-battle.webp" width="1200" height="953" alt="" aria-hidden="true">
+  <div><img class="auth-story-logo" src="/static/art/starcraft/sc2-logo.webp" width="240" height="101" alt="StarCraft II">
+  <h1>下一场故事，<br>和你一起创造。</h1><p>发现玩家的战役与灵感，<br>让你的热爱，在这里找到同伴。</p></div>
+  <img class="auth-mascot" src="/static/art/miyin/wink-520.webp" width="180" height="180" alt="社区看板娘弥音">
+  <small>SC2 COMMUNITY / CREATE TOGETHER</small></aside>
 <section class="card auth-card">
   <h2>登录</h2>
   {% if let Some(message) = error %}
@@ -10,9 +18,9 @@
   {% endif %}
 <form method="post" action="/login" class="stack">
   <label>用户名或邮箱<input type="text" name="account" value="{{ account }}" required autocomplete="username"></label>
-  <label>口令<input type="password" name="password" required autocomplete="current-password"></label>
+  <label>密码<input type="password" name="password" required autocomplete="current-password"></label>
   <button class="btn" type="submit">登录</button>
 </form>
   <p class="hint">还没有账号？<a href="/register">注册一个</a>。注册后可能需要管理员激活。</p>
-</section>
+</section></div>
 {% endblock %}

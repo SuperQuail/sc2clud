@@ -19,7 +19,11 @@ use sc2clud_db::repo;
 use crate::AppState;
 use crate::error::{AppError, AppResult};
 use crate::session;
-use crate::templates::{LoginTemplate, RegisterTemplate};
+use crate::templates::{AuthDialogTemplate, LoginTemplate, RegisterTemplate};
+
+pub async fn auth_dialog() -> Response {
+    crate::templates::render(AuthDialogTemplate {})
+}
 
 #[derive(Debug, Deserialize)]
 pub struct RegisterForm {
@@ -35,21 +39,49 @@ pub struct LoginForm {
     pub password: String,
 }
 
+/// 从 URL 里抠出 host（含端口，去掉默认端口）。
+fn host_of(url: &str) -> Option<String> {
+    let rest = url.split("://").nth(1).unwrap_or(url);
+    let host = rest.split('/').next()?.trim().to_ascii_lowercase();
+    if host.is_empty() {
+        return None;
+    }
+    Some(
+        host.strip_suffix(":80")
+            .or_else(|| host.strip_suffix(":443"))
+            .unwrap_or(&host)
+            .to_string(),
+    )
+}
+
+/// 判断某个 Origin 是否算「本站」。
+///
+/// **优先比请求自己的 Host 头**：站点会被域名、www、IP 等多种方式访问，
+/// 把 base_url 写死会导致换域名后登录直接被 403（踩过一次）。
+/// base_url 只作为兜底（例如反向代理没透传 Host 时）。
+fn origin_is_same_site(origin: &str, host_header: Option<&str>, base_url: &str) -> bool {
+    let Some(origin_host) = host_of(origin) else {
+        return false;
+    };
+    if let Some(host) = host_header.and_then(host_of) {
+        if host == origin_host {
+            return true;
+        }
+    }
+    host_of(base_url).as_deref() == Some(origin_host.as_str())
+}
+
 /// 校验请求来源：表单页与提交必须同源（挡 CSRF）。
 fn check_origin(state: &AppState, headers: &HeaderMap) -> AppResult<()> {
-    let expected = state
-        .config
-        .server
-        .base_url
-        .trim_end_matches('/')
-        .to_string();
     let origin = headers
         .get(header::ORIGIN)
         .or_else(|| headers.get(header::REFERER))
-        .and_then(|value| value.to_str().ok())
-        .map(|value| value.trim_end_matches('/').to_string());
+        .and_then(|value| value.to_str().ok());
+    let host = headers
+        .get(header::HOST)
+        .and_then(|value| value.to_str().ok());
     match origin {
-        Some(origin) if origin.starts_with(&expected) => Ok(()),
+        Some(origin) if origin_is_same_site(origin, host, &state.config.server.base_url) => Ok(()),
         _ => Err(AppError::Domain(DomainError::Forbidden(
             "请求来源校验失败，请从站点页面重试".to_string(),
         ))),
@@ -61,6 +93,29 @@ fn with_cookie(mut response: Response, cookie: String) -> Response {
         response.headers_mut().append(header::SET_COOKIE, value);
     }
     response
+}
+
+// 弹窗显式请求 JSON，普通浏览器表单继续使用原来的页面和重定向。
+fn wants_auth_json(headers: &HeaderMap) -> bool {
+    headers
+        .get(header::ACCEPT)
+        .and_then(|value| value.to_str().ok())
+        .is_some_and(|accept| {
+            accept.split(',').any(|item| {
+                item.split(';')
+                    .next()
+                    .is_some_and(|mime| mime.trim() == "application/json")
+            })
+        })
+}
+
+fn auth_redirect(headers: &HeaderMap, target: &str, needs_activation: bool) -> Response {
+    if wants_auth_json(headers) {
+        axum::Json(serde_json::json!({ "ok": true, "needs_activation": needs_activation }))
+            .into_response()
+    } else {
+        Redirect::to(target).into_response()
+    }
 }
 
 // ---------------------------------------------------------------- 注册
@@ -92,6 +147,10 @@ pub async fn register_submit(
     Form(form): Form<RegisterForm>,
 ) -> Response {
     let page = |state: &AppState, error: &str| {
+        if wants_auth_json(&headers) {
+            return axum::Json(serde_json::json!({ "ok": false, "message": error }))
+                .into_response();
+        }
         crate::templates::render(RegisterTemplate {
             site_name: &state.config.server.site_name,
             is_staff: false,
@@ -173,11 +232,11 @@ pub async fn register_submit(
 
     if needs_activation {
         // 默认未激活：登录后会被引导到「待激活」提示
-        Redirect::to("/login?registered=1").into_response()
+        auth_redirect(&headers, "/login?registered=1", true)
     } else {
         match session::start_session(&state, user_id, None).await {
             Ok((token, _csrf)) => with_cookie(
-                Redirect::to("/").into_response(),
+                auth_redirect(&headers, "/", false),
                 session::session_cookie(&state, &token),
             ),
             Err(e) => e.into_response(),
@@ -211,6 +270,10 @@ pub async fn login_submit(
     Form(form): Form<LoginForm>,
 ) -> Response {
     let page = |state: &AppState, error: &str| {
+        if wants_auth_json(&headers) {
+            return axum::Json(serde_json::json!({ "ok": false, "message": error }))
+                .into_response();
+        }
         crate::templates::render(LoginTemplate {
             site_name: &state.config.server.site_name,
             is_staff: false,
@@ -233,12 +296,12 @@ pub async fn login_submit(
     };
     let user = match found {
         Ok(Some(user)) => user,
-        Ok(None) => return page(&state, "用户名或口令不正确"),
+        Ok(None) => return page(&state, "用户名或密码不正确"),
         Err(e) => return AppError::from(e).into_response(),
     };
-    // 刻意不区分「账号不存在」与「口令错误」，避免账号枚举。
+    // 刻意不区分「账号不存在」与「密码错误」，避免账号枚举。
     if !verify_password(&form.password, &user.password_hash) {
-        return page(&state, "用户名或口令不正确");
+        return page(&state, "用户名或密码不正确");
     }
 
     let user_agent = headers
@@ -247,7 +310,7 @@ pub async fn login_submit(
         .map(|value| value.chars().take(160).collect::<String>());
     match session::start_session(&state, user.id, user_agent.as_deref()).await {
         Ok((token, _csrf)) => with_cookie(
-            Redirect::to("/").into_response(),
+            auth_redirect(&headers, "/", false),
             session::session_cookie(&state, &token),
         ),
         Err(e) => e.into_response(),
@@ -262,4 +325,80 @@ pub async fn logout(State(state): State<AppState>, headers: HeaderMap) -> Respon
         Redirect::to("/").into_response(),
         session::clear_cookie(&state),
     )
+}
+#[cfg(test)]
+mod origin_tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn dialog_success_keeps_cookie_without_redirecting_to_production() {
+        let mut headers = HeaderMap::new();
+        headers.insert(header::ACCEPT, HeaderValue::from_static("application/json"));
+        let response = with_cookie(
+            auth_redirect(&headers, "/", false),
+            "preview=session; HttpOnly; SameSite=Lax".to_string(),
+        );
+        assert_eq!(response.status(), axum::http::StatusCode::OK);
+        assert!(!response.headers().contains_key(header::LOCATION));
+        assert!(response.headers().contains_key(header::SET_COOKIE));
+        let bytes = axum::body::to_bytes(response.into_body(), 1024)
+            .await
+            .unwrap();
+        let value: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+        assert_eq!(value["ok"], true);
+        assert_eq!(value["needs_activation"], false);
+
+        let response = auth_redirect(&headers, "/login?registered=1", true);
+        let bytes = axum::body::to_bytes(response.into_body(), 1024)
+            .await
+            .unwrap();
+        let value: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+        assert_eq!(value["needs_activation"], true);
+    }
+
+    #[test]
+    fn ordinary_forms_keep_their_existing_redirects() {
+        let mut headers = HeaderMap::new();
+        headers.insert(
+            header::ACCEPT,
+            HeaderValue::from_static("text/html,application/xhtml+xml"),
+        );
+        let response = auth_redirect(&headers, "/login?registered=1", true);
+        assert_eq!(response.status(), axum::http::StatusCode::SEE_OTHER);
+        assert_eq!(response.headers()[header::LOCATION], "/login?registered=1");
+    }
+
+    #[test]
+    fn same_host_passes() {
+        // 域名访问：Host 头就是域名，Origin 也是域名 → 同源
+        assert!(origin_is_same_site(
+            "http://www.xn--xpra07ba.fun",
+            Some("www.xn--xpra07ba.fun"),
+            "http://191.40.41.97"
+        ));
+        // 默认端口应当被抹平
+        assert!(origin_is_same_site(
+            "http://example.com:80",
+            Some("example.com"),
+            "http://191.40.41.97"
+        ));
+    }
+
+    #[test]
+    fn base_url_still_works_as_fallback() {
+        assert!(origin_is_same_site(
+            "http://191.40.41.97",
+            None,
+            "http://191.40.41.97"
+        ));
+    }
+
+    #[test]
+    fn foreign_origin_is_rejected() {
+        assert!(!origin_is_same_site(
+            "http://evil.example",
+            Some("www.xn--xpra07ba.fun"),
+            "http://191.40.41.97"
+        ));
+    }
 }

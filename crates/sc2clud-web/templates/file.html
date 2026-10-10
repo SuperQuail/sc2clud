@@ -1,4 +1,6 @@
 {% extends "base.html" %}
+{% block body_class %}site-page page-file{% endblock %}
+{% block page_label %}资源详情{% endblock %}
 
 {% block title %}{{ file.name }} · {{ site_name }}{% endblock %}
 
@@ -23,7 +25,7 @@
         <a class="btn" href="{{ download_href }}">下载</a>
         <a class="btn ghost" href="/">返回首页</a>
       </div>
-      <p class="hint" style="margin-top:14px">下载由 nginx 直出：应用只做一次授权，字节不经过应用进程。</p>
+
     </div>
   </div>
 </section>

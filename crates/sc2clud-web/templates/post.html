@@ -1,78 +1,77 @@
 {% extends "base.html" %}
+{% block body_class %}site-page page-post{% endblock %}
+{% block page_label %}帖子与讨论{% endblock %}
 
 {% block title %}{{ post.title }} · {{ site_name }}{% endblock %}
 
 {% block content %}
+<div class="post-layout">
+  {# 左栏：分区快捷入口 + 我的 #}
+  <aside class="post-side">
+    <div class="side-card">
+      <h3>分区</h3>
+      <nav class="side-nav">
+        <a href="/">全部</a>
+        {% for section in sections %}
+        <a href="/?section={{ section.value }}" class="{% if section.checked %}active{% endif %}">{{ section.label }}</a>
+        {% endfor %}
+      </nav>
+    </div>
+    <div class="side-card">
+      <h3>我的</h3>
+      <nav class="side-nav">
+        <a href="/new">发新帖</a>
+        <a href="/bookmarks">我的收藏</a>
+        <a href="/inbox?tab=dm">私信</a>
+      </nav>
+    </div>
+  </aside>
+
+  {# 中栏：正文主体 #}
+  <div class="post-main">
 <section class="card">
   <div class="head" style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px">
     <span class="tag">{{ post.section_label }}</span>
     <span class="kind kind-{{ post.kind }}">{{ post.kind_label }}</span>
     {% if post.state != "approved" %}<span class="kind state-{{ post.state }}">{{ post.state_label }}</span>{% endif %}
   </div>
-  <h1 style="margin:0 0 8px;font-size:22px;line-height:1.4">{{ post.title }}</h1>
+  <h1 class="site-post-title">{{ post.title }}</h1><span class="tag" data-feature-badge {% if !post.is_featured %}hidden{% endif %}>精华</span>
   <div class="meta byline">
     {% if let Some(avatar) = post.avatar %}
     <img class="avatar" src="/avatar/{{ avatar }}" alt="" width="24" height="24">
     {% else %}
     <img class="avatar" src="/static/art/miyin-chibi-80.webp" alt="" width="24" height="24">
     {% endif %}
-    {{ post.author }} · {{ post.author_role_label }} · {{ post.created_at }}
+    <span class="ellipsis" title="{{ post.author }}">{{ post.author }}</span> · {{ post.author_role_label }} · {{ post.created_at }}
     {% if post.image_count > 0 %} · {{ post.image_count }} 张图{% endif %}</div>
-  {% if is_staff && post.state != "approved" %}
-  <div class="review-bar">
-    <span class="hint">此帖当前状态「{{ post.state_label }}」，只有你与作者看得到：</span>
-    <form method="post" action="/admin/posts/{{ post.id }}/approve" data-async data-after="refresh" class="inline-form">
-      <input type="hidden" name="csrf" value="{{ csrf }}">
-      <button class="btn sm" type="submit">通过</button>
-    </form>
-    <form method="post" action="/admin/posts/{{ post.id }}/reject" data-async data-after="refresh" class="inline-form">
-      <input type="hidden" name="csrf" value="{{ csrf }}">
-      <button class="btn ghost sm" type="submit">拒绝</button>
-      <input type="text" name="note" placeholder="拒绝理由" maxlength="80">
-    </form>
-  </div>
+  {% if post.archived %}
+  <p class="alert" style="margin-top:12px">此帖已归档：列表里不再展示，只有作者与管理员能通过直链打开。</p>
   {% endif %}
 
   {% if let Some(note) = post.review_note %}
-  {% if post.state == "approved" %}
-  <p class="hint" style="margin-top:12px">发布说明：{{ note }}</p>
-  {% else %}
-  <p class="alert" style="margin-top:12px">审核备注：{{ note }}</p>
+  {% if post.state != "approved" %}
+  <p class="alert" style="margin-top:12px">审核意见：{{ note }}</p>
   {% endif %}
   {% endif %}
   <p class="post-body">{{ post.body }}</p>
-  {% if show_sources %}
-  <section class="sources">
-    <h3>下载来源</h3>
-    {% for source in sources %}
-    <div class="source-item">
-      <div class="source-head">
-        <span class="provider provider-{{ source.provider }}">{{ source.provider_label }}</span>
-        {% if let Some(label) = source.label %}<span class="meta">{{ label }}</span>{% endif %}
-        <a class="btn" href="{{ source.url }}" target="_blank" rel="noopener nofollow">打开下载</a>
-        {% if let Some(code) = source.extract_code %}<span class="meta">提取码 <code>{{ code }}</code></span>{% endif %}
-      </div>
-      {% if !source.mirrors.is_empty() %}
-      <div class="mirrors">
-        <p class="hint">GitHub 镜像（页面会实测延迟，最快的排在最前）：</p>
-        {% for mirror in source.mirrors %}
-        <a class="mirror" href="{{ mirror.url }}" target="_blank" rel="noopener nofollow" data-mirror-url="{{ mirror.url }}" data-mirror-original="{{ mirror.is_original }}">{{ mirror.label }}</a>
-        {% endfor %}
-        <button class="btn ghost" type="button" data-copy-github="{{ source.url }}">复制 GitHub 原链</button>
-      </div>
-      {% endif %}
-    </div>
-    {% endfor %}
-  </section>
-  {% endif %}
 
   {% if !images.is_empty() %}
   <div class="gallery">
     {% for image in images %}
-    <a href="{{ image.href }}" target="_blank" rel="noopener"><img src="{{ image.href }}" loading="lazy" alt="配图"></a>
+    <a href="{{ image.href }}" target="_blank" rel="noopener"><img data-post-image src="{{ image.href }}" loading="lazy" alt="配图"></a>
     {% endfor %}
   </div>
   {% endif %}
+
+  {# 配图上传：作者与管理员可以随时补图（服务端按魔数认类型、最多 10 张） #}
+  {% if post.can_edit %}
+  <div class="upload-row" data-post-upload data-post-id="{{ post.id }}" data-csrf="{{ csrf }}">
+    <input type="file" accept="image/*" id="post-image-input" multiple hidden>
+    <button class="btn ghost sm" type="button" id="post-image-add">添加配图</button>
+    <span class="hint" data-post-image-status>最多 10 张，单张 50 MB 以内</span>
+  </div>
+  {% endif %}
+
   <div class="post-actions">
     <form method="post" action="/p/{{ post.id }}/like" class="inline-form" data-like>
       <input type="hidden" name="csrf" value="{{ csrf }}">
@@ -89,42 +88,100 @@
       </button>
     </form>
     <span class="hint" data-post-note></span>
+    {% include "post_actions.html" %}
   </div>
 
   <div class="actions-inline" style="margin-top:18px">
-    <a class="btn ghost" href="/">返回首页</a>
-    {% if is_staff %}
-    <span class="hint">你是管理员：可见审核状态「{{ post.state_label }}」</span>
-    {% endif %}
+    <a class="btn ghost sm" href="/">返回首页</a>
   </div>
 </section>
 
-<section class="card">
-  <h2>回复 <span class="count">{{ comments.len() }}</span></h2>
+<section class="card" id="comments">
+  <h2>回复 <span class="count">{{ comments_total }}</span></h2>
   {% if comments.is_empty() %}
-  <p class="empty">还没有回复。</p>
+  <div class="community-empty"><img src="/static/art/miyin/smile-160.webp" width="80" height="80" alt="">还没有人回复，来抢第一楼。</div>
   {% else %}
-  <div class="comments">
+  <div class="comments cui-{{ comments_variant }}">
     {% for c in comments %}
-    <div class="comment">
-      <div class="who byline">
-        {% if let Some(avatar) = c.avatar %}
-        <img class="avatar" src="/avatar/{{ avatar }}" alt="" width="20" height="20" loading="lazy">
-        {% else %}
-        <img class="avatar" src="/static/art/miyin-chibi-80.webp" alt="" width="20" height="20" loading="lazy">
+    <div class="comment" id="c{{ c.id }}">
+      {% if let Some(small) = c.avatar_small %}
+      <img class="avatar c-avatar" src="/avatar/{{ small }}" alt="" width="40" height="40" loading="lazy" onerror="this.src='/static/art/miyin/image-unavailable-480.webp'">
+      {% else if let Some(avatar) = c.avatar %}
+      <img class="avatar c-avatar" src="/avatar/{{ avatar }}" alt="" width="40" height="40" loading="lazy" onerror="this.src='/static/art/miyin/image-unavailable-480.webp'">
+      {% else %}
+      <img class="avatar c-avatar" src="/static/art/miyin-chibi-80.webp" alt="" width="40" height="40" loading="lazy">
+      {% endif %}
+      <div class="c-main">
+        <div class="c-head">
+          <span class="c-floor">NO.{{ c.id }}</span>
+          <b class="c-name">{{ c.author }}</b>
+          {% if let Some(title) = c.title %}<span class="c-title" style="--tc: {{ c.title_color }}">{{ title }}</span>{% endif %}
+        </div>
+        <div class="c-body">{{ c.body_html|safe }}</div>
+        <div class="c-actions">
+          <time class="meta">{{ c.created_at }}</time>
+          {% if can_reply %}<button class="c-act c-like{% if c.my_vote == 1 %} on{% endif %}" type="button" data-vote="{{ c.id }}" title="点赞" aria-label="点赞"><svg class="c-ico i-off" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M6.633 10.25c.806 0 1.533-.446 2.031-1.08a9.041 9.041 0 0 1 2.861-2.4c.723-.384 1.35-.956 1.653-1.715a4.498 4.498 0 0 0 .322-1.672V3a.75.75 0 0 1 .75-.75 2.25 2.25 0 0 1 2.25 2.25c0 1.152-.26 2.243-.723 3.218-.266.558.107 1.282.725 1.282h3.126c1.026 0 1.945.694 2.054 1.715.045.422.068.85.068 1.285a11.95 11.95 0 0 1-2.649 7.521c-.388.482-.987.729-1.605.729H13.48c-.483 0-.964-.078-1.423-.23l-3.114-1.04a4.501 4.501 0 0 0-1.423-.23H5.904M14.25 9h2.25M5.904 18.75c.083.205.173.405.27.602.197.4-.078.898-.523.898h-.908c-.889 0-1.713-.518-1.972-1.368a12 12 0 0 1-.521-3.507c0-1.553.295-3.036.831-4.398C3.387 9.953 4.167 9.5 5 9.5h1.053c.472 0 .745.556.5.96a8.958 8.958 0 0 0-1.302 4.665c0 1.194.232 2.333.654 3.375Z"/></svg><svg class="c-ico i-on" viewBox="0 0 24 24" width="16" height="16" fill="currentColor" aria-hidden="true"><path d="M6.633 10.25c.806 0 1.533-.446 2.031-1.08a9.041 9.041 0 0 1 2.861-2.4c.723-.384 1.35-.956 1.653-1.715a4.498 4.498 0 0 0 .322-1.672V3a.75.75 0 0 1 .75-.75 2.25 2.25 0 0 1 2.25 2.25c0 1.152-.26 2.243-.723 3.218-.266.558.107 1.282.725 1.282h3.126c1.026 0 1.945.694 2.054 1.715.045.422.068.85.068 1.285a11.95 11.95 0 0 1-2.649 7.521c-.388.482-.987.729-1.605.729H13.48c-.483 0-.964-.078-1.423-.23l-3.114-1.04a4.501 4.501 0 0 0-1.423-.23H5.904M14.25 9h2.25M5.904 18.75c.083.205.173.405.27.602.197.4-.078.898-.523.898h-.908c-.889 0-1.713-.518-1.972-1.368a12 12 0 0 1-.521-3.507c0-1.553.295-3.036.831-4.398C3.387 9.953 4.167 9.5 5 9.5h1.053c.472 0 .745.556.5.96a8.958 8.958 0 0 0-1.302 4.665c0 1.194.232 2.333.654 3.375Z"/></svg><span class="c-like-count">{{ c.likes }}</span></button>
+            <button class="c-act" type="button" data-reply-id="{{ c.id }}" data-reply-user="{{ c.author_id }}" data-reply-name="{{ c.author }}">回复</button>{% endif %}
+        </div>
+        {% if !c.replies.is_empty() %}
+        <div class="c-subs">
+          {% for r in c.replies %}
+          <div class="c-sub" id="c{{ r.id }}">
+            {% if let Some(small) = r.avatar_small %}
+            <img class="avatar c-avatar sm" src="/avatar/{{ small }}" alt="" width="26" height="26" loading="lazy" onerror="this.src='/static/art/miyin/image-unavailable-480.webp'">
+            {% else if let Some(avatar) = r.avatar %}
+            <img class="avatar c-avatar sm" src="/avatar/{{ avatar }}" alt="" width="26" height="26" loading="lazy" onerror="this.src='/static/art/miyin/image-unavailable-480.webp'">
+            {% else %}
+            <img class="avatar c-avatar sm" src="/static/art/miyin-chibi-80.webp" alt="" width="26" height="26" loading="lazy">
+            {% endif %}
+            <div class="c-main">
+              <div class="c-head"><b class="c-name">{{ r.author }}</b>{% if let Some(title) = r.title %}<span class="c-title" style="--tc: {{ r.title_color }}">{{ title }}</span>{% endif %}</div>
+              <div class="c-body">{{ r.body_html|safe }}</div>
+              <div class="c-actions">
+                <time class="meta">{{ r.created_at }}</time>
+                {% if can_reply %}<button class="c-act c-like{% if r.my_vote == 1 %} on{% endif %}" type="button" data-vote="{{ r.id }}" title="点赞" aria-label="点赞"><svg class="c-ico i-off" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M6.633 10.25c.806 0 1.533-.446 2.031-1.08a9.041 9.041 0 0 1 2.861-2.4c.723-.384 1.35-.956 1.653-1.715a4.498 4.498 0 0 0 .322-1.672V3a.75.75 0 0 1 .75-.75 2.25 2.25 0 0 1 2.25 2.25c0 1.152-.26 2.243-.723 3.218-.266.558.107 1.282.725 1.282h3.126c1.026 0 1.945.694 2.054 1.715.045.422.068.85.068 1.285a11.95 11.95 0 0 1-2.649 7.521c-.388.482-.987.729-1.605.729H13.48c-.483 0-.964-.078-1.423-.23l-3.114-1.04a4.501 4.501 0 0 0-1.423-.23H5.904M14.25 9h2.25M5.904 18.75c.083.205.173.405.27.602.197.4-.078.898-.523.898h-.908c-.889 0-1.713-.518-1.972-1.368a12 12 0 0 1-.521-3.507c0-1.553.295-3.036.831-4.398C3.387 9.953 4.167 9.5 5 9.5h1.053c.472 0 .745.556.5.96a8.958 8.958 0 0 0-1.302 4.665c0 1.194.232 2.333.654 3.375Z"/></svg><svg class="c-ico i-on" viewBox="0 0 24 24" width="16" height="16" fill="currentColor" aria-hidden="true"><path d="M6.633 10.25c.806 0 1.533-.446 2.031-1.08a9.041 9.041 0 0 1 2.861-2.4c.723-.384 1.35-.956 1.653-1.715a4.498 4.498 0 0 0 .322-1.672V3a.75.75 0 0 1 .75-.75 2.25 2.25 0 0 1 2.25 2.25c0 1.152-.26 2.243-.723 3.218-.266.558.107 1.282.725 1.282h3.126c1.026 0 1.945.694 2.054 1.715.045.422.068.85.068 1.285a11.95 11.95 0 0 1-2.649 7.521c-.388.482-.987.729-1.605.729H13.48c-.483 0-.964-.078-1.423-.23l-3.114-1.04a4.501 4.501 0 0 0-1.423-.23H5.904M14.25 9h2.25M5.904 18.75c.083.205.173.405.27.602.197.4-.078.898-.523.898h-.908c-.889 0-1.713-.518-1.972-1.368a12 12 0 0 1-.521-3.507c0-1.553.295-3.036.831-4.398C3.387 9.953 4.167 9.5 5 9.5h1.053c.472 0 .745.556.5.96a8.958 8.958 0 0 0-1.302 4.665c0 1.194.232 2.333.654 3.375Z"/></svg><span class="c-like-count">{{ r.likes }}</span></button>
+                  <button class="c-act" type="button" data-reply-id="{{ c.id }}" data-reply-user="{{ r.author_id }}" data-reply-name="{{ r.author }}">回复</button>{% endif %}
+              </div>
+            </div>
+          </div>
+          {% endfor %}
+        </div>
         {% endif %}
-        {{ c.author }}
+        {# 点「回复」时在这里展开：位置在该楼层所有子回复之下（不遮挡别的楼层） #}
+        {% if can_reply %}
+        <form class="c-reply-box" method="post" action="/p/{{ post.id }}/comments" data-reply-box="{{ c.id }}" hidden>
+          <input type="hidden" name="csrf" value="{{ csrf }}">
+          <input type="hidden" name="parent_id" value="{{ c.id }}">
+          <textarea name="body" class="c-reply-input" rows="2" required minlength="2" maxlength="5000" placeholder="回复这条评论…"></textarea>
+          <div class="c-reply-actions">
+            <button class="btn sm" type="submit">回复</button>
+            <button class="c-act" type="button" data-reply-cancel="{{ c.id }}">取消</button>
+          </div>
+        </form>
+        {% endif %}
       </div>
-      <p>{{ c.body }}</p>
-      <time class="meta" datetime="{{ c.created_at }}">{{ c.created_at }}</time>
     </div>
     {% endfor %}
   </div>
+  {% if comments_pages > 1 %}
+  <nav class="c-pager">
+    <span class="c-pager-total">共 {{ comments_pages }} 页</span>
+    {% for page in comments_page_links %}
+    {% if page.gap %}<span class="c-pager-gap">…</span>
+    {% else if page.number == comments_page %}<span class="c-pager-current">{{ page.number }}</span>
+    {% else %}<a href="?page={{ page.number }}#comments">{{ page.number }}</a>{% endif %}
+    {% endfor %}
+    {% if comments_next > 0 %}<a class="c-pager-next" href="?page={{ comments_next }}#comments">下一页</a>{% endif %}
+  </nav>
   {% endif %}
+  {% endif %}
+  <button class="c-float" id="c-float" type="button" hidden>写评论…</button>
   {% if can_reply %}
-  <form method="post" action="/p/{{ post.id }}/comments" class="stack" style="margin-top:18px">
+  <form method="post" action="/p/{{ post.id }}/comments" class="stack" style="margin-top:18px" data-comment-form>
     <input type="hidden" name="csrf" value="{{ csrf }}">
-    <label>回复内容<textarea name="body" required minlength="2" maxlength="5000"></textarea></label>
+    {# 楼中楼：点某层的「回复」时填这里，留空即主楼层 #}
+    <label>回复内容<textarea name="body" id="reply-body" required minlength="2" maxlength="5000" placeholder="支持 @某人；点某层右下角的「回复」会自动带上对方"></textarea></label>
+    <div class="mention-pop" id="mention-pop" hidden></div>
     <button class="btn" type="submit">发布回复</button>
   </form>
   {% else if user_label.is_none() %}
@@ -133,9 +190,403 @@
   <p class="hint" style="margin-top:16px">账号激活后才能回复。</p>
   {% endif %}
 </section>
+<style>
+.comments{display:flex;flex-direction:column;gap:18px}
+.comment{display:flex;gap:12px}
+.c-avatar{flex:none;border-radius:50%;object-fit:cover}
+.c-main{flex:1;min-width:0}
+.c-head{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.c-name{font-size:14px}
+.c-title{font-size:11px;padding:1px 7px;border-radius:999px;border:1px solid color-mix(in srgb, var(--tc) 45%, transparent);background:color-mix(in srgb, var(--tc) 18%, transparent);color:var(--tc)}
+.c-floor{font-size:11px;opacity:.45;letter-spacing:.02em}
+.c-body{margin:6px 0 4px;line-height:1.75;white-space:pre-wrap;word-break:break-word}
+.c-body .mention{color:#2563eb;text-decoration:none}
+.c-body .mention:hover{text-decoration:underline}
+.c-actions{display:flex;align-items:center;gap:14px;font-size:12px;opacity:.75}
+.c-act{border:0;background:none;color:inherit;font:inherit;font-size:12px;cursor:pointer;padding:0}
+.c-act:hover{color:#2563eb}
+.c-subs{margin-top:12px;display:flex;flex-direction:column;gap:12px}
+.c-sub{display:flex;gap:10px}
+.c-sub .c-body{margin:4px 0 2px}
+/* 版式 1：B 站原味（楼层号靠右，楼中楼浅底缩进） */
+.cui-1 .c-head{position:relative;padding-right:64px}
+.cui-1 .c-floor{position:absolute;right:0;top:2px}
+.cui-1 .c-subs{margin-left:10px;padding:10px 12px;border-radius:10px;background:rgba(127,127,127,.07)}
+/* 版式 2：卡片流（每层浅底卡片，楼中楼竖线） */
+.cui-2 .comment{padding:14px;border-radius:12px;background:var(--card-soft,rgba(127,127,127,.06))}
+.cui-2 .c-subs{margin-left:0;padding-left:14px;border-left:2px solid rgba(37,99,235,.25)}
+/* 版式 3：紧凑列表（楼层号在最左，行距紧、无缩进） */
+.cui-3{gap:12px}
+.cui-3 .c-head{gap:6px}
+.cui-3 .c-floor{order:-1;font-weight:600;opacity:.6}
+.cui-3 .c-body{margin:4px 0 2px;line-height:1.6}
+.cui-3 .c-subs{margin-top:8px;gap:8px}
+/* 向上弹：底边贴输入框上沿（原来向下弹会盖住正在输入的那行） */
+.mention-pop{position:absolute;z-index:40;left:0;bottom:100%;margin:0 0 6px;min-width:220px;max-height:220px;overflow:auto;background:var(--card,#fff);color:inherit;border:1px solid var(--line,#e5e7eb);border-radius:10px;box-shadow:0 -8px 24px rgba(0,0,0,.14)}
+[data-comment-form],.c-reply-box{position:relative}
+.mention-item{display:flex;align-items:center;gap:8px;padding:8px 10px;cursor:pointer;font-size:13px}
+.mention-item:hover,.mention-item.active{background:rgba(37,99,235,.1)}
+.mention-item .mi-id{opacity:.55;font-size:12px}
+.mention-item .mi-handle{opacity:.55;font-size:12px}
+.c-like{display:inline-flex;align-items:center;gap:4px}
+/* 图标来自 Heroicons 24（MIT）：未点赞 = 描边，已点赞 = 实色 */
+.c-like .c-ico{display:none}
+.c-like .i-off{display:inline-block}
+.c-like.on .i-off{display:none}
+.c-like.on .i-on{display:inline-block}
+.c-like.on{color:#2563eb;opacity:1}
+.c-like-count{font-variant-numeric:tabular-nums}
+.c-pager{display:flex;align-items:center;gap:10px;margin-top:18px;font-size:13px;flex-wrap:wrap}
+.c-pager-total{opacity:.6}
+.c-pager a{color:inherit;text-decoration:none;padding:2px 7px;border-radius:6px}
+.c-pager a:hover{background:rgba(127,127,127,.12)}
+.c-pager-current{font-weight:700;color:#2563eb;padding:2px 7px}
+.c-pager-gap{opacity:.5}
+.c-reply-box{margin-top:10px;display:flex;flex-direction:column;gap:8px}
+.c-reply-box[hidden]{display:none}
+.c-reply-input{width:100%;min-height:64px;resize:vertical}
+.c-reply-actions{display:flex;gap:10px;align-items:center}
+.c-float{position:fixed;left:0;right:0;bottom:0;z-index:60;display:flex;justify-content:center;padding:10px 16px;background:color-mix(in srgb, var(--card, #fff) 92%, transparent);border-top:1px solid var(--line, #e5e7eb)}
+.c-float[hidden]{display:none}
+.c-float button{max-width:820px;width:100%;text-align:left;padding:10px 14px;border-radius:10px;border:1px solid var(--line, #e5e7eb);background:none;color:inherit;font:inherit;cursor:text;opacity:.75}
+.tbi-1 textarea,.tbi-1 input[type=text],.tbi-1 input[type=search]{width:100%;padding:12px 14px;border:1px solid var(--line, #e5e7eb);border-radius:10px;background:color-mix(in srgb, var(--card, #fff) 96%, transparent);color:inherit;font:inherit;transition:border-color .15s,box-shadow .15s}
+.tbi-1 textarea:focus,.tbi-1 input:focus{outline:0;border-color:#2563eb;box-shadow:0 0 0 3px color-mix(in srgb, #2563eb 22%, transparent)}
+.tbi-1 textarea::placeholder,.tbi-1 input::placeholder{color:color-mix(in srgb, currentColor 45%, transparent)}
+</style>
+  </div>{# /post-main #}
+
+  {# 右栏：作者 + 资源 + 数据 #}
+  <aside class="post-aside">
+    <div class="side-card author-card">
+      {% if let Some(avatar) = post.avatar %}
+      <img class="avatar avatar-lg" src="/avatar/{{ avatar }}" alt="" width="64" height="64">
+      {% else %}
+      <img class="avatar avatar-lg" src="/static/art/miyin-chibi-160.webp" alt="" width="64" height="64">
+      {% endif %}
+      <strong>{{ post.author }}</strong>
+      <span class="meta">{{ post.author_role_label }}</span>
+      <div class="actions-inline">
+        <a class="btn ghost sm" href="/u/{{ post.author_handle }}">主页</a>
+        {% if can_interact %}<a class="btn ghost sm" href="/messages/{{ post.author_handle }}">私信</a>{% endif %}
+      </div>
+    </div>
+
+    {# 打赏：作者开了展示才出现。大按钮 → 弹窗（左渠道 / 右二维码），提示不点「确定」不消失 #}
+    {% if donation_visible %}
+    <button type="button" class="donate-cta" id="donate-open">
+      <span class="donate-cta-title">赞助作者</span>
+      <span class="donate-cta-sub">支持 {{ post.author }} 继续开发</span>
+    </button>
+    {% endif %}
+
+    {% if show_sources %}
+    <div class="side-card">
+      <h3>资源下载</h3>
+      {% for source in sources %}
+      <div class="source-item">
+        <div class="source-head">
+          <span class="provider provider-{{ source.provider }}">{{ source.provider_label }}</span>
+          {% if let Some(label) = source.label %}<span class="meta">{{ label }}</span>{% endif %}
+        </div>
+        <a class="btn sm" href="{{ source.url }}" target="_blank" rel="noopener nofollow">打开下载</a>
+        {% if let Some(code) = source.extract_code %}<span class="meta">提取码 <code>{{ code }}</code></span>{% endif %}
+        {% if !source.mirrors.is_empty() %}
+        <div class="mirror-box" data-mirror-box>
+          <select class="mirror-select" data-mirror-select aria-label="选择镜像">
+            {% for mirror in source.mirrors %}
+            <option value="{{ mirror.url }}" data-mirror-original="{{ mirror.is_original }}">{{ mirror.label }}{% if mirror.is_original %}（原链）{% endif %}</option>
+            {% endfor %}
+          </select>
+          <button class="btn ghost sm" type="button" data-mirror-open>打开镜像</button>
+          <button class="btn ghost sm" type="button" data-copy-github="{{ source.url }}">复制 GitHub 原链</button>
+          <p class="hint" data-mirror-note>正在实测各镜像延迟…</p>
+        </div>
+        {% endif %}
+      </div>
+      {% endfor %}
+    </div>
+    {% endif %}
+
+    <div class="side-card">
+      <h3>数据</h3>
+      <ul class="side-stats">
+        <li><span>点赞</span><b>{{ post.like_count }}</b></li>
+        <li><span>收藏</span><b>{{ post.bookmark_count }}</b></li>
+        <li><span>回复</span><b>{{ post.comment_count }}</b></li>
+        <li><span>配图</span><b>{{ post.image_count }}</b></li>
+      </ul>
+    </div>
+  </aside>
+
+<style>
+.pa-item{display:block;width:100%;text-align:left;padding:8px 10px;border:0;border-radius:8px;background:none;color:inherit;font:inherit;cursor:pointer}
+.pa-item:hover{background:rgba(127,127,127,.12)}
+.pa-item.ok{color:#15803d}.pa-item.danger{color:#b91c1c}
+.pa-input{margin:4px 0 6px;width:100%;padding:6px 8px;border:1px solid var(--line,#e5e7eb);border-radius:8px;background:none;color:inherit}
+.pa-group{margin:8px 10px 4px;font-size:12px;opacity:.65;border-top:1px solid var(--line,#e5e7eb);padding-top:8px}
+.pa-group:first-child{border-top:0;margin-top:2px}
+.pa-status{margin:2px 10px 6px;font-size:12px;opacity:.8}
+/* 样式 3：双列说明卡 */
+.pa-grid{display:grid;grid-template-columns:1fr 1fr;gap:6px;min-width:380px}
+.pa-card{display:flex;flex-direction:column;gap:2px;padding:10px;border:1px solid var(--line,#e5e7eb);border-radius:8px;background:none;color:inherit;font:inherit;text-align:left;cursor:pointer}
+.pa-card:hover{background:rgba(127,127,127,.1)}
+.pa-card span{font-size:12px;opacity:.7}
+.pa-card.ok b{color:#15803d}.pa-card.danger b{color:#b91c1c}
+</style>
+{% include "donate.html" %}
+
+</div>{# /post-layout #}
 {% endblock %}
 
 {% block scripts %}
+{% if post.can_feature %}<script type="module" src="/static/islands/post-feature.js"></script>{% endif %}
+<script>
+  // 配图上传：作者与管理员可以随时补图（整份文件当请求体，服务端按魔数认类型）
+  (function () {
+
+// 回复区交互：点「回复」带上对方（@昵称#id，id 唯一所以重名不会指错），输入 @ 弹候选
+(() => {
+  const commentsSection = document.getElementById('comments');
+  const postId = {{ post.id }};
+  if (!commentsSection) return;
+  let disposeComments = () => {};
+  let previewMention = new URLSearchParams(location.search).get('mention') === '1';
+
+  // 局部替换后重新绑定当前节点；先清理旧监听、定时器和吸底观察器。
+  const initializeComments = () => {
+    disposeComments();
+    const form = document.querySelector('[data-comment-form]');
+    const area = document.getElementById('reply-body');
+    const pop = document.getElementById('mention-pop');
+    if (!form || !area || !pop) return;
+    const controller = new AbortController();
+    const listen = (node, event, handler) => node.addEventListener(event, handler, { signal: controller.signal });
+    let timer = null;
+    let blurTimer = null;
+    let previewTimer = null;
+    let observer = null;
+    let disposed = false;
+    disposeComments = () => {
+      disposed = true;
+      controller.abort();
+      clearTimeout(timer);
+      clearTimeout(blurTimer);
+      clearTimeout(previewTimer);
+      if (observer) observer.disconnect();
+    };
+
+    // 点「回复」：在该根楼层所有子回复之下展开就地输入框（不遮挡别的楼层）
+    commentsSection.querySelectorAll('[data-reply-id]').forEach((btn) => {
+      listen(btn, 'click', () => {
+        const box = commentsSection.querySelector('[data-reply-box="' + btn.dataset.replyId + '"]');
+        if (!box) return;
+        commentsSection.querySelectorAll('[data-reply-box]').forEach((other) => { if (other !== box) other.hidden = true; });
+        box.hidden = false;
+        const input = box.querySelector('.c-reply-input');
+        const token = '@' + btn.dataset.replyName + '#' + btn.dataset.replyUser + ' ';
+        if (input && !input.value.includes(token)) input.value = token;
+        if (input) {
+          input.focus();
+          input.setSelectionRange(input.value.length, input.value.length);
+        }
+      });
+    });
+    commentsSection.querySelectorAll('[data-reply-cancel]').forEach((btn) => {
+      listen(btn, 'click', () => {
+        const box = commentsSection.querySelector('[data-reply-box="' + btn.dataset.replyCancel + '"]');
+        if (box) box.hidden = true;
+      });
+    });
+
+    let active = -1;
+    // 预览用：?mention=1 直接展开候选，方便看弹出位置
+    if (previewMention) {
+      previewMention = false;
+      previewTimer = setTimeout(() => {
+        // 关键词要有内容才会查（空 @ 不弹）
+        area.value = '@t';
+        area.dispatchEvent(new Event('input'));
+        area.focus();
+      }, 300);
+    }
+    const hide = () => { pop.hidden = true; pop.innerHTML = ''; active = -1; };
+    const currentQuery = () => {
+      const upto = area.value.slice(0, area.selectionStart);
+      const at = upto.lastIndexOf('@');
+      if (at < 0) return null;
+      const word = upto.slice(at + 1);
+      if (word.includes(' ') || word.includes('#')) return null;
+      return { at, word };
+    };
+    const render = (users) => {
+      if (!users.length) return hide();
+      pop.innerHTML = '';
+      users.forEach((u, index) => {
+        const item = document.createElement('div');
+        item.className = 'mention-item' + (index === 0 ? ' active' : '');
+        item.innerHTML = '<b></b><span class="mi-id"></span><span class="mi-handle"></span>';
+        item.querySelector('b').textContent = u.name;
+        // 只有重名用户才显示 id（其他同名账号一眼分得开）
+        item.querySelector('.mi-id').textContent = u.dup ? '#' + u.id : '';
+        item.querySelector('.mi-handle').textContent = '@' + u.handle;
+        listen(item, 'mousedown', (event) => {
+          event.preventDefault();
+          const spot = currentQuery();
+          if (spot) {
+            const token = '@' + u.name + '#' + u.id + ' ';
+            area.value = area.value.slice(0, spot.at) + token + area.value.slice(spot.at + spot.word.length + 1);
+            area.setSelectionRange(spot.at + token.length, spot.at + token.length);
+          }
+          hide();
+          area.focus();
+        });
+        pop.appendChild(item);
+      });
+      pop.hidden = false;
+      active = 0;
+    };
+    const search = async () => {
+      const spot = currentQuery();
+      if (!spot || !spot.word) return hide();
+      try {
+        const res = await fetch('/api/v1/users/search?q=' + encodeURIComponent(spot.word));
+        if (!res.ok) return hide();
+        const data = await res.json();
+        if (!disposed) render(data.users || []);
+      } catch (_) { hide(); }
+    };
+    listen(area, 'input', () => { clearTimeout(timer); timer = setTimeout(search, 180); });
+    listen(area, 'blur', () => { blurTimer = setTimeout(hide, 120); });
+
+    // 点赞（点踩接口已就绪，界面按需求暂不接）
+    const csrfInput = form.querySelector('input[name=csrf]');
+    commentsSection.querySelectorAll('[data-vote]').forEach((btn) => {
+      listen(btn, 'click', async () => {
+        const next = btn.classList.contains('on') ? 0 : 1;
+        const res = await fetch('/api/v1/comments/' + btn.dataset.vote + '/vote', {
+          method: 'POST',
+          headers: { 'content-type': 'application/json', 'x-csrf-token': csrfInput ? csrfInput.value : '' },
+          body: JSON.stringify({ value: next }),
+        });
+        if (!res.ok) return;
+        const data = await res.json();
+        btn.classList.toggle('on', data.mine === 1);
+        const count = btn.querySelector('.c-like-count');
+        if (count) count.textContent = data.likes;
+      });
+    });
+
+    // 发评论无感：POST JSON，成功后只重取评论区（不整页刷新、不丢滚动位置）
+    const refreshComments = async () => {
+      const res = await fetch(location.pathname + location.search);
+      if (!res.ok) return;
+      const doc = new DOMParser().parseFromString(await res.text(), 'text/html');
+      const next = doc.getElementById('comments');
+      if (next) {
+        commentsSection.innerHTML = next.innerHTML;
+        initializeComments();
+      }
+    };
+    commentsSection.querySelectorAll('[data-comment-form], .c-reply-box').forEach((form) => {
+      listen(form, 'submit', async (event) => {
+        event.preventDefault();
+        const textarea = form.querySelector('textarea[name=body]');
+        const body = textarea ? textarea.value.trim() : '';
+        if (body.length < 2) { if (textarea) textarea.focus(); return; }
+        const parent = form.querySelector('input[name=parent_id]');
+        const submit = form.querySelector('button[type=submit]');
+        if (submit && submit.disabled) return;
+        if (submit) submit.disabled = true;
+        let res;
+        try {
+          res = await fetch('/api/v1/posts/' + postId + '/comments', {
+            method: 'POST',
+            headers: { 'content-type': 'application/json', 'x-csrf-token': csrfInput ? csrfInput.value : '' },
+            body: JSON.stringify({
+              body,
+              parent_id: parent && parent.value ? Number(parent.value) : null,
+            }),
+          });
+        } catch (_) {
+          res = null;
+        }
+        if (submit) submit.disabled = false;
+        if (!res || !res.ok) {
+          // 兜底：接口不通或校验失败就退回普通提交（至少消息不丢）
+          form.submit();
+          return;
+        }
+        if (textarea) textarea.value = '';
+        await refreshComments();
+        // 新楼层在最后一页：这种情况才把用户带过去看自己的评论（不是表单刷新）
+        const pager = document.querySelector('.c-pager-total');
+        const total = pager ? Number((pager.textContent.match(/\d+/) || [0])[0]) : 1;
+        const current = Number((location.search.match(/page=(\d+)/) || [0, 1])[1]) || 1;
+        if (total > current) location.assign('?page=' + total + '#comments');
+      });
+    });
+
+    // 吸底「写评论」：顶部输入框滚出视野后出现（B 站那样）
+    const float = document.getElementById('c-float');
+    if (float && 'IntersectionObserver' in window) {
+      observer = new IntersectionObserver((entries) => {
+        if (!disposed) float.hidden = entries[0].isIntersecting;
+      }, { rootMargin: '-80px 0px 0px 0px' });
+      observer.observe(form);
+      listen(float, 'click', () => {
+        area.scrollIntoView({ block: 'center', behavior: 'smooth' });
+        area.focus();
+      });
+    }
+    listen(area, 'keydown', (event) => {
+      if (pop.hidden) return;
+      const items = Array.from(pop.querySelectorAll('.mention-item'));
+      if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+        event.preventDefault();
+        active = (active + (event.key === 'ArrowDown' ? 1 : items.length - 1)) % items.length;
+        items.forEach((item, index) => item.classList.toggle('active', index === active));
+      } else if (event.key === 'Enter' || event.key === 'Tab') {
+        if (items[active]) { event.preventDefault(); items[active].dispatchEvent(new MouseEvent('mousedown')); }
+      } else if (event.key === 'Escape') {
+        hide();
+      }
+    });
+  };
+  initializeComments();
+})();
+    var box = document.querySelector('[data-post-upload]');
+    if (!box) return;
+    var input = document.getElementById('post-image-input');
+    var button = document.getElementById('post-image-add');
+    var status = box.querySelector('[data-post-image-status]');
+    if (!input || !button) return;
+    var csrf = box.dataset.csrf;
+    var id = box.dataset.postId;
+    button.addEventListener('click', function () { input.click(); });
+    input.addEventListener('change', function () {
+      var files = Array.prototype.slice.call(input.files || []);
+      if (!files.length) return;
+      var send = function (index) {
+        if (index >= files.length) {
+          if (status) status.textContent = '已上传，刷新中…';
+          location.reload();
+          return;
+        }
+        if (status) status.textContent = '上传中 ' + (index + 1) + '/' + files.length + '…';
+        fetch('/api/v1/posts/' + id + '/images', {
+          method: 'POST',
+          headers: { 'x-csrf-token': csrf },
+          body: files[index],
+          credentials: 'same-origin',
+        })
+          .then(function (r) { return r.ok ? r.json() : r.json().then(function (d) { return Promise.reject(d.message || r.status); }); })
+          .then(function () { send(index + 1); })
+          .catch(function (message) { if (status) status.textContent = '上传失败：' + message; });
+      };
+      send(0);
+    });
+  })();
+</script>
 <script>
   // 点赞 / 收藏：就地切换，不刷新页面
   (function () {
@@ -187,36 +638,85 @@
 </script>
 {% if is_staff %}<script type="module" src="/static/islands/admin.js"></script>{% endif %}
 <script type="module">
-  // 镜像实测：HEAD 探一次，按耗时把最快的排到最前（用户仍可点任何一个）。
-  for (const group of document.querySelectorAll('.mirrors')) {
-    const links = Array.from(group.querySelectorAll('a[data-mirror-url]'));
-    const mirrors = links.filter((a) => a.dataset.mirrorOriginal === 'false');
-    if (mirrors.length > 0) {
-      const probe = async (a) => {
-        const started = performance.now();
-        try {
-          await fetch(a.dataset.mirrorUrl, { method: 'HEAD', mode: 'no-cors', cache: 'no-store' });
-        } catch (_) {}
-        return [a, performance.now() - started];
-      };
-      const results = await Promise.all(mirrors.map(probe));
-      results.sort((x, y) => x[1] - y[1]);
-      const fastest = results[0][0];
-      fastest.classList.add('mirror-fastest');
-      fastest.insertAdjacentHTML('beforeend', ' <span class="tag">最快</span>');
-      for (const entry of results) group.appendChild(entry[0]);
+  // 复制到剪贴板。
+  // 注意：navigator.clipboard 只在**安全上下文**（https / localhost）可用，
+  // 本站目前是纯 http，所以必须带 execCommand 兜底，否则按钮点了没反应。
+  function copyText(text) {
+    if (navigator.clipboard && window.isSecureContext) {
+      return navigator.clipboard.writeText(text);
     }
-  }
-  // 复制 GitHub 原链
-  for (const button of document.querySelectorAll('[data-copy-github]')) {
-    button.addEventListener('click', async () => {
-      try {
-        await navigator.clipboard.writeText(button.dataset.copyGithub);
-        button.textContent = '已复制 ✓';
-      } catch (_) {
-        button.textContent = '复制失败，请手动选择';
-      }
+    return new Promise(function (resolve, reject) {
+      var area = document.createElement('textarea');
+      area.value = text;
+      area.setAttribute('readonly', 'readonly');
+      area.style.position = 'fixed';
+      area.style.top = '-1000px';
+      document.body.appendChild(area);
+      area.select();
+      area.setSelectionRange(0, text.length);
+      var ok = false;
+      try { ok = document.execCommand('copy'); } catch (e) { ok = false; }
+      document.body.removeChild(area);
+      ok ? resolve() : reject(new Error('execCommand 复制失败'));
     });
+  }
+  for (var copyButton of document.querySelectorAll('[data-copy-github]')) {
+    copyButton.addEventListener('click', function () {
+      var self = this;
+      copyText(this.dataset.copyGithub)
+        .then(function () {
+          self.textContent = '已复制 ✓';
+          window.setTimeout(function () { self.textContent = '复制 GitHub 原链'; }, 2000);
+        })
+        .catch(function () {
+          // 两条路都失败时给一条最笨但一定可用的路：弹出来手动复制
+          self.textContent = '复制失败，请手动复制';
+          window.prompt('自动复制不可用，请按 Ctrl+C 复制：', self.dataset.copyGithub);
+          window.setTimeout(function () { self.textContent = '复制 GitHub 原链'; }, 2500);
+        });
+    });
+  }
+  // 镜像：实测延迟，最快的排到最前并默认选中；下拉里选谁就打开谁
+  for (var box of document.querySelectorAll('[data-mirror-box]')) {
+    var select = box.querySelector('[data-mirror-select]');
+    var open = box.querySelector('[data-mirror-open]');
+    var note = box.querySelector('[data-mirror-note]');
+    if (!select || !open) continue;
+    open.addEventListener('click', function () {
+      window.open(select.value, '_blank', 'noopener,noreferrer');
+    });
+    (function (select, note) {
+      var options = Array.prototype.slice.call(select.options);
+      var probes = options.filter(function (option) { return option.dataset.mirrorOriginal === 'false'; });
+      if (!probes.length) {
+        if (note) note.textContent = '只有一个原链来源；网络慢的话可以自己挂代理';
+        return;
+      }
+      var probe = function (option) {
+        var started = performance.now();
+        return fetch(option.value, { method: 'HEAD', mode: 'no-cors', cache: 'no-store' })
+          .catch(function () {})
+          .then(function () { return [option, performance.now() - started]; });
+      };
+      Promise.all(probes.map(probe)).then(function (results) {
+        results.sort(function (a, b) { return a[1] - b[1]; });
+        var fastest = results[0];
+        // 原链保持第一项，其余按实测耗时重排；最快的那条标注出来并选中
+        var plain = options.filter(function (option) { return option.dataset.mirrorOriginal === 'true'; });
+        select.innerHTML = '';
+        plain.forEach(function (option) { select.appendChild(option); });
+        results.forEach(function (entry) {
+          var option = entry[0];
+          option.textContent = option.textContent.replace(/（最快.*）$/, '');
+          select.appendChild(option);
+        });
+        fastest[0].textContent = fastest[0].textContent + '（最快）';
+        select.value = fastest[0].value;
+        if (note) {
+          note.textContent = '已实测：最快的是 ' + fastest[0].textContent + '（约 ' + Math.round(fastest[1]) + ' ms）';
+        }
+      });
+    })(select, note);
   }
 </script>
 {% endblock %}

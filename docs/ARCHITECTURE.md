@@ -104,4 +104,4 @@ SQLite 单写者意味着每请求一条 `UPDATE` 会立刻退化成写锁排队
 - **下载防盗链**：短 TTL + 绑定客户端 IP（`download.bind_client_ip`），签名与 IP 同时校验。
 - **上传限速**：令牌桶按主体分桶（当前是 IP，接入登录后换 user id）+ 全站并发闸门（默认 5）。
 - **错误不外泄**：`Storage` / `Database` / `Io` 一律回 500 + 泛化文案，细节只进日志。
-- **待补**：会话 Cookie（HttpOnly + SameSite）+ CSRF 校验 + argon2 口令哈希（表结构已就绪）。
+- **待补**：会话 Cookie（HttpOnly + SameSite）+ CSRF 校验 + argon2 密码哈希（表结构已就绪）。

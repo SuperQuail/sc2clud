@@ -23,6 +23,49 @@ REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 PREFIX="${SC2CLUD_PREFIX:-/srv/sc2clud}"
 SERVICE_USER="${SC2CLUD_USER:-sc2clud}"
 DOMAIN="${SC2CLUD_DOMAIN:-example.com}"
+# 允许多个域名（空格分隔）：server_name 会把它们全部写上。
+# nginx 只认 punycode，中文域名在这里转一次（python3 标准库的 idna 编解码就够用）。
+DEFAULT_SERVER="${SC2CLUD_DEFAULT_SERVER:-1}"
+to_ascii() {
+  case "$1" in
+    *[!\x00-\x7F]*)
+      if command -v python3 >/dev/null 2>&1; then
+        python3 -c "import sys; print(sys.argv[1].encode('idna').decode())" "$1" 2>/dev/null || printf '%s' "$1"
+      else
+        printf '%s' "$1"
+        warn "域名 $1 含非 ASCII 但缺少 python3，未转 punycode"
+      fi
+      ;;
+    *) printf '%s' "$1" ;;
+  esac
+}
+DOMAIN_NAMES=""
+for name in $DOMAIN; do
+  ascii="$(to_ascii "$name")"
+  DOMAIN_NAMES="$DOMAIN_NAMES $ascii"
+  # 裸域名再补一个 www（反过来则不加）；IP 不加 www——
+  # 否则会渲染出 `191.40.41.97 191.40.41.97 www.191.40.41.97` 这种垃圾，
+  # 还会把真实域名挤掉（踩过一次：域名访问又变 404）。
+  case "$ascii" in
+    www.*) ;;
+    *[!0-9.]*) DOMAIN_NAMES="$DOMAIN_NAMES www.$ascii" ;;
+    *) ;;
+  esac
+done
+# 证书路径用「用户给的主域名」（转 punycode 后的第一个），不能用 IP，否则
+# __DOMAIN__ 会变成 /etc/letsencrypt/live/<IP>/ 这种不存在的目录。
+PRIMARY="$(for n in $DOMAIN; do to_ascii "$n"; break; done)"
+[ -n "$PRIMARY" ] && DOMAIN="$PRIMARY"
+# 去重（同一个名字只留一次），保持顺序
+DOMAIN_NAMES="$(printf '%s' "$DOMAIN_NAMES" | tr -s ' ' | tr ' ' '\n' | awk '!seen[$0]++' | paste -sd' ' -)"
+# 本机 IP 也写进去：用 IP 访问同样要能打开
+HOST_IP="$(hostname -I 2>/dev/null | awk '{print $1}')"
+[ -n "$HOST_IP" ] && DOMAIN_NAMES="$HOST_IP $DOMAIN_NAMES"
+if [ "$DEFAULT_SERVER" = "1" ]; then
+  DEFAULT_MARKER=" default_server"
+else
+  DEFAULT_MARKER=""
+fi
 TLS="${SC2CLUD_TLS:-auto}"
 BIN_SRC="${SC2CLUD_BIN:-$REPO_ROOT/target/release/sc2clud}"
 ENV_FILE="$PREFIX/sc2clud.env"
@@ -120,7 +163,11 @@ if command -v nginx >/dev/null 2>&1; then
     install -d -m 755 "$VHOST_DIR" /etc/nginx/sites-enabled
   fi
   VHOST="$VHOST_DIR/sc2clud.conf"
-  sed -e "s|__DOWNLOAD_SECRET__|$SECRET|g" -e "s|__DOMAIN__|$DOMAIN|g" \
+  # 注意顺序：__DOMAIN_NAMES__ 必须先替换，否则会被 __DOMAIN__ 那条规则截断成半截。
+  sed -e "s|__DOWNLOAD_SECRET__|$SECRET|g" \
+      -e "s|__DOMAIN_NAMES__|$DOMAIN_NAMES|g" \
+      -e "s|__DEFAULT_SERVER__|$DEFAULT_MARKER|g" \
+      -e "s|__DOMAIN__|$DOMAIN|g" \
       "$REPO_ROOT/deploy/nginx/sc2clud.conf.template" > "$VHOST"
 
   # 裁剪「标记区块」：按标记名匹配整行（允许缩进），因此模板注释里提到标记名也不会误伤。
@@ -171,6 +218,9 @@ fi
 # ---------- 8. systemd ----------
 log '安装并启动 systemd unit'
 install -m 644 "$REPO_ROOT/deploy/systemd/sc2clud.service" /etc/systemd/system/sc2clud.service
+# 测试实例：独立前缀 + 独立 unit（与生产完全隔离）
+install -d -m 0755 "${SC2CLUD_DEV_PREFIX:-/srv/sc2clud-dev}"
+install -m 644 "$REPO_ROOT/deploy/systemd/sc2clud-debug.service" /etc/systemd/system/sc2clud-debug.service
 systemctl daemon-reload
 systemctl enable sc2clud.service
 # 升级场景务必显式 restart：enable --now 对**已在运行**的服务不会重启，

@@ -61,6 +61,8 @@ impl Role {
 pub enum Permission {
     /// 浏览帖子与文件（游客即可）。
     ViewContent,
+    /// 精华管理的入门门槛；最终权限须走 allows_feature_post。
+    FeaturePost,
     /// 发普通讨论贴。
     CreateDiscussion,
     /// 发资源贴（认证开发者及以上）。
@@ -76,6 +78,14 @@ pub enum Permission {
     /// **当前阶段只对网站管理员及以上开放**：网盘是后续施工内容，
     /// 等路径、配额、分享与清理策略定稿后再下调到普通用户。
     UseNetdisk,
+    /// 上传自己的收款码（认证开发者及以上）。
+    SetPaymentChannel,
+    /// 域名管理（统一域名表增删）。
+    ManageDomains,
+    /// 发布 / 启停横幅。
+    PublishBanner,
+    /// 发系统公告。
+    PostAnnouncement,
     /// 人工复核被审核机拦下的帖子。
     ReviewPost,
     /// 激活 / 停用用户。
@@ -90,6 +100,7 @@ impl Permission {
         match self {
             Permission::ViewContent => None,
             Permission::CreateDiscussion
+            | Permission::FeaturePost
             | Permission::CreateRepost
             | Permission::Comment
             | Permission::SetAvatar => Some(Role::Member),
@@ -97,10 +108,16 @@ impl Permission {
             Permission::UseNetdisk => Some(Role::Admin),
             // 讨论 / 资源 / 转载三类帖子对**所有已激活用户**开放（产品决定：不设发布门槛）。
             Permission::CreateResource => Some(Role::Member),
-            // 人工复核是管理动作，仍要求开发者及以上。
-            Permission::ReviewPost => Some(Role::Developer),
+            // 收款码涉及钱财，只给认证开发者及以上（产品要求）。
+            Permission::SetPaymentChannel => Some(Role::Developer),
+            // 人工复核：管理员及以上（原为开发者，产品要求上调）。
+            Permission::ReviewPost => Some(Role::Admin),
             Permission::ManageUsers => Some(Role::Admin),
-            Permission::ManageRoles => Some(Role::Super),
+            // 域名 / 横幅 / 系统公告：只有超级管理员能动（产品要求上调）。
+            Permission::ManageDomains
+            | Permission::PublishBanner
+            | Permission::PostAnnouncement
+            | Permission::ManageRoles => Some(Role::Super),
         }
     }
 }
@@ -123,7 +140,17 @@ pub fn allows(role: Option<Role>, activated: bool, permission: Permission) -> bo
     role >= required
 }
 
-// ---------------------------------------------------------------- 口令
+// ---------------------------------------------------------------- 密码
+
+/// 精华管理的最终权限：已激活的全站管理员或当前分区管理员。
+pub fn allows_feature_post(
+    role: Option<Role>,
+    activated: bool,
+    is_section_moderator: bool,
+) -> bool {
+    allows(role, activated, Permission::FeaturePost)
+        && (role.is_some_and(|role| role >= Role::Admin) || is_section_moderator)
+}
 
 use argon2::Argon2;
 use argon2::password_hash::{PasswordHash, PasswordHasher, PasswordVerifier, SaltString};
@@ -141,16 +168,16 @@ pub fn random_hex(bytes: usize) -> String {
     out
 }
 
-/// Argon2id 口令哈希（默认参数 m=19 MiB / t=2 / p=1，2 核上约几十毫秒）。
+/// Argon2id 密码哈希（默认参数 m=19 MiB / t=2 / p=1，2 核上约几十毫秒）。
 pub fn hash_password(password: &str) -> Result<String> {
     let salt = SaltString::generate(&mut OsRng);
     Argon2::default()
         .hash_password(password.as_bytes(), &salt)
         .map(|hash| hash.to_string())
-        .map_err(|e| Error::InvalidInput(format!("口令哈希失败：{e}")))
+        .map_err(|e| Error::InvalidInput(format!("密码哈希失败：{e}")))
 }
 
-/// 校验口令。故意只回 bool：调用方不该区分「口令错」与「哈希串损坏」。
+/// 校验密码。故意只回 bool：调用方不该区分「密码错」与「哈希串损坏」。
 pub fn verify_password(password: &str, stored_hash: &str) -> bool {
     let Ok(parsed) = PasswordHash::new(stored_hash) else {
         return false;
@@ -233,13 +260,13 @@ pub fn validate_display_name(raw: &str) -> Result<String> {
     Ok(name.to_string())
 }
 
-/// 口令：8..=128 字节，且不能全是空白。
+/// 密码：8..=128 字节，且不能全是空白。
 pub fn validate_password(raw: &str) -> Result<()> {
     if raw.trim().is_empty() || raw.len() < 8 {
-        return Err(Error::InvalidInput("口令至少 8 位".to_string()));
+        return Err(Error::InvalidInput("密码至少 8 位".to_string()));
     }
     if raw.len() > 128 {
-        return Err(Error::InvalidInput("口令最长 128 位".to_string()));
+        return Err(Error::InvalidInput("密码最长 128 位".to_string()));
     }
     Ok(())
 }
@@ -263,6 +290,70 @@ pub fn hash_token(token: &str) -> String {
 /// CSRF 令牌：表单隐藏字段与库里记录的值双提交比对。
 pub fn new_csrf_token() -> String {
     random_hex(16)
+}
+
+#[cfg(test)]
+mod permission_tests {
+    use super::*;
+
+    #[test]
+    fn featured_requires_activation_and_scoped_authority() {
+        assert_eq!(Permission::FeaturePost.min_role(), Some(Role::Member));
+        for role in Role::ALL {
+            assert!(allows_feature_post(Some(role), true, true));
+            assert_eq!(
+                allows_feature_post(Some(role), true, false),
+                role >= Role::Admin
+            );
+            assert!(!allows_feature_post(Some(role), false, true));
+        }
+        assert!(!allows_feature_post(None, true, true));
+        assert!(!allows_feature_post(None, false, false));
+        assert!(!allows(Some(Role::Member), true, Permission::ReviewPost));
+    }
+
+    #[test]
+    fn permission_tree_matches_the_documented_matrix() {
+        // 这份期望值就是 docs/PERMISSIONS.md 的表格；改权限必须同时改这里与文档。
+        let expected: [(Permission, Option<Role>); 13] = [
+            (Permission::ViewContent, None),
+            (Permission::FeaturePost, Some(Role::Member)),
+            (Permission::CreateDiscussion, Some(Role::Member)),
+            (Permission::CreateResource, Some(Role::Member)),
+            (Permission::CreateRepost, Some(Role::Member)),
+            (Permission::Comment, Some(Role::Member)),
+            (Permission::SetAvatar, Some(Role::Member)),
+            (Permission::SetPaymentChannel, Some(Role::Developer)),
+            (Permission::ReviewPost, Some(Role::Admin)),
+            (Permission::UseNetdisk, Some(Role::Admin)),
+            (Permission::ManageUsers, Some(Role::Admin)),
+            (Permission::ManageDomains, Some(Role::Super)),
+            (Permission::PublishBanner, Some(Role::Super)),
+        ];
+        for (permission, want) in expected {
+            assert_eq!(permission.min_role(), want, "{permission:?} 的门槛变了");
+        }
+        assert_eq!(Permission::PostAnnouncement.min_role(), Some(Role::Super));
+        assert_eq!(Permission::ManageRoles.min_role(), Some(Role::Super));
+    }
+
+    #[test]
+    fn unactivated_users_cannot_write_but_staff_can_review() {
+        assert!(!allows(
+            Some(Role::Member),
+            false,
+            Permission::CreateDiscussion
+        ));
+        assert!(!allows(Some(Role::Member), false, Permission::SetAvatar));
+        assert!(allows(
+            Some(Role::Member),
+            true,
+            Permission::CreateDiscussion
+        ));
+        assert!(allows(Some(Role::Admin), false, Permission::ReviewPost));
+        assert!(allows(None, false, Permission::ViewContent));
+        assert!(!allows(None, false, Permission::Comment));
+    }
 }
 
 #[cfg(test)]
@@ -308,7 +399,35 @@ mod tests {
 
     #[test]
     fn developer_and_admin_tiers() {
-        assert!(allows(Some(Role::Developer), true, Permission::ReviewPost));
+        // 人工复核：管理员及以上（产品要求上调，原为开发者）
+        assert!(!allows(Some(Role::Developer), true, Permission::ReviewPost));
+        assert!(allows(Some(Role::Admin), true, Permission::ReviewPost));
+        // 收款码：认证开发者及以上
+        assert!(allows(
+            Some(Role::Developer),
+            true,
+            Permission::SetPaymentChannel
+        ));
+        assert!(!allows(
+            Some(Role::Member),
+            true,
+            Permission::SetPaymentChannel
+        ));
+        // 域名 / 横幅 / 公告：只有超级管理员
+        for permission in [
+            Permission::ManageDomains,
+            Permission::PublishBanner,
+            Permission::PostAnnouncement,
+        ] {
+            assert!(
+                !allows(Some(Role::Admin), true, permission),
+                "{permission:?} 不该给管理员"
+            );
+            assert!(
+                allows(Some(Role::Super), true, permission),
+                "{permission:?} 应给超管"
+            );
+        }
         assert!(allows(Some(Role::Member), true, Permission::SetAvatar));
         assert!(
             !allows(Some(Role::Member), false, Permission::SetAvatar),

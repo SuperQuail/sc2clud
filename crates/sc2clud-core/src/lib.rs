@@ -8,6 +8,7 @@
 
 pub mod auth;
 pub mod capacity;
+pub mod community;
 pub mod config;
 pub mod counter;
 pub mod error;

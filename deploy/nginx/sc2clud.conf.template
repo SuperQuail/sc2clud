@@ -7,7 +7,8 @@
 #   PLAIN_LISTEN_BEGIN/END 有 TLS 时删除（listen 80）
 #   TLS_ONLY_BEGIN/END     无 TLS 时删除（证书指令）
 #   SECURELINK_BEGIN/END   nginx 无 secure_link 模块时删除（/dl 签名直出）
-# 并把 __DOWNLOAD_SECRET__ / __DOMAIN__ 替换成真实值。
+# 并把 __DOWNLOAD_SECRET__ / __DOMAIN_NAMES__ / __DEFAULT_SERVER__ 替换成真实值。
+# __DOMAIN_NAMES__ 是空格分隔的完整列表（含 IP 与各域名，nginx 只认 punycode）。
 #
 # 依赖模块：http_limit_conn_module / http_limit_req_module（官方包与宝塔均有）
 # 可选模块：http_secure_link_module（缺失则改用 X-Accel-Redirect）、http_brotli_static_module
@@ -26,11 +27,17 @@ upstream sc2clud_app {
     keepalive 16;
 }
 
+# 测试实例（/dev/ 端点）：独立端口 + 独立数据目录，重启它不影响生产
+upstream sc2clud_dev {
+    server 127.0.0.1:8081;
+    keepalive 4;
+}
+
 # @@REDIRECT_BEGIN@@
 # TLS 终止在 nginx：80 只留跳转
 server {
     listen 80;
-    server_name __DOMAIN__;
+    server_name __DOMAIN_NAMES__;
     return 301 https://$host$request_uri;
 }
 # @@REDIRECT_END@@
@@ -41,9 +48,9 @@ server {
     http2 on;
 # @@TLS_LISTEN_END@@
 # @@PLAIN_LISTEN_BEGIN@@
-    listen 80;
+    listen 80__DEFAULT_SERVER__;
 # @@PLAIN_LISTEN_END@@
-    server_name __DOMAIN__;
+    server_name __DOMAIN_NAMES__;
 
 # @@TLS_ONLY_BEGIN@@
     ssl_certificate     /etc/letsencrypt/live/__DOMAIN__/fullchain.pem;
@@ -161,6 +168,48 @@ server {
     # ---------- 探针 ----------
     location = /healthz { proxy_pass http://sc2clud_app; access_log off; }
     location = /readyz  { proxy_pass http://sc2clud_app; access_log off; allow 127.0.0.1; deny all; }
+
+    # ---------- 测试端点：/dev/ → 本机测试实例（独立数据目录）----------
+    # 开发与测试都在这里做，确认无误再重启生产实例（见 deploy/dev.sh 与 promote.sh）。
+    # 应用的链接都是绝对路径（/p/1、/static/...），所以用 sub_filter 在响应里补 /dev 前缀——
+    # 这样同一份代码不用为「路径前缀」做任何改动。
+    location = /dev { return 301 /dev/; }
+    location /dev/static/ {
+        # 测试实例用自己那份静态资源：改了 CSS/JS 只影响 /dev，不影响生产
+        alias /srv/sc2clud-dev/static/;
+        expires 2m;
+        add_header Cache-Control "public, max-age=120";
+        access_log off;
+    }
+    location /dev/ {
+        # 尾斜杠必须有：否则 nginx 会把完整的 /dev/... 原样转发给测试实例，
+        # 应用看到的就是「/dev/ 这个路径」→ 自己回 JSON 404（踩过一次）。
+        proxy_pass http://sc2clud_dev/;
+        proxy_http_version 1.1;
+        proxy_set_header Connection "";
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_request_buffering off;
+        proxy_buffering off;
+        proxy_read_timeout 300s;
+        proxy_send_timeout 300s;
+        # 服务端重定向（登录/登出/发帖后）返回的是绝对路径 Location: /xxx，
+        # sub_filter 只改 HTML 正文，改不了响应头 —— 必须用 proxy_redirect，
+        # 否则在 /dev 上一点跳转就跑到生产去了。
+        proxy_redirect ~^/(.*)$ /dev/$1;
+        sub_filter_once off;
+        sub_filter_types text/html text/css application/javascript;
+        sub_filter 'href="/'   'href="/dev/';
+        sub_filter 'src="/'    'src="/dev/';
+        sub_filter 'action="/' 'action="/dev/';
+        sub_filter "fetch('/"   "fetch('/dev/";
+        sub_filter "'/static/"  "'/dev/static/";
+        sub_filter "'/avatar/"  "'/dev/avatar/";
+        sub_filter "'/img/"     "'/dev/img/";
+        sub_filter "'/p/"       "'/dev/p/";
+    }
 
     # ---------- 其余请求交给应用 ----------
     location / {

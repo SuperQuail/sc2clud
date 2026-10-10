@@ -1,3 +1,5 @@
+import './section-covers'
+
 // 管理面板的异步提交。
 //
 // 目标：改预算 / 改显示名 / 改等级 / 激活停用 / 添加用户，**都不刷新整页**——
@@ -59,10 +61,14 @@ async function refreshRegions() {
   if (!res.ok) return
   const html = await res.text()
   const doc = new DOMParser().parseFromString(html, 'text/html')
-  for (const id of ['users', 'quota']) {
+  for (const id of ['pending', 'users', 'quota', 'backups']) {
     const fresh = doc.getElementById(id)
     const current = document.getElementById(id)
-    if (fresh && current) current.replaceWith(fresh)
+    if (fresh && current) {
+      current.replaceWith(fresh)
+    } else if (!fresh && current) {
+      current.remove()
+    }
   }
   bind()
 }
@@ -135,3 +141,77 @@ function bind() {
 }
 
 bind()
+
+// 站点可能挂在路径前缀下（测试实例是 /dev）。
+// nginx 会给 HTML 里的链接补前缀，但 JS 里硬拼的路径不会，
+// 所以这里按当前路径自己算一份。
+const PREFIX = location.pathname.startsWith('/dev') ? '/dev' : ''
+
+// ---------- 编辑用户弹窗（参考 Open WebUI 的 EditUserModal）----------
+// 列表里点铅笔打开：预填当前值 → 改完点保存（等级也就地切换，不用跳页）。
+const dialog = document.getElementById('user-dialog') as HTMLDialogElement | null
+const userForm = document.getElementById('user-form') as HTMLFormElement | null
+
+function field(id: string): HTMLInputElement | HTMLSelectElement | null {
+  return document.getElementById(id) as HTMLInputElement | HTMLSelectElement | null
+}
+
+document.addEventListener('click', (event) => {
+  const target = event.target as HTMLElement
+  if (target.closest('[data-modal-close]')) {
+    dialog?.close()
+    return
+  }
+  const trigger = target.closest<HTMLElement>('[data-edit-user]')
+  if (!trigger || !dialog || !userForm) return
+  const row = trigger.closest<HTMLElement>('[data-user-row]')
+  if (!row) return
+  const data = row.dataset
+  const name = data.name ?? ''
+  const head = document.getElementById('modal-name')
+  if (head) head.textContent = name
+  const handle = document.getElementById('modal-handle')
+  if (handle) handle.textContent = '@' + (data.handle ?? '')
+  const initial = document.getElementById('modal-initial')
+  const avatar = document.getElementById('modal-avatar') as HTMLImageElement | null
+  if (avatar && initial) {
+    if (data.avatar) {
+      avatar.src = PREFIX + '/avatar/' + data.avatar
+      avatar.hidden = false
+      initial.hidden = true
+    } else {
+      initial.textContent = data.initial || '?'
+      initial.className = 'avatar-initial avatar-lg c' + (data.color ?? '0')
+      initial.hidden = false
+      avatar.hidden = true
+    }
+  }
+  const role = field('modal-role')
+  if (role) role.value = data.role ?? ''
+  const display = field('modal-display')
+  if (display) display.value = name
+  const email = field('modal-email')
+  if (email) email.value = data.email ?? ''
+  const quota = field('modal-quota')
+  if (quota) quota.value = data.quota ?? '0.0'
+  const trusted = document.getElementById('modal-trusted') as HTMLInputElement | null
+  if (trusted) trusted.checked = data.trusted === '1'
+  const activated = document.getElementById('modal-activated') as HTMLInputElement | null
+  if (activated) activated.checked = data.activated === '1'
+  const password = field('modal-password')
+  if (password) password.value = ''
+  const more = document.getElementById('modal-more') as HTMLAnchorElement | null
+  if (more) more.href = PREFIX + '/admin/users/' + (data.id ?? '')
+  const hint = document.getElementById('modal-note')
+  if (hint) {
+    hint.textContent =
+      data.isSelf === '1' ? '这是你自己的账号：不能改自己的等级，也不能停用。' : ''
+  }
+  userForm.action = PREFIX + '/admin/users/' + (data.id ?? '') + '/update'
+  dialog.showModal()
+})
+
+// 异步提交成功后把弹窗关掉（提交本身仍由上面的 bind() 处理）
+userForm?.addEventListener('submit', () => {
+  window.setTimeout(() => dialog?.close(), 400)
+})

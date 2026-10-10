@@ -1,0 +1,364 @@
+{% extends "base.html" %}
+{% block body_class %}site-page page-inbox{% endblock %}
+{% block page_label %}消息中心{% endblock %}
+{% block title %}消息中心 · {{ site_name }}{% endblock %}
+
+{% block content %}
+{# 照 B 站：我的消息 = 分类 + 会话列表 + 消息流；收到的赞 / 系统通知 = 分类 + 整列信息流 #}
+<div class="inbox{% if tab == "dm" %} inbox--dm{% endif %}">
+  <aside class="card inbox-rail">
+    <h2 class="inbox-rail-title">消息中心</h2>
+    <nav class="inbox-nav">
+      <a href="/inbox?tab=dm" class="{% if tab == "dm" %}active{% endif %}">我的消息{% if dm_unread > 0 %}<span class="badge">{{ dm_unread }}</span>{% endif %}</a>
+      <a href="/inbox?tab=likes" class="{% if tab == "likes" %}active{% endif %}">收到的赞{% if like_unread > 0 %}<span class="badge">{{ like_unread }}</span>{% endif %}</a>
+      <a href="/inbox?tab=system" class="{% if tab == "system" %}active{% endif %}">系统通知{% if system_unread > 0 %}<span class="badge">{{ system_unread }}</span>{% endif %}</a>
+    </nav>
+    <div class="inbox-rail-sep"></div>
+    <a class="inbox-settings" href="/settings">消息设置</a>
+  </aside>
+
+  {% if tab == "dm" %}
+  <section class="card inbox-list">
+    <div class="inbox-list-head">最近消息</div>
+    <div class="inbox-list-body">
+      {% for c in conversations %}
+      <a class="inbox-item{% if c.active %} active{% endif %}" href="/inbox?tab=dm&with={{ c.handle }}">
+        {% if let Some(hash) = c.avatar %}
+        <img class="avatar" src="/avatar/{{ hash }}" alt="" width="44" height="44">
+        {% else %}
+        <img class="avatar" src="/static/art/miyin-chibi-80.webp" alt="" width="44" height="44">
+        {% endif %}
+        <div class="inbox-item-main">
+          <div class="inbox-item-name">{{ c.display_name }}</div>
+          <div class="inbox-item-preview">{{ c.last_body }}</div>
+        </div>
+        <span class="inbox-item-date">{{ c.date }}</span>
+      </a>
+      {% endfor %}
+      {% if conversations.is_empty() %}<p class="empty">还没有会话。</p>{% endif %}
+    </div>
+  </section>
+
+  <section class="card inbox-detail">
+    {% if other_display.is_empty() %}
+    <div class="inbox-detail-empty">从左侧选一个会话，这里显示往来消息。</div>
+    {% else %}
+    <div class="inbox-detail-head">
+      {% if let Some(hash) = other_avatar %}<img class="avatar" src="/avatar/{{ hash }}" alt="" width="28" height="28">{% else %}<img class="avatar" src="/static/art/miyin-chibi-80.webp" alt="" width="28" height="28">{% endif %}
+      <b>{{ other_display }}</b>
+      <a class="inbox-detail-more" href="/messages/{{ selected }}" title="打开完整会话页">⋯</a>
+    </div>
+    <div class="inbox-thread">
+      {% for m in thread %}
+      {% if m.show_date %}<div class="inbox-date">{{ m.date }}</div>{% endif %}
+      {% if m.mine %}
+      <div class="inbox-msg mine" data-mine data-msg-id="{{ m.id }}">
+        <div class="bubble">{{ m.body }}</div>
+        {% if let Some(hash) = my_avatar %}<img class="avatar msg-avatar" src="/avatar/{{ hash }}" alt="" width="32" height="32" onerror="this.src='/static/art/miyin/image-unavailable-480.webp'">{% else %}<img class="avatar msg-avatar" src="/static/art/miyin-chibi-80.webp" alt="" width="32" height="32">{% endif %}
+      </div>
+      {% else %}
+      <div class="inbox-msg" data-msg-id="{{ m.id }}">
+        {% if let Some(hash) = other_avatar %}<img class="avatar msg-avatar" src="/avatar/{{ hash }}" alt="" width="32" height="32" onerror="this.src='/static/art/miyin/image-unavailable-480.webp'">{% else %}<img class="avatar msg-avatar" src="/static/art/miyin-chibi-80.webp" alt="" width="32" height="32">{% endif %}
+        <div class="bubble">{{ m.body }}</div>
+      </div>
+      {% endif %}
+      {% endfor %}
+      {% if thread.is_empty() %}<p class="empty">还没有消息，打个招呼吧。</p>{% endif %}
+    </div>
+    {# 有 JS 时不跳页：走 /api/v1 发信并就地追加气泡；没 JS 时回落到表单提交 #}
+    <form class="inbox-composer" method="post" action="/messages/{{ selected }}" data-composer data-handle="{{ selected }}">
+      <input type="hidden" name="csrf" value="{{ csrf }}">
+      <input type="text" name="body" maxlength="500" placeholder="请输入消息内容" autocomplete="off" required>
+      <span class="inbox-counter">0/500</span>
+      <button class="btn" type="submit">发送</button>
+    </form>
+    {% endif %}
+  </section>
+  {% else %}
+  {# 收到的赞 / 系统通知：B 站是整列信息流 #}
+  <section class="card inbox-feed">
+    <div class="inbox-list-head">{% if tab == "likes" %}收到的赞{% else %}系统通知{% endif %}</div>
+    <div class="inbox-feed-body">
+      {% if notices.is_empty() %}
+      <p class="empty">这里还没有消息。</p>
+      {% else if tab == "likes" %}
+      <div class="feed-group">最新</div>
+      {% for n in notices %}
+      <div class="feed-row">
+        {# 有触发者头像就用头像，没有（老数据/系统）就用红心 #}
+        {% if let Some(hash) = n.avatar %}
+        <img class="feed-avatar" src="/avatar/{{ hash }}" alt="" width="34" height="34" onerror="this.src='/static/art/miyin/image-unavailable-480.webp'">
+        {% else %}
+        <span class="feed-icon like">♥</span>
+        {% endif %}
+        <div class="feed-main">
+          <div class="feed-line">
+            {% if n.count > 1 %}
+            <b>{% for name in n.actor_names %}{% if !loop.first %}、{% endif %}{{ name }}{% endfor %}</b>{% if n.more %} 等{% endif %}总计 {{ n.count }} 人赞了你的帖子
+            {% else %}
+            <b>{{ n.title }}</b>
+            {% endif %}
+          </div>
+          <div class="feed-date">{{ n.date }}</div>
+          {# B 站那两件事：删除该通知 / 不再通知 #}
+          <div class="feed-actions">
+            {# 删除确认：1 二次点击 / 2 行内气泡 / 3 系统 confirm #}
+            <form method="post" action="/notifications/{{ n.id }}/delete" data-del-form class="feed-action-form"{% if delete_variant == 3 %} onsubmit="return confirm('删除这条通知？')"{% endif %}>
+              <input type="hidden" name="csrf" value="{{ csrf }}">
+              <input type="hidden" name="tab" value="likes">
+              {% if delete_variant == 2 %}
+              <button class="feed-action" type="button" data-del-modal>删除该通知</button>
+              {% else %}
+              <button class="feed-action" type="button" data-del-ask>删除该通知</button>
+              <span class="del-bubble" data-del-bubble hidden>确认删除？<button class="feed-action danger" type="submit">确认</button><button class="feed-action" type="button" data-del-cancel>取消</button></span>
+              {% endif %}
+            </form>
+            <form method="post" action="/notifications/mute"><input type="hidden" name="csrf" value="{{ csrf }}"><input type="hidden" name="tab" value="likes"><input type="hidden" name="kind" value="like"><input type="hidden" name="link" value="{{ n.link }}"><button class="feed-action" type="submit">不再通知</button></form>
+          </div>
+        </div>
+        {% if !n.body.is_empty() %}<div class="feed-quote">{{ n.body }}</div>{% endif %}
+      </div>
+      {% endfor %}
+      {% else %}
+      {% for n in notices %}
+      <article class="feed-card">
+        <div class="feed-card-head"><h3>{{ n.title }}</h3><span class="feed-date">{{ n.date }}</span></div>
+        <p class="feed-card-body">{{ n.body }}</p>
+        <div class="feed-actions">
+          {% if !n.link.is_empty() %}<a class="feed-card-link" href="{{ n.link }}">查看详情</a>{% endif %}
+            {# 删除确认：1 二次点击 / 2 行内气泡 / 3 系统 confirm #}
+            <form method="post" action="/notifications/{{ n.id }}/delete" data-del-form class="feed-action-form"{% if delete_variant == 3 %} onsubmit="return confirm('删除这条通知？')"{% endif %}>
+              <input type="hidden" name="csrf" value="{{ csrf }}">
+              <input type="hidden" name="tab" value="system">
+              {% if delete_variant == 2 %}
+              <button class="feed-action" type="button" data-del-modal>删除该通知</button>
+              {% else %}
+              <button class="feed-action" type="button" data-del-ask>删除该通知</button>
+              <span class="del-bubble" data-del-bubble hidden>确认删除？<button class="feed-action danger" type="submit">确认</button><button class="feed-action" type="button" data-del-cancel>取消</button></span>
+              {% endif %}
+            </form>
+          <form method="post" action="/notifications/mute"><input type="hidden" name="csrf" value="{{ csrf }}"><input type="hidden" name="tab" value="system"><input type="hidden" name="kind" value="{{ n.kind }}"><input type="hidden" name="link" value="{{ n.link }}"><button class="feed-action" type="submit">不再通知</button></form>
+        </div>
+      </article>
+      {% endfor %}
+      {% endif %}
+    </div>
+  </section>
+  {% endif %}
+</div>
+
+{# 版式 2 的确认弹窗 #}
+<div class="del-modal" id="del-modal" hidden>
+  <div class="del-modal-card" role="alertdialog" aria-modal="true" aria-label="删除确认">
+    <h3>删除这条通知？</h3>
+    <p class="hint">只从你的消息中心移除，不影响其他人。</p>
+    <div class="del-modal-actions"><button class="btn" type="button" id="del-modal-ok">删除</button><button class="btn ghost" type="button" id="del-modal-cancel">取消</button></div>
+  </div>
+</div>
+<script>
+(() => {
+  document.querySelectorAll('[data-del-form]').forEach((form) => {
+    const ask = form.querySelector('[data-del-ask]');
+    const bubble = form.querySelector('[data-del-bubble]');
+    if (!ask || !bubble) return;
+// 三个来源（就地发送 / SSE 推送 / 轮询兜底）共用同一套追加逻辑
+const appendMessage = (m) => {
+  const thread = document.querySelector('.inbox-thread');
+  if (!thread || !m) return;
+  if (m.id && thread.querySelector('[data-msg-id="' + m.id + '"]')) return; // 已有就不重复
+  const empty = thread.querySelector('.empty');
+  if (empty) empty.remove();
+  const stick = thread.scrollHeight - thread.scrollTop - thread.clientHeight < 120;
+  const wrap = document.createElement('div');
+  wrap.className = 'inbox-msg' + (m.mine ? ' mine' : '');
+  if (m.id) wrap.dataset.msgId = m.id;
+  const bubble = document.createElement('div');
+  bubble.className = 'bubble';
+  bubble.textContent = m.body;
+  const tpl = document.querySelector(m.mine ? '[data-mine] .msg-avatar' : '.inbox-msg:not([data-mine]) .msg-avatar');
+  if (m.mine) {
+    wrap.appendChild(bubble);
+    if (tpl) wrap.appendChild(tpl.cloneNode(true));
+  } else {
+    if (tpl) wrap.appendChild(tpl.cloneNode(true));
+    wrap.appendChild(bubble);
+    const preview = document.querySelector('.inbox-item.active .inbox-item-preview');
+    if (preview) preview.textContent = m.body;
+  }
+  thread.appendChild(wrap);
+  if (stick) thread.scrollTop = thread.scrollHeight;
+};
+    ask.addEventListener('click', () => { bubble.hidden = false; ask.hidden = true; });
+    form.querySelector('[data-del-cancel]').addEventListener('click', () => { bubble.hidden = true; ask.hidden = false; });
+  });
+  const modal = document.getElementById('del-modal');
+  let pending = null;
+  document.querySelectorAll('[data-del-modal]').forEach((btn) => {
+    btn.addEventListener('click', () => { pending = btn.closest('form'); modal.hidden = false; });
+  });
+  const cancel = document.getElementById('del-modal-cancel');
+  if (cancel) cancel.addEventListener('click', () => { modal.hidden = true; pending = null; });
+  // 发消息无感化：不跳页，就地追加气泡
+  document.querySelectorAll('[data-composer]').forEach((form) => {
+    const input = form.querySelector('input[name=body]');
+    const counter = form.querySelector('.inbox-counter');
+    // 容器名必须和模板一致（之前写成 .inbox-bubbles，选择器不命中 → 追加静默失败）
+  const thread = document.querySelector('.inbox-thread');
+    const handle = form.dataset.handle || '';
+    if (!input || !handle) return;
+    input.addEventListener('input', () => { counter.textContent = input.value.length + '/500'; });
+    form.addEventListener('submit', async (event) => {
+      event.preventDefault();
+      const text = input.value.trim();
+      if (!text) return;
+      counter.textContent = '发送中…';
+      const res = await fetch('/api/v1/messages/' + encodeURIComponent(handle), {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', 'x-csrf-token': form.querySelector('input[name=csrf]').value },
+        body: JSON.stringify({ body: text }),
+      });
+      if (!res.ok) {
+        // 接口失败（会话过期/CSRF 过期）时退回普通表单提交，消息不会丢；同时把状态亮出来便于排查
+        counter.textContent = '接口 ' + res.status + '，改用普通发送…';
+        console.error('私信接口失败：', res.status, await res.text().catch(() => ''));
+        setTimeout(() => form.submit(), 600);
+        return;
+      }
+      const data = await res.json();
+      if (!thread) {
+        // 拿不到消息流容器（异常布局）就刷新，保证消息一定看得见
+        location.reload();
+        return;
+      }
+      appendMessage({ id: data.id, mine: true, body: data.body });
+      const preview = document.querySelector('.inbox-item.active .inbox-item-preview');
+      if (preview) preview.textContent = data.body;
+      input.value = '';
+      counter.textContent = '0/500';
+    });
+  });
+  // 收信：SSE 为主（毫秒级），另有 30 秒轮询兜底（断线重连/漏事件时补上）
+  (() => {
+    const form = document.querySelector('[data-composer]');
+    const thread = document.querySelector('.inbox-thread');
+    if (!form || !thread) return;
+    const handle = form.dataset.handle;
+    if (!handle) return;
+    const lastId = () => {
+      const ids = Array.from(thread.querySelectorAll('[data-msg-id]')).map((el) => Number(el.dataset.msgId));
+      return ids.length ? Math.max(...ids) : 0;
+    };
+    const pull = async () => {
+      if (document.hidden) return;
+      try {
+        const res = await fetch('/api/v1/messages/' + encodeURIComponent(handle) + '?after=' + lastId());
+        if (!res.ok) return;
+        const data = await res.json();
+        (data.messages || []).forEach((m) => appendMessage(m));
+      } catch (_) {
+        // 网络抖动忽略，下一轮再试
+      }
+    };
+    const base = '/api/v1/messages/' + encodeURIComponent(handle);
+    if (window.EventSource) {
+      // 断线由浏览器自动重连；我们只负责把推来的消息接住
+      const es = new EventSource(base + '/stream');
+      es.addEventListener('message', (event) => {
+        try {
+          appendMessage(JSON.parse(event.data));
+        } catch (_) {}
+      });
+    }
+    // 兜底：不论 SSE 是否可用，都定期核对一次（间隔拉长，省带宽）
+    setInterval(pull, 30000);
+  })();
+    setInterval(poll, 5000);
+  })();
+
+  const ok2 = document.getElementById('del-modal-ok');
+  if (ok2) ok2.addEventListener('click', () => { if (pending) pending.submit(); });
+  // 预览用：?dvc=1 自动把第一条的确认态展开，方便出图评审
+  if (new URLSearchParams(location.search).get('dvc') === '1') {
+    const first = document.querySelector('[data-del-form]');
+    if (first) {
+      const m = first.querySelector('[data-del-modal]');
+      if (m) { pending = first; modal.hidden = false; } else {
+        const ask = first.querySelector('[data-del-ask]');
+        const bubble = first.querySelector('[data-del-bubble]');
+        if (ask && bubble) { ask.hidden = true; bubble.hidden = false; }
+      }
+    }
+  }
+})();
+</script>
+<style>
+.inbox{display:grid;grid-template-columns:160px 1fr;gap:12px;align-items:start;min-height:70vh}
+.inbox--dm{grid-template-columns:160px 300px 1fr;align-items:stretch}
+.inbox-rail{padding:16px 12px;display:flex;flex-direction:column}
+.inbox-rail-title{margin:0 0 14px;font-size:15px;font-weight:600}
+.inbox-nav{display:flex;flex-direction:column;gap:2px}
+.inbox-nav a{display:flex;align-items:center;gap:6px;padding:9px 10px;border-radius:8px;color:inherit;text-decoration:none;font-size:14px}
+.inbox-nav a:hover{background:rgba(127,127,127,.1)}
+.inbox-nav a.active{background:rgba(37,99,235,.12);color:#2563eb;font-weight:600}
+.inbox-nav .badge{margin-left:auto;background:#dc2626;color:#fff;border-radius:999px;font-size:11px;padding:1px 6px}
+.inbox-rail-sep{height:1px;background:var(--line,#e5e7eb);margin:12px 4px}
+.inbox-settings{color:inherit;text-decoration:none;font-size:13px;opacity:.8;padding:6px 10px}
+.inbox-list{display:flex;flex-direction:column;padding:0;overflow:hidden}
+.inbox-list-head{padding:14px 16px;border-bottom:1px solid var(--line,#e5e7eb);font-size:14px;font-weight:600}
+.inbox-list-body{overflow:auto;flex:1;padding:6px}
+.inbox-item{display:flex;gap:10px;align-items:center;padding:10px;border-radius:10px;text-decoration:none;color:inherit}
+.inbox-item:hover{background:rgba(127,127,127,.09)}
+.inbox-item.active{background:rgba(37,99,235,.12)}
+.inbox-item-main{min-width:0;flex:1}
+.inbox-item-name{font-size:14px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.inbox-item-preview{font-size:12px;opacity:.7;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.inbox-item-date{font-size:11px;opacity:.6;flex:none}
+.inbox-detail{display:flex;flex-direction:column;padding:0}
+.inbox-detail-head{display:flex;align-items:center;gap:8px;padding:12px 16px;border-bottom:1px solid var(--line,#e5e7eb)}
+.inbox-detail-more{margin-left:auto;color:inherit;text-decoration:none;font-size:18px;opacity:.7}
+.inbox-detail-empty{padding:40px 16px;text-align:center;opacity:.7;font-size:14px}
+.inbox-thread{flex:1;overflow:auto;padding:16px;display:flex;flex-direction:column;gap:12px}
+.inbox-date{text-align:center;font-size:12px;opacity:.55;margin:6px 0}
+.inbox-msg{display:flex;gap:8px;align-items:flex-start}
+.msg-avatar{flex:none;margin-top:2px}
+.inbox-msg.mine{justify-content:flex-end}
+.bubble{max-width:70%;padding:10px 14px;border-radius:12px;background:rgba(127,127,127,.14);line-height:1.6;white-space:pre-wrap;word-break:break-word}
+.inbox-msg.mine .bubble{background:#2563eb;color:#fff}
+.inbox-composer{display:flex;align-items:center;gap:10px;padding:12px 16px;border-top:1px solid var(--line,#e5e7eb)}
+.inbox-composer input[type=text]{flex:1;padding:10px 12px;border:1px solid var(--line,#e5e7eb);border-radius:10px;background:none;color:inherit;font:inherit}
+.inbox-counter{font-size:12px;opacity:.6}
+/* 信息流（收到的赞 / 系统通知） */
+.inbox-feed{padding:0}
+.inbox-feed-body{padding:0 0 8px}
+.feed-group{padding:12px 16px 6px;font-size:13px;opacity:.65}
+.feed-row{display:flex;gap:12px;align-items:flex-start;padding:14px 16px;border-bottom:1px solid var(--line,#e5e7eb)}
+.feed-row:last-child{border-bottom:0}
+.feed-icon{width:34px;height:34px;border-radius:50%;display:flex;align-items:center;justify-content:center;flex:none;font-size:16px}
+.feed-icon.like{background:rgba(220,38,38,.12);color:#dc2626}
+.feed-avatar{width:34px;height:34px;border-radius:50%;flex:none;object-fit:cover}
+.feed-main{flex:1;min-width:0}
+.feed-line{font-size:14px;line-height:1.6}
+.feed-line b{font-weight:600}
+.feed-date{font-size:12px;opacity:.6;margin-top:2px}
+.feed-quote{max-width:240px;font-size:12px;opacity:.7;line-height:1.5;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden}
+.feed-card{padding:16px;border-bottom:1px solid var(--line,#e5e7eb)}
+.feed-card:last-child{border-bottom:0}
+.feed-card-head{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap}
+.feed-card-head h3{margin:0;font-size:14px}
+.feed-card-body{margin:8px 0 0;font-size:13px;line-height:1.8;opacity:.9}
+.feed-card-link{display:inline-block;margin-top:8px;font-size:13px;color:#2563eb;text-decoration:none}
+.feed-actions{display:flex;gap:14px;align-items:center;margin-top:6px;flex-wrap:wrap}
+.feed-actions form{display:inline}
+.feed-action{border:0;background:none;color:inherit;opacity:.65;font:inherit;font-size:12px;cursor:pointer;padding:0}
+.feed-action:hover{opacity:1;text-decoration:underline}
+.feed-action.danger{color:#dc2626;opacity:1}
+.feed-action-form{display:inline-flex;align-items:center;gap:8px}
+.del-bubble{display:inline-flex;align-items:center;gap:8px;padding:2px 8px;border:1px solid #dc2626;border-radius:999px;font-size:12px;color:#dc2626}
+.del-modal{position:fixed;inset:0;z-index:90;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,.5)}
+.del-modal[hidden]{display:none}
+.del-modal-card{width:min(360px,90vw);background:var(--card,#fff);color:inherit;border-radius:14px;padding:20px;text-align:center}
+.del-modal-card h3{margin:0 0 8px;font-size:16px}
+.del-modal-actions{display:flex;justify-content:center;gap:10px;margin-top:14px}
+@media (max-width:900px){.inbox,.inbox--dm{grid-template-columns:1fr}.inbox-rail{flex-direction:row;flex-wrap:wrap;align-items:center}.inbox-nav{flex-direction:row}}
+</style>
+{% endblock %}

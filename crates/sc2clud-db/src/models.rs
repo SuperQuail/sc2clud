@@ -15,6 +15,8 @@ pub struct UserRow {
     pub avatar_hash: Option<String>,
     /// 头像 MIME。
     pub avatar_mime: Option<String>,
+    /// 是否被信任（1 = 发帖只走自动审核）。
+    pub trusted: i64,
     pub email: Option<String>,
     pub password_hash: String,
     pub role: String,
@@ -25,6 +27,8 @@ pub struct UserRow {
     /// `None` = 未激活（能登录，但不能发帖/回复/上传）。
     pub activated_at: Option<i64>,
     pub activated_by: Option<i64>,
+    /// 限期禁言：到这个时间之前不能发帖（NULL = 没被禁）。评论不受影响。
+    pub post_ban_until: Option<i64>,
 }
 
 /// 会话行（库里只存令牌摘要）。
@@ -42,6 +46,7 @@ pub struct SessionRow {
 /// 帖子 + 作者（feed 用一次 join 拿全，避免 N+1）。
 #[derive(Debug, Clone, FromRow)]
 pub struct PostWithAuthorRow {
+    pub featured_at: Option<i64>,
     pub id: i64,
     pub title: String,
     pub body: String,
@@ -62,10 +67,216 @@ pub struct PostWithAuthorRow {
     pub cover_hash: Option<String>,
     /// 回复数（列表视图的统计条用）。
     pub comment_count: i64,
+    /// 归档时间（NULL = 未归档）。
+    pub archived_at: Option<i64>,
     /// 点赞数。
     pub like_count: i64,
     /// 收藏数。
     pub bookmark_count: i64,
+}
+
+/// 分区（管理员可增删 / 归档 / 排序，所以不写死在枚举里）。
+#[derive(Debug, Clone, FromRow)]
+pub struct SectionRow {
+    /// 是否启用用户组检查（迁移 0026）。
+    pub group_check: i64,
+    pub key: String,
+    pub label: String,
+    pub description: String,
+    pub position: i64,
+    pub archived_at: Option<i64>,
+    pub post_min_role: String,
+    pub reply_min_role: String,
+}
+
+/// 分区管理员（仅获得任职分区的精华管理能力）。
+#[derive(Debug, Clone, FromRow)]
+pub struct SectionModeratorRow {
+    pub user_id: i64,
+    pub handle: String,
+    pub display_name: String,
+    pub created_at: i64,
+}
+
+/// 用户组。
+#[derive(Debug, Clone, FromRow)]
+pub struct UserGroupRow {
+    pub id: i64,
+    pub key: String,
+    pub name: String,
+    pub description: String,
+    pub archived_at: Option<i64>,
+}
+
+/// 组 × 分区的发言规则。
+#[derive(Debug, Clone, FromRow)]
+pub struct GroupSectionRuleRow {
+    pub group_id: i64,
+    pub section: String,
+    pub can_post: i64,
+    pub can_reply: i64,
+    /// 明确禁止（优先于允许与角色门槛）。
+    pub deny_post: i64,
+    pub deny_reply: i64,
+}
+
+/// 一条处罚（禁止发帖 / 禁止评论，可限定分区）。
+#[derive(Debug, Clone, FromRow)]
+pub struct UserSanctionRow {
+    pub id: i64,
+    pub user_id: i64,
+    /// post = 禁止发帖；reply = 禁止评论。
+    pub kind: String,
+    /// 空串 = 全局；否则是分区 key。
+    pub section: String,
+    pub until: i64,
+    pub note: String,
+    pub created_at: i64,
+    pub revoked_at: Option<i64>,
+}
+
+/// 头衔。
+#[derive(Debug, Clone, FromRow)]
+pub struct TitleRow {
+    pub id: i64,
+    pub key: String,
+    pub name: String,
+    pub color: String,
+    pub description: String,
+    pub archived_at: Option<i64>,
+}
+
+/// 用户持有的头衔（`equipped` = 当前佩戴的那个）。
+#[derive(Debug, Clone, FromRow)]
+pub struct UserTitleRow {
+    pub title_id: i64,
+    pub key: String,
+    pub name: String,
+    pub color: String,
+    pub granted_at: i64,
+    pub equipped: i64,
+}
+
+/// 经验事件（等级增长的流水，当前只记账）。
+#[derive(Debug, Clone, FromRow)]
+pub struct ExpEventRow {
+    pub id: i64,
+    pub delta: i64,
+    pub reason: String,
+    pub created_at: i64,
+}
+
+/// 一份待审的帖子修改（通过前原帖内容保持不变）。
+#[derive(Debug, Clone, FromRow)]
+pub struct PostRevisionRow {
+    pub post_id: i64,
+    pub title: String,
+    pub body: String,
+    pub kind: String,
+    pub section: String,
+    pub submitted_by: Option<i64>,
+    pub submitted_at: i64,
+    pub note: Option<String>,
+}
+
+/// 搜索命中的用户。
+#[derive(Debug, Clone, FromRow)]
+pub struct UserHitRow {
+    pub id: i64,
+    pub handle: String,
+    pub display_name: String,
+    pub avatar_hash: Option<String>,
+    pub role: String,
+    pub bio: String,
+    pub post_count: i64,
+}
+
+/// 默认头像池里的一张。
+#[derive(Debug, Clone, FromRow)]
+pub struct DefaultAvatarRow {
+    pub id: i64,
+    pub hash: String,
+    pub mime: String,
+    pub note: String,
+    pub created_at: i64,
+}
+
+/// 站点域名（统一管理「哪些域名是我们的」）。
+#[derive(Debug, Clone, FromRow)]
+pub struct SiteDomainRow {
+    pub domain: String,
+    pub note: String,
+    pub created_at: i64,
+}
+
+/// 资源帖 issue（列表带作者与回复数）。
+#[derive(Debug, Clone, FromRow)]
+pub struct PostIssueRow {
+    pub id: i64,
+    pub post_id: i64,
+    pub author_id: i64,
+    pub kind: String,
+    pub title: String,
+    pub body: String,
+    pub state: String,
+    pub created_at: i64,
+    pub updated_at: i64,
+    pub author_handle: String,
+    pub author_display_name: String,
+    pub comment_count: i64,
+}
+
+/// issue 下的回复。
+#[derive(Debug, Clone, FromRow)]
+pub struct IssueCommentRow {
+    pub id: i64,
+    pub issue_id: i64,
+    pub author_id: i64,
+    pub body: String,
+    pub created_at: i64,
+    pub author_handle: String,
+    pub author_display_name: String,
+}
+/// 横幅。
+#[derive(Debug, Clone, FromRow)]
+pub struct BannerRow {
+    pub id: i64,
+    pub title: String,
+    pub body: String,
+    pub kind: String,
+    pub url: Option<String>,
+    pub active: i64,
+    pub starts_at: Option<i64>,
+    pub ends_at: Option<i64>,
+    pub created_at: i64,
+}
+
+/// 收款码。
+#[derive(Debug, Clone, FromRow)]
+pub struct PaymentChannelRow {
+    pub id: i64,
+    pub user_id: i64,
+    pub channel: String,
+    pub label: String,
+    pub image_hash: String,
+    pub mime: String,
+    pub created_at: i64,
+}
+/// 搜索结果用的一行（**故意比 [`PostWithAuthorRow`] 瘦**：不动既有查询）。
+#[derive(Debug, Clone, FromRow)]
+pub struct PostSearchRow {
+    pub id: i64,
+    pub title: String,
+    pub section: String,
+    pub created_at: i64,
+    pub pinned_rank: i64,
+    pub featured_at: Option<i64>,
+    pub author_id: i64,
+    pub author_handle: String,
+    pub author_display_name: String,
+    pub comment_count: i64,
+    /// 封面（该帖第一张配图；搜索结果带封面卡用）。
+    pub cover_hash: Option<String>,
 }
 
 /// 回复 + 作者。
@@ -77,8 +288,21 @@ pub struct CommentWithAuthorRow {
     pub author_handle: String,
     pub author_display_name: String,
     pub author_avatar: Option<String>,
+    /// 小图头像（48px），列表页用它省带宽；没上传过就是 NULL。
+    pub author_avatar_small: Option<String>,
     pub body: String,
     pub created_at: i64,
+    /// 楼中楼：挂在哪个楼层下面（None = 主楼层）。一级到底，回复的回复挂到根楼层。
+    pub parent_id: Option<i64>,
+    /// 佩戴的头衔（评论区显示它，不显示权限）。
+    pub author_title: Option<String>,
+    pub author_title_color: Option<String>,
+    /// 点赞数。
+    pub likes: i64,
+    /// 点踩数（前端暂未接，接口留着）。
+    pub dislikes: i64,
+    /// 当前查看者投的票：1 赞 / -1 踩 / 0 没投。
+    pub my_vote: i64,
 }
 
 /// 启动器发布版本。
@@ -121,6 +345,10 @@ pub struct NotificationRow {
     pub link: Option<String>,
     pub read_at: Option<i64>,
     pub created_at: i64,
+    /// 触发者（点赞的人、审核的管理员…）；老数据为 NULL。
+    pub actor_handle: Option<String>,
+    pub actor_display_name: Option<String>,
+    pub actor_avatar: Option<String>,
 }
 
 /// 一条系统公告。
@@ -178,6 +406,8 @@ pub struct BlockRow {
 /// 管理页的用户行：比 `UserRow` 多带「最后在线」（取该用户最近一次会话）。
 #[derive(Debug, Clone, FromRow)]
 pub struct AdminUserRow {
+    /// 限期禁言到期时间（NULL = 没被禁）。
+    pub post_ban_until: Option<i64>,
     pub id: i64,
     pub handle: String,
     pub display_name: String,
@@ -191,6 +421,8 @@ pub struct AdminUserRow {
     pub quota_bytes: i64,
     /// 已占用（消费逻辑之后再做，现在恒为 0）。
     pub used_bytes: i64,
+    /// 是否被信任（1 = 发帖只走自动审核）。
+    pub trusted: i64,
 }
 
 /// 资源帖的下载来源（网盘 / GitHub / 直链）。
@@ -255,6 +487,9 @@ pub struct FileWithOwnerRow {
 
 #[derive(Debug, Clone, FromRow)]
 pub struct PostRow {
+    pub featured_at: Option<i64>,
+    /// 归档时间（NULL = 未归档）。`SELECT *` 会带上这一列。
+    pub archived_at: Option<i64>,
     pub id: i64,
     pub author_id: i64,
     pub title: String,

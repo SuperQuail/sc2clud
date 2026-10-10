@@ -13,7 +13,9 @@ use sc2clud_db::repo;
 use crate::AppState;
 use crate::error::{AppError, AppResult};
 
-/// 会话 Cookie 名。
+/// 默认会话 Cookie 名（可用 `server.cookie_name` 覆盖）。
+///
+/// 同域双实例（生产 `/` + 测试 `/dev/`）必须用不同的名字，否则两边会话互相顶掉。
 pub const SESSION_COOKIE: &str = "sc2clud_session";
 /// 会话有效期：14 天。
 pub const SESSION_TTL_SECS: i64 = 14 * 24 * 3600;
@@ -28,8 +30,12 @@ pub struct CurrentUser {
     pub display_name: String,
     /// 头像的内容摘要（NULL = 用首字母兜底）。
     pub avatar_hash: Option<String>,
+    /// 被信任的账号：发帖只走自动审核。
+    pub trusted: bool,
     pub role: Role,
     pub activated: bool,
+    /// 限期禁言到期时间（None = 没被禁）。
+    pub post_ban_until: Option<i64>,
     pub csrf_token: String,
 }
 
@@ -57,7 +63,7 @@ fn cookie_value(headers: &HeaderMap, name: &str) -> Option<String> {
 
 /// 装载当前用户；顺带续期 `last_seen_at`。
 pub async fn current_user(state: &AppState, headers: &HeaderMap) -> AppResult<Option<CurrentUser>> {
-    let Some(token) = cookie_value(headers, SESSION_COOKIE) else {
+    let Some(token) = cookie_value(headers, cookie_name(state)) else {
         return Ok(None);
     };
     let digest = hash_token(&token);
@@ -78,8 +84,10 @@ pub async fn current_user(state: &AppState, headers: &HeaderMap) -> AppResult<Op
         handle: user.handle,
         display_name,
         avatar_hash: user.avatar_hash,
+        trusted: user.trusted != 0,
         role,
         activated: user.activated_at.is_some(),
+        post_ban_until: user.post_ban_until,
         csrf_token: session.csrf_token,
     }))
 }
@@ -146,10 +154,20 @@ pub async fn start_session(
 
 /// 登出：删除会话（幂等）。
 pub async fn end_session(state: &AppState, headers: &HeaderMap) -> AppResult<()> {
-    if let Some(token) = cookie_value(headers, SESSION_COOKIE) {
+    if let Some(token) = cookie_value(headers, cookie_name(state)) {
         repo::delete_session(state.db.pool(), &hash_token(&token)).await?;
     }
     Ok(())
+}
+
+/// `Set-Cookie` 值；站点走 https 时自动加 `Secure`。
+fn cookie_name(state: &AppState) -> &str {
+    let name = state.config.server.cookie_name.trim();
+    if name.is_empty() {
+        SESSION_COOKIE
+    } else {
+        name
+    }
 }
 
 /// `Set-Cookie` 值；站点走 https 时自动加 `Secure`。
@@ -160,7 +178,8 @@ pub fn session_cookie(state: &AppState, token: &str) -> String {
         ""
     };
     format!(
-        "{SESSION_COOKIE}={token}; Path=/; HttpOnly; SameSite=Lax; Max-Age={SESSION_TTL_SECS}{secure}"
+        "{}={token}; Path=/; HttpOnly; SameSite=Lax; Max-Age={SESSION_TTL_SECS}{secure}",
+        cookie_name(state)
     )
 }
 
@@ -171,7 +190,10 @@ pub fn clear_cookie(state: &AppState) -> String {
     } else {
         ""
     };
-    format!("{SESSION_COOKIE}=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0{secure}")
+    format!(
+        "{}=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0{secure}",
+        cookie_name(state)
+    )
 }
 
 /// CSRF 双提交校验：表单隐藏字段必须与会话里的值一致。

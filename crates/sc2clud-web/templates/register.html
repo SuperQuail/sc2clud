@@ -1,8 +1,16 @@
 {% extends "base.html" %}
+{% block body_class %}site-page page-register{% endblock %}
+{% block page_label %}加入社区{% endblock %}
 
 {% block title %}注册 · {{ site_name }}{% endblock %}
 
 {% block content %}
+<div class="auth-layout"><aside class="auth-story" aria-label="星际玩家社区">
+  <img class="auth-scene" src="/static/art/starcraft/sc2-battle.webp" width="1200" height="953" alt="" aria-hidden="true">
+  <div><img class="auth-story-logo" src="/static/art/starcraft/sc2-logo.webp" width="240" height="101" alt="StarCraft II">
+  <h1>下一场故事，<br>和你一起创造。</h1><p>发现玩家的战役与灵感，<br>让你的热爱，在这里找到同伴。</p></div>
+  <img class="auth-mascot" src="/static/art/miyin/welcome-400.webp" width="180" height="180" alt="社区看板娘弥音">
+  <small>SC2 COMMUNITY / CREATE TOGETHER</small></aside>
 <section class="card auth-card">
   <h2>注册</h2>
   {% if let Some(message) = error %}
@@ -15,7 +23,7 @@
     <span class="hint">最多 20 个字符（中文按 1 个算）；帖子和回复里显示的就是它，可以重名</span></label>
   <label>邮箱<input type="email" name="email" value="{{ email }}" required autocomplete="email">
     <span class="hint">当前不做邮箱验证，仅用于账号找回</span></label>
-  <label>口令<input type="password" name="password" required minlength="8" autocomplete="new-password">
+  <label>密码<input type="password" name="password" required minlength="8" autocomplete="new-password">
     <span class="hint">至少 8 位</span></label>
   <button class="btn" type="submit">注册</button>
 </form>
@@ -24,5 +32,5 @@
   {% else %}
   <p class="hint">本站当前**无需**人工激活：注册后即可发帖。</p>
   {% endif %}
-</section>
+</section></div>
 {% endblock %}

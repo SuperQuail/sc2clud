@@ -90,6 +90,15 @@ cargo run -p sc2clud -- check                     # 配置与依赖自检
 5. **所有落盘路径必须过 `safety.rs`**：拼接后 `ensure_within` 白名单校验，用户文件名先过 `safe_file_name`。
 6. **页面体积是硬预算**（见 `docs/BUDGETS.md`）：列表页 HTML ≤ 30 KB、首屏 JS ≤ 60 KB（brotli 后）。
    不要为了「方便」引入整站 SPA、CSS-in-JS 或整套 UI 组件库。
+6.5 **权限树以 `docs/PERMISSIONS.md` 为准**（角色 × 权限位 × 分区门槛 × 用户组规则 × 资源级规则）。
+   改权限必须同时改三处：`core::auth::min_role()`、`permission_tests`、那份文档。
+   精华管理要求登录且已激活：仅本分区管理员与网站管理员及以上可操作，作者身份不授予权限。
+   最终判定走 `core::auth::allows_feature_post`；页面与提交共用 `pages_featured::can_feature_post`，任职只从真实帖子分区的 `section_capabilities` 取得。
+   添加精华仅限已通过审核、未删除、未归档且分区未归档的帖子；取消允许已归档的现存帖，并保留既有可见性。
+   分区任职不扩张审核、编辑他人、归档权限；精华状态条件更新与审计必须在同一事务，重复目标不得覆盖时间或操作者。
+   综合分 B = 有效点赞数 + 3 × 有效顶层普通评论数（`comments.parent_id IS NULL`）；普通排序键 5B，精华 6B+100。
+   楼中楼不计分，但有效楼中楼创建时间参与最新互动；展示回复数仍包含有效楼中楼，删除行不计入。
+
 7. **发帖权限与可见性**（`core::review`，改动请同步 `AGENTS.md` 与测试）：
    - 讨论 / 资源 / 转载三类帖子对**所有已激活用户**开放，不设发布门槛；
    - **管理员及以上发帖跳过审核机**，直接发布（`review_for_author`，`automatic: false`）；
@@ -120,19 +129,15 @@ pwsh -File scripts/smoke.ps1     # 改动触及上传/下载/存储/计数时必
 
 | 项 | 现状 | 下一步 |
 | --- | --- | --- |
-| 鉴权 | 未接入：内容归属 `repo::ensure_bootstrap_user` 里的 `demo` 用户 | 会话 Cookie（HttpOnly+SameSite）+ CSRF + argon2，替换 `demo_owner_id` |
-| 上传限速主体 | 按客户端 IP 分桶 | 登录后换成 user id（改 `routes::client_subject` 一处） |
-| 分片续传 | 建表与仓储函数已就绪（`upload_sessions`），HTTP 分片接口未接 | 提供 `POST/PATCH` 分片接口 + 合并 |
+| **管理员改他人简介**的界面 | 后端 `repo::set_bio` 已支持（同一函数，带审核意见） | 在 `/admin/user/{id}` 上加一个表单 |
+| 缩略图 / 转码 | 表与队列就绪（`post_images` / `image_jobs`），**工作线程未实现** | 接 `image` crate 的异步压缩线程 + 原图保留 API |
+| 分片续传 | 建表与仓储就绪（`upload_sessions`），HTTP 分片接口未接 | 提供 `POST/PATCH` 分片接口 + 合并 |
 | S3 后端 | `StorageBackend` 抽象已定，`S3Backend` 是返回 `Unsupported` 的占位 | 补 SigV4 预签名与分片上传 |
-| sqlx 编译期校验 | 当前用运行时查询（避免构建依赖数据库） | schema 稳定后切 `query!` + `cargo sqlx prepare` 离线缓存 |
-| 缩略图 / 转码 | 表与任务队列已就绪（`post_images` / `image_jobs`），**工作线程未实现** | 接 `image` crate 的异步压缩线程 + 原图保留 API |
-| 注册 / 登录 / 管理员页面 | ✅ 已完成（`/login`、`/register`、`/admin`，含激活与等级管理） | — |
-| 帖子页面 | ✅ 已完成（feed / 详情 / 发帖 / 回复 / 分区 / 资源来源 / 封面图） | — |
-| 夜间模式 | ✅ 已完成（跟随系统 + 手动切换，记在 localStorage） | — |
-| 调试页 | ✅ 已完成（`/debug`，默认关闭；独立实例见 `deploy/systemd/sc2clud-debug.service`） | — |
-| 启动器下载页 | `releases` 索引与转链函数已就绪，页面与 API 未接 | 补 `/download` 与 `/api/v1/launcher/latest` |
-| **用户头像** | ✅ 已完成（浏览器侧裁剪压缩 ≤64KB；`/u/{handle}` 主页里换） | — |
-| 前端岛发布 | 产物在 .gitignore 里，服务器无 Node | `pwsh -File scripts/push-islands.ps1`（构建 + 同步） |
+| sqlx 编译期校验 | 用运行时查询（避免构建依赖数据库） | schema 稳定后切 `query!` + `cargo sqlx prepare` 离线缓存 |
+| 启动器下载页 | `releases` 索引与转链就绪，页面与 API 未接 | 补 `/download` 与 `/api/v1/launcher/latest` |
+| 消息中心「已静音内容」列表 | 静音写入 `notification_mutes`，但**没有取消静音的入口** | 加一个「不再通知的内容」列表 + 恢复 |
+| 前端岛发布 | 本地开发验证完成，DEV 待验收；产物在 .gitignore 里，服务器无 Node | 本机构建带校验清单，经 ssh-skill 上传完整目录；见 §11 |
+| SSE 广播范围 | 进程内 `tokio::broadcast`：单进程够用 | 多实例部署时换跨进程通知（或依赖 30 秒轮询兜底） |
 
 ### 头像实现（已完成，留档）
 
@@ -153,3 +158,131 @@ pwsh -File scripts/smoke.ps1     # 改动触及上传/下载/存储/计数时必
 仓库**外层**目录（`D:\Code\Rust\SC2clud\`）放 SSH 私钥与生产环境变量，不属于任何 git 仓库：
 `secrets/ssh/`、`secrets/env/production.env`。仓库内只保留 `.env.example` 模板。
 不要在外层执行 `git init`，也不要把 `secrets/` 拷进 `site/` 或对它建软链接。
+
+## 11. 开发与测试流程：先 dev，后生产
+
+生产、共享 DEV 与每个功能的独立 DEV 均使用**各自的二进制、静态、环境、数据库与 Cookie**（`dev.sh` 只写选定测试端，`promote.sh` 才发布到生产）：
+
+| 实例 | 端点 | 数据目录 | 用途 |
+| --- | --- | --- | --- |
+| 生产 | `/`（对外） | `/srv/sc2clud/data`（二进制 `/srv/sc2clud/sc2clud`） | 只放已验证的版本 |
+| 共享 DEV | `/dev/`（对外，nginx `sub_filter` 补前缀） | `/srv/sc2clud-dev/data`（二进制 `/srv/sc2clud-dev/sc2clud`） | 串行集成与合并后验收 |
+| 功能独立 DEV（精华） | `127.0.0.1:8082`（经授权隧道访问） | `/srv/sc2clud-featured-dev/data`（二进制位于同前缀） | 功能分支在合并前验收 |
+
+流程：
+
+```bash
+# 1. 在 /dev 上发布新版本（只重启测试实例，生产继续跑旧进程）
+SC2CLUD_BRANCH=dev bash deploy/dev.sh
+
+# 2. 在 http://<域名>/dev/ 上验证（登录、点按钮、看页面）
+#    /dev 与生产同域，所以 Cookie 名必须不同（SC2CLUD_COOKIE_NAME），
+#    否则两边会话互相顶掉——见 deploy/systemd/sc2clud-debug.service
+
+# 3.（可选）让 /dev 用生产数据来测：只读快照，不碰生产
+bash deploy/dev-sync.sh
+
+# 4. 验证通过后，才推给生产
+bash deploy/promote.sh
+```
+
+要点：
+
+- **两个容易踩的部署坑**：① `sqlx::migrate!` 编译期展开，增量编译下新增迁移可能不重编 →
+  `dev.sh` 会先 `touch crates/sc2clud-db/src/lib.rs`；② `/etc/systemd/system/<unit>.service.d/` 里的
+  drop-in 会覆盖 `ExecStart`，改完 unit 必须 `systemctl daemon-reload` 再重启，否则跑的还是旧二进制。
+- **不要在生产的 `/` 上做任何交互式测试或写入**（包括自动化点击、造数据）。
+- `/dev/` 上的路径前缀由 nginx 的 `sub_filter` 处理，应用代码里**不要**写 `/dev`。
+- 生产数据快照进测试库是**只读**操作；反向绝不允许。
+- 出问题的回滚：从生产 `releases/<时间.随机后缀>/` 恢复 `sc2clud`、完整 `static/` 与存在时的 `SHA256SUMS`（若旧备份没有清单，删除当前生产 `SHA256SUMS`）后再重启；不得只回退二进制。
+
+### 前端预览规矩（强制）
+
+**涉及前端设计/改动时，禁止直接做完就交。** 必须先渲染**真实场景下的预览图**，让用户看图再决定。
+
+```bash
+# 本地起实例（dev 库只读快照 + 登录态 + 整页截图 + 空壳断言）
+SC2CLUD_SSH_KEY=<私钥路径> node scripts/preview.mjs --server root@<dev 机> --handle tangtian \
+  --out ../shots/preview            # 输出：home/p_12/p_12_edit/new/admin/me × light/dark
+```
+
+硬性要求：
+
+1. **必须是真实渲染**：真跑应用、真数据（dev 库快照）、**登录态**（脚本会本地改一份副本的密码，dev/生产不受影响）、
+   真浏览器整页截图（`captureBeyondViewport`）。
+2. **不许渲染空壳**：页面必须带**同页面的其它内容**（顶栏、导航、列表、侧栏、页脚都在）；
+   脚本会断言「有真实数据」，判为空壳就退出码 1 —— 空壳图不算预览。
+3. **预览与上线不能有差别**：同一份代码（脚本强制重建，模板/迁移是编译期内嵌的）、同一份数据快照；
+   上线路径只有 `/dev → promote → 生产`，没有「预览专用样式」这种第二套实现。
+4. **至少给三种样式方案**：除非改动**非常明确且单一**（例如「把这个按钮改红」「补一个字段」），
+   都必须提供 **≥3 种**设计方案（各自的预览图 + 一句话取舍），让用户挑，不许自己拍板。
+5. 预览图落在仓库外层 `shots/preview/`（不进版本库）；交付时直接贴图或给出路径。
+
+### 预览开关与已定版（改前端前先看这张表）
+
+这些 `?xx=` 只在**开发实例**生效（`debug_pages` 门控），生产恒用「已定版」那一列：
+
+| 开关 | 作用 | 已定版 |
+| --- | --- | --- |
+| `?sv=1\|2\|3` | 搜索页版式（1 一行标签栏 / 2 两行筛选+右侧相关用户 / 3 左侧筛选栏） | **1** |
+| `?ui=1\|2\|3` | 帖子右上角「⋯」菜单（1 紧凑 / 2 分组 / 3 说明卡） | **2** |
+| `?dv=1\|2\|3` | 删除通知确认（1 就地气泡 / 2 居中弹窗 / 3 系统 confirm） | **2** |
+| `?av=1\|2\|3` | 默认头像池界面（1 网格卡 / 2 列表行 / 3 侧栏上传） | **2** |
+| `?tui=1\|2\|3` | 头衔徽章（1 半透明胶囊 / 2 实心 / 3 下划线） | **1** |
+| `?dui=1\|2\|3` + `?nui=1\|2\|3` | 赞助弹窗 / 赞助前提示样式 | **1 / 3** |
+| `?dvc=1`、`?donate=1`、`?ack=1`、`?menu=1`、`?titles=1`、`?avatar=1` | 预览时把交互态直接展开（弹窗/菜单/确认），便于出图 | — |
+
+出图命令：`node scripts/preview.mjs --server <dev 机> --handle <账号> --pages '<路径>'`；
+`--qr-test` 会造三张不同分辨率的纯蓝测试收款码，`--dm <handle>` 会先发一条私信，`--send-test` 会验证无感发送与 SSE。
+
+### 多人协作约定（独立验收、共享 DEV 串行集成）
+
+**唯一入口是仓库里的脚本**，不要手工 `systemctl` / 不要给 unit 加覆盖 `ExecStart` 的 drop-in：
+
+| 脚本 | 作用 |
+| --- | --- |
+| `bash deploy/dev.sh` | 拉选定分支 → 构建 → 装二进制 → **只重启选定 DEV**（默认共享 /dev） |
+| `bash deploy/dev-restart.sh` | 不重新构建，只重启 /dev（改了 env、排查用） |
+| `bash deploy/dev-sync.sh` | 生产库**只读快照** → /dev 数据目录 |
+| `bash deploy/promote.sh` | 把已在 /dev 验过的二进制与完整静态推给生产 |
+
+规则：
+
+1. **一项功能一个分支、worktree 与独立 DEV**：在自己的 worktree 开发，审查并在独立 DEV 用户验收后，才串行 PR 合入共享 `dev` → `SC2CLUD_BRANCH=dev bash deploy/dev.sh` → 共享 DEV 集成验收 → PR 合入 `main`。共享 DEV 有并行发布者，发布前协调占用，禁止用未合并的功能分支覆盖共享实例。
+   直接在服务器 `/opt/sc2clud` 里改文件会被下一次 `dev.sh` 的 `reset --hard` 覆盖
+   请勿依赖服务器工作区保存未提交改动。
+2. **实例各自独立**：共享测试端前缀 `/srv/sc2clud-dev`（二进制/静态/env 都在这里），
+   生产端 `/srv/sc2clud`。`dev.sh` 只写测试前缀，碰不到生产；`promote.sh` 才把测试端那份二进制
+   复制成生产二进制并重启生产 —— 所以「验证过再发布」是真的两道关。
+3. 排查「代码改了没效果」先看两条：`systemctl cat sc2clud-debug`（有没有 drop-in 覆盖 ExecStart）
+   与 `git -C /opt/sc2clud log --oneline -1`（服务器上到底是哪个提交）。
+4. 改 unit / vhost 后必须 `systemctl daemon-reload` / `nginx -s reload`。
+5. 数据与 Cookie 都是隔离的：prod `/srv/sc2clud/data` + `sc2clud_session`，
+   dev `/srv/sc2clud-dev/data` + `sc2clud_dev_session`；独立 DEV 使用自己的数据目录与不同 Cookie 名。**反向同步绝不允许**。
+6. 独立精华实例使用 `/opt/sc2clud-featured-dev`、`/srv/sc2clud-featured-dev`、服务 `sc2clud-featured-dev` 与回环端口 `8082`。以 `SC2CLUD_REPO`、`SC2CLUD_DEV_PREFIX`、`SC2CLUD_DEV_SERVICE`、`SC2CLUD_DEV_PORT`、`SC2CLUD_BRANCH` 选择；配置在任何拉取、构建或替换之前校验。独立实例验收后先合入共享 DEV，不从独立实例直接 promote；实际实例配置与启动由部署负责人处理。
+
+### 前端产物交付与版本校验
+
+- 本机先执行 `pnpm -C web typecheck`、`pnpm -C web build` 和 Rust 门禁；真实预览通过后，经 ssh-skill 将完整 `crates/sc2clud-web/static/islands/` 上传到服务器仓库同路径（替换整个目录，避免遗留旧文件）。服务器没有 Node，不在服务器构建前端；不要执行 `push-islands.ps1` 或 `preview.mjs` 的 raw ssh/scp 路径。
+- `build` 清空 islands 后生成 `SOURCE.sha256`（将全部已跟踪 web 输入按路径的 UTF-8 字节排序，再以 NUL 分隔各路径及其 Git 规范化内容哈希计算，与整个 HEAD 无关）和 `SHA256SUMS`。只运行 watch 不产生可发布证明；新文件须先 git add 再 build。
+- `deploy/dev.sh` reset 到 `SC2CLUD_BRANCH`（默认 main）；功能分支先发布到自己的独立 DEV 验收，审查后 PR→dev，再串行发布共享 DEV 集成验收，之后 PR→main。指纹必须与 reset 后前端源码一致。缺精华入口、清单、哈希不符均在替换 DEV 活跃产物前中止。
+- DEV 暂存完整二进制与 static，生成整套 `SHA256SUMS`；只重启测试实例。`promote.sh` 只从这份 DEV 整套复制，校验后先备份生产旧整套到 `releases/`，再替换及重启。预检查失败不改活跃文件、不重启。生产 promote 仍须按项目流程获得用户确认。
+- 本地部署行为回归：`bash scripts/test-deploy.sh`，临时目录与桩命令，不操作真实服务器。
+
+### 首次升级旧版 DEV 发布脚本
+
+旧版 dev.sh 不能可靠更新正在执行的自身。首次升级须先把本次分支经 PR 合入 dev，并在本机构建对应完整 islands，通过 ssh-skill 上传到服务器仓库同路径。然后通过 ssh-skill 在服务器运行以下版本库脚本引导步骤；不手改服务器源码、不执行 raw ssh/scp 上传脚本：
+
+```bash
+(
+  set -euo pipefail
+  repo="${SC2CLUD_REPO:-/opt/sc2clud}"
+  git -C "$repo" fetch origin dev
+  upgrade_script=$(mktemp)
+  trap 'rm -f "$upgrade_script"' EXIT
+  git -C "$repo" show origin/dev:deploy/dev.sh > "$upgrade_script"
+  SC2CLUD_REPO="$repo" SC2CLUD_BRANCH=dev bash "$upgrade_script"
+)
+```
+
+临时新脚本会先 reset 到已合入的 origin/dev，再 source 该版本的 deploy/artifacts.sh 并校验完整前端产物。后续使用正常的 `SC2CLUD_BRANCH=dev bash deploy/dev.sh`。用户验收 DEV 后再 PR 合入 main，生产 promote 仍按项目确认流程执行。

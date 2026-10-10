@@ -80,3 +80,22 @@ site/                       ← git 仓库
 - [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) —— 传输路径、存储抽象、数据模型
 - [docs/DEPLOY.md](docs/DEPLOY.md) —— 单机部署、systemd 加固、nginx 边缘职责
 - [docs/BUDGETS.md](docs/BUDGETS.md) —— 内存 / 带宽 / 页面体积预算与检查方式
+- [CONTRIBUTING.md](CONTRIBUTING.md) —— 分支模型、PR 要求、开发环境
+
+## 许可
+
+MIT，版权方 **SuperQuail** —— 见 [LICENSE](LICENSE)。
+
+## 分支模型
+
+| 分支 | 角色 |
+| --- | --- |
+| [`main`](https://github.com/SuperQuail/sc2clud/tree/main) | 稳定线，**只接受 PR 合入** |
+| [`dev`](https://github.com/SuperQuail/sc2clud/tree/dev) | 集成分支，日常开发落这里 |
+| [`release`](https://github.com/SuperQuail/sc2clud/tree/release) | 发版快照，从 main 快进并打 tag |
+
+```text
+功能分支 ──PR──▶ dev ──PR──▶ main ──▶ release（打 tag）
+```
+
+改动请开 PR；CI（格式 / clippy / 单测 / 端到端冒烟 / 前端体积预算）必须全绿。

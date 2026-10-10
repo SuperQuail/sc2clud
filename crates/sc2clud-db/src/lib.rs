@@ -16,7 +16,9 @@ use sc2clud_core::{Error, Result};
 use sqlx::SqlitePool;
 use sqlx::sqlite::{SqliteConnectOptions, SqliteJournalMode, SqlitePoolOptions, SqliteSynchronous};
 
+pub mod feed;
 pub mod models;
+pub mod post_features;
 pub mod repo;
 
 pub use models::{
@@ -122,6 +124,12 @@ fn base_options() -> SqliteConnectOptions {
 pub(crate) fn db_err(e: sqlx::Error) -> Error {
     Error::Database(e.to_string())
 }
+
+#[cfg(test)]
+mod backend_tests;
+
+#[cfg(test)]
+mod community_tests;
 
 #[cfg(test)]
 mod tests {
@@ -419,7 +427,7 @@ mod tests {
         )
         .await
         .expect("发帖");
-        repo::create_comment(db.pool(), post, user, "回复也用显示名。", now)
+        repo::create_comment(db.pool(), post, user, "回复也用显示名。", None, now)
             .await
             .expect("回复");
 
@@ -754,3 +762,6 @@ mod tests {
         assert_eq!(repo::pending_image_jobs(db.pool()).await.expect("队列"), 0);
     }
 }
+
+#[cfg(test)]
+mod feed_tests;

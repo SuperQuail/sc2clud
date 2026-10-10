@@ -1,6 +1,7 @@
 # 调试实例：与生产**完全隔离**。
+#   - 独立前缀 /srv/sc2clud-dev（自己的二进制、静态资源、env）
 #   - 独立端口 127.0.0.1:8081（不对外，需要时用 ssh -L 进去）
-#   - 独立数据目录 /srv/sc2clud/data-debug（碰不到生产库）
+#   - 独立数据目录 /srv/sc2clud-dev/data（碰不到生产库）
 #   - 打开调试页与「应用自己回图片字节」，方便本地/远程调试新功能
 # 生产实例（sc2clud.service）不开这些开关。
 [Unit]
@@ -11,19 +12,22 @@ After=network.target
 Type=simple
 # 必须用**自己的** env 文件：systemd 里 EnvironmentFile= 会覆盖 Environment=，
 # 若复用生产的 sc2clud.env，调试实例会读到生产的 bind/data_dir 然后抢 8080（踩过一次）。
-EnvironmentFile=/srv/sc2clud/sc2clud-debug.env
+EnvironmentFile=/srv/sc2clud-dev/sc2clud-debug.env
 # 兜底写一份，即便 env 文件缺项也不会跑错目录/端口
 Environment=SC2CLUD_BIND=127.0.0.1:8081
-Environment=SC2CLUD_DATA_DIR=/srv/sc2clud/data-debug
+Environment=SC2CLUD_DATA_DIR=/srv/sc2clud-dev/data
 Environment=SC2CLUD_BASE_URL=http://127.0.0.1:8081
+# 与生产同域（/dev 前缀），Cookie 名必须不同——否则两边会话互相顶掉
+Environment=SC2CLUD_COOKIE_NAME=sc2clud_dev_session
 Environment=SC2CLUD_DEBUG_PAGES=1
 Environment=SC2CLUD_SERVE_BLOBS_LOCALLY=1
 Environment=SC2CLUD_LOG=debug
 # 这台机器没有 journal，所以把输出落到文件（调试实例的目录里），排障才看得见
-StandardOutput=append:/srv/sc2clud/data-debug/debug.log
-StandardError=append:/srv/sc2clud/data-debug/debug.log
-WorkingDirectory=/srv/sc2clud
-ExecStart=/srv/sc2clud/sc2clud serve
+StandardOutput=append:/srv/sc2clud-dev/data/debug.log
+StandardError=append:/srv/sc2clud-dev/data/debug.log
+# 测试实例用**自己的**前缀：二进制/静态/env 都不在生产目录里，dev 的部署碰不到生产
+WorkingDirectory=/srv/sc2clud-dev
+ExecStart=/srv/sc2clud-dev/sc2clud serve
 Restart=on-failure
 # 注意：**不要**照抄生产 unit 的 ProtectSystem=strict / ProtectHome=yes——
 # 这个调试实例在沙箱下会以 status=101 直接退出（踩过一次），

@@ -11,6 +11,16 @@ use serde::{Deserialize, Serialize};
 #[derive(Template)]
 #[template(path = "index.html")]
 pub struct IndexTemplate<'a> {
+    pub search_query: String,
+    pub active_section: String,
+    pub is_search: bool,
+    pub sort: String,
+    pub show_discovery: bool,
+    pub feed_title: String,
+    pub featured: Option<FeedView>,
+    pub page: i64,
+    pub previous_page: Option<String>,
+    pub next_page: Option<String>,
     pub site_name: &'a str,
     /// 已登录用户名（游客为 None）。
     pub user_label: Option<String>,
@@ -45,6 +55,7 @@ pub struct IndexTemplate<'a> {
 
 /// 首页帖子卡片。
 pub struct FeedView {
+    pub is_featured: bool,
     pub id: i64,
     /// 作者头像摘要（NULL = 首字母兜底）。
     pub avatar: Option<String>,
@@ -52,8 +63,12 @@ pub struct FeedView {
     pub comment_count: i64,
     pub like_count: i64,
     pub bookmark_count: i64,
+    /// 已归档（不再展示，但作者/管理员可直链打开）。
+    pub archived: bool,
     /// 「多久以前」（列表视图统计条）。
     pub time_ago: String,
+    /// 作者登录名（卡片作者栏跳主页用）。
+    pub author_handle: String,
     pub title: String,
     pub preview: String,
     /// 封面图（该帖第一张图）；卡片用它铺底。
@@ -179,6 +194,7 @@ pub struct UploadQuery {
 
 #[derive(Debug, Serialize)]
 pub struct PostDto {
+    pub is_featured: bool,
     pub id: i64,
     pub title: String,
     pub body: String,
@@ -205,6 +221,10 @@ pub struct PostPageTemplate<'a> {
     /// CSRF 令牌（表单隐藏字段）；用 String 以免模板结构体借用调用方的局部变量。
     pub csrf: String,
     pub post: PostDetailView,
+    /// 左侧分区导航（快捷进入其它分区）。
+    pub sections: Vec<SectionOption>,
+    /// 当前查看者能否与作者互动（登录、已激活、且不是作者本人）。
+    pub can_interact: bool,
     /// 配图（原图或压缩图，按 position 顺序）。
     pub images: Vec<ImageView>,
     /// 下载来源（资源帖；仅这些帖子有）。
@@ -215,12 +235,182 @@ pub struct PostPageTemplate<'a> {
     /// 已登录且已激活才能回复（回复不带图）。
     pub can_reply: bool,
     pub is_staff: bool,
+    /// 作者是否开了打赏展示（开了才出那个大按钮）。
+    pub donation_visible: bool,
+    /// 预览用的界面样式编号（1/2/3，生产恒为 2 —— 已评审通过的「分组下拉」）。
+    pub ui_variant: u8,
+    /// 回复区样式：1 B 站原味 / 2 卡片流 / 3 紧凑列表。
+    pub comments_variant: u8,
+    /// 回复区分页（每页 15 个主楼层）。
+    pub comments_total: i64,
+    pub comments_page: i64,
+    pub comments_pages: i64,
+    pub comments_prev: i64,
+    pub comments_next: i64,
+    /// 页码条：省略号用 gap 标记，免得模板里比类型。
+    pub comments_page_links: Vec<PageLink>,
+
+    /// 赞助弹窗样式（1 左右分栏 / 2 顶部标签 / 3 卡片网格）。
+    pub donate_variant: u8,
+    /// 赞助前提示样式（1 红顶卡 / 2 红标题横条 / 3 红圆图标卡）。
+    pub notice_variant: u8,
+    /// 打赏渠道（弹窗左栏用；没有渠道时为空，前端不显示入口）。
+    pub donation_channels: Vec<DonationChannelView>,
+    /// 打赏前必须点「确定」的那段醒目提示（作者/渠道默认都没配则为 None）。
+    pub donation_notice: Option<String>,
+}
+
+/// 头衔切换列表里的一项。
+#[derive(Debug, Clone)]
+pub struct TitleChoice {
+    pub id: i64,
+    pub name: String,
+    pub color: String,
+    pub equipped: bool,
+}
+
+/// 消息中心（B 站式：左分类 / 中列表 / 右消息流）。
+#[derive(Template)]
+#[template(path = "inbox.html")]
+pub struct InboxTemplate<'a> {
+    pub site_name: &'a str,
+    pub user_label: Option<String>,
+    pub is_staff: bool,
+    pub csrf: String,
+    /// 分类：dm / likes / system。
+    pub tab: String,
+    pub conversations: Vec<InboxConversationView>,
+    /// 当前选中会话对方 handle（私信用）。
+    pub selected: String,
+    pub other_display: String,
+    pub other_avatar: Option<String>,
+    /// 自己的头像（消息流里自己的气泡也要带头像）。
+    pub my_avatar: Option<String>,
+    pub thread: Vec<InboxMessageView>,
+    /// 删除确认版式：1 二次点击 / 2 弹窗确认 / 3 系统 confirm（预览用，生产恒 1）。
+    pub delete_variant: u8,
+    /// 未读数（左栏徽标）。
+    pub like_unread: i64,
+    pub system_unread: i64,
+    pub dm_unread: i64,
+    /// 收到的赞 / 系统通知列表（按 tab 取其一）。
+    pub notices: Vec<InboxNoticeView>,
+    /// 当前选中的通知。
+    pub selected_notice: Option<InboxNoticeView>,
+}
+
+/// 消息中心的一条通知（收到的赞 / 系统通知）。
+#[derive(Debug, Clone)]
+pub struct InboxNoticeView {
+    pub id: i64,
+    /// 通知类别（点赞 like / 审核 review / issue / 推送 push…），「不再通知」按它静音。
+    pub kind: String,
+    pub title: String,
+    pub body: String,
+    pub link: String,
+    pub date: String,
+    pub unread: bool,
+    pub active: bool,
+    /// 触发者头像（点赞的人 / 审核人）；没有就用图标兜底。
+    pub avatar: Option<String>,
+    /// 聚合：前几个触发者显示名（最多 3 个）。
+    pub actor_names: Vec<String>,
+    /// 聚合：同一内容上的通知条数（点赞累计）。
+    pub count: i64,
+    /// 聚合：还有更多人没列出来（模板里不比类型，直接给布尔）。
+    pub more: bool,
+}
+
+/// 消息中心的会话项。
+#[derive(Debug, Clone)]
+pub struct InboxConversationView {
+    pub handle: String,
+    pub display_name: String,
+    pub avatar: Option<String>,
+    pub last_body: String,
+    pub date: String,
+    pub active: bool,
+}
+
+pub struct InboxMessageView {
+    /// 消息 id（前端轮询用它算「最新到哪儿了」）。
+    pub id: i64,
+    pub mine: bool,
+    pub body: String,
+    pub date: String,
+    /// 时间分隔条：与上一条不是同一天时显示（B 站那种居中日期行）。
+    pub show_date: bool,
+}
+
+/// 搜索页（B 站式：搜索框 + 分类标签 + 结果）。
+#[derive(Template)]
+#[template(path = "search.html")]
+pub struct SearchPageTemplate<'a> {
+    pub site_name: &'a str,
+    pub user_label: Option<String>,
+    pub is_staff: bool,
+    pub csrf: String,
+    pub q: String,
+    pub tab: String,
+    /// 版式编号：1 一行标签栏 / 2 两行筛选 + 右侧相关用户 / 3 左侧筛选栏（预览用，生产恒 1）。
+    pub search_variant: u8,
+    pub posts: Vec<PostHitView>,
+    pub users: Vec<UserHitView>,
+    pub post_count: i64,
+    pub user_count: i64,
+}
+
+/// 搜索命中的帖子（结果行）。
+#[derive(Debug, Clone)]
+pub struct PostHitView {
+    pub id: i64,
+    pub title: String,
+    pub cover_hash: Option<String>,
+    pub section_label: String,
+    pub author: String,
+    pub date: String,
+    pub comment_count: i64,
+}
+
+/// 搜索命中的用户卡片。
+#[derive(Debug, Clone)]
+pub struct UserHitView {
+    pub handle: String,
+    pub display_name: String,
+    pub avatar: Option<String>,
+    pub role_label: String,
+    pub bio: String,
+    pub post_count: i64,
+}
+
+/// 用户名后面的头衔徽章。
+#[derive(Debug, Clone)]
+pub struct TitleBadgeView {
+    pub name: String,
+    /// 头衔自带的颜色（`#rrggbb`），为空则用主题色。
+    pub color: String,
+}
+
+/// 打赏弹窗里的一个渠道。
+#[derive(Debug, Clone)]
+pub struct DonationChannelView {
+    pub id: i64,
+    pub channel: String,
+    pub label: String,
+    pub image_hash: String,
 }
 
 /// 帖子正文视图。
 pub struct PostDetailView {
+    pub is_featured: bool,
+    pub can_feature: bool,
+    pub can_add_feature: bool,
     pub id: i64,
     pub avatar: Option<String>,
+    /// 作者的登录名（右栏「主页 / 私信」跳转用）。
+    pub author_handle: String,
+    /// 回复数（右栏数据卡）。
+    pub comment_count: i64,
     pub title: String,
     pub section: String,
     pub section_label: String,
@@ -231,6 +421,9 @@ pub struct PostDetailView {
     pub state_label: String,
     pub review_note: Option<String>,
     /// 当前查看者是否已点赞 / 收藏，以及计数。
+    pub archived: bool,
+    /// 当前查看者能否编辑（作者本人或管理员及以上）。
+    pub can_edit: bool,
     pub liked: bool,
     pub bookmarked: bool,
     pub like_count: i64,
@@ -265,12 +458,36 @@ pub struct ImageView {
     pub href: String,
 }
 
+/// 页码条上的一项。
+#[derive(Debug, Clone)]
+pub struct PageLink {
+    pub number: i64,
+    pub gap: bool,
+}
+
 /// 回复视图。
 pub struct CommentView {
+    /// 楼层 id（回复按钮用它当 parent_id）。
+    pub id: i64,
     pub author: String,
+    /// 小图头像（48px）；为空就回落到 avatar。
+    pub avatar_small: Option<String>,
+    /// 作者 user id：回复时拼成 `@昵称#id`，重名也指得准。
+    pub author_id: i64,
+    pub handle: String,
     pub avatar: Option<String>,
-    pub body: String,
+    /// 头衔（佩戴了才显示）；color 是头衔色。
+    pub title: Option<String>,
+    pub title_color: String,
+    /// 已渲染正文（含 @ 链接，模板里 `|safe`）。
+    pub body_html: String,
     pub created_at: String,
+    /// 赞 / 踩；my_vote：1 赞 / -1 踩 / 0 没投。
+    pub likes: i64,
+    pub dislikes: i64,
+    pub my_vote: i64,
+    /// 楼中楼：挂在这一层下面的回复。
+    pub replies: Vec<CommentView>,
 }
 
 /// 发帖页。
@@ -296,6 +513,10 @@ pub struct SectionOption {
     pub value: String,
     pub label: String,
     pub checked: bool,
+    /// 用户组检查档位：0 不启用 / 1 白名单 / 2 黑名单（后台用，前台恒为 0）。
+    pub mode: i64,
+    /// 分区封面（管理员设置过才有）。
+    pub cover: Option<String>,
 }
 
 /// 发帖页的来源下拉项。
@@ -310,6 +531,57 @@ pub struct SourceSlot {
     pub url: String,
     pub code: String,
     pub provider: String,
+    /// 自定义显示名（可留空）。
+    pub label: String,
+}
+
+/// 编辑帖子（作者本人或管理员）。
+#[derive(Template)]
+#[template(path = "edit.html")]
+pub struct EditPostTemplate<'a> {
+    pub site_name: &'a str,
+    pub user_label: Option<String>,
+    pub is_staff: bool,
+    pub csrf: String,
+    pub id: i64,
+    pub error: Option<String>,
+    pub state_label: String,
+    pub review_note: Option<String>,
+    pub kinds: Vec<KindOption>,
+    pub sections: Vec<SectionOption>,
+    pub providers: Vec<ProviderOption>,
+    /// 已有的配图（编辑页展示、可排序、可删除）。
+    pub images: Vec<EditImageView>,
+    pub image_count: i64,
+    /// 已有的下载来源（**必须回填**：编辑保存会整体重写来源，漏了就全丢了）。
+    pub sources: Vec<SourceSlot>,
+    // 用 String 而不是借用：模板结构体要能独立于调用方的局部变量返回
+    pub title: String,
+    pub body: String,
+}
+
+/// 编辑用户（管理面板里点铅笔进来）。
+#[derive(Template)]
+#[template(path = "admin_user.html")]
+pub struct AdminUserEditTemplate<'a> {
+    pub site_name: &'a str,
+    pub user_label: Option<String>,
+    pub is_staff: bool,
+    pub csrf: String,
+    pub user: AdminUserView,
+    pub roles: Vec<(String, String)>,
+    /// 只有超级管理员能改等级与显示名。
+    pub is_super: bool,
+}
+
+/// 编辑页里的一张配图：带 id 与顺序，可前移/后移/删除。
+pub struct EditImageView {
+    pub id: i64,
+    pub href: String,
+    /// 从 1 开始的展示序号。
+    pub number: usize,
+    pub is_first: bool,
+    pub is_last: bool,
 }
 
 /// 数据备份页（仅超级管理员）。
@@ -350,27 +622,6 @@ pub struct BookmarkView {
     pub when: String,
 }
 
-/// 通知中心。
-#[derive(Template)]
-#[template(path = "notifications.html")]
-pub struct NotificationsTemplate<'a> {
-    pub site_name: &'a str,
-    pub user_label: Option<String>,
-    pub is_staff: bool,
-    pub csrf: String,
-    pub items: Vec<NotificationView>,
-}
-
-/// 一条通知。
-pub struct NotificationView {
-    pub kind: String,
-    pub title: String,
-    pub body: String,
-    pub link: Option<String>,
-    pub when: String,
-    pub unread: bool,
-}
-
 /// 系统公告页。
 #[derive(Template)]
 #[template(path = "announcements.html")]
@@ -387,51 +638,6 @@ pub struct AnnouncementView {
     pub title: String,
     pub body: String,
     pub when: String,
-}
-
-/// 私信收件箱。
-#[derive(Template)]
-#[template(path = "messages.html")]
-pub struct MessagesTemplate<'a> {
-    pub site_name: &'a str,
-    pub user_label: Option<String>,
-    pub is_staff: bool,
-    pub csrf: String,
-    pub conversations: Vec<ConversationView>,
-}
-
-/// 会话列表一行。
-pub struct ConversationView {
-    pub handle: String,
-    pub display_name: String,
-    pub avatar: Option<String>,
-    pub preview: String,
-    pub when: String,
-    pub from_me: bool,
-    pub unread: i64,
-}
-
-/// 一个会话。
-#[derive(Template)]
-#[template(path = "thread.html")]
-pub struct ThreadTemplate<'a> {
-    pub site_name: &'a str,
-    pub user_label: Option<String>,
-    pub is_staff: bool,
-    pub csrf: String,
-    pub handle: String,
-    pub display_name: String,
-    pub avatar: Option<String>,
-    pub messages: Vec<MessageView>,
-    pub blocked: bool,
-}
-
-/// 一条私信。
-pub struct MessageView {
-    pub mine: bool,
-    pub body: String,
-    pub when: String,
-    pub read: bool,
 }
 
 /// 黑名单一行（账户设置里展示）。
@@ -459,6 +665,14 @@ pub struct SettingsTemplate<'a> {
     pub blocks: Vec<BlockView>,
     pub notice: Option<String>,
     pub error: Option<String>,
+    /// 认证开发者及以上才能开打赏（与上传收款码同一权限）。
+    /// 个人简介（200 字上限；改动走审核，当前自动放行）。
+    pub bio: String,
+    pub can_donate: bool,
+    pub donation_visible: bool,
+    pub donation_notice_visible: bool,
+    pub donation_notice_text: String,
+    pub donation_channels: Vec<DonationChannelView>,
 }
 
 /// 用户主页。
@@ -483,6 +697,27 @@ pub struct ProfileTemplate<'a> {
     pub can_edit_avatar: bool,
     pub posts: Vec<FeedView>,
     pub accepted: i64,
+    /// 打赏弹窗/提示的样式编号（主页没有预览开关，生产值即已评审通过的那套）。
+    pub donate_variant: u8,
+    pub notice_variant: u8,
+    /// 佩戴的头衔（名字后面渲染）；没戴就是 None。
+    pub title: Option<TitleBadgeView>,
+    /// 头衔样式编号（1 胶囊 / 2 徽章 / 3 渐变下划线），生产用 1。
+    pub title_variant: u8,
+    /// 本人或管理员可以点简介就地编辑。
+    pub can_edit_bio: bool,
+    /// 本人持有的头衔（点头衔弹出切换列表）；别人的主页为空。
+    pub my_titles: Vec<TitleChoice>,
+    /// 个人简介（未通过审核时只有本人与管理员看得到）。
+    pub bio: Option<String>,
+    /// 简介的审核态：approved / pending / rejected。
+    pub bio_state: String,
+    /// 预览用的头部样式编号（1/2/3，生产恒为 1）。
+    pub header_variant: u8,
+    /// 「支持作者」区块：作者开了展示、且有渠道时才出现。
+    pub donation_visible: bool,
+    pub donation_channels: Vec<DonationChannelView>,
+    pub donation_notice: Option<String>,
 }
 
 /// 调试页（开发自检；生产实例不注册该路由）。
@@ -515,11 +750,45 @@ pub struct DebugAuditView {
     pub detail: String,
 }
 
+/// 后台：一个用户组（含人数与它自己的分区规则）。
+#[derive(Debug, Clone)]
+pub struct AdminGroupView {
+    pub id: i64,
+    pub key: String,
+    pub name: String,
+    pub description: String,
+    pub member_count: i64,
+    pub archived: bool,
+    /// (分区 key, 允许发帖, 允许评论, 禁止发帖, 禁止评论)
+    pub rules: Vec<(String, bool, bool, bool, bool)>,
+}
+
+/// 默认头像池里的一张（后台展示用）。
+#[derive(Debug, Clone)]
+pub struct DefaultAvatarView {
+    pub id: i64,
+    pub hash: String,
+    pub note: String,
+    pub date: String,
+}
+
 /// 管理员面板。
 #[derive(Template)]
 #[template(path = "admin.html")]
 pub struct AdminTemplate<'a> {
     pub is_staff: bool,
+    /// 默认头像池（管理员维护）。
+    pub default_avatars: Vec<DefaultAvatarView>,
+    /// 池子界面版式：1 网格卡 / 2 列表行 / 3 侧栏上传（预览用，生产恒 1）。
+    pub pool_variant: u8,
+    /// 权限/用户组界面版式：1 权限矩阵 / 2 每分区一卡 / 3 主从两栏（预览用，生产恒 1）。
+    pub acl_variant: u8,
+    /// 用户组列表（含人数与规则）。
+    pub groups: Vec<AdminGroupView>,
+    /// 禁言时长选项（值, 显示名）。
+    pub ban_options: Vec<(String, String)>,
+    /// 全站开关：被拉黑后不能在对方帖子下回复（默认关）。
+    pub block_reply_enforced: bool,
     /// 磁盘预算总览（仅超级管理员可见）。
     pub server_free_human: String,
     pub quota_allocated_human: String,
@@ -544,11 +813,19 @@ pub struct AdminTemplate<'a> {
     pub users: Vec<AdminUserView>,
     /// 待审核的帖子（按提交时间正序，先来先审）。
     pub pending: Vec<FeedView>,
+    /// 分区与它们的封面（封面卡片用）。
+    pub sections: Vec<SectionOption>,
 }
 
 /// 管理员面板里的用户行。
 pub struct AdminUserView {
     pub id: i64,
+    /// 限期禁言的显示文案（空串 = 没被禁）。
+    pub ban_label: String,
+    /// 所属用户组 id（可多个）。
+    pub groups: Vec<i64>,
+    /// 是否被信任（发帖只走自动审核）。
+    pub trusted: bool,
     pub email: String,
     /// 已分配预算（可读文本，如「1 GB」）。
     pub quota_human: String,
@@ -561,6 +838,12 @@ pub struct AdminUserView {
     pub avatar: Option<String>,
     pub handle: String,
     pub display_name: String,
+    /// 无头像时圆形底上显示的首字符。
+    pub initial: String,
+    /// 无头像时的配色序号（0..5），对应 CSS 里的 c0..c5。
+    pub color_index: i64,
+    /// 最近 5 分钟内有活动（列表上的绿点）。
+    pub online: bool,
     pub role: String,
     pub role_label: String,
     pub activated: bool,
@@ -575,6 +858,11 @@ pub struct KindOption {
     pub hint: String,
     pub checked: bool,
 }
+
+/// 点击后按需加载的登录注册弹窗，不包含用户数据。
+#[derive(Template)]
+#[template(path = "auth_dialog.html")]
+pub struct AuthDialogTemplate {}
 
 /// 登录页。
 #[derive(Template)]

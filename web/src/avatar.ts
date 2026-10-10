@@ -167,7 +167,10 @@ function mount() {
     }
     say(`上传中（${Math.round(blob.size / 1024)} KB）…`)
     try {
-      const response = await fetch('/api/v1/me/avatar', {
+      // 站点可能挂在路径前缀下（测试实例 /dev）；岛的 JS 由静态直出，nginx 的
+  // sub_filter 覆盖不到，所以这里自己算前缀。
+  const prefix = location.pathname.startsWith('/dev') ? '/dev' : ''
+  const response = await fetch(prefix + '/api/v1/me/avatar', {
         method: 'POST',
         headers: { 'content-type': 'image/webp', 'x-csrf-token': csrf },
         body: blob,

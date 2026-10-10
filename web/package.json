@@ -4,7 +4,7 @@
   "type": "module",
   "description": "SC2clud 前端岛：交互密集模块局部挂载 Vue 3（整站仍是服务端渲染）",
   "scripts": {
-    "build": "vite build",
+    "build": "vite build && node ../scripts/islands-manifest.mjs",
     "watch": "vite build --watch",
     "typecheck": "vue-tsc --noEmit"
   },
