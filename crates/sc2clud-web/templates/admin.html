@@ -254,8 +254,6 @@
   <h2>分区发言权限 <span class="count">{{ sections.len() }}</span></h2>
   <p class="hint">角色门槛＝「至少哪个等级能在该分区发言 / 评论」；用户组规则是额外的白名单（禁止项优先于一切）。
     改完点该行右侧的「保存」立即生效（不刷新页面）；管理员及以上始终无视用户组。</p>
-  {% if acl_variant == 1 %}
-  {# 版式 1：权限矩阵 —— 行是分区，列是门槛、启用开关与组白名单；每行一个保存按钮 #}
   <table class="acl-matrix">
     <thead><tr><th>分区</th><th>可发言</th><th>可评论</th><th>用户组检查</th><th>允许的用户组</th><th></th></tr></thead>
     <tbody>
@@ -279,53 +277,12 @@
     {% endfor %}
     </tbody>
   </table>
-  {% else if acl_variant == 2 %}
-  {# 版式 2：每分区一卡 —— 卡片墙，组用四个开关直接摆开 #}
-  <div class="acl-cards">
-    {% for section in sections %}
-    <article class="acl-card">
-      <h3>{{ section.label }}</h3>
-      <label class="acl-row">可发言<select disabled><option value="member">普通用户</option><option value="developer">认证开发者</option><option value="admin">管理员</option><option value="super">超级管理员</option></select></label>
-      <label class="acl-row">可评论<select disabled><option value="member">普通用户</option><option value="developer">认证开发者</option><option value="admin">管理员</option><option value="super">超级管理员</option></select></label>
-      <div class="acl-groups">
-        {% for group in groups %}
-        <div class="acl-group-row"><span>{{ group.name }}</span><span class="acl-flags">
-          <label><input type="checkbox" disabled>发帖</label>
-          <label><input type="checkbox" disabled>评论</label>
-          <label><input type="checkbox" disabled>禁发</label>
-          <label><input type="checkbox" disabled>禁评</label>
-        </span></div>
-        {% endfor %}
-      </div>
-    </article>
-    {% endfor %}
-  </div>
-  {% else %}
-  {# 版式 3：主从两栏 —— 左选分区，右配权限（像设置页） #}
-  <div class="acl-split">
-    <nav class="acl-list">
-      {% for section in sections %}<button type="button" class="{% if loop.first %}active{% endif %}" disabled>{{ section.label }}</button>{% endfor %}
-    </nav>
-    <div class="acl-detail">
-      <h3>{{ sections[0].label }}</h3>
-      <div class="acl-row">可发言<select disabled><option value="member">普通用户</option><option value="developer">认证开发者</option><option value="admin">管理员</option><option value="super">超级管理员</option></select></div>
-      <div class="acl-row">可评论<select disabled><option value="member">普通用户</option><option value="developer">认证开发者</option><option value="admin">管理员</option><option value="super">超级管理员</option></select></div>
-      <table class="acl-groups-table">
-        <thead><tr><th>用户组</th><th>可发帖</th><th>可评论</th><th>禁发帖</th><th>禁评论</th></tr></thead>
-        <tbody>
-        {% for group in groups %}
-        <tr><th scope="row">{{ group.name }}</th><td><input type="checkbox" disabled></td><td><input type="checkbox" disabled></td><td><input type="checkbox" disabled></td><td><input type="checkbox" disabled></td></tr>
-        {% endfor %}
-        </tbody>
-      </table>
-    </div>
-  </div>
-  {% endif %}
+
 </section>
 
 <section class="panel" id="groups">
   <h2>用户组 <span class="count">{{ groups.len() }}</span></h2>
-  <p class="hint">组是「人群」，分区权限里可以按组给白名单；用户面板里把成员分到组里。设计稿：新建/编辑接口待接。</p>
+  <p class="hint">组是「人群」：分区权限里按组给白名单，用户面板里把成员分到组里（一个用户可属多个组）。</p>
   <div class="group-list">
     {% for group in groups %}
     <article class="group-card{% if group.archived %} archived{% endif %}">
