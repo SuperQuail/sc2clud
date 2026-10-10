@@ -108,7 +108,7 @@ pub fn exp_for_level(level: i64) -> i64 {
 /// 从**任意域名、任意路径前缀**的站点链接里解析出帖子 id。
 ///
 /// 只认路径里 `…/p/<数字>` 这一段，不看域名——以后加域名（含 `/dev` 这类前缀）都不用改。
-/// shortcut: 不校验域名，站外 `…/p/12` 也会解析成我们的 12 号帖（调用方只用来取标题，风险可接受）。
+/// 只看路径里的 `…/p/<数字>`，**不管域名**：这条链接是不是本站的由调用方用 `is_site_link` 判定。
 pub fn parse_post_link(raw: &str) -> Option<i64> {
     let path = raw.trim().split(['?', '#']).next()?;
     let mut segments = path.split('/').peekable();

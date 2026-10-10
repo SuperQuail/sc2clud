@@ -18,10 +18,7 @@ use crate::AppState;
 use crate::error::{AppError, AppResult};
 use crate::routes::require_user;
 use crate::session;
-use crate::templates::{
-    ConversationView, InboxTemplate, MessageView, MessagesTemplate, ThreadTemplate, format_date,
-    format_relative, render,
-};
+use crate::templates::InboxTemplate;
 
 #[derive(Debug, Deserialize)]
 pub struct SendForm {
@@ -39,92 +36,6 @@ async fn find_other(state: &AppState, handle: &str) -> AppResult<sc2clud_db::Use
         .await?
         .ok_or_else(|| AppError::not_found("没有这个用户"))
 }
-
-pub async fn inbox(State(state): State<AppState>, headers: HeaderMap) -> Response {
-    match build_inbox(&state, &headers).await {
-        Ok(template) => render(template),
-        Err(e) => e.into_page_response(true),
-    }
-}
-
-async fn build_inbox<'a>(
-    state: &'a AppState,
-    headers: &HeaderMap,
-) -> AppResult<MessagesTemplate<'a>> {
-    let user = require_user(state, headers).await?;
-    let now = now_unix();
-    let rows = repo::list_conversations(state.db.pool(), user.id).await?;
-    let conversations = rows
-        .into_iter()
-        .map(|row| ConversationView {
-            handle: row.other_handle,
-            display_name: row.other_display_name,
-            avatar: row.other_avatar,
-            preview: row.last_body.chars().take(60).collect(),
-            when: format_relative(row.last_at, now),
-            from_me: row.last_from_me == 1,
-            unread: row.unread,
-        })
-        .collect();
-    Ok(MessagesTemplate {
-        site_name: &state.config.server.site_name,
-        user_label: Some(user.display_name.clone()),
-        is_staff: user.is_staff(),
-        csrf: user.csrf_token.clone(),
-        conversations,
-    })
-}
-
-pub async fn thread(
-    State(state): State<AppState>,
-    Path(handle): Path<String>,
-    headers: HeaderMap,
-) -> Response {
-    match build_thread(&state, &handle, &headers).await {
-        Ok(template) => render(template),
-        Err(e) => e.into_page_response(true),
-    }
-}
-
-async fn build_thread<'a>(
-    state: &'a AppState,
-    handle: &str,
-    headers: &HeaderMap,
-) -> AppResult<ThreadTemplate<'a>> {
-    let user = require_user(state, headers).await?;
-    let other = find_other(state, handle).await?;
-    let now = now_unix();
-    // 打开会话就标记已读（失败不影响阅读）
-    let _ = repo::mark_thread_read(state.db.pool(), user.id, other.id, now).await;
-    let mut rows = repo::list_thread(state.db.pool(), user.id, other.id, 200).await?;
-    rows.reverse();
-    let messages = rows
-        .into_iter()
-        .map(|row| MessageView {
-            mine: row.sender_id == user.id,
-            body: row.body,
-            when: format_date(row.created_at),
-            read: row.read_at.is_some(),
-        })
-        .collect();
-    let blocked = repo::blocked_between(state.db.pool(), user.id, other.id).await?;
-    Ok(ThreadTemplate {
-        site_name: &state.config.server.site_name,
-        user_label: Some(user.display_name.clone()),
-        is_staff: user.is_staff(),
-        csrf: user.csrf_token.clone(),
-        handle: other.handle.clone(),
-        display_name: if other.display_name.trim().is_empty() {
-            other.handle.clone()
-        } else {
-            other.display_name.clone()
-        },
-        avatar: other.avatar_hash.clone(),
-        messages,
-        blocked,
-    })
-}
-
 pub async fn send(
     State(state): State<AppState>,
     Path(handle): Path<String>,
