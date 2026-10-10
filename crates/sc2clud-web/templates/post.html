@@ -176,7 +176,6 @@
   <form method="post" action="/p/{{ post.id }}/comments" class="stack" style="margin-top:18px" data-comment-form>
     <input type="hidden" name="csrf" value="{{ csrf }}">
     {# 楼中楼：点某层的「回复」时填这里，留空即主楼层 #}
-    <input type="hidden" name="parent_id" id="reply-parent" value="">
     <label>回复内容<textarea name="body" id="reply-body" required minlength="2" maxlength="5000" placeholder="支持 @某人；点某层右下角的「回复」会自动带上对方"></textarea></label>
     <div class="mention-pop" id="mention-pop" hidden></div>
     <button class="btn" type="submit">发布回复</button>
@@ -345,7 +344,6 @@
   const form = document.querySelector('[data-comment-form]');
   const postId = {{ post.id }};
   const area = document.getElementById('reply-body');
-  const parentField = document.getElementById('reply-parent');
   const pop = document.getElementById('mention-pop');
   if (!form || !area || !pop) return;
 

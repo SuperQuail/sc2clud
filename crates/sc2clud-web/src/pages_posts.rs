@@ -77,12 +77,24 @@ pub fn parse_post_form(bytes: &[u8]) -> ParsedPostForm {
     out
 }
 
+/// 表单里的可选整数：空串按 None 处理。
+/// 浏览器提交空 input 会送 `parent_id=`，`Option<i64>` 自己解析不了空串，整条请求会被打回。
+fn empty_as_none<'de, D>(deserializer: D) -> Result<Option<i64>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    let raw = Option::<String>::deserialize(deserializer)?;
+    Ok(raw
+        .filter(|value| !value.trim().is_empty())
+        .and_then(|value| value.trim().parse().ok()))
+}
+
 #[derive(Debug, Deserialize)]
 pub struct ReplyForm {
     pub csrf: String,
     pub body: String,
-    /// 楼中楼：回复某条回复时带上它的楼层 id。
-    #[serde(default)]
+    /// 楼中楼：回复某条回复时带上它的楼层 id（顶部表单不带这个字段）。
+    #[serde(default, deserialize_with = "empty_as_none")]
     pub parent_id: Option<i64>,
 }
 
