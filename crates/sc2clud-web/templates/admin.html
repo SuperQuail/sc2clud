@@ -247,15 +247,17 @@
   {% if acl_variant == 1 %}
   {# 版式 1：权限矩阵 —— 行是分区，列是门槛与组白名单，信息密度最高 #}
   <table class="acl-matrix">
-    <thead><tr><th>分区</th><th>可发言</th><th>可评论</th><th>允许的用户组</th></tr></thead>
+    <thead><tr><th>分区</th><th>可发言</th><th>可评论</th><th>启用用户组检查</th><th>允许的用户组</th></tr></thead>
     <tbody>
     {% for section in sections %}
     <tr>
       <th scope="row">{{ section.label }}</th>
       <td><select disabled><option value="member">普通用户</option><option value="developer">认证开发者</option><option value="admin">管理员</option><option value="super">超级管理员</option></select></td>
       <td><select disabled><option value="member">普通用户</option><option value="developer">认证开发者</option><option value="admin">管理员</option><option value="super">超级管理员</option></select></td>
+      {# 关掉时该分区忽略用户组白名单，只看角色门槛；管理员及以上始终无视用户组 #}
+      <td><label class="acl-switch"><input type="checkbox" disabled data-group-check><span>启用</span></label></td>
       <td class="acl-chips">
-        {% for group in groups %}<button class="acl-chip" type="button" disabled>{{ group.name }}</button>{% endfor %}
+        {% for group in groups %}<button class="acl-chip" type="button" disabled data-group-chip aria-pressed="false">{{ group.name }}</button>{% endfor %}
         {% if groups.is_empty() %}<span class="hint">还没有用户组</span>{% endif %}
       </td>
     </tr>
@@ -334,6 +336,11 @@
 .acl-matrix th,.acl-matrix td{padding:8px 10px;border-bottom:1px solid var(--line,#e5e7eb);text-align:left}
 .acl-chips{display:flex;gap:6px;flex-wrap:wrap}
 .acl-chip{padding:3px 10px;border-radius:999px;border:1px solid var(--line,#e5e7eb);background:none;color:inherit;font:inherit;font-size:12px}
+/* 选中＝绿色实心（用户要求：点了变绿） */
+.acl-chip.is-on{border-color:#16a34a;background:#16a34a;color:#fff}
+.acl-chip.is-on::before{content:'✓ ';font-size:11px}
+.acl-switch{display:inline-flex;align-items:center;gap:6px;font-size:13px}
+.acl-switch input{accent-color:#16a34a}
 .acl-cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:12px}
 .acl-card{border:1px solid var(--line,#e5e7eb);border-radius:12px;padding:14px}
 .acl-card h3{margin:0 0 10px;font-size:15px}
@@ -452,6 +459,30 @@
       .pool-list{display:flex;flex-direction:column;gap:8px}
       </style>
       <script>
+  // 添加用户默认隐藏，点顶部「添加用户」才展开（用户要求：不要一屏表单）
+  const createBox = document.getElementById('create');
+  if (createBox) {
+    createBox.hidden = true;
+    document.querySelectorAll('a[href="#create"]').forEach((btn) => {
+      btn.addEventListener('click', (event) => {
+        event.preventDefault();
+        createBox.hidden = false;
+        createBox.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      });
+    });
+  }
+
+  // 允许的用户组：点一下切换选中（选中变绿）。设计稿阶段只改外观，保存接口待接。
+  document.querySelectorAll('[data-group-chip]').forEach((chip) => {
+    chip.disabled = false;
+    chip.addEventListener('click', () => {
+      const on = chip.classList.toggle('is-on');
+      chip.setAttribute('aria-pressed', on ? 'true' : 'false');
+    });
+  });
+  // 启用用户组检查的开关在设计稿阶段可拨动（保存待接）
+  document.querySelectorAll('[data-group-check] input, input[data-group-check]').forEach((box) => { box.disabled = false; });
+
   // 分区调序：fetch 提交 → 按返回的新顺序就地重排封面格（不刷新页面）
   const orderRoot = document.querySelector('.cover-grid');
   if (orderRoot) {

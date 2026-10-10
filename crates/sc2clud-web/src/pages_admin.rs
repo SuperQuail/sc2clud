@@ -109,10 +109,19 @@ async fn build_panel<'a>(
     let unused = (allocated - used).max(0);
     let quota_over_committed =
         allocated.max(0) as u64 > free_bytes.saturating_add(used.max(0) as u64);
+    // 每个用户所属的用户组（人数少，逐个查即可；将来量大再换成一条 JOIN）
+    let mut member_groups: std::collections::HashMap<i64, Vec<i64>> =
+        std::collections::HashMap::new();
+    for group in repo::list_user_groups(state.db.pool(), true).await? {
+        for member in repo::list_group_members(state.db.pool(), group.id).await? {
+            member_groups.entry(member.0).or_default().push(group.id);
+        }
+    }
     let users = rows
         .into_iter()
         .map(|row| AdminUserView {
             id: row.id,
+            groups: member_groups.get(&row.id).cloned().unwrap_or_default(),
             trusted: row.trusted != 0,
             initial: row
                 .display_name
@@ -283,6 +292,7 @@ async fn build_user_edit<'a>(
             .map(|r| (r.as_str().to_string(), r.label().to_string()))
             .collect(),
         user: AdminUserView {
+            groups: Vec::new(),
             id: row.id,
             trusted: row.trusted != 0,
             initial: row

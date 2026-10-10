@@ -809,6 +809,8 @@ pub struct AdminTemplate<'a> {
 /// 管理员面板里的用户行。
 pub struct AdminUserView {
     pub id: i64,
+    /// 所属用户组 id（可多个）。
+    pub groups: Vec<i64>,
     /// 是否被信任（发帖只走自动审核）。
     pub trusted: bool,
     pub email: String,
