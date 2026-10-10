@@ -274,6 +274,12 @@ pub struct CommentWithAuthorRow {
     pub parent_id: Option<i64>,
     /// 作者角色（评论区显示身份徽章）。
     pub author_role: String,
+    /// 点赞数。
+    pub likes: i64,
+    /// 点踩数（前端暂未接，接口留着）。
+    pub dislikes: i64,
+    /// 当前查看者投的票：1 赞 / -1 踩 / 0 没投。
+    pub my_vote: i64,
 }
 
 /// 启动器发布版本。

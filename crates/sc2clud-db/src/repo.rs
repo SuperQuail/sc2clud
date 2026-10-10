@@ -1182,6 +1182,64 @@ pub async fn create_comment(
     Ok(res.last_insert_rowid())
 }
 
+// ---------------------------------------------------------------- 回复投票（赞 / 踩）
+
+/// 投票：value = 1 赞、-1 踩、0 取消。返回 (赞数, 踩数, 我的票)。
+pub async fn vote_comment(
+    pool: &SqlitePool,
+    comment_id: i64,
+    user_id: i64,
+    value: i64,
+    now: i64,
+) -> Result<(i64, i64, i64)> {
+    if value == 0 {
+        query("DELETE FROM comment_votes WHERE comment_id = ? AND user_id = ?")
+            .bind(comment_id)
+            .bind(user_id)
+            .execute(pool)
+            .await
+            .map_err(db_err)?;
+    } else {
+        query(
+            "INSERT INTO comment_votes (comment_id, user_id, value, created_at) VALUES (?, ?, ?, ?) \
+             ON CONFLICT(comment_id, user_id) DO UPDATE SET value = excluded.value, created_at = excluded.created_at",
+        )
+        .bind(comment_id)
+        .bind(user_id)
+        .bind(value)
+        .bind(now)
+        .execute(pool)
+        .await
+        .map_err(db_err)?;
+    }
+    let row: (i64, i64) = query_as(
+        "SELECT COALESCE(SUM(value = 1), 0), COALESCE(SUM(value = -1), 0) FROM comment_votes WHERE comment_id = ?",
+    )
+    .bind(comment_id)
+    .fetch_one(pool)
+    .await
+    .map_err(db_err)?;
+    let mine: Option<(i64,)> =
+        query_as("SELECT value FROM comment_votes WHERE comment_id = ? AND user_id = ?")
+            .bind(comment_id)
+            .bind(user_id)
+            .fetch_optional(pool)
+            .await
+            .map_err(db_err)?;
+    Ok((row.0, row.1, mine.map(|(v,)| v).unwrap_or(0)))
+}
+
+/// 这条回复属于哪个帖子（投票前校验，别让人投别人看不到的帖子）。
+pub async fn comment_post_id(pool: &SqlitePool, comment_id: i64) -> Result<Option<i64>> {
+    let row: Option<(i64,)> =
+        query_as("SELECT post_id FROM comments WHERE id = ? AND deleted_at IS NULL")
+            .bind(comment_id)
+            .fetch_optional(pool)
+            .await
+            .map_err(db_err)?;
+    Ok(row.map(|(id,)| id))
+}
+
 /// 某个楼层的作者 id（回复通知用）。
 pub async fn comment_author(pool: &SqlitePool, comment_id: i64) -> Result<Option<i64>> {
     let row: Option<(i64,)> =
@@ -1218,7 +1276,11 @@ pub async fn list_comments_for(
     query_as::<_, CommentWithAuthorRow>(
         "SELECT c.id, c.post_id, c.author_id, u.handle AS author_handle, \
                 u.display_name AS author_display_name, u.avatar_hash AS author_avatar, u.role AS author_role, \
-                c.body, c.created_at, c.parent_id \
+                c.body, c.created_at, c.parent_id, \
+                (SELECT COUNT(*) FROM comment_votes v WHERE v.comment_id = c.id AND v.value = 1) AS likes, \
+                (SELECT COUNT(*) FROM comment_votes v WHERE v.comment_id = c.id AND v.value = -1) AS dislikes, \
+                COALESCE((SELECT v.value FROM comment_votes v \
+                          WHERE v.comment_id = c.id AND v.user_id = COALESCE(?2, -1)), 0) AS my_vote \
          FROM comments c JOIN users u ON u.id = c.author_id \
          WHERE c.post_id = ?1 AND c.deleted_at IS NULL \
            AND NOT EXISTS (SELECT 1 FROM blocks b \
@@ -1241,7 +1303,11 @@ pub async fn list_comments(
     query_as::<_, CommentWithAuthorRow>(
         "SELECT c.id, c.post_id, c.author_id, u.handle AS author_handle, \
                 u.display_name AS author_display_name, u.avatar_hash AS author_avatar, u.role AS author_role, \
-                c.body, c.created_at, c.parent_id \
+                c.body, c.created_at, c.parent_id, \
+                (SELECT COUNT(*) FROM comment_votes v WHERE v.comment_id = c.id AND v.value = 1) AS likes, \
+                (SELECT COUNT(*) FROM comment_votes v WHERE v.comment_id = c.id AND v.value = -1) AS dislikes, \
+                COALESCE((SELECT v.value FROM comment_votes v \
+                          WHERE v.comment_id = c.id AND v.user_id = COALESCE(?2, -1)), 0) AS my_vote \
          FROM comments c JOIN users u ON u.id = c.author_id \
          WHERE c.post_id = ? AND c.deleted_at IS NULL ORDER BY c.created_at, c.id LIMIT ?",
     )
