@@ -447,3 +447,30 @@ html[data-theme="dark"] {
     outline-offset: 2px;
   }
 }
+/* 自制下拉：去掉系统外观，用统一的内联箭头 + 与文本框一致的聚焦环（B 版风格） */
+select.ui-select, .stack select {
+  appearance: none;
+  -webkit-appearance: none;
+  padding: 10px 34px 10px 14px;
+  border-radius: 12px;
+  border: 1px solid color-mix(in srgb, currentColor 14%, transparent);
+  background-color: rgba(37, 99, 235, .06);
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'><path d='M1 1.5 6 6.5 11 1.5' fill='none' stroke='%232563eb' stroke-width='1.8' stroke-linecap='round'/></svg>");
+  background-repeat: no-repeat;
+  background-position: right 12px center;
+  color: inherit;
+  font: inherit;
+  line-height: 1.4;
+  cursor: pointer;
+  transition: background-color .15s, border-color .15s, box-shadow .15s;
+}
+select.ui-select:hover, .stack select:hover { background-color: rgba(37, 99, 235, .10); }
+select.ui-select:focus-visible, .stack select:focus-visible {
+  outline: 0;
+  border-color: #2563eb;
+  box-shadow: 0 0 0 3px color-mix(in srgb, #2563eb 22%, transparent);
+}
+html[data-theme="dark"] select.ui-select, html[data-theme="dark"] .stack select {
+  background-color: rgba(255, 255, 255, .06);
+}
+html[data-theme="dark"] select.ui-select option { background: #161a26; color: #e6e8ef; }

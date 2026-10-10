@@ -109,6 +109,13 @@ async fn build_panel<'a>(
     let unused = (allocated - used).max(0);
     let quota_over_committed =
         allocated.max(0) as u64 > free_bytes.saturating_add(used.max(0) as u64);
+    // 分区档位（0 不启用 / 1 白名单 / 2 黑名单）——矩阵里的下拉要回显当前值
+    let section_modes: std::collections::HashMap<String, i64> =
+        repo::list_sections(state.db.pool(), true)
+            .await?
+            .into_iter()
+            .map(|section| (section.key, section.group_mode))
+            .collect();
     // 每个用户所属的用户组（人数少，逐个查即可；将来量大再换成一条 JOIN）
     let mut member_groups: std::collections::HashMap<i64, Vec<i64>> =
         std::collections::HashMap::new();
@@ -248,6 +255,7 @@ async fn build_panel<'a>(
                     label: s.label().to_string(),
                     checked: false,
                     cover: covers.get(s.as_str()).cloned(),
+                    mode: section_modes.get(s.as_str()).copied().unwrap_or(0),
                 })
                 .collect()
         },
@@ -999,7 +1007,7 @@ pub struct SectionAclForm {
     pub post_min_role: String,
     pub reply_min_role: String,
     #[serde(default)]
-    pub group_check: Option<String>,
+    pub group_mode: Option<String>,
     /// 允许的用户组 id，逗号分隔（绿标签集合）。
     #[serde(default)]
     pub groups: String,
@@ -1033,7 +1041,7 @@ pub async fn save_section_acl(
     .await?;
     // 档位：0 不启用 / 1 白名单 / 2 黑名单（前端目前是复选/下拉，值直接给数字）
     let group_mode = form
-        .group_check
+        .group_mode
         .as_deref()
         .and_then(|value| value.parse::<i64>().ok())
         .unwrap_or(0)

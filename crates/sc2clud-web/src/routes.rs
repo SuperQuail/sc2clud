@@ -662,6 +662,7 @@ async fn build_index<'a>(
                     label: s.label().to_string(),
                     checked: section == Some(*s),
                     cover: covers.get(s.as_str()).cloned(),
+                    mode: 0,
                 })
                 .collect()
         },

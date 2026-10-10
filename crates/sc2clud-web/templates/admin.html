@@ -257,15 +257,19 @@
   {% if acl_variant == 1 %}
   {# 版式 1：权限矩阵 —— 行是分区，列是门槛、启用开关与组白名单；每行一个保存按钮 #}
   <table class="acl-matrix">
-    <thead><tr><th>分区</th><th>可发言</th><th>可评论</th><th>启用用户组检查</th><th>允许的用户组</th><th></th></tr></thead>
+    <thead><tr><th>分区</th><th>可发言</th><th>可评论</th><th>用户组检查</th><th>允许的用户组</th><th></th></tr></thead>
     <tbody>
     {% for section in sections %}
     <tr data-acl-row="{{ section.value }}">
       <th scope="row">{{ section.label }}</th>
       <td><select data-acl-post><option value="member">普通用户</option><option value="developer">认证开发者</option><option value="admin">管理员</option><option value="super">超级管理员</option></select></td>
       <td><select data-acl-reply><option value="member">普通用户</option><option value="developer">认证开发者</option><option value="admin">管理员</option><option value="super">超级管理员</option></select></td>
-      {# 关掉时该分区忽略用户组白名单，只看角色门槛；管理员及以上始终无视用户组 #}
-      <td><label class="acl-switch"><input type="checkbox" data-acl-check><span>启用</span></label></td>
+      {# 三档：不启用＝完全跳过组逻辑；白名单＝组命中才放行；黑名单＝只认禁止项。管理员及以上始终无视用户组 #}
+      <td><select data-acl-mode class="ui-select">
+        <option value="0"{% if section.mode == 0 %} selected{% endif %}>不启用</option>
+        <option value="1"{% if section.mode == 1 %} selected{% endif %}>白名单</option>
+        <option value="2"{% if section.mode == 2 %} selected{% endif %}>黑名单</option>
+      </select></td>
       <td class="acl-chips">
         {% for group in groups %}<button class="acl-chip" type="button" data-acl-chip data-group-id="{{ group.id }}" aria-pressed="false">{{ group.name }}</button>{% endfor %}
         {% if groups.is_empty() %}<span class="hint">还没有用户组</span>{% endif %}
@@ -577,7 +581,7 @@
         csrf: csrf ? csrf.value : '',
         post_min_role: row.querySelector('[data-acl-post]').value,
         reply_min_role: row.querySelector('[data-acl-reply]').value,
-        group_check: row.querySelector('[data-acl-check]').checked ? '1' : '0',
+        group_mode: row.querySelector('[data-acl-mode]').value,
         groups: chips.join(','),
       };
       const res = await fetch('/admin/sections/' + btn.dataset.aclSave + '/acl', {

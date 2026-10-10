@@ -141,6 +141,7 @@ fn section_options(selected: &str, user: Option<&CurrentUser>) -> Vec<SectionOpt
             label: section.label().to_string(),
             checked: section.as_str() == selected,
             cover: None,
+            mode: 0,
         })
         .collect()
 }
@@ -459,6 +460,7 @@ async fn build_post_page<'a>(
                     label: s.label().to_string(),
                     checked: s.as_str() == section.as_str(),
                     cover: covers.get(s.as_str()).cloned(),
+                    mode: 0,
                 })
                 .collect()
         },

@@ -508,6 +508,8 @@ pub struct SectionOption {
     pub value: String,
     pub label: String,
     pub checked: bool,
+    /// 用户组检查档位：0 不启用 / 1 白名单 / 2 黑名单（后台用，前台恒为 0）。
+    pub mode: i64,
     /// 分区封面（管理员设置过才有）。
     pub cover: Option<String>,
 }
