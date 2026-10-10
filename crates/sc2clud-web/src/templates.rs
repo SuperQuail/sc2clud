@@ -332,6 +332,8 @@ pub struct InboxNotificationView {
 /// 消息流里的一条。
 #[derive(Debug, Clone)]
 pub struct InboxMessageView {
+    /// 消息 id（前端轮询用它算「最新到哪儿了」）。
+    pub id: i64,
     pub mine: bool,
     pub body: String,
     pub date: String,

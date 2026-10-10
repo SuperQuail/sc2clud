@@ -179,6 +179,38 @@ async fn deliver_message(
 }
 
 #[derive(Debug, serde::Deserialize)]
+pub struct ThreadQuery {
+    /// 只要 id 大于它的消息（前端轮询用）。
+    after: Option<i64>,
+}
+
+/// 收信轮询：返回该会话里比 `after` 新的消息（前端每 5 秒拉一次）。
+pub async fn thread_json(
+    State(state): State<AppState>,
+    Path(handle): Path<String>,
+    headers: HeaderMap,
+    axum::extract::Query(query): axum::extract::Query<ThreadQuery>,
+) -> AppResult<Response> {
+    let user = require_user(&state, &headers).await?;
+    let other = find_other(&state, &handle).await?;
+    let after = query.after.unwrap_or(0);
+    let rows = repo::list_thread(state.db.pool(), user.id, other.id, 100).await?;
+    // 小站数据量下直接取全量再过滤，不值得为轮询单写一条 SQL
+    let messages: Vec<serde_json::Value> = rows
+        .into_iter()
+        .filter(|row| row.id > after)
+        .map(|row| {
+            serde_json::json!({
+                "id": row.id,
+                "mine": row.sender_id == user.id,
+                "body": row.body,
+                "date": crate::templates::format_date(row.created_at),
+            })
+        })
+        .collect();
+    Ok(axum::Json(serde_json::json!({ "messages": messages })).into_response())
+}
+#[derive(Debug, serde::Deserialize)]
 pub struct JsonSendForm {
     body: String,
 }
@@ -386,6 +418,7 @@ pub async fn center(
             let show_date = day != last_day;
             last_day = day.clone();
             thread.push(crate::templates::InboxMessageView {
+                id: row.id,
                 mine: row.sender_id == user.id,
                 body: row.body,
                 date: day,

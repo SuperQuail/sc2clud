@@ -110,7 +110,8 @@ pub fn pages() -> Router<AppState> {
         )
         .route(
             "/api/v1/messages/{handle}",
-            axum::routing::post(crate::pages_messages::send_json),
+            axum::routing::post(crate::pages_messages::send_json)
+                .get(crate::pages_messages::thread_json),
         )
         .route(
             "/messages/{handle}",
