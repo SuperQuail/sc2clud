@@ -122,26 +122,24 @@ fn parse_reply(value: &serde_json::Value) -> Result<AiReview, String> {
         .and_then(|choices| choices.get(0))
         .and_then(|choice| choice.get("message"))
         .ok_or_else(|| "AI 响应里没有 choices".to_string())?;
-    // 思考模式下没法强制工具调用：模型可能直接给一段话。这时按「待定」交人工，
-    // 比报错更安全（宁可让人看一眼，也不要自动放行）。
-    let Some(call) = message.get("tool_calls").and_then(|calls| calls.get(0)) else {
-        let said = message
-            .get("content")
-            .and_then(|content| content.as_str())
-            .unwrap_or("")
-            .chars()
-            .take(200)
-            .collect::<String>();
-        return Ok(AiReview {
-            verdict: AiVerdict::Pending,
-            reason: if said.is_empty() {
-                "模型既没调用工具也没给内容，交人工".to_string()
+    // 不兜底：模型必须调用其中一个工具。没调用就是审核失败，交给调用方重试 / 转人工。
+    let call = message
+        .get("tool_calls")
+        .and_then(|calls| calls.get(0))
+        .ok_or_else(|| {
+            let said = message
+                .get("content")
+                .and_then(|content| content.as_str())
+                .unwrap_or("")
+                .chars()
+                .take(120)
+                .collect::<String>();
+            if said.is_empty() {
+                "AI 没有调用任何工具（也没有给出内容）".to_string()
             } else {
-                format!("模型未调用工具（思考模式），交人工：{said}")
-            },
-            raw: value.to_string(),
-        });
-    };
+                format!("AI 没有调用任何工具，只回了一段话：{said}")
+            }
+        })?;
     let name = call
         .get("function")
         .and_then(|function| function.get("name"))
@@ -303,8 +301,10 @@ mod ai_client_tests {
 
         let no_call =
             serde_json::json!({ "choices": [ { "message": { "content": "我觉得还行" } } ] });
-        let soft = parse_reply(&no_call).expect("思考模式下不该报错");
-        assert_eq!(soft.verdict, AiVerdict::Pending, "没调工具就交人工");
+        assert!(
+            parse_reply(&no_call).is_err(),
+            "没调工具必须报错（由调用方重试）"
+        );
 
         let weird = serde_json::json!({ "choices": [ { "message": { "tool_calls": [ { "function": {
             "name": "delete_post", "arguments": "{}" } } ] } } ] });

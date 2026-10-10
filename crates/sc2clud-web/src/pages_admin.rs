@@ -1566,7 +1566,13 @@ pub async fn run_review(
     source: &str,
 ) -> Result<(String, String), String> {
     let now = now_unix();
-    match crate::ai::review_text(config, text, kind, source).await {
+    // 第一次；失败自动重试一次（偶发不调工具/网络抖动靠这一次救回来）
+    let mut attempt = crate::ai::review_text(config, text, kind, source).await;
+    if attempt.is_err() {
+        tracing::warn!(kind, id, source, "AI 审核第一次失败，自动重试一次");
+        attempt = crate::ai::review_text(config, text, kind, source).await;
+    }
+    match attempt {
         Ok(review) => {
             let verdict = review.verdict.as_str().to_string();
             let reason = review.reason.clone();
@@ -1596,6 +1602,7 @@ pub async fn run_review(
             Ok((verdict, reason))
         }
         Err(error) => {
+            // 两次都没成：记留痕，并把内容放进人工队列，帖子里明确写上 AI 审核报错
             let _ = repo::log_ai_review(
                 state.db.pool(),
                 kind,
@@ -1609,6 +1616,16 @@ pub async fn run_review(
                 now,
             )
             .await;
+            if kind == "post" {
+                let _ = repo::set_post_review_state_auto(
+                    state.db.pool(),
+                    id,
+                    "pending",
+                    &format!("AI 审核失败，已转人工：{error}"),
+                    now,
+                )
+                .await;
+            }
             Err(error)
         }
     }
