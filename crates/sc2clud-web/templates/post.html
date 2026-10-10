@@ -65,8 +65,9 @@
   <h1 class="site-post-title">{{ post.title }}</h1>
 
   <style>
-.post-tabs{display:flex;align-items:center;gap:4px;border-bottom:1px solid var(--line,#e5e7eb);margin:10px 0 14px}
-.ptab{padding:8px 14px;font-size:14px;text-decoration:none;color:inherit;opacity:.75;border-bottom:2px solid transparent}
+.post-tabs{display:flex;align-items:stretch;gap:2px;width:100%;border-bottom:1px solid var(--line,#e5e7eb);margin:12px 0 16px}
+.ptab{display:flex;align-items:center;justify-content:center;padding:14px 26px;font-size:15px;font-weight:500;text-decoration:none;color:inherit;opacity:.7;border-bottom:3px solid transparent}
+.ptab:hover{opacity:1;background:rgba(37,99,235,.05)}
 .ptab.active{opacity:1;font-weight:600;border-bottom-color:#2563eb}
 .ptab b{color:#dc2626}
 .ptab-spacer{flex:1}
@@ -75,7 +76,21 @@
 .ptab-cta.idea{border:1px solid #2563eb;color:#1d4ed8;background:#eff6ff}
 .ptab-cta.difficulty{border:1px solid #7c3aed;color:#6d28d9;background:#f5f3ff}
 .ib-btn.difficulty{border:1px solid #7c3aed;background:#f5f3ff;color:#6d28d9}
-.issue-filters{display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;margin:0 0 12px}
+.issue-filters{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin:0 0 14px}
+.state-tabs{display:flex;border:1px solid var(--line,#e5e7eb);border-radius:10px;overflow:hidden}
+.state-tabs .st{padding:8px 16px;font-size:14px;text-decoration:none;color:inherit;opacity:.75;border-right:1px solid var(--line,#e5e7eb)}
+.state-tabs .st:last-child{border-right:0}
+.state-tabs .st.on{background:rgba(37,99,235,.12);color:#2563eb;font-weight:600;opacity:1}
+.state-tabs .st b{font-weight:600}
+.kind-menu{position:relative}
+.kind-menu summary{cursor:pointer;list-style:none;font-size:14px;padding:8px 14px;border:1px solid var(--line,#e5e7eb);border-radius:10px}
+.kind-menu summary::-webkit-details-marker{display:none}
+.kind-menu[open] summary{border-color:#2563eb;color:#2563eb}
+.km-panel{position:absolute;z-index:20;top:calc(100% + 4px);left:0;min-width:160px;background:var(--bg,#fff);border:1px solid var(--line,#e5e7eb);border-radius:10px;box-shadow:0 8px 24px rgba(0,0,0,.12);padding:4px}
+.km-panel a{display:block;padding:8px 10px;font-size:14px;text-decoration:none;color:inherit;border-radius:6px}
+.km-panel a:hover{background:rgba(37,99,235,.08);color:#2563eb}
+.issue-search{margin-left:auto;display:flex;gap:6px}
+.issue-search input[type=search]{padding:7px 12px;border:1px solid var(--line,#e5e7eb);border-radius:10px;background:none;color:inherit;font:inherit;font-size:14px;min-width:180px}
 .issue-filters .chips{display:flex;gap:6px}
 .chip{font-size:13px;padding:4px 12px;border-radius:999px;border:1px solid var(--line,#e5e7eb);text-decoration:none;color:inherit}
 .chip.on{border-color:#2563eb;background:rgba(37,99,235,.12);color:#2563eb;font-weight:600}
@@ -112,23 +127,34 @@
   <a class="ptab-cta bug" href="/p/{{ post.id }}/issues?kind=bug">报告 Bug</a>
   <a class="ptab-cta idea" href="/p/{{ post.id }}/issues?kind=feature">改进意见</a>
   <a class="ptab-cta difficulty" href="/p/{{ post.id }}/issues?kind=difficulty">难度建议</a>
+  <a class="btn sm" style="margin-left:10px" href="/p/{{ post.id }}/issues/new">发布反馈</a>
 </nav>
 
 {% if tab == "issues" %}
 <section class="issue-view">
+  {# 状态是主切换（对齐 GitHub 的 Open/Closed），类型收进下拉 —— 以后加类型只多一行，不会把筛选条撑爆 #}
   <div class="issue-filters">
-    <div class="chips">
-      <a class="chip{% if issue_state == "open" %} on{% endif %}" href="/p/{{ post.id }}/issues?{% if !issue_kind.is_empty() %}kind={{ issue_kind }}&{% endif %}state=open">待处理 {{ issue_open }}</a>
-      <a class="chip{% if issue_state == "closed" %} on{% endif %}" href="/p/{{ post.id }}/issues?{% if !issue_kind.is_empty() %}kind={{ issue_kind }}&{% endif %}state=closed">已关闭</a>
-      <a class="chip{% if issue_state == "all" %} on{% endif %}" href="/p/{{ post.id }}/issues?{% if !issue_kind.is_empty() %}kind={{ issue_kind }}&{% endif %}state=all">全部</a>
+    <div class="state-tabs">
+      <a class="st{% if issue_state == "open" %} on{% endif %}" href="/p/{{ post.id }}/issues?state=open{% if !issue_kind.is_empty() %}&kind={{ issue_kind }}{% endif %}{% if !issue_q.is_empty() %}&q={{ issue_q }}{% endif %}">待处理 <b>{{ issue_open }}</b></a>
+      <a class="st{% if issue_state == "closed" %} on{% endif %}" href="/p/{{ post.id }}/issues?state=closed{% if !issue_kind.is_empty() %}&kind={{ issue_kind }}{% endif %}{% if !issue_q.is_empty() %}&q={{ issue_q }}{% endif %}">已关闭 <b>{{ issue_closed }}</b></a>
+      <a class="st{% if issue_state == "all" %} on{% endif %}" href="/p/{{ post.id }}/issues?state=all{% if !issue_kind.is_empty() %}&kind={{ issue_kind }}{% endif %}{% if !issue_q.is_empty() %}&q={{ issue_q }}{% endif %}">全部 <b>{{ issue_total }}</b></a>
     </div>
-    <div class="chips">
-      <a class="chip{% if issue_kind.is_empty() %} on{% endif %}" href="/p/{{ post.id }}/issues?state={{ issue_state }}">全部类型</a>
-      <a class="chip{% if issue_kind == "bug" %} on{% endif %}" href="/p/{{ post.id }}/issues?state={{ issue_state }}&kind=bug">Bug</a>
-      <a class="chip{% if issue_kind == "feature" %} on{% endif %}" href="/p/{{ post.id }}/issues?state={{ issue_state }}&kind=feature">建议</a>
-      <a class="chip{% if issue_kind == "difficulty" %} on{% endif %}" href="/p/{{ post.id }}/issues?state={{ issue_state }}&kind=difficulty">难度</a>
-      <a class="chip{% if issue_kind == "other" %} on{% endif %}" href="/p/{{ post.id }}/issues?state={{ issue_state }}&kind=other">其它</a>
-    </div>
+    <details class="kind-menu">
+      <summary>类型：{% if issue_kind.is_empty() %}全部{% else if issue_kind == "bug" %}Bug{% else if issue_kind == "feature" %}改进建议{% else if issue_kind == "difficulty" %}难度建议{% else %}其它{% endif %} ▾</summary>
+      <div class="km-panel">
+        <a href="/p/{{ post.id }}/issues?state={{ issue_state }}">全部类型</a>
+        <a href="/p/{{ post.id }}/issues?state={{ issue_state }}&kind=bug">Bug 反馈</a>
+        <a href="/p/{{ post.id }}/issues?state={{ issue_state }}&kind=feature">改进建议</a>
+        <a href="/p/{{ post.id }}/issues?state={{ issue_state }}&kind=difficulty">难度建议</a>
+        <a href="/p/{{ post.id }}/issues?state={{ issue_state }}&kind=other">其它</a>
+      </div>
+    </details>
+    <form class="issue-search" method="get" action="/p/{{ post.id }}/issues">
+      <input type="hidden" name="state" value="{{ issue_state }}">
+      {% if !issue_kind.is_empty() %}<input type="hidden" name="kind" value="{{ issue_kind }}">{% endif %}
+      <input type="search" name="q" value="{{ issue_q }}" placeholder="搜索标题或正文" aria-label="搜索问题与建议">
+      <button class="btn ghost sm" type="submit">搜索</button>
+    </form>
   </div>
   {% if issues.is_empty() %}
   <div class="issue-empty"><b>这里还没有符合条件的条目。</b><p>发现问题点上面的「报告 Bug」，想要新功能点「改进意见」。</p></div>

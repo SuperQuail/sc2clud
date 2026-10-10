@@ -251,6 +251,10 @@ pub struct PostPageTemplate<'a> {
     pub issue_state: String,
     pub issue_kind: String,
     pub issue_shown: i64,
+    /// 搜索关键词（回填输入框）。
+    pub issue_q: String,
+    /// 已关闭条数（状态切换用）。
+    pub issue_closed: i64,
     /// 回复区分页（每页 15 个主楼层）。
     pub comments_total: i64,
     pub comments_page: i64,

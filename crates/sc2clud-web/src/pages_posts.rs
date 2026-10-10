@@ -225,6 +225,7 @@ async fn build_post_page<'a>(
     tab: &str,
     issue_state: &str,
     issue_kind: &str,
+    issue_q: &str,
 ) -> AppResult<PostPageTemplate<'a>> {
     // 预览开关：只有开发实例看这个参数（生产恒为样式 1，预览代码不影响线上）
     // 生产恒用已评审通过的样式：菜单=2（分组下拉）、赞助=1（左渠道右二维码）、提示=3（红圆图标卡）
@@ -427,14 +428,34 @@ async fn build_post_page<'a>(
         .skip(page_start)
         .take(COMMENT_PAGE_SIZE as usize)
         .collect();
-    // 问题与建议：帖子页顶部入口与内联列表都要用（最多取 5 条做预览，计数走全量）
+    // 问题与建议：计数走全量；列表按状态 / 类型 / 关键词过滤（对齐 GitHub，默认只看待处理）
     let issue_rows = repo::list_issues(state.db.pool(), id, true, 200, 0)
         .await
         .unwrap_or_default();
     let issue_open = issue_rows.iter().filter(|row| row.state == "open").count() as i64;
+    let issue_closed = issue_rows
+        .iter()
+        .filter(|row| row.state == "closed")
+        .count() as i64;
     let issue_total = issue_rows.len() as i64;
-    let issues: Vec<IssueCardView> = issue_rows.into_iter().take(5).map(Parties::card).collect();
-    // 与其它预览开关一样只在开发实例生效（生产恒用版式 1）
+    let needle = issue_q.trim().to_lowercase();
+    let issues: Vec<IssueCardView> = issue_rows
+        .into_iter()
+        .filter(|row| match issue_state {
+            "all" => true,
+            "closed" => row.state == "closed",
+            _ => row.state == "open",
+        })
+        .filter(|row| issue_kind.is_empty() || row.kind == issue_kind)
+        .filter(|row| {
+            needle.is_empty()
+                || row.title.to_lowercase().contains(&needle)
+                || row.body.to_lowercase().contains(&needle)
+        })
+        .map(Parties::card)
+        .collect();
+    let issue_shown = issues.len() as i64;
+    // 与其它预览开关一样只在开发实例生效
     let ivi = if state.config.server.debug_pages {
         ivi_raw.unwrap_or(1).clamp(1, 3)
     } else {
@@ -449,7 +470,9 @@ async fn build_post_page<'a>(
         tab: tab.to_string(),
         issue_state: issue_state.to_string(),
         issue_kind: issue_kind.to_string(),
-        issue_shown: issue_total,
+        issue_q: issue_q.to_string(),
+        issue_closed,
+        issue_shown,
         comments_total,
         comments_page,
         comments_pages,
@@ -565,6 +588,7 @@ pub async fn post_page(
         query.ivi,
         "content",
         "open",
+        "",
         "",
     )
     .await
@@ -1100,6 +1124,7 @@ pub async fn issues_page(
         "issues",
         &state_filter,
         &kind_filter,
+        query.q.as_deref().unwrap_or(""),
     )
     .await
     {
@@ -1137,8 +1162,10 @@ pub struct IssuesQuery {
     pub ivi: Option<u8>,
     /// 状态筛选：open（默认，与 GitHub 一致只看待处理）/ closed / all。
     pub state: Option<String>,
-    /// 类型筛选：bug / feature / other；缺省 = 全部。
+    /// 类型筛选：bug / feature / difficulty / other；缺省 = 全部。
     pub kind: Option<String>,
+    /// 关键词搜索（标题或正文）。
+    pub q: Option<String>,
 }
 
 pub async fn issue_create(
