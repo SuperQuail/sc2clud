@@ -245,30 +245,7 @@ const main = async () => {
     })
     console.log('==> 发测试私信给 ' + dmTo + ' → ' + res.status)
   }
-
-  // 评论无感发布验证：页面里触发提交，看楼层数是否变多且地址没变
-  if (commentTest) {
-    await cdp.send('Page.navigate', { url: base + '/p/12' })
-    await new Promise((r) => setTimeout(r, 900))
-    const before = await cdp.send('Runtime.evaluate', { expression: 'location.pathname + location.search' })
-    await cdp
-      .send('Runtime.evaluate', {
-        expression: `(async () => {
-          const form = document.querySelector('[data-comment-form]');
-          const textarea = form.querySelector('textarea[name=body]');
-          const before = document.querySelectorAll('.comment').length;
-          textarea.value = '无感发布验证：这条评论没有刷新页面';
-          form.dispatchEvent(new Event('submit', { cancelable: true, bubbles: true }));
-          await new Promise((r) => setTimeout(r, 1500));
-          return JSON.stringify({ before, after: document.querySelectorAll('.comment').length, cleared: textarea.value === '' });
-        })()`,
-        awaitPromise: true,
-        returnByValue: true,
-      })
-      .then((r) => console.log('==> 评论无感发布：' + (r.result?.value ?? '?')))
-    const after = await cdp.send('Runtime.evaluate', { expression: 'location.pathname + location.search' })
-    console.log('==> 地址是否未变：' + (before.result?.value === after.result?.value ? '是（没有跳页）✓' : '否 ✗'))
-  }
+  // （评论无感发布的验证挪到 cdp 就绪之后，见下方）
 
   // 开打赏（本地副本）：让作者主页/帖子页出现「赞助作者」
   if (donateTest && cookie && existsSync(dbPath)) {
@@ -390,6 +367,31 @@ const main = async () => {
     }).then((r) => console.log('==> 无感发送：气泡数 = ' + (r.result?.value ?? '?')))
     const after = await cdp.send('Runtime.evaluate', { expression: "location.pathname + location.search" })
     console.log('==> 地址是否未变：' + (before.result?.value === after.result?.value ? '是（没有跳页）✓' : '否 ✗ ' + before.result?.value + ' → ' + after.result?.value))
+
+
+  // 评论无感发布验证：页面里触发提交，看楼层数是否变多且地址没变
+  if (commentTest) {
+    await cdp.send('Page.navigate', { url: base + '/p/12' })
+    await new Promise((r) => setTimeout(r, 900))
+    const before = await cdp.send('Runtime.evaluate', { expression: 'location.pathname + location.search' })
+    await cdp
+      .send('Runtime.evaluate', {
+        expression: `(async () => {
+          const form = document.querySelector('[data-comment-form]');
+          const textarea = form.querySelector('textarea[name=body]');
+          const before = document.querySelectorAll('.comment').length;
+          textarea.value = '无感发布验证：这条评论没有刷新页面';
+          form.dispatchEvent(new Event('submit', { cancelable: true, bubbles: true }));
+          await new Promise((r) => setTimeout(r, 1500));
+          return JSON.stringify({ before, after: document.querySelectorAll('.comment').length, cleared: textarea.value === '' });
+        })()`,
+        awaitPromise: true,
+        returnByValue: true,
+      })
+      .then((r) => console.log('==> 评论无感发布：' + (r.result?.value ?? '?')))
+    const after = await cdp.send('Runtime.evaluate', { expression: 'location.pathname + location.search' })
+    console.log('==> 地址是否未变：' + (before.result?.value === after.result?.value ? '是（没有跳页）✓' : '否 ✗'))
+  }
   }
 
   mkdirSync(outDir, { recursive: true })
