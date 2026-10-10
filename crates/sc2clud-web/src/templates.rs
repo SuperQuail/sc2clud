@@ -239,6 +239,12 @@ pub struct PostPageTemplate<'a> {
     pub ui_variant: u8,
     /// 回复区样式：1 B 站原味 / 2 卡片流 / 3 紧凑列表。
     pub comments_variant: u8,
+    /// 问题与建议：待处理数 / 总数 / 最新几条（帖子页顶部入口与内联列表用）。
+    pub issue_open: i64,
+    pub issue_total: i64,
+    pub issues: Vec<IssueCardView>,
+    /// 帖子页「问题与建议」入口版式：1 标签页 / 2 大横幅卡 / 3 双按钮条（预览用，生产恒 1）。
+    pub ivi: u8,
     /// 回复区分页（每页 15 个主楼层）。
     pub comments_total: i64,
     pub comments_page: i64,

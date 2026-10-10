@@ -221,6 +221,7 @@ async fn build_post_page<'a>(
     nui: Option<&str>,
     cui: Option<&str>,
     query_page: i64,
+    ivi_raw: Option<u8>,
 ) -> AppResult<PostPageTemplate<'a>> {
     // 预览开关：只有开发实例看这个参数（生产恒为样式 1，预览代码不影响线上）
     // 生产恒用已评审通过的样式：菜单=2（分组下拉）、赞助=1（左渠道右二维码）、提示=3（红圆图标卡）
@@ -423,8 +424,25 @@ async fn build_post_page<'a>(
         .skip(page_start)
         .take(COMMENT_PAGE_SIZE as usize)
         .collect();
+    // 问题与建议：帖子页顶部入口与内联列表都要用（最多取 5 条做预览，计数走全量）
+    let issue_rows = repo::list_issues(state.db.pool(), id, true, 200, 0)
+        .await
+        .unwrap_or_default();
+    let issue_open = issue_rows.iter().filter(|row| row.state == "open").count() as i64;
+    let issue_total = issue_rows.len() as i64;
+    let issues: Vec<IssueCardView> = issue_rows.into_iter().take(5).map(Parties::card).collect();
+    // 与其它预览开关一样只在开发实例生效（生产恒用版式 1）
+    let ivi = if state.config.server.debug_pages {
+        ivi_raw.unwrap_or(1).clamp(1, 3)
+    } else {
+        1
+    };
     Ok(PostPageTemplate {
         ui_variant,
+        issue_open,
+        issue_total,
+        issues,
+        ivi,
         comments_total,
         comments_page,
         comments_pages,
@@ -504,6 +522,8 @@ async fn build_post_page<'a>(
 
 #[derive(Debug, Deserialize)]
 pub struct UiQuery {
+    /// 「问题与建议」入口版式（仅开发实例生效）。
+    pub ivi: Option<u8>,
     /// 预览用的界面样式编号（1/2/3）。
     ui: Option<String>,
     /// 赞助弹窗 / 提示的预览样式编号。
@@ -535,6 +555,7 @@ pub async fn post_page(
             .and_then(|value| value.parse::<i64>().ok())
             .unwrap_or(1)
             .max(1),
+        query.ivi,
     )
     .await
     {

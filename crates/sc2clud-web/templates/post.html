@@ -35,6 +35,95 @@
     <span class="kind kind-{{ post.kind }}">{{ post.kind_label }}</span>
     {% if post.state != "approved" %}<span class="kind state-{{ post.state }}">{{ post.state_label }}</span>{% endif %}
   </div>
+  {# 问题与建议：帖子内容与反馈区的区分方式，三版任选（?ivi=1|2|3，仅开发实例） #}
+  {% if ivi == 1 %}
+  <div class="issue-tabs">
+    <span class="tab active">帖子内容</span>
+    <a class="tab" href="#issues">问题与建议 <b>{{ issue_open }}</b></a>
+    <span class="tab-spacer"></span>
+    <a class="tab-cta bug" href="/p/{{ post.id }}/issues?kind=bug">报告 Bug</a>
+    <a class="tab-cta idea" href="/p/{{ post.id }}/issues?kind=feature">改进意见</a>
+  </div>
+  {% else if ivi == 2 %}
+  <section class="issue-banner">
+    <div class="ib-text">
+      <b>这个 Mod 有问题，或者你有想法？</b>
+      <p>反馈会直接送到作者那里：报 Bug 请写清版本与复现步骤，改进意见说说你希望它变成什么样。</p>
+    </div>
+    <div class="ib-actions">
+      <a class="ib-btn bug" href="/p/{{ post.id }}/issues?kind=bug"><b>报告 Bug</b><span>打不开、崩溃、闪退、卡关</span></a>
+      <a class="ib-btn idea" href="/p/{{ post.id }}/issues?kind=feature"><b>改进意见</b><span>希望新增或调整的功能</span></a>
+    </div>
+    <span class="ib-count">{{ issue_open }} 条待处理 / 共 {{ issue_total }} 条</span>
+  </section>
+  {% else %}
+  <div class="issue-bars">
+    <a class="bar bug" href="/p/{{ post.id }}/issues?kind=bug"><b>报告 Bug</b><span>崩溃 / 闪退 / 卡关</span></a>
+    <a class="bar idea" href="/p/{{ post.id }}/issues?kind=feature"><b>改进意见</b><span>希望新增的功能</span></a>
+  </div>
+  <p class="issue-inline-hint">已有 <b>{{ issue_open }}</b> 条待处理（共 {{ issue_total }} 条）· <a href="/p/{{ post.id }}/issues">查看全部 →</a></p>
+  {% endif %}
+
+  {% if !issues.is_empty() %}
+  <section class="issue-inline" id="issues">
+    <header><h2>问题与建议</h2><span class="meta">{{ issue_open }} 待处理 · {{ issue_total }} 全部</span></header>
+    <ul>
+      {% for issue in issues %}
+      <li{% if !issue.open %} class="closed"{% endif %}>
+        <span class="kind kind-{{ issue.kind }}">{{ issue.kind_label }}</span>
+        <a href="/p/{{ post.id }}/issues/{{ issue.id }}">{{ issue.title }}</a>
+        <span class="meta">{{ issue.author }} · {% if issue.open %}待处理{% else %}已关闭{% endif %} · 💬 {{ issue.comments }}</span>
+      </li>
+      {% endfor %}
+    </ul>
+    <a class="more" href="/p/{{ post.id }}/issues">进入「问题与建议」→ 报告 Bug / 提改进意见</a>
+  </section>
+  {% endif %}
+
+  <style>
+  .issue-tabs{display:flex;align-items:center;gap:4px;border-bottom:1px solid var(--line,#e5e7eb);margin:0 0 14px}
+  .issue-tabs .tab{padding:8px 14px;font-size:14px;text-decoration:none;color:inherit;opacity:.75;border-bottom:2px solid transparent}
+  .issue-tabs .tab.active{opacity:1;font-weight:600;border-bottom-color:#2563eb}
+  .issue-tabs .tab b{color:#dc2626}
+  .issue-tabs .tab-spacer{flex:1}
+  .issue-tabs .tab-cta{font-size:13px;padding:5px 12px;border-radius:999px;text-decoration:none;margin-left:6px}
+  .issue-tabs .tab-cta.bug{border:1px solid #dc2626;color:#b91c1c;background:#fef2f2}
+  .issue-tabs .tab-cta.idea{border:1px solid #2563eb;color:#1d4ed8;background:#eff6ff}
+  .issue-banner{position:relative;border:1px solid var(--line,#e5e7eb);border-left:4px solid #2563eb;border-radius:12px;padding:14px 16px;margin:0 0 16px;background:rgba(37,99,235,.04)}
+  .issue-banner .ib-text b{font-size:15px}
+  .issue-banner .ib-text p{margin:6px 0 12px;font-size:13px;opacity:.8;line-height:1.6}
+  .issue-banner .ib-actions{display:flex;gap:10px;flex-wrap:wrap}
+  .ib-btn{flex:1 1 200px;display:flex;flex-direction:column;gap:2px;padding:12px 14px;border-radius:10px;text-decoration:none}
+  .ib-btn b{font-size:15px}
+  .ib-btn span{font-size:12px;opacity:.85}
+  .ib-btn.bug{border:1px solid #dc2626;background:#fee2e2;color:#991b1b}
+  .ib-btn.idea{border:1px solid #2563eb;background:#dbeafe;color:#1d4ed8}
+  .issue-banner .ib-count{position:absolute;top:14px;right:16px;font-size:12px;opacity:.7}
+  .issue-bars{display:flex;gap:10px;margin:0 0 8px}
+  .issue-bars .bar{flex:1;display:flex;flex-direction:column;gap:2px;padding:10px 14px;border-radius:10px;text-decoration:none}
+  .issue-bars .bar b{font-size:14px}
+  .issue-bars .bar span{font-size:12px;opacity:.85}
+  .issue-bars .bar.bug{border:1px solid #dc2626;background:#fef2f2;color:#991b1b}
+  .issue-bars .bar.idea{border:1px solid #2563eb;background:#eff6ff;color:#1d4ed8}
+  .issue-inline-hint{font-size:13px;opacity:.8;margin:6px 0 16px}
+  .issue-inline{margin:0 0 18px;border:1px solid var(--line,#e5e7eb);border-radius:12px;overflow:hidden}
+  .issue-inline header{display:flex;justify-content:space-between;align-items:center;padding:10px 14px;border-bottom:1px solid var(--line,#e5e7eb)}
+  .issue-inline h2{margin:0;font-size:15px}
+  .issue-inline .meta{font-size:12px;opacity:.7}
+  .issue-inline ul{list-style:none;margin:0;padding:0}
+  .issue-inline li{display:flex;align-items:center;gap:10px;padding:10px 14px;border-bottom:1px solid var(--line,#e5e7eb);font-size:14px}
+  .issue-inline li:last-child{border-bottom:0}
+  .issue-inline li.closed{opacity:.6}
+  .issue-inline li a{color:inherit;text-decoration:none;font-weight:600}
+  .issue-inline li a:hover{color:#2563eb}
+  .issue-inline li .meta{margin-left:auto;white-space:nowrap}
+  .issue-inline .more{display:block;padding:10px 14px;font-size:13px;text-decoration:none;color:#2563eb}
+  .kind{font-size:12px;padding:2px 9px;border-radius:999px;white-space:nowrap}
+  .kind-bug{border:1px solid #dc2626;background:#fee2e2;color:#991b1b}
+  .kind-feature{border:1px solid #2563eb;background:#dbeafe;color:#1d4ed8}
+  .kind-other{border:1px solid #9ca3af;background:#f3f4f6;color:#4b5563}
+  </style>
+
   <h1 class="site-post-title">{{ post.title }}</h1>
   <div class="meta byline">
     {% if let Some(avatar) = post.avatar %}
