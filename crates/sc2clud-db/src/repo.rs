@@ -1008,7 +1008,7 @@ pub async fn list_feed_by_section(
         &FeedFilter {
             section,
             search: "",
-            popular: false,
+            sort: FeedSort::Latest,
         },
         limit,
         offset,
@@ -1016,88 +1016,7 @@ pub async fn list_feed_by_section(
     .await
 }
 
-/// 首页筛选。关键词按字面匹配，百分号与下划线不作为通配符。
-pub struct FeedFilter<'a> {
-    pub section: Option<&'a str>,
-    pub search: &'a str,
-    pub popular: bool,
-}
-
-pub async fn list_feed_filtered(
-    pool: &SqlitePool,
-    viewer_id: Option<i64>,
-    is_staff: bool,
-    filter: &FeedFilter<'_>,
-    limit: i64,
-    offset: i64,
-) -> Result<Vec<PostWithAuthorRow>> {
-    let viewer = viewer_id.unwrap_or(-1);
-    let staff = i64::from(is_staff);
-    let section = filter.section.unwrap_or("");
-    query_as::<_, PostWithAuthorRow>(
-        "SELECT p.id, p.title, p.body, p.kind, p.section, p.review_state, p.review_note, \
-                p.image_count, p.created_at, p.author_id, u.handle AS author_handle, \
-                u.display_name AS author_display_name, u.avatar_hash AS author_avatar, \
-                u.role AS author_role, \
-                (SELECT COALESCE(pi.display_hash, pi.original_hash) \
-                 FROM post_images pi \
-                 WHERE pi.post_id = p.id AND pi.state <> 'failed' \
-                 ORDER BY pi.position, pi.id LIMIT 1) AS cover_hash, \
-                (SELECT COUNT(*) FROM comments c \
-                 WHERE c.post_id = p.id AND c.deleted_at IS NULL) AS comment_count, \
-                p.archived_at AS archived_at, \
-                (SELECT COUNT(*) FROM post_likes pl WHERE pl.post_id = p.id) AS like_count, \
-                (SELECT COUNT(*) FROM post_bookmarks pb WHERE pb.post_id = p.id) AS bookmark_count \
-         FROM posts p JOIN users u ON u.id = p.author_id \
-         WHERE p.deleted_at IS NULL AND p.archived_at IS NULL \
-           -- 归档分区的内容不再出现在列表里（内容本身保留，取回分区即恢复）
-           AND NOT EXISTS (SELECT 1 FROM sections sec WHERE sec.key = p.section AND sec.archived_at IS NOT NULL) \
-           AND (?5 = '' OR p.section = ?5) \
-           AND (?6 = '' OR instr(lower(p.title || ' ' || p.body), lower(?6)) > 0) \
-           AND (p.review_state = 'approved' \
-                OR ?2 = 1 \
-                OR (p.review_state = 'pending' AND p.author_id = ?1)) \
-         ORDER BY p.pinned_rank DESC, CASE WHEN ?7 = 1 THEN \
-                    (SELECT COUNT(*) FROM comments c WHERE c.post_id = p.id AND c.deleted_at IS NULL) \
-                    + (SELECT COUNT(*) FROM post_likes pl WHERE pl.post_id = p.id) \
-                  ELSE 0 END DESC, p.created_at DESC, p.id DESC LIMIT ?3 OFFSET ?4",
-    )
-    .bind(viewer)
-    .bind(staff)
-    .bind(limit)
-    .bind(offset)
-    .bind(section)
-    .bind(filter.search)
-    .bind(i64::from(filter.popular))
-    .fetch_all(pool)
-    .await
-    .map_err(db_err)
-}
-
-/// 分页总数必须使用与帖子列表完全相同的权限和筛选条件。
-pub async fn count_feed_filtered(
-    pool: &SqlitePool,
-    viewer_id: Option<i64>,
-    is_staff: bool,
-    filter: &FeedFilter<'_>,
-) -> Result<i64> {
-    let row: (i64,) = query_as(
-        "SELECT COUNT(*) FROM posts p JOIN users u ON u.id = p.author_id \
-         WHERE p.deleted_at IS NULL AND p.archived_at IS NULL \
-           AND (?3 = '' OR p.section = ?3) \
-           AND (?4 = '' OR instr(lower(p.title || ' ' || p.body), lower(?4)) > 0) \
-           AND (p.review_state = 'approved' OR ?2 = 1 \
-                OR (p.review_state = 'pending' AND p.author_id = ?1))",
-    )
-    .bind(viewer_id.unwrap_or(-1))
-    .bind(i64::from(is_staff))
-    .bind(filter.section.unwrap_or(""))
-    .bind(filter.search)
-    .fetch_one(pool)
-    .await
-    .map_err(db_err)?;
-    Ok(row.0)
-}
+pub use crate::feed::{FeedFilter, FeedSort, count_feed_filtered, list_feed_filtered};
 
 /// 某个作者的帖子（个人主页用）。
 ///
@@ -4228,7 +4147,7 @@ mod discovery_tests {
         let filter = FeedFilter {
             section: None,
             search: "alpha",
-            popular: false,
+            sort: FeedSort::Latest,
         };
         assert_eq!(
             count_feed_filtered(db.pool(), None, false, &filter)
@@ -4269,7 +4188,7 @@ mod discovery_tests {
         let literal = FeedFilter {
             section: None,
             search: "%",
-            popular: false,
+            sort: FeedSort::Latest,
         };
         assert_eq!(
             count_feed_filtered(db.pool(), None, false, &literal)
@@ -4280,7 +4199,7 @@ mod discovery_tests {
         let body = FeedFilter {
             section: None,
             search: "内容介绍",
-            popular: false,
+            sort: FeedSort::Latest,
         };
         assert_eq!(
             count_feed_filtered(db.pool(), None, false, &body)
@@ -4319,7 +4238,7 @@ mod discovery_tests {
         let filter = FeedFilter {
             section: None,
             search: "",
-            popular: true,
+            sort: FeedSort::Recommended,
         };
         let rows = list_feed_filtered(db.pool(), None, false, &filter, 20, 0)
             .await

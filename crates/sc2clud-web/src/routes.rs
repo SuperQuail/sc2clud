@@ -526,11 +526,12 @@ async fn build_index<'a>(
         .chars()
         .take(100)
         .collect();
-    let popular = query.sort.as_deref() == Some("popular");
+    let sort = repo::FeedSort::parse(query.sort.as_deref());
+    let popular = sort == repo::FeedSort::Recommended;
     let filter = repo::FeedFilter {
         section: section.map(PostSection::as_str),
         search: &search,
-        popular,
+        sort,
     };
     let total = repo::count_feed_filtered(state.db.pool(), viewer_id, is_staff, &filter).await?;
     const PAGE_SIZE: i64 = 12;
@@ -544,9 +545,7 @@ async fn build_index<'a>(
         if !search.is_empty() {
             params.append_pair("q", &search);
         }
-        if popular {
-            params.append_pair("sort", "popular");
-        }
+        params.append_pair("sort", sort.as_str());
         params.append_pair("page", &target.to_string());
         format!("/?{}#home-feed", params.finish())
     };
@@ -580,7 +579,10 @@ async fn build_index<'a>(
 
     Ok(IndexTemplate {
         is_search: !search.is_empty(),
-        show_discovery: section.is_none() && search.is_empty() && page == 1 && !popular,
+        show_discovery: section.is_none()
+            && search.is_empty()
+            && page == 1
+            && sort == repo::FeedSort::Recommended,
         feed_title: section
             .map(|s| s.label().to_string())
             .unwrap_or_else(|| "发现社区新内容".to_string()),

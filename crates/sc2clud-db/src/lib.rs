@@ -16,6 +16,7 @@ use sc2clud_core::{Error, Result};
 use sqlx::SqlitePool;
 use sqlx::sqlite::{SqliteConnectOptions, SqliteJournalMode, SqlitePoolOptions, SqliteSynchronous};
 
+pub mod feed;
 pub mod models;
 pub mod post_features;
 pub mod repo;
@@ -761,3 +762,6 @@ mod tests {
         assert_eq!(repo::pending_image_jobs(db.pool()).await.expect("队列"), 0);
     }
 }
+
+#[cfg(test)]
+mod feed_tests;
