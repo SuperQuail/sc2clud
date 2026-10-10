@@ -34,6 +34,8 @@ pub struct CurrentUser {
     pub trusted: bool,
     pub role: Role,
     pub activated: bool,
+    /// 限期禁言到期时间（None = 没被禁）。
+    pub post_ban_until: Option<i64>,
     pub csrf_token: String,
 }
 
@@ -85,6 +87,7 @@ pub async fn current_user(state: &AppState, headers: &HeaderMap) -> AppResult<Op
         trusted: user.trusted != 0,
         role,
         activated: user.activated_at.is_some(),
+        post_ban_until: user.post_ban_until,
         csrf_token: session.csrf_token,
     }))
 }

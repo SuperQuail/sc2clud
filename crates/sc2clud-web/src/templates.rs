@@ -513,6 +513,8 @@ pub struct SectionOption {
     pub value: String,
     pub label: String,
     pub checked: bool,
+    /// 用户组检查档位：0 不启用 / 1 白名单 / 2 黑名单（后台用，前台恒为 0）。
+    pub mode: i64,
     /// 分区封面（管理员设置过才有）。
     pub cover: Option<String>,
 }
@@ -783,6 +785,10 @@ pub struct AdminTemplate<'a> {
     pub acl_variant: u8,
     /// 用户组列表（含人数与规则）。
     pub groups: Vec<AdminGroupView>,
+    /// 禁言时长选项（值, 显示名）。
+    pub ban_options: Vec<(String, String)>,
+    /// 全站开关：被拉黑后不能在对方帖子下回复（默认关）。
+    pub block_reply_enforced: bool,
     /// 磁盘预算总览（仅超级管理员可见）。
     pub server_free_human: String,
     pub quota_allocated_human: String,
@@ -814,6 +820,8 @@ pub struct AdminTemplate<'a> {
 /// 管理员面板里的用户行。
 pub struct AdminUserView {
     pub id: i64,
+    /// 限期禁言的显示文案（空串 = 没被禁）。
+    pub ban_label: String,
     /// 所属用户组 id（可多个）。
     pub groups: Vec<i64>,
     /// 是否被信任（发帖只走自动审核）。

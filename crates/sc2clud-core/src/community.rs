@@ -22,6 +22,8 @@ pub struct SectionRecord {
     pub post_min_role: Role,
     /// 允许回帖的最低等级。
     pub reply_min_role: Role,
+    /// 用户组检查档位：0 不启用 / 1 白名单（组给了允许才放行）/ 2 黑名单（只认禁止项）。
+    pub group_mode: i64,
 }
 
 impl SectionRecord {
@@ -52,6 +54,7 @@ impl From<&PostSection> for SectionRecord {
             archived: false,
             post_min_role: post_min.unwrap_or(Role::Member),
             reply_min_role: Role::Member,
+            group_mode: 0,
         }
     }
 }
@@ -537,6 +540,7 @@ mod tests {
             archived: false,
             post_min_role: Role::Admin,
             reply_min_role: Role::Member,
+            group_mode: 0,
         };
         // 普通用户能回不能发
         assert!(!section.can_post(Some(Role::Member)));
@@ -557,6 +561,40 @@ mod tests {
         assert!(!section.can_reply(Some(Role::Super)));
         assert!(!section.accepts_content());
     }
+}
+
+// ---------------------------------------------------------------- 用户组发言判定
+
+/// 用户组对某次发言/回复的裁决。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum GroupVerdict {
+    /// 组规则没意见：交给角色门槛决定。
+    NoOpinion,
+    /// 明确禁止（优先于一切）。
+    Deny,
+}
+
+/// 用户组规则怎么裁决：`rules` 是「该用户所属各组在该分区的规则」，每项 = (can_post, can_reply, deny_post, deny_reply)。
+/// 语义：管理员及以上无视用户组；没开用户组检查的分区也跳过；只有「有组给过白名单」或者「没有约束」才放行，
+/// 任一命中禁止项直接拒。
+pub fn group_verdict(
+    check_enabled: bool,
+    is_staff: bool,
+    is_post: bool,
+    rules: &[(bool, bool, bool, bool)],
+) -> GroupVerdict {
+    if is_staff || !check_enabled || rules.is_empty() {
+        return GroupVerdict::NoOpinion;
+    }
+    let denied = rules.iter().any(
+        |(_, _, deny_post, deny_reply)| {
+            if is_post { *deny_post } else { *deny_reply }
+        },
+    );
+    if denied {
+        return GroupVerdict::Deny;
+    }
+    GroupVerdict::NoOpinion
 }
 
 // ---------------------------------------------------------------- @ 提及
@@ -644,6 +682,40 @@ fn escape_html(raw: &str) -> String {
         }
     }
     out
+}
+
+#[cfg(test)]
+#[cfg(test)]
+mod group_verdict_tests {
+    use super::{GroupVerdict, group_verdict};
+
+    #[test]
+    fn staff_and_disabled_sections_skip_the_check() {
+        let deny = vec![(false, false, true, true)];
+        assert_eq!(
+            group_verdict(true, true, true, &deny),
+            GroupVerdict::NoOpinion
+        );
+        assert_eq!(
+            group_verdict(false, false, true, &deny),
+            GroupVerdict::NoOpinion
+        );
+        assert_eq!(
+            group_verdict(true, false, true, &[]),
+            GroupVerdict::NoOpinion
+        );
+    }
+
+    #[test]
+    fn deny_wins_and_is_per_action() {
+        let rules = vec![(false, false, true, false)];
+        assert_eq!(group_verdict(true, false, true, &rules), GroupVerdict::Deny);
+        // 只禁发不禁评：评论仍交给角色门槛
+        assert_eq!(
+            group_verdict(true, false, false, &rules),
+            GroupVerdict::NoOpinion
+        );
+    }
 }
 
 #[cfg(test)]

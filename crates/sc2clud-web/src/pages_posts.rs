@@ -141,6 +141,7 @@ fn section_options(selected: &str, user: Option<&CurrentUser>) -> Vec<SectionOpt
             label: section.label().to_string(),
             checked: section.as_str() == selected,
             cover: None,
+            mode: 0,
         })
         .collect()
 }
@@ -467,6 +468,7 @@ async fn build_post_page<'a>(
                     label: s.label().to_string(),
                     checked: s.as_str() == section.as_str(),
                     cover: covers.get(s.as_str()).cloned(),
+                    mode: 0,
                 })
                 .collect()
         },
@@ -780,22 +782,50 @@ async fn ensure_section_action(
     } else {
         record.can_reply(role)
     };
+    let what = if want_post { "发帖" } else { "回帖" };
+    // 管理员及以上无视用户组（组规则再严也不拦管理员）
+    if user.is_staff() {
+        return Ok(());
+    }
+    // 用户组规则：禁止项优先于一切 → 再看白名单（只在开了「用户组检查」的分区生效）
+    let rules = repo::group_rules_for_user_section(state.db.pool(), user.id, section).await?;
+    let tuples: Vec<(bool, bool, bool, bool)> = rules
+        .iter()
+        .map(|rule| {
+            (
+                rule.can_post == 1,
+                rule.can_reply == 1,
+                rule.deny_post == 1,
+                rule.deny_reply == 1,
+            )
+        })
+        .collect();
+    // 0 = 不启用（完全跳过组逻辑）、1 = 白名单、2 = 黑名单（只认禁止项）
+    let group_mode = record.group_mode;
+    if sc2clud_core::community::group_verdict(group_mode != 0, false, want_post, &tuples)
+        == sc2clud_core::community::GroupVerdict::Deny
+    {
+        return Err(AppError::Domain(DomainError::Forbidden(format!(
+            "你在「{}」被用户组规则禁止{what}",
+            record.label
+        ))));
+    }
     if allowed_by_role {
         return Ok(());
     }
-    // 用户组白名单：任一组给了允许就算允许（组是加成，不是限制）
-    let rules = repo::group_rules_for_user_section(state.db.pool(), user.id, section).await?;
-    let allowed_by_group = rules.iter().any(|rule| {
-        if want_post {
-            rule.can_post == 1
-        } else {
-            rule.can_reply == 1
+    // 只有白名单档要求组命中；黑名单档不要求（组没意见就交给角色门槛）
+    if group_mode == 1 {
+        let allowed_by_group = rules.iter().any(|rule| {
+            if want_post {
+                rule.can_post == 1
+            } else {
+                rule.can_reply == 1
+            }
+        });
+        if allowed_by_group {
+            return Ok(());
         }
-    });
-    if allowed_by_group {
-        return Ok(());
     }
-    let what = if want_post { "发帖" } else { "回帖" };
     Err(AppError::Domain(DomainError::Forbidden(format!(
         "你在「{}」没有{what}权限",
         record.label
@@ -1312,6 +1342,32 @@ async fn add_comment(
         repo::get_post_for(state.db.pool(), post_id, Some(user.id), user.is_staff()).await
     {
         ensure_section_action(state, &user, &post_row.section, false).await?;
+        // 全站开关：被帖子作者拉黑后不能在他帖子下回复（默认关，行为不变）
+        if !user.is_staff()
+            && repo::site_text(state.db.pool(), "block_reply_enforced", "0").await? == "1"
+            && repo::blocked_between(state.db.pool(), post_row.author_id, user.id).await?
+        {
+            return Err(AppError::Domain(DomainError::Forbidden(
+                "你已被作者拉黑，无法在他的帖子下回复".to_string(),
+            )));
+        }
+        // 处罚：禁止评论（全局或限本分区）。管理员及以上不受限。
+        if !user.is_staff()
+            && let Ok(Some(until)) = repo::sanction_until(
+                state.db.pool(),
+                user.id,
+                "reply",
+                &post_row.section,
+                now_unix(),
+            )
+            .await
+        {
+            return Err(AppError::Domain(DomainError::Forbidden(format!(
+                "你在「{}」被禁止评论，解禁时间：{}",
+                post_row.section,
+                crate::templates::format_date(until)
+            ))));
+        }
     }
     session::check_csrf(&user, &form.csrf)?;
 
@@ -1376,7 +1432,22 @@ pub async fn new_post_form(State(state): State<AppState>, headers: HeaderMap) ->
         Ok(None) => return Redirect::to("/login").into_response(),
         Err(e) => return e.into_response(),
     };
-    let error = if user.activated {
+    // 处罚提示：挑最快到期的那个，把解禁时间写给用户
+    let active = repo::active_sanctions(state.db.pool(), user.id, now_unix())
+        .await
+        .unwrap_or_default();
+    let soonest_post = active
+        .iter()
+        .filter(|row| row.kind == "post")
+        .map(|row| row.until)
+        .min();
+    let error = if let Some(until) = soonest_post {
+        // 限期禁言：把解禁时间明说，用户知道什么时候能回来
+        Some(format!(
+            "你已被禁止发帖，解禁时间：{}（到期自动解除；评论不受影响）",
+            crate::templates::format_date(until)
+        ))
+    } else if user.activated {
         None
     } else {
         Some("账号尚未激活，暂时不能发帖".to_string())
@@ -1417,6 +1488,20 @@ pub async fn new_post_submit(
     let section = PostSection::parse(&form.section).unwrap_or(PostSection::default_section());
     let title = form.title.trim().to_string();
     let body = form.body.trim().to_string();
+
+    // 处罚：禁止发帖（全局或限本分区）；管理员及以上不受限
+    if !user.is_staff()
+        && let Ok(Some(_)) = repo::sanction_until(
+            state.db.pool(),
+            user.id,
+            "post",
+            section.as_str(),
+            now_unix(),
+        )
+        .await
+    {
+        return Redirect::to("/new").into_response();
+    }
 
     // 分区权限优先：公告只有管理员能发
     let checked = session::guard(Some(&user), section.required_permission())

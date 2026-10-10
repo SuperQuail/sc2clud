@@ -393,7 +393,8 @@ const main = async () => {
       const ok =
         html.length > 3000 &&
         !html.includes('页面或接口不存在') &&
-        !html.includes('not_found') &&
+        // 注意：不要再拿 'not_found' 这种子串去判 —— 管理页内联脚本里的错误码表也含它，会被误判成空壳
+        !/<h1[^>]*>\s*(404|出错了)/.test(html) &&
         (path === '/new'
           ? html.includes('<form') && html.includes('csrf')
           : path.startsWith('/admin')

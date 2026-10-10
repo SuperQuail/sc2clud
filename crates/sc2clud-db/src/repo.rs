@@ -16,7 +16,7 @@ use crate::models::{
     NotificationRow, PaymentChannelRow, PostImageRow, PostIssueRow, PostRevisionRow, PostRow,
     PostSearchRow, PostSourceRow, PostWithAuthorRow, ReleaseAssetRow, ReleaseRow,
     SectionModeratorRow, SectionRow, SessionRow, SiteDomainRow, TitleRow, UploadSessionRow,
-    UserGroupRow, UserHitRow, UserRow, UserTitleRow,
+    UserGroupRow, UserHitRow, UserRow, UserSanctionRow, UserTitleRow,
 };
 
 // ---------------------------------------------------------------- 用户
@@ -1101,6 +1101,98 @@ pub async fn create_comment(
     Ok(res.last_insert_rowid())
 }
 
+// ---------------------------------------------------------------- 处罚（禁言）
+
+/// 某个用户当前生效的处罚（未撤销且未到期）。
+pub async fn active_sanctions(
+    pool: &SqlitePool,
+    user_id: i64,
+    now: i64,
+) -> Result<Vec<UserSanctionRow>> {
+    query_as::<_, UserSanctionRow>(
+        "SELECT * FROM user_sanctions \
+         WHERE user_id = ? AND revoked_at IS NULL AND until > ? ORDER BY until",
+    )
+    .bind(user_id)
+    .bind(now)
+    .fetch_all(pool)
+    .await
+    .map_err(db_err)
+}
+
+/// 这个处罚会不会拦住「某人现在在某分区做某件事」：拦住就返回它的到期时间（用于提示）。
+/// 规则：全局处罚拦一切；限定分区的处罚只拦那个分区。
+pub async fn sanction_until(
+    pool: &SqlitePool,
+    user_id: i64,
+    kind: &str,
+    section: &str,
+    now: i64,
+) -> Result<Option<i64>> {
+    let row: Option<(i64,)> = query_as(
+        "SELECT MAX(until) FROM user_sanctions \
+         WHERE user_id = ? AND kind = ? AND revoked_at IS NULL AND until > ? \
+           AND (section = '' OR section = ?)",
+    )
+    .bind(user_id)
+    .bind(kind)
+    .bind(now)
+    .bind(section)
+    .fetch_optional(pool)
+    .await
+    .map_err(db_err)?;
+    Ok(row.and_then(|(until,)| if until > 0 { Some(until) } else { None }))
+}
+
+/// 新增一条处罚。
+pub async fn add_sanction(
+    pool: &SqlitePool,
+    user_id: i64,
+    kind: &str,
+    section: &str,
+    until: i64,
+    by: Option<i64>,
+    now: i64,
+) -> Result<i64> {
+    let res = query(
+        "INSERT INTO user_sanctions (user_id, kind, section, until, note, created_at, created_by) \
+         VALUES (?, ?, ?, ?, '', ?, ?)",
+    )
+    .bind(user_id)
+    .bind(kind)
+    .bind(section)
+    .bind(until)
+    .bind(now)
+    .bind(by)
+    .execute(pool)
+    .await
+    .map_err(db_err)?;
+    Ok(res.last_insert_rowid())
+}
+
+/// 撤销同一类同范围的处罚（后台「解禁」用）。返回撤销了几条。
+pub async fn revoke_sanctions(
+    pool: &SqlitePool,
+    user_id: i64,
+    kind: &str,
+    section: &str,
+    now: i64,
+) -> Result<u64> {
+    let affected = query(
+        "UPDATE user_sanctions SET revoked_at = ? \
+         WHERE user_id = ? AND kind = ? AND section = ? AND revoked_at IS NULL",
+    )
+    .bind(now)
+    .bind(user_id)
+    .bind(kind)
+    .bind(section)
+    .execute(pool)
+    .await
+    .map_err(db_err)?
+    .rows_affected();
+    Ok(affected)
+}
+
 // ---------------------------------------------------------------- 回复投票（赞 / 踩）
 
 /// 投票：value = 1 赞、-1 踩、0 取消。返回 (赞数, 踩数, 我的票)。
@@ -1529,6 +1621,18 @@ pub async fn set_avatar_small(pool: &SqlitePool, user_id: i64, hash: Option<&str
     Ok(())
 }
 
+/// 设置/解除限期禁言。传 None 表示解禁。
+pub async fn set_post_ban(pool: &SqlitePool, user_id: i64, until: Option<i64>) -> Result<bool> {
+    let affected = query("UPDATE users SET post_ban_until = ? WHERE id = ?")
+        .bind(until)
+        .bind(user_id)
+        .execute(pool)
+        .await
+        .map_err(db_err)?
+        .rows_affected();
+    Ok(affected == 1)
+}
+
 /// 头像的 MIME（给 `/avatar/{hash}` 定 Content-Type）。
 pub async fn avatar_mime(pool: &SqlitePool, hash: &str) -> Result<Option<String>> {
     let row: Option<(Option<String>,)> =
@@ -1586,6 +1690,7 @@ pub async fn admin_get_user(pool: &SqlitePool, id: i64) -> Result<Option<AdminUs
     query_as::<_, AdminUserRow>(
         "SELECT u.id, u.handle, u.display_name, u.email, u.role, u.created_at, \
                 u.activated_at, u.avatar_hash, u.quota_bytes, u.used_bytes, u.trusted, \
+                u.post_ban_until, \
                 (SELECT MAX(s.last_seen_at) FROM sessions s WHERE s.user_id = u.id) AS last_seen_at \
          FROM users u WHERE u.id = ?",
     )
@@ -1605,6 +1710,7 @@ pub async fn admin_list_users(
     query_as::<_, AdminUserRow>(
         "SELECT u.id, u.handle, u.display_name, u.email, u.role, u.created_at, \
                 u.activated_at, u.avatar_hash, u.quota_bytes, u.used_bytes, u.trusted, \
+                u.post_ban_until, \
                 (SELECT MAX(s.last_seen_at) FROM sessions s WHERE s.user_id = u.id) AS last_seen_at \
          FROM users u \
          WHERE ?1 = '' OR u.handle LIKE ?2 OR u.display_name LIKE ?2 \
@@ -2348,6 +2454,7 @@ fn section_from_row(row: SectionRow) -> sc2clud_core::community::SectionRecord {
         archived: row.archived_at.is_some(),
         post_min_role: Role::parse(&row.post_min_role).unwrap_or(Role::Member),
         reply_min_role: Role::parse(&row.reply_min_role).unwrap_or(Role::Member),
+        group_mode: row.group_check,
     }
 }
 
@@ -2438,6 +2545,25 @@ pub async fn update_section(
 }
 
 /// 归档 / 取回分区。**只标记，不删内容**——取回后帖子原样回来。
+/// 分区是否启用用户组检查（关掉时只看角色门槛）。
+pub async fn set_section_group_check(
+    pool: &SqlitePool,
+    key: &str,
+    mode: i64,
+    now: i64,
+) -> Result<bool> {
+    // 0 = 不启用 / 1 = 白名单 / 2 = 黑名单（列是整数，语义按档位解释）
+    let affected = query("UPDATE sections SET group_check = ?, updated_at = ? WHERE key = ?")
+        .bind(mode.clamp(0, 2))
+        .bind(now)
+        .bind(key)
+        .execute(pool)
+        .await
+        .map_err(db_err)?
+        .rows_affected();
+    Ok(affected == 1)
+}
+
 pub async fn set_section_archived(
     pool: &SqlitePool,
     key: &str,
@@ -2616,6 +2742,24 @@ pub async fn create_user_group(
         .await
         .map_err(db_err)?;
     Ok(row.0)
+}
+
+/// 改用户组的名称与说明（key 不可改：它是规则与代码引用的锚）。
+pub async fn update_user_group(
+    pool: &SqlitePool,
+    id: i64,
+    name: &str,
+    description: &str,
+) -> Result<bool> {
+    let affected = query("UPDATE user_groups SET name = ?, description = ? WHERE id = ?")
+        .bind(name)
+        .bind(description)
+        .bind(id)
+        .execute(pool)
+        .await
+        .map_err(db_err)?
+        .rows_affected();
+    Ok(affected == 1)
 }
 
 pub async fn set_user_group_archived(

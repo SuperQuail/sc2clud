@@ -27,6 +27,8 @@ pub struct UserRow {
     /// `None` = 未激活（能登录，但不能发帖/回复/上传）。
     pub activated_at: Option<i64>,
     pub activated_by: Option<i64>,
+    /// 限期禁言：到这个时间之前不能发帖（NULL = 没被禁）。评论不受影响。
+    pub post_ban_until: Option<i64>,
 }
 
 /// 会话行（库里只存令牌摘要）。
@@ -76,6 +78,8 @@ pub struct PostWithAuthorRow {
 /// 分区（管理员可增删 / 归档 / 排序，所以不写死在枚举里）。
 #[derive(Debug, Clone, FromRow)]
 pub struct SectionRow {
+    /// 是否启用用户组检查（迁移 0026）。
+    pub group_check: i64,
     pub key: String,
     pub label: String,
     pub description: String,
@@ -114,6 +118,21 @@ pub struct GroupSectionRuleRow {
     /// 明确禁止（优先于允许与角色门槛）。
     pub deny_post: i64,
     pub deny_reply: i64,
+}
+
+/// 一条处罚（禁止发帖 / 禁止评论，可限定分区）。
+#[derive(Debug, Clone, FromRow)]
+pub struct UserSanctionRow {
+    pub id: i64,
+    pub user_id: i64,
+    /// post = 禁止发帖；reply = 禁止评论。
+    pub kind: String,
+    /// 空串 = 全局；否则是分区 key。
+    pub section: String,
+    pub until: i64,
+    pub note: String,
+    pub created_at: i64,
+    pub revoked_at: Option<i64>,
 }
 
 /// 头衔。
@@ -387,6 +406,8 @@ pub struct BlockRow {
 /// 管理页的用户行：比 `UserRow` 多带「最后在线」（取该用户最近一次会话）。
 #[derive(Debug, Clone, FromRow)]
 pub struct AdminUserRow {
+    /// 限期禁言到期时间（NULL = 没被禁）。
+    pub post_ban_until: Option<i64>,
     pub id: i64,
     pub handle: String,
     pub display_name: String,

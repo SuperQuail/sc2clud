@@ -109,6 +109,13 @@ async fn build_panel<'a>(
     let unused = (allocated - used).max(0);
     let quota_over_committed =
         allocated.max(0) as u64 > free_bytes.saturating_add(used.max(0) as u64);
+    // 分区档位（0 不启用 / 1 白名单 / 2 黑名单）——矩阵里的下拉要回显当前值
+    let section_modes: std::collections::HashMap<String, i64> =
+        repo::list_sections(state.db.pool(), true)
+            .await?
+            .into_iter()
+            .map(|section| (section.key, section.group_mode))
+            .collect();
     // 每个用户所属的用户组（人数少，逐个查即可；将来量大再换成一条 JOIN）
     let mut member_groups: std::collections::HashMap<i64, Vec<i64>> =
         std::collections::HashMap::new();
@@ -121,6 +128,11 @@ async fn build_panel<'a>(
         .into_iter()
         .map(|row| AdminUserView {
             id: row.id,
+            ban_label: row
+                .post_ban_until
+                .filter(|until| *until > now)
+                .map(|until| format!("禁言至 {}", crate::templates::format_date(until)))
+                .unwrap_or_default(),
             groups: member_groups.get(&row.id).cloned().unwrap_or_default(),
             trusted: row.trusted != 0,
             initial: row
@@ -215,6 +227,12 @@ async fn build_panel<'a>(
         pool_variant,
         acl_variant,
         groups,
+        block_reply_enforced: repo::site_text(state.db.pool(), "block_reply_enforced", "0").await?
+            == "1",
+        ban_options: BAN_HOUR_OPTIONS
+            .iter()
+            .map(|(hours, label)| (hours.to_string(), label.to_string()))
+            .collect(),
         server_free_human: human_bytes(free_bytes),
         quota_allocated_human: human_bytes(allocated.max(0) as u64),
         quota_used_human: human_bytes(used.max(0) as u64),
@@ -248,6 +266,7 @@ async fn build_panel<'a>(
                     label: s.label().to_string(),
                     checked: false,
                     cover: covers.get(s.as_str()).cloned(),
+                    mode: section_modes.get(s.as_str()).copied().unwrap_or(0),
                 })
                 .collect()
         },
@@ -293,6 +312,7 @@ async fn build_user_edit<'a>(
             .collect(),
         user: AdminUserView {
             groups: Vec::new(),
+            ban_label: String::new(),
             id: row.id,
             trusted: row.trusted != 0,
             initial: row
@@ -781,6 +801,9 @@ pub async fn create_user(
 #[derive(Debug, Deserialize)]
 pub struct EditUserForm {
     pub csrf: String,
+    /// 禁言时长（小时）：空或 "0" = 解禁，其余 = 从现在起禁这么多小时。
+    #[serde(default)]
+    pub ban_hours: Option<String>,
     pub display_name: String,
     pub role: String,
     pub quota_gb: String,
@@ -788,6 +811,16 @@ pub struct EditUserForm {
     pub activated: Option<String>,
     pub new_password: Option<String>,
 }
+
+/// 禁言时长选项（后台下拉用）：(值, 显示名)。0 = 解禁。
+pub const BAN_HOUR_OPTIONS: [(i64, &str); 6] = [
+    (0, "不禁言"),
+    (1, "1 小时"),
+    (24, "1 天"),
+    (72, "3 天"),
+    (168, "7 天"),
+    (720, "30 天"),
+];
 
 /// 管理面板「编辑用户」弹窗的保存：一次把资料改完（等级也就地切换）。
 pub async fn update_user(
@@ -979,6 +1012,348 @@ pub async fn move_section(
         &headers,
         "分区顺序已更新",
         "/admin/users/overview#covers",
+    ))
+}
+
+#[derive(Debug, Deserialize)]
+pub struct GroupCreateForm {
+    pub csrf: String,
+    /// 英文标识：规则与代码引用它，建成后不可改。
+    pub key: String,
+    pub name: String,
+    #[serde(default)]
+    pub description: String,
+}
+
+/// 新建用户组。
+#[derive(Debug, Deserialize)]
+pub struct SectionAclForm {
+    pub csrf: String,
+    pub post_min_role: String,
+    pub reply_min_role: String,
+    #[serde(default)]
+    pub group_mode: Option<String>,
+    /// 允许的用户组 id，逗号分隔（绿标签集合）。
+    #[serde(default)]
+    pub groups: String,
+}
+
+/// 保存一个分区的发言权限：角色门槛 + 是否启用用户组检查 + 允许的组白名单。
+/// 组白名单的语义是「允许发帖且允许评论」；不在名单里的组会被删掉规则（不留残余）。
+pub async fn save_section_acl(
+    State(state): State<AppState>,
+    Path(section): Path<String>,
+    headers: HeaderMap,
+    axum::Json(form): axum::Json<SectionAclForm>,
+) -> AppResult<Response> {
+    let actor = require_user(&state, &headers).await?;
+    session::guard(Some(&actor), Permission::ManageUsers)?;
+    session::check_csrf(&actor, &form.csrf)?;
+    let current = repo::get_section(state.db.pool(), &section)
+        .await?
+        .ok_or_else(|| AppError::not_found("分区不存在"))?;
+    let now = now_unix();
+    // 角色门槛：复用 update_section（名称与说明原样传回，不改它们）
+    repo::update_section(
+        state.db.pool(),
+        &current.key,
+        &current.label,
+        &current.description,
+        &form.post_min_role,
+        &form.reply_min_role,
+        now,
+    )
+    .await?;
+    // 档位：0 不启用 / 1 白名单 / 2 黑名单（前端目前是复选/下拉，值直接给数字）
+    let group_mode = form
+        .group_mode
+        .as_deref()
+        .and_then(|value| value.parse::<i64>().ok())
+        .unwrap_or(0)
+        .clamp(0, 2);
+    repo::set_section_group_check(state.db.pool(), &section, group_mode, now).await?;
+    let allowed: Vec<i64> = form
+        .groups
+        .split(',')
+        .filter_map(|value| value.trim().parse::<i64>().ok())
+        .collect();
+    for group in repo::list_user_groups(state.db.pool(), true).await? {
+        if allowed.contains(&group.id) {
+            repo::set_group_section_rule_full(
+                state.db.pool(),
+                group.id,
+                &section,
+                true,
+                true,
+                false,
+                false,
+            )
+            .await?;
+        } else {
+            repo::remove_group_section_rule(state.db.pool(), group.id, &section).await?;
+        }
+    }
+    tracing::info!(
+        section,
+        post = form.post_min_role,
+        reply = form.reply_min_role,
+        groups = ?allowed,
+        actor.id = actor.id,
+        "保存分区发言权限"
+    );
+    Ok(axum::Json(serde_json::json!({ "ok": true })).into_response())
+}
+
+#[derive(Debug, Deserialize)]
+pub struct BanForm {
+    pub csrf: String,
+    /// 时长小时数：0 或空 = 解禁。
+    #[serde(default)]
+    pub hours: Option<String>,
+}
+
+/// 限期禁言 / 解禁：hours = 0 解禁，其余为小时数。管理员及以上不能被禁（避免管理员互相锁死）。
+pub async fn ban_user(
+    State(state): State<AppState>,
+    Path(id): Path<i64>,
+    headers: HeaderMap,
+    Form(form): Form<BanForm>,
+) -> AppResult<Response> {
+    let actor = require_user(&state, &headers).await?;
+    session::guard(Some(&actor), Permission::ManageUsers)?;
+    session::check_csrf(&actor, &form.csrf)?;
+    let target = repo::find_user_by_id(state.db.pool(), id)
+        .await?
+        .ok_or_else(|| AppError::not_found("用户不存在"))?;
+    if sc2clud_core::auth::Role::parse(&target.role)
+        .is_ok_and(|role| role >= sc2clud_core::auth::Role::Admin)
+    {
+        return Err(AppError::Domain(DomainError::InvalidInput(
+            "管理员及以上不接受禁言".to_string(),
+        )));
+    }
+    let hours: i64 = form
+        .hours
+        .as_deref()
+        .unwrap_or("0")
+        .trim()
+        .parse()
+        .unwrap_or(0)
+        .clamp(0, 24 * 365);
+    let until = if hours > 0 {
+        Some(now_unix() + hours * 3600)
+    } else {
+        None
+    };
+    // 写进处罚表（全局禁止发帖）；解禁时撤销同一类同范围的处罚
+    if let Some(until) = until {
+        repo::add_sanction(
+            state.db.pool(),
+            id,
+            "post",
+            "",
+            until,
+            Some(actor.id),
+            now_unix(),
+        )
+        .await?;
+    } else {
+        repo::revoke_sanctions(state.db.pool(), id, "post", "", now_unix()).await?;
+    }
+    // 兼容：老的单列也一并清掉，免得两个地方各说各话
+    repo::set_post_ban(state.db.pool(), id, until).await?;
+    tracing::info!(user.id = id, hours, actor.id = actor.id, "限期禁言");
+    let message = if hours > 0 {
+        "已设置禁言"
+    } else {
+        "已解除禁言"
+    };
+    Ok(done(&headers, message, "/admin/users/overview"))
+}
+
+#[derive(Debug, Deserialize)]
+pub struct BlockReplyForm {
+    pub csrf: String,
+    /// "1" 开启 / "0" 关闭。
+    pub enabled: String,
+}
+
+/// 全站开关：被拉黑后能否在对方帖子下回复。
+pub async fn set_block_reply(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Form(form): Form<BlockReplyForm>,
+) -> AppResult<Response> {
+    let actor = require_user(&state, &headers).await?;
+    session::guard(Some(&actor), Permission::ManageUsers)?;
+    session::check_csrf(&actor, &form.csrf)?;
+    let value = if form.enabled == "1" { "1" } else { "0" };
+    repo::set_site_text(
+        state.db.pool(),
+        "block_reply_enforced",
+        value,
+        Some(actor.id),
+        now_unix(),
+    )
+    .await?;
+    tracing::info!(
+        enabled = value,
+        actor.id = actor.id,
+        "设置「被拉黑不能回复」开关"
+    );
+    Ok(done(
+        &headers,
+        "设置已保存",
+        "/admin/users/overview#settings",
+    ))
+}
+
+pub async fn create_group(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Form(form): Form<GroupCreateForm>,
+) -> AppResult<Response> {
+    let actor = require_user(&state, &headers).await?;
+    session::guard(Some(&actor), Permission::ManageUsers)?;
+    session::check_csrf(&actor, &form.csrf)?;
+    let key = form.key.trim().to_lowercase();
+    if key.is_empty() || !key.chars().all(|c| c.is_ascii_alphanumeric() || c == '_') {
+        return Err(AppError::Domain(DomainError::InvalidInput(
+            "标识只能用英文字母、数字与下划线".to_string(),
+        )));
+    }
+    let name = form.name.trim();
+    if name.is_empty() {
+        return Err(AppError::Domain(DomainError::InvalidInput(
+            "组名不能为空".to_string(),
+        )));
+    }
+    // 仓储用 INSERT OR IGNORE 并在冲突时回查 id：拿不到「是否新建」，就统一按「已保存」提示
+    let _group_id = repo::create_user_group(
+        state.db.pool(),
+        &key,
+        name,
+        form.description.trim(),
+        now_unix(),
+    )
+    .await?;
+    tracing::info!(group.key = %key, actor.id = actor.id, "新建用户组");
+    let message = "用户组已保存（标识重复时会复用已有组）";
+    Ok(done(&headers, message, "/admin/users/overview#groups"))
+}
+
+#[derive(Debug, Deserialize)]
+pub struct GroupUpdateForm {
+    pub csrf: String,
+    pub id: i64,
+    pub name: String,
+    #[serde(default)]
+    pub description: String,
+}
+
+/// 改用户组的名称与说明。
+pub async fn update_group(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Form(form): Form<GroupUpdateForm>,
+) -> AppResult<Response> {
+    let actor = require_user(&state, &headers).await?;
+    session::guard(Some(&actor), Permission::ManageUsers)?;
+    session::check_csrf(&actor, &form.csrf)?;
+    let name = form.name.trim();
+    if name.is_empty() {
+        return Err(AppError::Domain(DomainError::InvalidInput(
+            "组名不能为空".to_string(),
+        )));
+    }
+    let updated =
+        repo::update_user_group(state.db.pool(), form.id, name, form.description.trim()).await?;
+    tracing::info!(group.id = form.id, actor.id = actor.id, "编辑用户组");
+    let message = if updated {
+        "用户组已更新"
+    } else {
+        "用户组不存在"
+    };
+    Ok(done(&headers, message, "/admin/users/overview#groups"))
+}
+
+#[derive(Debug, Deserialize)]
+pub struct GroupArchiveForm {
+    pub csrf: String,
+    pub id: i64,
+    /// "1" 归档 / "0" 恢复。
+    pub archived: String,
+}
+
+/// 归档 / 恢复用户组。归档而不是物理删除：成员与规则都留着，误删可恢复。
+pub async fn archive_group(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Form(form): Form<GroupArchiveForm>,
+) -> AppResult<Response> {
+    let actor = require_user(&state, &headers).await?;
+    session::guard(Some(&actor), Permission::ManageUsers)?;
+    session::check_csrf(&actor, &form.csrf)?;
+    let archived = form.archived == "1";
+    let changed =
+        repo::set_user_group_archived(state.db.pool(), form.id, archived, now_unix()).await?;
+    tracing::info!(
+        group.id = form.id,
+        archived,
+        actor.id = actor.id,
+        "归档/恢复用户组"
+    );
+    let message = if changed {
+        if archived {
+            "用户组已归档"
+        } else {
+            "用户组已恢复"
+        }
+    } else {
+        "用户组不存在"
+    };
+    Ok(done(&headers, message, "/admin/users/overview#groups"))
+}
+
+#[derive(Debug, Deserialize)]
+pub struct UserGroupsForm {
+    pub csrf: String,
+    /// 勾选的用户组 id（可多个；重复字段由 serde 收成 Vec）。
+    #[serde(default)]
+    pub groups: Vec<i64>,
+}
+
+/// 设置某个用户所属的用户组（先算差集，再增删，不动其它组）。
+pub async fn set_user_groups(
+    State(state): State<AppState>,
+    Path(id): Path<i64>,
+    headers: HeaderMap,
+    Form(form): Form<UserGroupsForm>,
+) -> AppResult<Response> {
+    let actor = require_user(&state, &headers).await?;
+    session::guard(Some(&actor), Permission::ManageUsers)?;
+    session::check_csrf(&actor, &form.csrf)?;
+    let current: Vec<i64> = repo::list_user_groups_for(state.db.pool(), id)
+        .await?
+        .into_iter()
+        .map(|group| group.id)
+        .collect();
+    let now = now_unix();
+    for group_id in &form.groups {
+        if !current.contains(group_id) {
+            repo::add_group_member(state.db.pool(), *group_id, id, now).await?;
+        }
+    }
+    for group_id in &current {
+        if !form.groups.contains(group_id) {
+            repo::remove_group_member(state.db.pool(), *group_id, id).await?;
+        }
+    }
+    tracing::info!(user.id = id, actor.id = actor.id, groups = ?form.groups, "设置用户组");
+    Ok(done(
+        &headers,
+        "用户组已更新",
+        "/admin/users/overview#users",
     ))
 }
 

@@ -189,6 +189,34 @@ pub fn pages() -> Router<AppState> {
             axum::routing::post(crate::pages_admin::set_trusted),
         )
         .route(
+            "/admin/sections/{section}/acl",
+            axum::routing::post(crate::pages_admin::save_section_acl),
+        )
+        .route(
+            "/admin/settings/block-reply",
+            axum::routing::post(crate::pages_admin::set_block_reply),
+        )
+        .route(
+            "/admin/groups",
+            axum::routing::post(crate::pages_admin::create_group),
+        )
+        .route(
+            "/admin/groups/update",
+            axum::routing::post(crate::pages_admin::update_group),
+        )
+        .route(
+            "/admin/groups/archive",
+            axum::routing::post(crate::pages_admin::archive_group),
+        )
+        .route(
+            "/admin/users/{id}/ban",
+            axum::routing::post(crate::pages_admin::ban_user),
+        )
+        .route(
+            "/admin/users/{id}/groups",
+            axum::routing::post(crate::pages_admin::set_user_groups),
+        )
+        .route(
             "/admin/sections/{section}/move",
             axum::routing::post(crate::pages_admin::move_section),
         )
@@ -644,6 +672,7 @@ async fn build_index<'a>(
                     label: s.label().to_string(),
                     checked: section == Some(*s),
                     cover: covers.get(s.as_str()).cloned(),
+                    mode: 0,
                 })
                 .collect()
         },
