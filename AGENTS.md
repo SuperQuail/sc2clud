@@ -120,6 +120,27 @@ cargo run -p sc2clud -- check                     # 配置与依赖自检
 反例（都发生过，别再犯）：模板里塞 `<style>` 又被 `{% if %}` 夹住导致样式失效；
 把 `<select>` 写进 `<style>` 块导致浏览器忽略；用行号范围猜模板块边界导致删错内容。
 改模板一律「整块读出来 → 整块替换 → 立刻编译」；改前端一律走岛。
+### 控件库：先查现成的，别自己造（Reka UI）
+
+**禁止**为了一个下拉/弹窗/日期选择器手写键盘与焦点管理。行为标准件统一用 **Reka UI**
+（`web/package.json` → `reka-ui`，前身 Radix Vue）：headless、无样式，键盘/焦点/ARIA/滚动锁定由它负责，
+外观仍由我们的 scoped CSS 决定 —— 这样既现代化又不破坏现有视觉体系。
+
+| 需求 | 用什么 |
+| --- | --- |
+| 下拉选择、弹窗、气泡、标签页、开关、日期选择 | **Reka UI**（`SelectRoot` / `DialogRoot` / `PopoverRoot` / `TabsRoot` / `SwitchRoot` …） |
+| 图标 | Heroicons（已内联使用，MIT） |
+| 表单校验、状态管理 | 暂不引入；原生 + 组合式函数足够 |
+| 整套 UI 组件库（Element Plus / Naive / Ant Design Vue） | **不要**：会引入第二套视觉与数百 KB 体积 |
+| CSS-in-JS、整站 SPA | **不要**（§6 预算与部署形态都不允许） |
+
+体积记录（每次引入新控件后更新）：
+
+| 岛 | 原始 | gzip | 说明 |
+| --- | --- | --- | --- |
+| `issues.js` | 84.5 kB | 29.2 kB | 含 Reka UI Select 的浮动定位栈；页面首屏（+Vue 运行时）仍 ≤ 60 KB brotli |
+
+新增控件前先看这张表；超过预算就先谈方案，不要先写完再发现超了。
 
 ## 7. 编码约定
 
