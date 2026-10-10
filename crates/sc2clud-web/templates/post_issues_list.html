@@ -1,0 +1,44 @@
+{# 问题与建议：筛选条 + 列表 #}
+<section class="issue-view">
+  {# 状态是主切换（对齐 GitHub 的 Open/Closed），类型收进下拉 —— 以后加类型只多一行，不会把筛选条撑爆 #}
+  <div class="issue-filters">
+    <div class="state-tabs">
+      <a class="st{% if issue_state == "open" %} on{% endif %}" href="/p/{{ post.id }}/issues?state=open{% if !issue_kind.is_empty() %}&kind={{ issue_kind }}{% endif %}{% if !issue_q.is_empty() %}&q={{ issue_q }}{% endif %}">待处理 <b>{{ issue_open }}</b></a>
+      <a class="st{% if issue_state == "closed" %} on{% endif %}" href="/p/{{ post.id }}/issues?state=closed{% if !issue_kind.is_empty() %}&kind={{ issue_kind }}{% endif %}{% if !issue_q.is_empty() %}&q={{ issue_q }}{% endif %}">已关闭 <b>{{ issue_closed }}</b></a>
+      <a class="st{% if issue_state == "all" %} on{% endif %}" href="/p/{{ post.id }}/issues?state=all{% if !issue_kind.is_empty() %}&kind={{ issue_kind }}{% endif %}{% if !issue_q.is_empty() %}&q={{ issue_q }}{% endif %}">全部 <b>{{ issue_total }}</b></a>
+    </div>
+    <details class="kind-menu">
+      <summary>类型：{% if issue_kind.is_empty() %}全部{% else if issue_kind == "bug" %}Bug{% else if issue_kind == "feature" %}改进建议{% else if issue_kind == "difficulty" %}难度建议{% else %}其它{% endif %} ▾</summary>
+      <div class="km-panel">
+        <a href="/p/{{ post.id }}/issues?state={{ issue_state }}">全部类型</a>
+        <a href="/p/{{ post.id }}/issues?state={{ issue_state }}&kind=bug">Bug 反馈</a>
+        <a href="/p/{{ post.id }}/issues?state={{ issue_state }}&kind=feature">改进建议</a>
+        <a href="/p/{{ post.id }}/issues?state={{ issue_state }}&kind=difficulty">难度建议</a>
+        <a href="/p/{{ post.id }}/issues?state={{ issue_state }}&kind=other">其它</a>
+      </div>
+    </details>
+    <form class="issue-search" method="get" action="/p/{{ post.id }}/issues">
+      <input type="hidden" name="state" value="{{ issue_state }}">
+      {% if !issue_kind.is_empty() %}<input type="hidden" name="kind" value="{{ issue_kind }}">{% endif %}
+      <input type="search" name="q" value="{{ issue_q }}" placeholder="搜索标题或正文" aria-label="搜索问题与建议">
+      <button class="btn ghost sm" type="submit">搜索</button>
+    </form>
+  </div>
+  {% if issues.is_empty() %}
+  <div class="issue-empty"><b>这里还没有符合条件的条目。</b><p>发现问题点上面的「报告 Bug」，想要新功能点「改进意见」。</p></div>
+  {% else %}
+  <ul class="issue-list">
+    {% for issue in issues %}
+    <li class="issue-row{% if !issue.open %} closed{% endif %}">
+      <span class="state-dot"></span>
+      <span class="kind kind-{{ issue.kind }}">{{ issue.kind_label }}</span>
+      <a class="issue-title" href="/p/{{ post.id }}/issues/{{ issue.id }}"><span class="num">#{{ issue.id }}</span> {{ issue.title }}</a>
+      {% if !issue.open %}<span class="tag">已关闭</span>{% endif %}
+      <span class="meta">{{ issue.author }} · {{ issue.created }}</span>
+      <span class="comments">💬 {{ issue.comments }}</span>
+    </li>
+    {% endfor %}
+  </ul>
+  <p class="issue-count">显示 {{ issue_shown }} 条{% if issue_state == "open" %}（默认只看待处理；<a href="/p/{{ post.id }}/issues?state=all">查看全部</a>，含已关闭）{% endif %}</p>
+  {% endif %}
+</section>
