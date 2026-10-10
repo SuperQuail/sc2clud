@@ -57,9 +57,10 @@
       {% endfor %}
       {% if thread.is_empty() %}<p class="empty">还没有消息，打个招呼吧。</p>{% endif %}
     </div>
-    <form class="inbox-composer" method="post" action="/messages/{{ selected }}">
+    {# 有 JS 时不跳页：走 /api/v1 发信并就地追加气泡；没 JS 时回落到表单提交 #}
+    <form class="inbox-composer" method="post" action="/messages/{{ selected }}" data-composer data-handle="{{ selected }}">
       <input type="hidden" name="csrf" value="{{ csrf }}">
-      <input type="text" name="body" maxlength="500" placeholder="请输入消息内容" required>
+      <input type="text" name="body" maxlength="500" placeholder="请输入消息内容" autocomplete="off" required>
       <span class="inbox-counter">0/500</span>
       <button class="btn" type="submit">发送</button>
     </form>
@@ -162,6 +163,45 @@
   });
   const cancel = document.getElementById('del-modal-cancel');
   if (cancel) cancel.addEventListener('click', () => { modal.hidden = true; pending = null; });
+  // 发消息无感化：不跳页，就地追加气泡
+  document.querySelectorAll('[data-composer]').forEach((form) => {
+    const input = form.querySelector('input[name=body]');
+    const counter = form.querySelector('.inbox-counter');
+    const thread = document.querySelector('.inbox-bubbles');
+    const handle = form.dataset.handle || '';
+    if (!input || !handle) return;
+    input.addEventListener('input', () => { counter.textContent = input.value.length + '/500'; });
+    form.addEventListener('submit', async (event) => {
+      event.preventDefault();
+      const text = input.value.trim();
+      if (!text) return;
+      counter.textContent = '发送中…';
+      const res = await fetch('/api/v1/messages/' + encodeURIComponent(handle), {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', 'x-csrf-token': form.querySelector('input[name=csrf]').value },
+        body: JSON.stringify({ body: text }),
+      });
+      if (!res.ok) { counter.textContent = '发送失败：' + res.status; return; }
+      const data = await res.json();
+      if (thread) {
+        const empty = thread.querySelector('.empty');
+        if (empty) empty.remove();
+        const wrap = document.createElement('div');
+        wrap.className = 'inbox-msg mine';
+        const bubble = document.createElement('div');
+        bubble.className = 'bubble';
+        bubble.textContent = data.body;
+        wrap.appendChild(bubble);
+        thread.appendChild(wrap);
+        wrap.scrollIntoView({ block: 'end' });
+      }
+      const preview = document.querySelector('.inbox-item.active .inbox-item-preview');
+      if (preview) preview.textContent = data.body;
+      input.value = '';
+      counter.textContent = '0/500';
+    });
+  });
+
   const ok2 = document.getElementById('del-modal-ok');
   if (ok2) ok2.addEventListener('click', () => { if (pending) pending.submit(); });
   // 预览用：?dvc=1 自动把第一条的确认态展开，方便出图评审

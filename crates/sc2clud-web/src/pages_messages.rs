@@ -134,7 +134,19 @@ pub async fn send(
     let user = require_user(&state, &headers).await?;
     session::guard(Some(&user), Permission::Comment)?;
     session::check_csrf(&user, &form.csrf)?;
-    let other = find_other(&state, &handle).await?;
+    let (other, _) = deliver_message(&state, &user, &handle, &form.body).await?;
+    // 老表单提交的兜底：直接落到消息中心并选中该会话（JS 可用时走 /api/v1 不跳页）
+    Ok(Redirect::to(&format!("/inbox?tab=dm&with={}", other.handle)).into_response())
+}
+
+/// 投递一条私信（表单与 JSON 两条路共用）：返回 (对方, 新消息 id)。
+async fn deliver_message(
+    state: &AppState,
+    user: &crate::session::CurrentUser,
+    handle: &str,
+    raw_body: &str,
+) -> AppResult<(sc2clud_db::UserRow, i64)> {
+    let other = find_other(state, handle).await?;
     if other.id == user.id {
         return Err(AppError::Domain(DomainError::InvalidInput(
             "不能给自己发私信".to_string(),
@@ -145,9 +157,9 @@ pub async fn send(
             "你们之间有拉黑关系，无法发送私信".to_string(),
         )));
     }
-    let body = validate_message_body(&form.body)?;
+    let body = validate_message_body(raw_body)?;
     let now = now_unix();
-    repo::send_message(state.db.pool(), user.id, other.id, &body, now).await?;
+    let id = repo::send_message(state.db.pool(), user.id, other.id, &body, now).await?;
     let _ = repo::notify(
         state.db.pool(),
         repo::NewNotification {
@@ -156,16 +168,43 @@ pub async fn send(
             kind: "message",
             title: &format!("{} 给你发了私信", user.display_name),
             body: Some(body.chars().take(60).collect::<String>().as_str()),
-            link: Some(&format!("/messages/{}", user.handle)),
+            link: Some(&format!("/inbox?tab=dm&with={}", user.handle)),
             now,
         },
     )
     .await;
     state.counters.bump("message:sent", 1);
     tracing::info!(from.id = user.id, to.id = other.id, "发送私信");
-    Ok(Redirect::to(&format!("/messages/{}", other.handle)).into_response())
+    Ok((other, id))
 }
 
+#[derive(Debug, serde::Deserialize)]
+pub struct JsonSendForm {
+    body: String,
+}
+
+/// 消息中心底部输入框用：JSON 发信，不跳页（成功返回新消息，前端就地追加气泡）。
+pub async fn send_json(
+    State(state): State<AppState>,
+    Path(handle): Path<String>,
+    headers: HeaderMap,
+    axum::Json(form): axum::Json<JsonSendForm>,
+) -> AppResult<Response> {
+    let user = require_user(&state, &headers).await?;
+    session::guard(Some(&user), Permission::Comment)?;
+    let token = headers
+        .get("x-csrf-token")
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or("");
+    session::check_csrf(&user, token)?;
+    let (_, id) = deliver_message(&state, &user, &handle, &form.body).await?;
+    Ok(axum::Json(serde_json::json!({
+        "ok": true,
+        "id": id,
+        "body": form.body.trim(),
+    }))
+    .into_response())
+}
 pub async fn block(
     State(state): State<AppState>,
     Path(handle): Path<String>,
