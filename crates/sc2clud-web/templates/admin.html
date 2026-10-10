@@ -732,7 +732,7 @@
       .ai-wip{opacity:.75}
       .ai-out{white-space:pre-wrap;word-break:break-word;background:rgba(37,99,235,.05);border:1px solid var(--line,#e5e7eb);border-radius:10px;padding:10px 12px;font-size:12px;line-height:1.6;margin:10px 0 0}
       </style>
-      <form method="post" action="/admin/ai/settings" data-ai-form>
+      <form method="post" action="/admin/ai/settings" data-ai-form id="ai-form">
         <input type="hidden" name="csrf" value="{{ csrf }}">
         <div class="ai-block">
           <h3>接口设置<span class="ai-tag{% if ai_key_set %} on{% endif %}">{% if ai_key_set %}密钥已设置{% else %}密钥未设置{% endif %}</span></h3>
@@ -745,6 +745,7 @@
             <label class="wide">提示词（举报复审）<textarea name="prompt_report" rows="3">{{ ai_prompt_report }}</textarea></label>
           </div>
           <div class="ai-actions">
+            <button class="btn sm" type="submit" form="ai-form">保存接口设置</button>
             <button class="btn ghost sm" type="button" data-ai-test>测试连通性</button>
             <label class="acl-switch" style="margin-left:auto"><input type="checkbox" name="review_on_report" value="1"{% if ai_review_on_report %} checked{% endif %}><span>被举报后自动复审</span></label>
           </div>
@@ -757,6 +758,7 @@
             <input type="number" min="1" style="width:90px" data-ai-id placeholder="帖子 id">
             <button class="btn ghost sm" type="button" data-ai-preview>预览发给 AI 的文本</button>
             <button class="btn sm" type="button" data-ai-run>立刻审核一次</button>
+            <button class="btn sm" type="submit" form="ai-form">保存帖子审核设置</button>
           </div>
         </div>
         <div class="ai-block" data-ai-block="comment">
@@ -767,6 +769,7 @@
             <input type="number" min="1" style="width:90px" data-ai-id placeholder="评论 id">
             <button class="btn ghost sm" type="button" data-ai-preview>预览发给 AI 的文本</button>
             <button class="btn sm" type="button" data-ai-run>立刻审核一次</button>
+            <button class="btn sm" type="submit" form="ai-form">保存评论审核设置</button>
           </div>
         </div>
         <div class="ai-block ai-wip">
@@ -779,8 +782,8 @@
             <button class="btn ghost sm" type="button" disabled>预览注册文本（未实现）</button>
           </div>
         </div>
-        <div class="ai-actions"><button class="btn" type="submit">保存全部设置</button>
-          <span class="hint" data-ai-note></span></div>
+        <div class="ai-actions"><button class="btn" type="submit" form="ai-form">保存全部设置</button>
+          <span class="hint" data-ai-note>三个板块共用同一份接口配置：点任意一个保存按钮都会把整页设置一起存下来。</span></div>
       </form>
       <pre class="ai-out" data-ai-out hidden></pre>
       <script>
