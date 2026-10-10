@@ -99,6 +99,8 @@
 <section class="card">
   <h2>回复 <span class="count">{{ comments.len() }}</span></h2>
   {% if comments.is_empty() %}
+  <div class="community-empty"><img src="/static/art/miyin/smile-160.webp" width="80" height="80" alt="">还没有人回复，来抢第一楼。</div>
+  {% else %}
   <div class="comments cui-{{ comments_variant }}">
     {% for c in comments %}
     <div class="comment" id="c{{ c.id }}">
