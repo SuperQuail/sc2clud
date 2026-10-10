@@ -218,7 +218,9 @@
 .cui-3 .c-floor{order:-1;font-weight:600;opacity:.6}
 .cui-3 .c-body{margin:4px 0 2px;line-height:1.6}
 .cui-3 .c-subs{margin-top:8px;gap:8px}
-.mention-pop{position:absolute;z-index:40;margin-top:4px;min-width:220px;max-height:220px;overflow:auto;background:var(--card,#fff);color:inherit;border:1px solid var(--line,#e5e7eb);border-radius:10px;box-shadow:0 8px 24px rgba(0,0,0,.14)}
+/* 向上弹：底边贴输入框上沿（原来向下弹会盖住正在输入的那行） */
+.mention-pop{position:absolute;z-index:40;left:0;bottom:100%;margin:0 0 6px;min-width:220px;max-height:220px;overflow:auto;background:var(--card,#fff);color:inherit;border:1px solid var(--line,#e5e7eb);border-radius:10px;box-shadow:0 -8px 24px rgba(0,0,0,.14)}
+[data-comment-form],.c-reply-box{position:relative}
 .mention-item{display:flex;align-items:center;gap:8px;padding:8px 10px;cursor:pointer;font-size:13px}
 .mention-item:hover,.mention-item.active{background:rgba(37,99,235,.1)}
 .mention-item .mi-id{opacity:.55;font-size:12px}
@@ -372,6 +374,14 @@
 
   let timer = null;
   let active = -1;
+  // 预览用：?mention=1 直接展开候选，方便看弹出位置
+  if (new URLSearchParams(location.search).get('mention') === '1') {
+    setTimeout(async () => {
+      area.value = '@' + area.value;
+      area.dispatchEvent(new Event('input'));
+      area.focus();
+    }, 300);
+  }
   const hide = () => { pop.hidden = true; pop.innerHTML = ''; active = -1; };
   const currentQuery = () => {
     const upto = area.value.slice(0, area.selectionStart);
