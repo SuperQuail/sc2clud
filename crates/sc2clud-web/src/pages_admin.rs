@@ -865,6 +865,51 @@ pub async fn set_trusted(
 }
 
 /// 分区封面：管理员及以上可以设置（直接上传图片，服务端只做魔数校验与体积上限）。
+#[derive(Debug, Deserialize)]
+pub struct SectionMoveForm {
+    pub csrf: String,
+    /// "up" / "down"
+    pub dir: String,
+}
+
+/// 分区调序（↑↓ 一次换一格）：读当前顺序 → 与相邻项交换 → 整体写回。
+/// 仓储只排给出的 key，其余按原顺序接在后面，不会互相撞 position。
+pub async fn move_section(
+    State(state): State<AppState>,
+    Path(section): Path<String>,
+    headers: HeaderMap,
+    Form(form): Form<SectionMoveForm>,
+) -> AppResult<Response> {
+    let actor = require_user(&state, &headers).await?;
+    session::guard(Some(&actor), Permission::ManageUsers)?;
+    session::check_csrf(&actor, &form.csrf)?;
+    let mut keys: Vec<String> = repo::list_sections(state.db.pool(), true)
+        .await?
+        .into_iter()
+        .map(|row| row.key)
+        .collect();
+    let Some(index) = keys.iter().position(|key| *key == section) else {
+        return Err(AppError::not_found("分区不存在"));
+    };
+    let target = if form.dir == "up" {
+        index.checked_sub(1)
+    } else if index + 1 < keys.len() {
+        Some(index + 1)
+    } else {
+        None
+    };
+    if let Some(target) = target {
+        keys.swap(index, target);
+        repo::reorder_sections(state.db.pool(), &keys, now_unix()).await?;
+        tracing::info!(section, dir = form.dir, "分区调序");
+    }
+    Ok(done(
+        &headers,
+        "分区顺序已更新",
+        "/admin/users/overview#covers",
+    ))
+}
+
 pub async fn set_section_cover(
     State(state): State<AppState>,
     Path(section): Path<String>,

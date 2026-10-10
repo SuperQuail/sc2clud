@@ -241,7 +241,8 @@
     {% endif %}
 
     <section class="panel cover-manager" id="covers" aria-labelledby="covers-title">
-      <header class="covers-heading"><h2 id="covers-title">分区封面</h2></header>
+      <header class="covers-heading"><h2 id="covers-title">分区封面与顺序</h2>
+        <p class="hint">用每格的 ↑ ↓ 调整顺序：它决定社区左栏导航、首页标签页与发帖分区下拉的排列。</p></header>
       <div class="cover-grid" data-cover-csrf="{{ csrf }}">
         {% for section in sections %}
         <article class="cover-cell" data-cover-card data-state="idle" data-has-cover="{% if section.cover.is_some() %}true{% else %}false{% endif %}" aria-label="{{ section.label }}封面管理">
@@ -255,12 +256,30 @@
             <span class="cover-badge" data-cover-badge hidden></span>
             <p class="cover-note" id="cover-note-{{ section.value }}" data-cover-note role="status" aria-live="polite" hidden></p>
             <input class="cover-file" id="cover-file-{{ section.value }}" type="file" accept="image/png,image/jpeg,image/gif,image/webp" data-cover-input data-cover-action="/admin/sections/{{ section.value }}/cover" aria-label="{{ section.label }}封面图片">
+            <div class="cover-order">
+              <form method="post" action="/admin/sections/{{ section.value }}/move">
+                <input type="hidden" name="csrf" value="{{ csrf }}">
+                <input type="hidden" name="dir" value="up">
+                <button class="cover-order-btn" type="submit" title="上移" aria-label="把{{ section.label }}上移">↑</button>
+              </form>
+              <form method="post" action="/admin/sections/{{ section.value }}/move">
+                <input type="hidden" name="csrf" value="{{ csrf }}">
+                <input type="hidden" name="dir" value="down">
+                <button class="cover-order-btn" type="submit" title="下移" aria-label="把{{ section.label }}下移">↓</button>
+              </form>
+            </div>
             <div class="cover-actions"><button class="btn" type="button" data-cover-save hidden>确认更换</button><button class="cover-cancel" type="button" data-cover-cancel hidden>取消</button></div>
           </div>
         </article>
         {% endfor %}
       </div>
       <noscript><p class="hint">请启用 JavaScript 以预览和上传分区封面。</p></noscript>
+      <style>
+      .cover-order{display:flex;gap:6px;margin:8px 0 2px}
+      .cover-order form{display:inline}
+      .cover-order-btn{width:28px;height:26px;border:1px solid var(--line,#e5e7eb);border-radius:6px;background:none;color:inherit;font:inherit;cursor:pointer}
+      .cover-order-btn:hover{border-color:#2563eb;color:#2563eb}
+      </style>
     </section>
 
     <section class="panel" id="avatar-pool">

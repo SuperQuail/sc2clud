@@ -451,7 +451,8 @@ async fn build_post_page<'a>(
                     .into_iter()
                     .map(|(section, hash, _mime)| (section, hash))
                     .collect();
-            PostSection::ALL
+            crate::routes::ordered_sections(state, user.as_ref())
+                .await
                 .iter()
                 .map(|s| SectionOption {
                     value: s.as_str().to_string(),

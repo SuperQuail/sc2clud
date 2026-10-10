@@ -189,6 +189,10 @@ pub fn pages() -> Router<AppState> {
             axum::routing::post(crate::pages_admin::set_trusted),
         )
         .route(
+            "/admin/sections/{section}/move",
+            axum::routing::post(crate::pages_admin::move_section),
+        )
+        .route(
             "/admin/sections/{section}/cover",
             axum::routing::post(crate::pages_admin::set_section_cover),
         )
@@ -630,7 +634,8 @@ async fn build_index<'a>(
                     .into_iter()
                     .map(|(section, hash, _mime)| (section, hash))
                     .collect();
-            PostSection::ALL
+            crate::routes::ordered_sections(state, None)
+                .await
                 .iter()
                 .map(|s| SectionOption {
                     value: s.as_str().to_string(),
@@ -731,6 +736,31 @@ pub async fn not_found(headers: HeaderMap) -> Response {
 // ------------------------------------------------------------ 帖子图片
 
 /// 认图片格式只看魔数，不信客户端声明的 Content-Type。
+/// 分区顺序以库里的 position 为准（后台可调）；库里缺的枚举值补在末尾，新分区不会因此消失。
+pub async fn ordered_sections(state: &AppState, user: Option<&CurrentUser>) -> Vec<PostSection> {
+    let stored: Vec<String> = repo::list_sections(state.db.pool(), false)
+        .await
+        .map(|rows| rows.into_iter().map(|row| row.key).collect())
+        .unwrap_or_default();
+    let mut ordered: Vec<PostSection> = Vec::new();
+    for key in stored {
+        if let Ok(section) = PostSection::parse(&key) {
+            if !ordered.contains(&section) {
+                ordered.push(section);
+            }
+        }
+    }
+    for section in PostSection::ALL {
+        if !ordered.contains(&section) {
+            ordered.push(section);
+        }
+    }
+    ordered
+        .into_iter()
+        .filter(|section| crate::session::allows_for(user, section.required_permission()))
+        .collect()
+}
+
 pub(crate) fn sniff_image_mime(head: &[u8]) -> Option<&'static str> {
     if head.starts_with(&[0x89, b'P', b'N', b'G']) {
         Some("image/png")
