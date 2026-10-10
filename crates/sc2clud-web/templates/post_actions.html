@@ -1,6 +1,6 @@
 {# 帖子右上角的「⋯」菜单：编辑与审核动作收进来，不再常驻页面。 #}
 {# ui_variant 只由预览/开发实例驱动（生产恒为 1），用来对比三种呈现。 #}
-{% if post.can_edit || is_staff %}
+{% if post.can_edit || is_staff || post.can_feature %}
 <div class="post-menu" data-menu>
   <button type="button" class="post-menu-btn" data-menu-toggle aria-haspopup="true" aria-expanded="false" aria-label="更多操作" title="更多操作">
     <svg viewBox="0 0 20 20" width="16" height="16" aria-hidden="true" fill="currentColor"><circle cx="10" cy="4" r="1.7"/><circle cx="10" cy="10" r="1.7"/><circle cx="10" cy="16" r="1.7"/></svg>
@@ -35,6 +35,7 @@
     {% endif %}
     </div>
     {% endif %}
+    {% if post.can_feature %}<p class="pa-group">推荐</p><form method="post" action="/p/{{ post.id }}/featured" data-feature-form data-feature-add-allowed="{{ post.can_add_feature }}"><input type="hidden" name="csrf" value="{{ csrf }}"><input type="hidden" name="featured" value="{% if post.is_featured %}0{% else %}1{% endif %}"><button class="pa-item" type="submit">{% if post.is_featured %}取消精华{% else %}设为精华{% endif %}</button><span class="form-note err" data-feature-note role="status" aria-live="polite"></span></form>{% endif %}
   </div>
 </div>
 {% endif %}

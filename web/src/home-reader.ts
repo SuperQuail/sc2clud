@@ -33,7 +33,7 @@ export function setupHomeReader() {
     request?.abort()
     const controller = new AbortController()
     request = controller
-    title.textContent = post.querySelector('h3')?.textContent ?? '帖子预览'
+    title.textContent = post.querySelector('h3 a')?.textContent ?? '帖子预览'
     meta.textContent = post.querySelector('.home-post-meta')?.textContent ?? ''
     category.textContent = post.querySelector('.forum-post-channel')?.textContent ?? ''
     body.textContent = post.querySelector('.home-post-excerpt')?.textContent ?? ''
@@ -65,6 +65,7 @@ export function setupHomeReader() {
       const page = new DOMParser().parseFromString(html, 'text/html')
       const fullBody = page.querySelector('.post-body')
       if (!fullBody) throw new Error('详情不可用')
+      category.textContent = (post.querySelector('.forum-post-channel')?.textContent ?? '') + (page.querySelector('[data-feature-badge]:not([hidden])') ? ' · 精华' : '')
       body.textContent = fullBody.textContent
       page.querySelectorAll<HTMLImageElement>('.gallery img').forEach((source) => {
         const imageUrl = readerUrl(source.getAttribute('src') ?? '', home, location.origin, 'image')

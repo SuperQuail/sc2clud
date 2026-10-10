@@ -14,7 +14,7 @@ pub struct IndexTemplate<'a> {
     pub search_query: String,
     pub active_section: String,
     pub is_search: bool,
-    pub popular: bool,
+    pub sort: String,
     pub show_discovery: bool,
     pub feed_title: String,
     pub featured: Option<FeedView>,
@@ -55,6 +55,7 @@ pub struct IndexTemplate<'a> {
 
 /// 首页帖子卡片。
 pub struct FeedView {
+    pub is_featured: bool,
     pub id: i64,
     /// 作者头像摘要（NULL = 首字母兜底）。
     pub avatar: Option<String>,
@@ -193,6 +194,7 @@ pub struct UploadQuery {
 
 #[derive(Debug, Serialize)]
 pub struct PostDto {
+    pub is_featured: bool,
     pub id: i64,
     pub title: String,
     pub body: String,
@@ -401,6 +403,9 @@ pub struct DonationChannelView {
 
 /// 帖子正文视图。
 pub struct PostDetailView {
+    pub is_featured: bool,
+    pub can_feature: bool,
+    pub can_add_feature: bool,
     pub id: i64,
     pub avatar: Option<String>,
     /// 作者的登录名（右栏「主页 / 私信」跳转用）。

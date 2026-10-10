@@ -527,7 +527,6 @@ async fn build_index<'a>(
         .take(100)
         .collect();
     let sort = repo::FeedSort::parse(query.sort.as_deref());
-    let popular = sort == repo::FeedSort::Recommended;
     let filter = repo::FeedFilter {
         section: section.map(PostSection::as_str),
         search: &search,
@@ -591,7 +590,7 @@ async fn build_index<'a>(
             .iter()
             .find(|p| p.review_state == "approved")
             .map(|p| feed_view(p, viewer_id)),
-        popular,
+        sort: sort.as_str().to_string(),
         page,
         previous_page: (page > 1).then(|| page_href(page - 1)),
         next_page: (page < last_page).then(|| page_href(page + 1)),
@@ -643,6 +642,7 @@ pub(crate) fn feed_view(row: &sc2clud_db::PostWithAuthorRow, viewer_id: Option<i
         .unwrap_or("普通用户");
     let section = PostSection::parse(&row.section).unwrap_or(PostSection::default_section());
     FeedView {
+        is_featured: row.featured_at.is_some(),
         id: row.id,
         avatar: row.author_avatar.clone(),
         title: row.title.clone(),
@@ -994,6 +994,7 @@ pub async fn list_posts(State(state): State<AppState>) -> AppResult<Json<Vec<Pos
         posts
             .into_iter()
             .map(|p| PostDto {
+                is_featured: p.featured_at.is_some(),
                 id: p.id,
                 title: p.title,
                 body: p.body,
@@ -1054,6 +1055,7 @@ pub async fn create_post(
     Ok((
         StatusCode::CREATED,
         Json(PostDto {
+            is_featured: false,
             id,
             title: title.to_string(),
             body: body.to_string(),

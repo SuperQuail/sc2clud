@@ -973,7 +973,7 @@ pub async fn list_feed(
                  ORDER BY pi.position, pi.id LIMIT 1) AS cover_hash, \
                 (SELECT COUNT(*) FROM comments c \
                  WHERE c.post_id = p.id AND c.deleted_at IS NULL) AS comment_count, \
-                p.archived_at AS archived_at, \
+                p.archived_at AS archived_at, p.featured_at, \
                 (SELECT COUNT(*) FROM post_likes pl WHERE pl.post_id = p.id) AS like_count, \
                 (SELECT COUNT(*) FROM post_bookmarks pb WHERE pb.post_id = p.id) AS bookmark_count \
          FROM posts p JOIN users u ON u.id = p.author_id \
@@ -1038,7 +1038,7 @@ pub async fn list_posts_by_author(
                  ORDER BY pi.position, pi.id LIMIT 1) AS cover_hash, \
                 (SELECT COUNT(*) FROM comments c \
                  WHERE c.post_id = p.id AND c.deleted_at IS NULL) AS comment_count, \
-                p.archived_at AS archived_at, \
+                p.archived_at AS archived_at, p.featured_at, \
                 (SELECT COUNT(*) FROM post_likes pl WHERE pl.post_id = p.id) AS like_count, \
                 (SELECT COUNT(*) FROM post_bookmarks pb WHERE pb.post_id = p.id) AS bookmark_count \
          FROM posts p JOIN users u ON u.id = p.author_id \
@@ -1689,7 +1689,7 @@ pub async fn list_pending_posts(pool: &SqlitePool, limit: i64) -> Result<Vec<Pos
                  ORDER BY pi.position, pi.id LIMIT 1) AS cover_hash, \
                 (SELECT COUNT(*) FROM comments c \
                  WHERE c.post_id = p.id AND c.deleted_at IS NULL) AS comment_count, \
-                p.archived_at AS archived_at, \
+                p.archived_at AS archived_at, p.featured_at, \
                 (SELECT COUNT(*) FROM post_likes pl WHERE pl.post_id = p.id) AS like_count, \
                 (SELECT COUNT(*) FROM post_bookmarks pb WHERE pb.post_id = p.id) AS bookmark_count \
          FROM posts p JOIN users u ON u.id = p.author_id \

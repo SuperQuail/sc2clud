@@ -44,6 +44,7 @@ pub struct SessionRow {
 /// 帖子 + 作者（feed 用一次 join 拿全，避免 N+1）。
 #[derive(Debug, Clone, FromRow)]
 pub struct PostWithAuthorRow {
+    pub featured_at: Option<i64>,
     pub id: i64,
     pub title: String,
     pub body: String,
@@ -451,6 +452,7 @@ pub struct FileWithOwnerRow {
 
 #[derive(Debug, Clone, FromRow)]
 pub struct PostRow {
+    pub featured_at: Option<i64>,
     /// 归档时间（NULL = 未归档）。`SELECT *` 会带上这一列。
     pub archived_at: Option<i64>,
     pub id: i64,

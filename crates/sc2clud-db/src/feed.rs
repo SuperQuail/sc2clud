@@ -61,7 +61,7 @@ const SELECT: &str = r#"SELECT p.id, p.title, p.body, p.kind, p.section, p.revie
                 u.role AS author_role,
                 (SELECT COALESCE(pi.display_hash, pi.original_hash)
                  FROM post_images pi WHERE pi.post_id=p.id AND pi.state <> 'failed' ORDER BY pi.position, pi.id LIMIT 1) AS cover_hash,
-COALESCE(c.comment_count,0) AS comment_count, p.archived_at,
+COALESCE(c.comment_count,0) AS comment_count, p.archived_at, p.featured_at,
 COALESCE(l.like_count,0) AS like_count,
 (SELECT COUNT(*) FROM post_bookmarks pb WHERE pb.post_id=p.id) AS bookmark_count
 FROM posts p JOIN users u ON u.id=p.author_id"#;

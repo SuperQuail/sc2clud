@@ -270,3 +270,5 @@
 .cover-select { border: 0; background: transparent; color: var(--blue); font: inherit; font-size: 12px; padding: 5px 0 5px 10px; cursor: pointer; }
 .cover-select:hover { text-decoration: underline; text-underline-offset: 3px; }
 .cover-body > .cover-badge:not([hidden]) { display: inline-block; margin-top: 10px; }
+
+[data-feature-badge][hidden] { display: none; }

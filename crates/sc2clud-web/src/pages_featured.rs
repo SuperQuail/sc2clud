@@ -173,6 +173,115 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn feed_sort_and_pagination_preserve_escaped_filters() {
+        let state = setup().await;
+        let (author, _, _) = user(&state, "paging", "member", true).await;
+        for _ in 0..13 {
+            repo::create_post_reviewed(
+                state.db.pool(),
+                repo::NewPost {
+                    author_id: author,
+                    kind: "discussion",
+                    section: "custom_campaign",
+                    title: "A&B + 中文",
+                    body: "正文",
+                    image_count: 0,
+                    review_state: "approved",
+                    review_note: None,
+                    now: now_unix(),
+                },
+            )
+            .await
+            .unwrap();
+        }
+        let response = router(state.clone())
+            .oneshot(
+                Request::get(
+                    "/?section=custom_campaign&q=A%26B+%2B+%E4%B8%AD%E6%96%87&sort=active",
+                )
+                .body(Body::empty())
+                .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+        let html = String::from_utf8(
+            to_bytes(response.into_body(), 1_000_000)
+                .await
+                .unwrap()
+                .to_vec(),
+        )
+        .unwrap();
+        assert!(html.contains("value=\"active\" selected"));
+        assert!(html.contains("q=A%26B+%2B+%E4%B8%AD%E6%96%87"));
+        assert!(
+            html.contains("sort=active&#38;page=2#home-feed"),
+            "{}",
+            html
+        );
+        assert!(html.contains("name=\"section\" value=\"custom_campaign\""));
+        assert!(html.contains("action=\"/#home-feed\""));
+    }
+
+    #[tokio::test]
+    async fn featured_page_shares_scoped_authority_and_state() {
+        let state = setup().await;
+        let (author, cookie, _) = user(&state, "page_author", "member", true).await;
+        let (admin, admin_cookie, _) = user(&state, "page_admin", "admin", true).await;
+        let id = post(&state, admin, "custom_campaign", "approved").await;
+        async fn html(state: &AppState, id: i64, cookie: &str) -> String {
+            let response = router(state.clone())
+                .oneshot(
+                    Request::get(format!("/p/{id}"))
+                        .header("cookie", cookie)
+                        .body(Body::empty())
+                        .unwrap(),
+                )
+                .await
+                .unwrap();
+            assert_eq!(response.status(), StatusCode::OK);
+            String::from_utf8(
+                to_bytes(response.into_body(), 1_000_000)
+                    .await
+                    .unwrap()
+                    .to_vec(),
+            )
+            .unwrap()
+        }
+        assert!(
+            !html(&state, id, &cookie)
+                .await
+                .contains("data-feature-form")
+        );
+        repo::add_section_moderator(state.db.pool(), "custom_campaign", author, None, now_unix())
+            .await
+            .unwrap();
+        let own = html(&state, id, &cookie).await;
+        assert!(own.contains("data-feature-form"));
+        assert!(own.contains("设为精华"));
+        assert!(!own.contains("通过审核"));
+        assert!(!own.contains("编辑帖子"));
+        repo::set_post_featured(state.db.pool(), id, true, Some(admin), now_unix())
+            .await
+            .unwrap();
+        let featured = html(&state, id, &admin_cookie).await;
+        assert!(featured.contains("取消精华"));
+        assert!(featured.contains("data-feature-badge"));
+        repo::set_post_archived(state.db.pool(), id, true, now_unix())
+            .await
+            .unwrap();
+        assert!(html(&state, id, &cookie).await.contains("取消精华"));
+        repo::set_post_featured(state.db.pool(), id, false, Some(author), now_unix())
+            .await
+            .unwrap();
+        assert!(
+            !html(&state, id, &cookie)
+                .await
+                .contains("data-feature-form")
+        );
+    }
+
+    #[tokio::test]
     async fn featured_endpoint_scopes_authority_and_rechecks_revocation() {
         let state = setup().await;
         let (id, cookie, csrf) = user(&state, "moderator", "member", true).await;

@@ -236,3 +236,113 @@ async fn active_ignores_edits_and_deleted_interactions_and_count_matches_pages()
             .is_empty()
     );
 }
+
+#[tokio::test]
+async fn featured_fractional_boundary_and_issues_do_not_score() {
+    let db = Db::in_memory().await.unwrap();
+    db.migrate().await.unwrap();
+    let author = repo::create_user(db.pool(), "fraction", None, "h", 0, 1)
+        .await
+        .unwrap();
+    let mut ids = Vec::new();
+    // 21.2 必须超过较新的 21；20 与普通 20 按发布时间打破并列。
+    for (title, likes, featured, time) in [
+        ("D", 0, true, 1),
+        ("E", 1, true, 2),
+        ("F", 21, false, 3),
+        ("G", 20, false, 4),
+    ] {
+        let id = repo::create_post(db.pool(), author, title, "正文", time)
+            .await
+            .unwrap();
+        ids.push(id);
+        for i in 0..likes {
+            let voter =
+                repo::create_user(db.pool(), &format!("fraction{title}{i}"), None, "h", 0, 1)
+                    .await
+                    .unwrap();
+            sqlx::query("INSERT INTO post_likes VALUES (?, ?, 1)")
+                .bind(id)
+                .bind(voter)
+                .execute(db.pool())
+                .await
+                .unwrap();
+        }
+        if featured {
+            repo::set_post_featured(db.pool(), id, true, Some(author), 5)
+                .await
+                .unwrap();
+        }
+    }
+    let filter = repo::FeedFilter {
+        section: None,
+        search: "",
+        sort: repo::FeedSort::Recommended,
+    };
+    let expected = vec![ids[1], ids[2], ids[3], ids[0]];
+    for stage in 0..3 {
+        let rows = repo::list_feed_filtered(db.pool(), None, false, &filter, 20, 0)
+            .await
+            .unwrap();
+        assert_eq!(rows.iter().map(|r| r.id).collect::<Vec<_>>(), expected);
+        assert_eq!(rows[0].featured_at, Some(5));
+        if stage == 0 {
+            sqlx::query("INSERT INTO post_issues(post_id,author_id,title,created_at,updated_at) VALUES (?,?,'问题',100,100)").bind(ids[0]).bind(author).execute(db.pool()).await.unwrap();
+        } else if stage == 1 {
+            sqlx::query("INSERT INTO issue_comments(issue_id,author_id,body,created_at) VALUES ((SELECT id FROM post_issues LIMIT 1),?,'回复',200)").bind(author).execute(db.pool()).await.unwrap();
+        }
+    }
+    assert_eq!(
+        repo::get_post_for(db.pool(), ids[0], None, false)
+            .await
+            .unwrap()
+            .unwrap()
+            .featured_at,
+        Some(5)
+    );
+    assert!(
+        repo::list_posts(db.pool(), 20, 0)
+            .await
+            .unwrap()
+            .iter()
+            .any(|r| r.featured_at == Some(5))
+    );
+    assert!(
+        repo::list_posts_by_author(db.pool(), author, false, 20)
+            .await
+            .unwrap()
+            .iter()
+            .any(|r| r.featured_at == Some(5))
+    );
+}
+
+#[tokio::test]
+async fn pending_and_legacy_feed_read_featured_column() {
+    let db = Db::in_memory().await.unwrap();
+    db.migrate().await.unwrap();
+    let author = repo::create_user(db.pool(), "legacy", None, "h", 0, 1)
+        .await
+        .unwrap();
+    let id = repo::create_post(db.pool(), author, "旧列表", "正文", 1)
+        .await
+        .unwrap();
+    repo::set_post_featured(db.pool(), id, true, Some(author), 5)
+        .await
+        .unwrap();
+    assert_eq!(
+        repo::list_feed(db.pool(), None, false, 20, 0)
+            .await
+            .unwrap()[0]
+            .featured_at,
+        Some(5)
+    );
+    sqlx::query("UPDATE posts SET review_state='pending' WHERE id=?")
+        .bind(id)
+        .execute(db.pool())
+        .await
+        .unwrap();
+    assert_eq!(
+        repo::list_pending_posts(db.pool(), 20).await.unwrap()[0].featured_at,
+        Some(5)
+    );
+}

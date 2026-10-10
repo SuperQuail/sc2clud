@@ -223,6 +223,14 @@ async fn build_post_page<'a>(
     let row = repo::get_post_for(state.db.pool(), id, viewer_id, is_staff)
         .await?
         .ok_or_else(|| AppError::not_found("帖子不存在或不可见"))?;
+    let can_add_feature = row.review_state == "approved"
+        && row.archived_at.is_none()
+        && repo::get_section(state.db.pool(), &row.section)
+            .await?
+            .is_some_and(|s| !s.archived);
+    let can_feature = crate::pages_featured::can_feature_post(state, user.as_ref(), &row.section)
+        .await?
+        && (row.featured_at.is_some() || can_add_feature);
     let author = repo::find_user_by_id_any(state.db.pool(), row.author_id).await?;
     // 对外展示一律用显示名；空值兜底为登录名（存量数据已在迁移里回填）。
     let author_handle = author
@@ -357,6 +365,9 @@ async fn build_post_page<'a>(
         sources,
         show_sources,
         post: PostDetailView {
+            is_featured: row.featured_at.is_some(),
+            can_feature,
+            can_add_feature,
             id: row.id,
             avatar: author.as_ref().and_then(|u| u.avatar_hash.clone()),
             title: row.title.clone(),

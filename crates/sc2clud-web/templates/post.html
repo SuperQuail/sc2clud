@@ -35,7 +35,7 @@
     <span class="kind kind-{{ post.kind }}">{{ post.kind_label }}</span>
     {% if post.state != "approved" %}<span class="kind state-{{ post.state }}">{{ post.state_label }}</span>{% endif %}
   </div>
-  <h1 class="site-post-title">{{ post.title }}</h1>
+  <h1 class="site-post-title">{{ post.title }}</h1><span class="tag" data-feature-badge {% if !post.is_featured %}hidden{% endif %}>精华</span>
   <div class="meta byline">
     {% if let Some(avatar) = post.avatar %}
     <img class="avatar" src="/avatar/{{ avatar }}" alt="" width="24" height="24">
@@ -216,6 +216,7 @@
 {% endblock %}
 
 {% block scripts %}
+{% if post.can_feature %}<script type="module" src="/static/islands/post-feature.js"></script>{% endif %}
 <script>
   // 配图上传：作者与管理员可以随时补图（整份文件当请求体，服务端按魔数认类型）
   (function () {
