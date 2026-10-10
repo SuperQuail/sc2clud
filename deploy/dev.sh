@@ -36,8 +36,15 @@ log "同步静态资源到测试前缀"
 DEV_STATIC="$DEV_PREFIX/static"
 rm -rf "$DEV_STATIC"
 cp -a "$REPO/crates/sc2clud-web/static" "$DEV_STATIC"
-# 前端岛不在 git 里（服务器没有 Node），从生产那份**只读**拷过来
-if [ -d "$PREFIX/static/islands" ]; then
+# 前端岛不在 git 里，服务器也没 Node：
+#   1) 优先用开发者本地上传的产物（/srv/sc2clud-dev/islands-upload，见 deploy/islands-push.ps1）；
+#   2) 没有才退回生产那份（只读拷贝）。dev 永远有自己的优先来源，不去改生产目录。
+DEV_UPLOAD="$DEV_PREFIX/islands-upload"
+if [ -d "$DEV_UPLOAD" ] && [ -n "$(ls -A "$DEV_UPLOAD" 2>/dev/null)" ]; then
+  log "使用本地上传的前端岛产物（$DEV_UPLOAD）"
+  cp -a "$DEV_UPLOAD/." "$DEV_STATIC/islands/"
+elif [ -d "$PREFIX/static/islands" ]; then
+  log "本地上传目录为空，退回生产那份前端岛（只读）"
   cp -a "$PREFIX/static/islands" "$DEV_STATIC/islands"
 fi
 
