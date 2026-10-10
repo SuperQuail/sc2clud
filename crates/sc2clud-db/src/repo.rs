@@ -2479,7 +2479,7 @@ pub async fn list_section_moderators(
     Ok(rows)
 }
 
-/// 指定分区管理员（当前不附带额外权限，位置先留出来）。
+/// 指定分区管理员（仅获得任职分区的精华管理能力）。
 pub async fn add_section_moderator(
     pool: &SqlitePool,
     section: &str,
@@ -2965,30 +2965,8 @@ pub async fn set_post_pinned(
     Ok(affected == 1)
 }
 
-/// 精华：标记 / 取消。
-pub async fn set_post_featured(
-    pool: &SqlitePool,
-    post_id: i64,
-    featured: bool,
-    by: Option<i64>,
-    now: i64,
-) -> Result<bool> {
-    let affected = query(
-        "UPDATE posts SET featured_at = CASE WHEN ? = 1 THEN ? ELSE NULL END, \
-                featured_by = CASE WHEN ? = 1 THEN ? ELSE NULL END \
-         WHERE id = ? AND deleted_at IS NULL",
-    )
-    .bind(i64::from(featured))
-    .bind(now)
-    .bind(i64::from(featured))
-    .bind(by)
-    .bind(post_id)
-    .execute(pool)
-    .await
-    .map_err(db_err)?
-    .rows_affected();
-    Ok(affected == 1)
-}
+// 兼容既有调用入口；精华原子操作独立维护。
+pub use crate::post_features::set_post_featured;
 
 /// 记一次「推送」（发系统通知的动作由 Web 层做，这里只落时间戳）。
 pub async fn mark_post_pushed(pool: &SqlitePool, post_id: i64, now: i64) -> Result<bool> {

@@ -30,7 +30,7 @@
 2. **分区门槛**（`sections.post_min_role` / `reply_min_role`）：发帖与回帖**分开**判定；归档分区（`archived_at`）不接受新内容，且其内容不再出现在列表/搜索/精华里（取回分区即恢复）。
 3. **用户组规则**（`group_section_rules`）：`deny_post/deny_reply`（**明确禁止，优先于角色门槛与其它组的允许**）与 `can_post/can_reply`（白名单加成）。判定入口：`repo::section_capabilities`。
 
-另外：**分区管理员**（`section_moderators`）当前**不附带任何权限**（与普通用户一样），只为将来「本分区可删帖/可审核」预留。
+另外：**分区管理员**（`section_moderators`）仅获得**任职分区的精华管理权限**，不因此获得审核、编辑他人帖子、归档等权限，也不提升全站角色。作者身份不授予精华权限。
 
 ## 三、权限位表（改权限看这张表）
 
@@ -40,6 +40,7 @@
 | `CreateDiscussion` / `CreateRepost` / `CreateResource` | 普通用户 | 发讨论贴 / 转载贴 / 资源贴（产品决定：不设发布门槛） |
 | `Comment` | 普通用户 | 回复、私信、拉黑、提 issue |
 | `SetAvatar` | 普通用户 | 换自己的头像 |
+| `FeaturePost` | 普通用户（仅入门门槛，要求激活） | 精华管理；最终还须网站管理员及以上，或当前分区任职 |
 | `SetPaymentChannel` | **认证开发者** | 上传自己的收款码（财产相关，单独一个位） |
 | `ReviewPost` | **网站管理员** | 人工审核：通过 / 打回 / 拒绝 / 归档 |
 | `UseNetdisk` | 网站管理员 | 网盘（施工中，定稿后下调） |
@@ -58,6 +59,7 @@
 | 换自己的头像 | ❌ | ✅ | ✅ | ✅ | ✅ |
 | 上传自己的收款码 | ❌ | ❌ | ✅ | ✅ | ✅ |
 | 人工审核帖子 | ❌ | ❌ | ❌ | ✅ | ✅ |
+| 管理精华（要求激活） | ❌ | 仅任职分区 | 仅任职分区 | 全部分区 | 全部分区 |
 | 网盘 | ❌ | ❌ | ❌ | ✅ | ✅ |
 | 用户管理 / 分区管理 / 分区管理员 / 调试页 | ❌ | ❌ | ❌ | ✅ | ✅ |
 | 域名管理 / 横幅 / 系统公告 | ❌ | ❌ | ❌ | ❌ | ✅ |
@@ -68,6 +70,7 @@
 | 动作 | 谁可以 |
 | --- | --- |
 | 编辑帖子内容 | 作者本人 或 管理员及以上 |
+| 添加 / 取消精华 | 已激活的本分区管理员 或 网站管理员及以上；以帖子真实分区判定。添加只允许已通过审核、未删除、未归档且分区未归档的帖子；取消允许已归档的现存帖子。不可借此访问他人的待审或被拒内容 |
 | 编辑后是否重新审核 | **会**。审核机放行 → 直接生效；否则存为「待审修改」：通过前对外仍是**原帖**，作者侧看到「修改内容审核中」 |
 | 管理配图（排序 / 删除） | 作者本人 或 管理员及以上 |
 | 改资源帖状态（持续更新/接受 bug 修复/停止维护） | 作者本人 或 管理员及以上 |
@@ -85,4 +88,6 @@
 - 判定唯一入口：`core::auth::allows(role, activated, permission)`；Web 层用 `session::guard`（写操作）与 `session::allows_for`（界面过滤）。
 - **界面过滤不是授权**：任何写操作都必须再走一次 `guard`。
 - 分区级判定用 `repo::section_capabilities`（一次给出 `can_post` / `can_reply` / `is_moderator`），不要自己拼。
+- 精华最终判定唯一入口：`core::auth::allows_feature_post(role, activated, is_section_moderator)`；Web 页面与提交共用 `pages_featured::can_feature_post`，任职从 `section_capabilities` 查询，每次提交重新校验。
+- `POST /p/{id}/featured` 接收 CSRF 与严格的 `featured=0/1`；显式目标状态使重复请求幂等。实际变化在同一事务记录 `post.featured.set` / `post.featured.clear` 审计；重复提交不覆盖原操作者及时间，不重复审计。
 - 新增权限位：`Permission` 加一个变体 → `min_role()` 给门槛 → 更新 `permission_tests` → 更新本文档。

@@ -61,6 +61,8 @@ impl Role {
 pub enum Permission {
     /// 浏览帖子与文件（游客即可）。
     ViewContent,
+    /// 精华管理的入门门槛；最终权限须走 allows_feature_post。
+    FeaturePost,
     /// 发普通讨论贴。
     CreateDiscussion,
     /// 发资源贴（认证开发者及以上）。
@@ -98,6 +100,7 @@ impl Permission {
         match self {
             Permission::ViewContent => None,
             Permission::CreateDiscussion
+            | Permission::FeaturePost
             | Permission::CreateRepost
             | Permission::Comment
             | Permission::SetAvatar => Some(Role::Member),
@@ -138,6 +141,16 @@ pub fn allows(role: Option<Role>, activated: bool, permission: Permission) -> bo
 }
 
 // ---------------------------------------------------------------- 密码
+
+/// 精华管理的最终权限：已激活的全站管理员或当前分区管理员。
+pub fn allows_feature_post(
+    role: Option<Role>,
+    activated: bool,
+    is_section_moderator: bool,
+) -> bool {
+    allows(role, activated, Permission::FeaturePost)
+        && (role.is_some_and(|role| role >= Role::Admin) || is_section_moderator)
+}
 
 use argon2::Argon2;
 use argon2::password_hash::{PasswordHash, PasswordHasher, PasswordVerifier, SaltString};
@@ -284,10 +297,27 @@ mod permission_tests {
     use super::*;
 
     #[test]
+    fn featured_requires_activation_and_scoped_authority() {
+        assert_eq!(Permission::FeaturePost.min_role(), Some(Role::Member));
+        for role in Role::ALL {
+            assert!(allows_feature_post(Some(role), true, true));
+            assert_eq!(
+                allows_feature_post(Some(role), true, false),
+                role >= Role::Admin
+            );
+            assert!(!allows_feature_post(Some(role), false, true));
+        }
+        assert!(!allows_feature_post(None, true, true));
+        assert!(!allows_feature_post(None, false, false));
+        assert!(!allows(Some(Role::Member), true, Permission::ReviewPost));
+    }
+
+    #[test]
     fn permission_tree_matches_the_documented_matrix() {
         // 这份期望值就是 docs/PERMISSIONS.md 的表格；改权限必须同时改这里与文档。
-        let expected: [(Permission, Option<Role>); 12] = [
+        let expected: [(Permission, Option<Role>); 13] = [
             (Permission::ViewContent, None),
+            (Permission::FeaturePost, Some(Role::Member)),
             (Permission::CreateDiscussion, Some(Role::Member)),
             (Permission::CreateResource, Some(Role::Member)),
             (Permission::CreateRepost, Some(Role::Member)),

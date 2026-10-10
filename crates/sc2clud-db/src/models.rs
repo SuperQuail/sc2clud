@@ -84,7 +84,7 @@ pub struct SectionRow {
     pub reply_min_role: String,
 }
 
-/// 分区管理员（当前不给额外权限，先把人记下来）。
+/// 分区管理员（仅获得任职分区的精华管理能力）。
 #[derive(Debug, Clone, FromRow)]
 pub struct SectionModeratorRow {
     pub user_id: i64,

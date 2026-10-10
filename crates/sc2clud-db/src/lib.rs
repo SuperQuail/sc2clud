@@ -17,6 +17,7 @@ use sqlx::SqlitePool;
 use sqlx::sqlite::{SqliteConnectOptions, SqliteJournalMode, SqlitePoolOptions, SqliteSynchronous};
 
 pub mod models;
+pub mod post_features;
 pub mod repo;
 
 pub use models::{

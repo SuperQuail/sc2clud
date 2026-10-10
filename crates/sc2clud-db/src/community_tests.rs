@@ -452,6 +452,122 @@ async fn posts_can_be_pinned_featured_and_searched() {
 }
 
 #[tokio::test]
+async fn featured_changes_are_idempotent_and_audited_atomically() {
+    let db = db().await;
+    let author = make_user(&db, "feature_author").await;
+    let other = make_user(&db, "feature_other").await;
+    let post = make_post(&db, author, "custom_campaign", "精华", "正文").await;
+    assert!(
+        repo::set_post_featured(db.pool(), post, true, Some(author), 100)
+            .await
+            .unwrap()
+    );
+    assert!(
+        !repo::set_post_featured(db.pool(), post, true, Some(other), 200)
+            .await
+            .unwrap()
+    );
+    let stored: (Option<i64>, Option<i64>) =
+        sqlx::query_as("SELECT featured_at, featured_by FROM posts WHERE id = ?")
+            .bind(post)
+            .fetch_one(db.pool())
+            .await
+            .unwrap();
+    assert_eq!(stored, (Some(100), Some(author)));
+    let audit = repo::recent_audit(db.pool(), 10).await.unwrap();
+    assert_eq!(audit.len(), 1);
+    assert_eq!(audit[0].action, "post.featured.set");
+    assert_eq!(audit[0].actor_id, Some(author));
+    assert_eq!(audit[0].target, Some(format!("post:{post}")));
+    assert!(
+        repo::set_post_featured(db.pool(), post, false, Some(other), 300)
+            .await
+            .unwrap()
+    );
+    assert!(
+        !repo::set_post_featured(db.pool(), post, false, Some(other), 400)
+            .await
+            .unwrap()
+    );
+    assert!(
+        repo::set_post_featured(db.pool(), post, true, Some(other), 500)
+            .await
+            .unwrap()
+    );
+    assert_eq!(repo::recent_audit(db.pool(), 10).await.unwrap().len(), 3);
+    sqlx::query("CREATE TRIGGER reject_feature_audit BEFORE INSERT ON audit_log BEGIN SELECT RAISE(ABORT, '拒绝审计'); END")
+        .execute(db.pool()).await.unwrap();
+    assert!(
+        repo::set_post_featured(db.pool(), post, false, Some(author), 600)
+            .await
+            .is_err()
+    );
+    let stored: (Option<i64>, Option<i64>) =
+        sqlx::query_as("SELECT featured_at, featured_by FROM posts WHERE id = ?")
+            .bind(post)
+            .fetch_one(db.pool())
+            .await
+            .unwrap();
+    assert_eq!(stored, (Some(500), Some(other)));
+}
+
+#[tokio::test]
+async fn featured_addition_requires_live_approved_post_and_section() {
+    let db = db().await;
+    let author = make_user(&db, "feature_live").await;
+    let post = make_post(&db, author, "custom_campaign", "精华边界", "正文").await;
+    for clause in [
+        "review_state = 'pending'",
+        "review_state = 'rejected'",
+        "review_state = 'approved', archived_at = 10",
+    ] {
+        sqlx::query(&format!("UPDATE posts SET {clause} WHERE id = ?"))
+            .bind(post)
+            .execute(db.pool())
+            .await
+            .unwrap();
+        assert!(
+            repo::set_post_featured(db.pool(), post, true, Some(author), 100)
+                .await
+                .is_err()
+        );
+    }
+    sqlx::query("UPDATE posts SET archived_at = NULL WHERE id = ?")
+        .bind(post)
+        .execute(db.pool())
+        .await
+        .unwrap();
+    assert!(
+        repo::set_post_featured(db.pool(), post, true, Some(author), 100)
+            .await
+            .unwrap()
+    );
+    repo::set_section_archived(db.pool(), "custom_campaign", true, 101)
+        .await
+        .unwrap();
+    assert!(
+        repo::set_post_featured(db.pool(), post, false, Some(author), 102)
+            .await
+            .unwrap()
+    );
+    assert!(
+        repo::set_post_featured(db.pool(), post, true, Some(author), 103)
+            .await
+            .is_err()
+    );
+    sqlx::query("UPDATE posts SET deleted_at = 110 WHERE id = ?")
+        .bind(post)
+        .execute(db.pool())
+        .await
+        .unwrap();
+    assert!(
+        !repo::set_post_featured(db.pool(), post, false, Some(author), 111)
+            .await
+            .unwrap()
+    );
+}
+
+#[tokio::test]
 async fn banners_respect_dismissal_window_and_activation() {
     let db = db().await;
     let now = now_unix();

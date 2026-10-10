@@ -92,6 +92,10 @@ cargo run -p sc2clud -- check                     # 配置与依赖自检
    不要为了「方便」引入整站 SPA、CSS-in-JS 或整套 UI 组件库。
 6.5 **权限树以 `docs/PERMISSIONS.md` 为准**（角色 × 权限位 × 分区门槛 × 用户组规则 × 资源级规则）。
    改权限必须同时改三处：`core::auth::min_role()`、`permission_tests`、那份文档。
+   精华管理要求登录且已激活：仅本分区管理员与网站管理员及以上可操作，作者身份不授予权限。
+   最终判定走 `core::auth::allows_feature_post`；页面与提交共用 `pages_featured::can_feature_post`，任职只从真实帖子分区的 `section_capabilities` 取得。
+   添加精华仅限已通过审核、未删除、未归档且分区未归档的帖子；取消允许已归档的现存帖，并保留既有可见性。
+   分区任职不扩张审核、编辑他人、归档权限；精华状态条件更新与审计必须在同一事务，重复目标不得覆盖时间或操作者。
 
 7. **发帖权限与可见性**（`core::review`，改动请同步 `AGENTS.md` 与测试）：
    - 讨论 / 资源 / 转载三类帖子对**所有已激活用户**开放，不设发布门槛；

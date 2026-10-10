@@ -311,7 +311,7 @@ pub fn resolve_section_action(role_allowed: bool, verdicts: &[RuleVerdict]) -> b
 pub struct SectionCapabilities {
     pub can_post: bool,
     pub can_reply: bool,
-    /// 是否被指派为分区管理员（当前不附带额外权限，供之后扩展）。
+    /// 是否被指派为分区管理员（精华管理的资源级授权依据）。
     pub is_moderator: bool,
 }
 

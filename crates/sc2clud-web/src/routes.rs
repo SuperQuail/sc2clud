@@ -204,6 +204,7 @@ pub fn pages() -> Router<AppState> {
             axum::routing::post(crate::pages_admin::toggle_activation_policy),
         )
         .route("/p/{id}", axum::routing::get(crate::pages_posts::post_page))
+        .route("/p/{id}/featured", axum::routing::post(crate::pages_featured::set_featured))
         .route(
             "/p/{id}/images/{image_id}/delete",
             axum::routing::post(crate::pages_posts::post_image_delete),
