@@ -9,6 +9,8 @@ cp "$ROOT/deploy/"*.sh "$T/repo/deploy/"
 printf 'source\n' > "$T/repo/web/src/post-feature.ts"
 git -C "$T/repo" init -q
 git -C "$T/repo" config core.autocrlf false
+mkdir -p "$T/repo/web/public"
+printf 'asset\n' > "$T/repo/web/public/old asset.txt"
 git -C "$T/repo" add web
 for entry in uploader avatar admin home auth post-images account theme post-feature; do printf 'new-%s\n' "$entry" > "$T/repo/crates/sc2clud-web/static/islands/$entry.js"; done
 printf '#!/bin/sh\n#new-binary\n' > "$T/repo/target/release/sc2clud"
@@ -34,13 +36,19 @@ if run_dev; then echo 'FAIL: 缺产物证明仍然发布'; exit 1; fi
 unchanged
 echo 'PASS: 缺产物不替换、不重启'
 ISLANDS="$T/repo/crates/sc2clud-web/static/islands"
-(cd "$T/repo"; git hash-object $(git ls-files web) | sha256sum | cut -d ' ' -f1) > "$ISLANDS/SOURCE.sha256"
-(cd "$ISLANDS"; sha256sum *.js SOURCE.sha256 > SHA256SUMS)
+mkdir -p "$T/repo/scripts"
+cp "$ROOT/scripts/islands-manifest.mjs" "$T/repo/scripts/"
+node "$T/repo/scripts/islands-manifest.mjs"
 printf 'changed\n' >> "$T/repo/web/src/post-feature.ts"
 if run_dev; then echo 'FAIL: 来源版本不符仍然发布'; exit 1; fi
 unchanged
 echo 'PASS: 来源不符不替换、不重启'
 printf 'source\n' > "$T/repo/web/src/post-feature.ts"
+git -C "$T/repo" mv "web/public/old asset.txt" "web/public/new asset.txt"
+if run_dev; then echo 'FAIL: 同内容重命名后旧产物仍然发布'; exit 1; fi
+unchanged
+git -C "$T/repo" mv "web/public/new asset.txt" "web/public/old asset.txt"
+echo 'PASS: 同内容重命名拒绝旧产物、不替换、不重启'
 printf 'stale\n' > "$ISLANDS/stale.js"
 if run_dev; then echo 'FAIL: 清单外旧 JS 仍然发布'; exit 1; fi
 unchanged
@@ -70,9 +78,34 @@ grep -q new-binary "$T/prod/sc2clud"
 backup=$(find "$T/prod/releases" -mindepth 1 -maxdepth 1 -type d | head -1)
 grep -q old-binary "$backup/sc2clud"
 test "$(cat "$backup/static/islands/old.js")" = old-js
-cp "$backup/sc2clud" "$T/prod/sc2clud"
-rm -rf "$T/prod/static"
-cp -a "$backup/static" "$T/prod/static"
+restore() {
+  cp "$backup/sc2clud" "$T/prod/sc2clud"
+  rm -rf "$T/prod/static"
+  cp -a "$backup/static" "$T/prod/static"
+  if [ -f "$backup/SHA256SUMS" ]; then
+    cp "$backup/SHA256SUMS" "$T/prod/SHA256SUMS"
+  else
+    rm -f "$T/prod/SHA256SUMS"
+  fi
+}
+restore
 grep -q old-binary "$T/prod/sc2clud"
 test -f "$T/prod/static/islands/old.js"
+if [ -e "$T/prod/SHA256SUMS" ]; then echo 'FAIL: 无清单旧备份回滚后遗留新清单'; exit 1; fi
 echo 'PASS: promote 使用 DEV，预检拒绝损坏，旧整套可恢复'
+
+# 已有完整清单的生产版本，下一轮发布后应连同旧清单恢复。
+bash "$T/repo/deploy/promote.sh" > "$T/output" 2>&1
+cp "$T/prod/SHA256SUMS" "$T/previous-sums"
+printf 'next-static\n' > "$T/dev/static/extra.txt"
+source "$ROOT/deploy/artifacts.sh"
+seal_release "$T/dev"
+bash "$T/repo/deploy/promote.sh" > "$T/output" 2>&1
+backup=$(find "$T/prod/releases" -mindepth 1 -maxdepth 1 -type d | while IFS= read -r candidate; do
+  if [ -f "$candidate/SHA256SUMS" ]; then printf '%s\n' "$candidate"; fi
+done)
+restore
+cmp "$T/previous-sums" "$T/prod/SHA256SUMS"
+test ! -e "$T/prod/static/extra.txt"
+verify_release "$T/prod"
+echo 'PASS: 有清单旧备份回滚恢复旧清单并通过整套校验'

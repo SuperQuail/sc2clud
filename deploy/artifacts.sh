@@ -18,8 +18,12 @@ verify_islands() {
     <(sed -E 's/^[a-f0-9]{64} [ *]//' SHA256SUMS | LC_ALL=C sort))
 }
 verify_source() {
-  local repo=$1 dir=$2 actual
-  actual=$(cd "$repo"; git ls-files -z web | xargs -0 git hash-object | sha256sum | cut -d ' ' -f1)
+  local repo=$1 dir=$2 actual path hash
+  actual=$(cd "$repo"; git ls-files -z web | LC_ALL=C sort -z |
+    while IFS= read -r -d '' path; do
+      hash=$(git hash-object -- "$path") || exit
+      printf '%s\0%s\0' "$path" "${hash%$'\r'}"
+    done | sha256sum | cut -d ' ' -f1)
   test "$actual" = "$(cat "$dir/SOURCE.sha256")"
 }
 seal_release() {

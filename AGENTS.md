@@ -195,7 +195,7 @@ bash deploy/promote.sh
 - **不要在生产的 `/` 上做任何交互式测试或写入**（包括自动化点击、造数据）。
 - `/dev/` 上的路径前缀由 nginx 的 `sub_filter` 处理，应用代码里**不要**写 `/dev`。
 - 生产数据快照进测试库是**只读**操作；反向绝不允许。
-- 出问题的回滚：从生产 `releases/<时间.随机后缀>/` 恢复 `sc2clud`、完整 `static/` 与存在时的 `SHA256SUMS` 后再重启；不得只回退二进制。
+- 出问题的回滚：从生产 `releases/<时间.随机后缀>/` 恢复 `sc2clud`、完整 `static/` 与存在时的 `SHA256SUMS`（若旧备份没有清单，删除当前生产 `SHA256SUMS`）后再重启；不得只回退二进制。
 
 ### 前端预览规矩（强制）
 
@@ -247,7 +247,7 @@ SC2CLUD_SSH_KEY=<私钥路径> node scripts/preview.mjs --server root@<dev 机> 
 ### 前端产物交付与版本校验
 
 - 本机先执行 `pnpm -C web typecheck`、`pnpm -C web build` 和 Rust 门禁；真实预览通过后，经 ssh-skill 将完整 `crates/sc2clud-web/static/islands/` 上传到服务器仓库同路径（替换整个目录，避免遗留旧文件）。服务器没有 Node，不在服务器构建前端；不要执行 `push-islands.ps1` 或 `preview.mjs` 的 raw ssh/scp 路径。
-- `build` 清空 islands 后生成 `SOURCE.sha256`（按 Git 规范化后的全部已跟踪 web 输入内容计算，与整个 HEAD 无关）和 `SHA256SUMS`。只运行 watch 不产生可发布证明；新文件须先 git add 再 build。
+- `build` 清空 islands 后生成 `SOURCE.sha256`（将全部已跟踪 web 输入按路径的 UTF-8 字节排序，再以 NUL 分隔各路径及其 Git 规范化内容哈希计算，与整个 HEAD 无关）和 `SHA256SUMS`。只运行 watch 不产生可发布证明；新文件须先 git add 再 build。
 - `deploy/dev.sh` reset 到 `SC2CLUD_BRANCH`（默认 main）；走 PR→dev 后使用 `SC2CLUD_BRANCH=dev bash deploy/dev.sh` 验证，用户验收后再 PR→main。指纹必须与 reset 后前端源码一致。缺精华入口、清单、哈希不符均在替换 DEV 活跃产物前中止。
 - DEV 暂存完整二进制与 static，生成整套 `SHA256SUMS`；只重启测试实例。`promote.sh` 只从这份 DEV 整套复制，校验后先备份生产旧整套到 `releases/`，再替换及重启。预检查失败不改活跃文件、不重启。生产 promote 仍须按项目流程获得用户确认。
 - 本地部署行为回归：`bash scripts/test-deploy.sh`，临时目录与桩命令，不操作真实服务器。
