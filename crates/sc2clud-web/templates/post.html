@@ -40,17 +40,6 @@
   <a class="btn sm" style="margin-left:10px" href="/p/{{ post.id }}/issues/new">发布反馈</a>
 </nav>
 
-{% if tab == "new" %}
-    <div class="ib-text">
-      <b>这个 Mod 有问题，或者你有想法？</b>
-      <p>反馈直接送到作者那里：报 Bug 请写清版本与复现步骤，改进意见说说你希望它变成什么样。</p>
-    </div>
-    <div class="ib-actions">
-      <a class="ib-btn bug" href="/p/{{ post.id }}/issues?kind=bug"><b>报告 Bug</b><span>打不开、崩溃、闪退、卡关</span></a>
-      <a class="ib-btn idea" href="/p/{{ post.id }}/issues?kind=feature"><b>改进意见</b><span>希望新增或调整的功能</span></a>
-      <a class="ib-btn difficulty" href="/p/{{ post.id }}/issues?kind=difficulty"><b>难度建议</b><span>太简单 / 太难 / 想要难度选项</span></a>
-    </div>
-    <span class="ib-count">{% if issue_open > 0 %}{{ issue_open }} 条待处理{% else %}暂无待处理{% endif %}{% if issue_total > issue_open %} · 共 {{ issue_total }} 条{% endif %}</span>
   </section>
 
   <style>
@@ -67,6 +56,18 @@
   </style>
 
   <h1 class="site-post-title">{{ post.title }}</h1>
+
+{% if tab == "new" %}
+    <div class="ib-text">
+      <b>这个 Mod 有问题，或者你有想法？</b>
+      <p>反馈直接送到作者那里：报 Bug 请写清版本与复现步骤，改进意见说说你希望它变成什么样。</p>
+    </div>
+    <div class="ib-actions">
+      <a class="ib-btn bug" href="/p/{{ post.id }}/issues?kind=bug"><b>报告 Bug</b><span>打不开、崩溃、闪退、卡关</span></a>
+      <a class="ib-btn idea" href="/p/{{ post.id }}/issues?kind=feature"><b>改进意见</b><span>希望新增或调整的功能</span></a>
+      <a class="ib-btn difficulty" href="/p/{{ post.id }}/issues?kind=difficulty"><b>难度建议</b><span>太简单 / 太难 / 想要难度选项</span></a>
+    </div>
+    <span class="ib-count">{% if issue_open > 0 %}{{ issue_open }} 条待处理{% else %}暂无待处理{% endif %}{% if issue_total > issue_open %} · 共 {{ issue_total }} 条{% endif %}</span>
 
   <style>
 /* 分区 / 类型做成页签：上半圆润、下半直线，像文件夹标签 */
