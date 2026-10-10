@@ -264,14 +264,15 @@
     </section>
     {% endif %}
 
-
-  <form method="post" action="/admin/settings/block-reply" class="acl-row">
-    <input type="hidden" name="csrf" value="{{ csrf }}">
-    <label class="acl-switch"><input type="checkbox" name="enabled" value="1"{% if block_reply_enforced %} checked{% endif %}><span>被拉黑后不能在对方帖子下回复</span></label>
-    <button class="btn sm" type="submit">保存</button>
-  </form>
-  <p class="hint">默认关闭（现状）：被拉黑只影响私信与列表显示；开启后，被他拉黑的人无法在他的帖子下回复。</p>
-</section>
+  <section class="panel" id="community-switch">
+    <h2>社区开关</h2>
+    <form method="post" action="/admin/settings/block-reply" class="acl-row">
+      <input type="hidden" name="csrf" value="{{ csrf }}">
+      <label class="acl-switch"><input type="checkbox" name="enabled" value="1"{% if block_reply_enforced %} checked{% endif %}><span>被拉黑后不能在对方帖子下回复</span></label>
+      <button class="btn sm" type="submit">保存</button>
+    </form>
+    <p class="hint">默认关闭（现状）：被拉黑只影响私信与列表显示；开启后，被他拉黑的人无法在他的帖子下回复。</p>
+  </section>
 
 <section class="panel" id="acl">
   <h2>分区发言权限 <span class="count">{{ sections.len() }}</span></h2>
@@ -712,64 +713,103 @@
     </section>
 
     <section class="panel" id="ai">
-      <h2>AI 审核 <span class="count">{% if ai_enabled %}已启用{% else %}未启用{% endif %}</span></h2>
-      <p class="hint">按 OpenAI 兼容格式调用（chat/completions + 工具调用）：AI 只能从「通过 / 待定 / 不通过」三个工具里选一个，
-        待定＝交人工、不自动放行。密钥单独加密存表，这里只显示是否已设置。</p>
-      <form method="post" action="/admin/ai/settings" class="ai-form">
+      <h2>AI 审核</h2>
+      <p class="hint">按 OpenAI 兼容格式调用（chat/completions + 工具调用）：AI 只能从「通过 / 待定 / 不通过」三个工具里选一个；
+        待定＝交人工、不自动放行。三类审核各自独立开关，密钥单独加密存表（这里只显示是否已设置）。</p>
+      <style>
+      .ai-block{border:1px solid var(--line,#e5e7eb);border-radius:12px;padding:14px 16px;margin:0 0 12px}
+      .ai-block > h3{margin:0 0 4px;font-size:15px;display:flex;align-items:center;gap:8px}
+      .ai-block > .hint{margin:0 0 10px}
+      .ai-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px 14px}
+      .ai-grid .wide{grid-column:1 / -1}
+      .ai-block label{display:block;font-size:13px}
+      .ai-block input[type=text],.ai-block input[type=password],.ai-block textarea{width:100%;margin-top:4px}
+      .ai-block textarea{font:inherit;font-size:13px;resize:vertical}
+      .ai-actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}
+      .ai-tag{font-size:12px;padding:2px 8px;border-radius:999px;border:1px solid var(--line,#e5e7eb)}
+      .ai-tag.on{border-color:#16a34a;background:#16a34a;color:#fff}
+      .ai-tag.wip{border-color:#d97706;background:#fef3c7;color:#92400e}
+      .ai-wip{opacity:.75}
+      .ai-out{white-space:pre-wrap;word-break:break-word;background:rgba(37,99,235,.05);border:1px solid var(--line,#e5e7eb);border-radius:10px;padding:10px 12px;font-size:12px;line-height:1.6;margin:10px 0 0}
+      </style>
+      <form method="post" action="/admin/ai/settings" data-ai-form>
         <input type="hidden" name="csrf" value="{{ csrf }}">
-        <label class="acl-switch"><input type="checkbox" name="enabled" value="1"{% if ai_enabled %} checked{% endif %}><span>启用 AI 审核</span></label>
-        <label>接口地址<input type="text" name="endpoint" value="{{ ai_endpoint }}" maxlength="200"></label>
-        <label>模型<input type="text" name="model" value="{{ ai_model }}" maxlength="80"></label>
-        <label>API 密钥<input type="password" name="api_key" maxlength="200" placeholder="{% if ai_key_set %}已设置，留空表示不改{% else %}还没设置{% endif %}"></label>
-        <label>提示词（新帖）<textarea name="prompt_new_post" rows="3">{{ ai_prompt_new_post }}</textarea></label>
-        <label>提示词（举报复审）<textarea name="prompt_report" rows="3">{{ ai_prompt_report }}</textarea></label>
-        <label class="acl-switch"><input type="checkbox" name="review_comments" value="1"{% if ai_review_comments %} checked{% endif %}><span>评论也送审（默认关）</span></label>
-        <label class="acl-switch"><input type="checkbox" name="review_on_report" value="1"{% if ai_review_on_report %} checked{% endif %}><span>被举报后复审（默认开）</span></label>
-        <div class="ai-row"><button class="btn sm" type="submit">保存配置</button>
-          <button class="btn ghost sm" type="button" data-ai-test>测试连通性</button></div>
+        <div class="ai-block">
+          <h3>接口设置<span class="ai-tag{% if ai_key_set %} on{% endif %}">{% if ai_key_set %}密钥已设置{% else %}密钥未设置{% endif %}</span></h3>
+          <p class="hint">三类审核共用这一个接口。</p>
+          <div class="ai-grid">
+            <label>接口地址<input type="text" name="endpoint" value="{{ ai_endpoint }}" maxlength="200"></label>
+            <label>模型<input type="text" name="model" value="{{ ai_model }}" maxlength="80"></label>
+            <label class="wide">API 密钥<input type="password" name="api_key" maxlength="200" placeholder="{% if ai_key_set %}已设置，留空表示不改{% else %}还没设置{% endif %}"></label>
+            <label class="wide">提示词（帖子）<textarea name="prompt_new_post" rows="3">{{ ai_prompt_new_post }}</textarea></label>
+            <label class="wide">提示词（举报复审）<textarea name="prompt_report" rows="3">{{ ai_prompt_report }}</textarea></label>
+          </div>
+          <div class="ai-actions">
+            <button class="btn ghost sm" type="button" data-ai-test>测试连通性</button>
+            <label class="acl-switch" style="margin-left:auto"><input type="checkbox" name="review_on_report" value="1"{% if ai_review_on_report %} checked{% endif %}><span>被举报后自动复审</span></label>
+          </div>
+        </div>
+        <div class="ai-block" data-ai-block="post">
+          <h3>帖子审核<span class="ai-tag{% if ai_review_posts %} on{% endif %}">{% if ai_review_posts %}已启用{% else %}未启用{% endif %}</span></h3>
+          <p class="hint">新帖送 AI 判定；不通过会被置为 rejected（普通用户不可见），待定留在人工队列。</p>
+          <label class="acl-switch"><input type="checkbox" name="review_posts" value="1"{% if ai_review_posts %} checked{% endif %}><span>开启帖子 AI 审核</span></label>
+          <div class="ai-actions">
+            <input type="number" min="1" style="width:90px" data-ai-id placeholder="帖子 id">
+            <button class="btn ghost sm" type="button" data-ai-preview>预览发给 AI 的文本</button>
+            <button class="btn sm" type="button" data-ai-run>立刻审核一次</button>
+          </div>
+        </div>
+        <div class="ai-block" data-ai-block="comment">
+          <h3>评论审核<span class="ai-tag{% if ai_review_comments %} on{% endif %}">{% if ai_review_comments %}已启用{% else %}未启用{% endif %}</span></h3>
+          <p class="hint">默认关闭（评论量大，开了会明显增加调用成本）。开启后新评论送 AI 判定，被举报的评论也会复审。</p>
+          <label class="acl-switch"><input type="checkbox" name="review_comments" value="1"{% if ai_review_comments %} checked{% endif %}><span>开启评论 AI 审核</span></label>
+          <div class="ai-actions">
+            <input type="number" min="1" style="width:90px" data-ai-id placeholder="评论 id">
+            <button class="btn ghost sm" type="button" data-ai-preview>预览发给 AI 的文本</button>
+            <button class="btn sm" type="button" data-ai-run>立刻审核一次</button>
+          </div>
+        </div>
+        <div class="ai-block ai-wip">
+          <h3>新用户审核<span class="ai-tag wip">WIP</span></h3>
+          <p class="hint">还没做：计划是按注册资料（昵称、简介、邀请来源）判「正常 / 观察 / 拒绝」，拒绝即不激活。
+            下面的控件只是占位，点了不会有任何效果。</p>
+          <label class="acl-switch"><input type="checkbox" disabled><span>开启新用户 AI 审核（未实现）</span></label>
+          <div class="ai-actions">
+            <input type="text" disabled placeholder="示例用户 id" style="width:120px">
+            <button class="btn ghost sm" type="button" disabled>预览注册文本（未实现）</button>
+          </div>
+        </div>
+        <div class="ai-actions"><button class="btn" type="submit">保存全部设置</button>
+          <span class="hint" data-ai-note></span></div>
       </form>
-      <div class="ai-tools">
-        <select data-ai-kind><option value="post">帖子</option><option value="comment">评论</option></select>
-        <input type="number" min="1" data-ai-id placeholder="id">
-        <button class="btn ghost sm" type="button" data-ai-preview>预览发给 AI 的文本</button>
-        <button class="btn sm" type="button" data-ai-run>立刻审核一次</button>
-      </div>
       <pre class="ai-out" data-ai-out hidden></pre>
-      <p class="hint" data-ai-note></p>
       <script>
       (() => {
         const out = document.querySelector('[data-ai-out]');
         const note = document.querySelector('[data-ai-note]');
-        const csrf = () => (document.querySelector('input[name="csrf"]') || {}).value || '';
-        const target = () => ({ kind: document.querySelector('[data-ai-kind]').value, id: Number(document.querySelector('[data-ai-id]').value || 0) });
+        const csrf = () => (document.querySelector('[data-ai-form] input[name="csrf"]') || {}).value || '';
         const post = async (url, body) => {
           const res = await fetch(url, { method: 'POST', headers: { 'x-csrf-token': csrf() }, body });
           const data = await res.json().catch(() => null);
-          if (!data) { note.textContent = '请求失败 ' + res.status; return null; }
+          if (!data) { note.textContent = '请求失败 ' + res.status; return; }
           if (data.text) { out.hidden = false; out.textContent = data.text; }
-          note.textContent = data.ok === false ? (data.message || '失败') : (data.message || (data.verdict ? ('判词：' + data.verdict + (data.reason ? '（' + data.reason + '）' : '')) : '完成'));
-          return data;
+          note.textContent = data.ok === false ? (data.message || '失败')
+            : (data.message || (data.verdict ? ('判词：' + data.verdict + (data.reason ? '（' + data.reason + '）' : '')) : '完成'));
         };
         const test = document.querySelector('[data-ai-test]');
         if (test) test.addEventListener('click', () => post('/admin/ai/test', new URLSearchParams()));
-        const preview = document.querySelector('[data-ai-preview]');
-        if (preview) preview.addEventListener('click', () => { const t = target(); const body = new URLSearchParams(); body.set('csrf', csrf()); body.set('kind', t.kind); body.set('id', String(t.id)); body.set('dry_run', '1'); post('/admin/ai/preview', body); });
-        const run = document.querySelector('[data-ai-run]');
-        if (run) run.addEventListener('click', () => { const t = target(); const body = new URLSearchParams(); body.set('csrf', csrf()); body.set('kind', t.kind); body.set('id', String(t.id)); post('/admin/ai/review', body); });
+        document.querySelectorAll('[data-ai-block]').forEach((block) => {
+          const kind = block.dataset.aiBlock;
+          const idOf = () => Number((block.querySelector('[data-ai-id]') || {}).value || 0);
+          const body = () => { const form = new URLSearchParams(); form.set('csrf', csrf()); form.set('kind', kind); form.set('id', String(idOf())); return form; };
+          const preview = block.querySelector('[data-ai-preview]');
+          if (preview) preview.addEventListener('click', () => { const form = body(); form.set('dry_run', '1'); post('/admin/ai/preview', form); });
+          const run = block.querySelector('[data-ai-run]');
+          if (run) run.addEventListener('click', () => post('/admin/ai/review', body()));
+        });
       })();
       </script>
     </section>
-
-    <section class="panel" id="site-texts">
-      <h2>默认个人简介</h2>
-      <form method="post" action="/admin/site-texts">
-        <input type="hidden" name="csrf" value="{{ csrf }}">
-        <textarea name="default_bio" rows="2" maxlength="200" placeholder="该用户很懒，没有写简介"></textarea>
-        <p class="hint">用户没写简介时显示这句（最多 200 字）。想恢复出厂设置就填：该用户很懒，没有写简介</p>
-        <button class="btn" type="submit">保存默认简介</button>
-      </form>
-    </section>
-
     <section class="panel" id="settings">
       <h2>注册策略 <span class="count">{% if require_activation %}人工激活{% else %}自动激活{% endif %}</span></h2>
       <p class="hint">

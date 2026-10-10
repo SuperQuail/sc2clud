@@ -1365,7 +1365,7 @@ async fn handle_report(
     // 预备机制：被举报就再让 AI 看一遍（默认开；评论是否送审由 ai_review_comments 决定）
     let config = crate::ai::AiConfig::load(state.db.pool(), &state.config.paths.db_path()).await;
     let mut reviewed = serde_json::Value::Null;
-    if config.enabled && config.review_on_report && (kind == "post" || config.review_comments) {
+    if config.review_on_report && config.reviews(kind) {
         if let Ok(text) = crate::pages_admin::ai_target_text(state, kind, form.id).await {
             match crate::pages_admin::run_review(state, &config, kind, form.id, &text, "report")
                 .await

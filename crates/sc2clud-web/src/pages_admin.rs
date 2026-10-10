@@ -247,7 +247,7 @@ async fn build_panel<'a>(
         groups,
         block_reply_enforced: repo::site_text(state.db.pool(), "block_reply_enforced", "0").await?
             == "1",
-        ai_enabled: ai_config.enabled,
+        ai_review_posts: ai_config.review_posts,
         ai_endpoint: ai_config.endpoint.clone(),
         ai_model: ai_config.model.clone(),
         ai_key_set: !ai_config.api_key.is_empty(),
@@ -1357,8 +1357,9 @@ pub async fn set_sanction(
 #[derive(Debug, Deserialize)]
 pub struct AiSettingsForm {
     pub csrf: String,
+    /// 帖子审核开关。
     #[serde(default)]
-    pub enabled: Option<String>,
+    pub review_posts: Option<String>,
     pub endpoint: String,
     pub model: String,
     /// 留空表示不改密钥。
@@ -1385,8 +1386,8 @@ pub async fn save_ai_settings(
     let pool = state.db.pool();
     repo::set_ai_setting(
         pool,
-        "ai_enabled",
-        if form.enabled.as_deref() == Some("1") {
+        "ai_review_posts",
+        if form.review_posts.as_deref() == Some("1") {
             "1"
         } else {
             "0"

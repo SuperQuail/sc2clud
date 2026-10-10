@@ -787,7 +787,8 @@ pub struct AdminTemplate<'a> {
     /// 全站开关：被拉黑后不能在对方帖子下回复（默认关）。
     pub block_reply_enforced: bool,
     /// AI 审核配置（超管可改；密钥只回「有没有设置」，不回明文）。
-    pub ai_enabled: bool,
+    /// 帖子审核开关（评论的那个是 ai_review_comments）。
+    pub ai_review_posts: bool,
     pub ai_endpoint: String,
     pub ai_model: String,
     pub ai_key_set: bool,

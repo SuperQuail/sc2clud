@@ -10,7 +10,8 @@ use sc2clud_core::review::{AiVerdict, ai_tools};
 /// 审核用的配置（超管在后台改，密钥单独加密存表）。
 #[derive(Debug, Clone)]
 pub struct AiConfig {
-    pub enabled: bool,
+    /// 帖子审核开关（与被举报复审共用）。
+    pub review_posts: bool,
     pub endpoint: String,
     pub api_key: String,
     pub model: String,
@@ -28,7 +29,7 @@ impl AiConfig {
                 .await
                 .unwrap_or_else(|_| default.to_string())
         };
-        let enabled = get("ai_enabled", "0").await == "1";
+        let review_posts = get("ai_review_posts", "0").await == "1";
         let endpoint = get("ai_endpoint", "https://api.openai.com/v1").await;
         let model = get("ai_model", "gpt-4o-mini").await;
         let prompt_new_post = get("ai_prompt_new_post", "判断这条社区内容是否合规。").await;
@@ -39,7 +40,7 @@ impl AiConfig {
             .await
             .unwrap_or_default();
         Self {
-            enabled,
+            review_posts,
             endpoint: endpoint.trim_end_matches('/').to_string(),
             api_key,
             model,
@@ -47,6 +48,15 @@ impl AiConfig {
             prompt_report,
             review_comments,
             review_on_report,
+        }
+    }
+
+    /// 这一类内容是否要送 AI 审（帖子 / 评论各自独立）。
+    pub fn reviews(&self, kind: &str) -> bool {
+        if kind == "comment" {
+            self.review_comments
+        } else {
+            self.review_posts
         }
     }
 
@@ -187,7 +197,7 @@ mod ai_client_tests {
 
     fn config() -> AiConfig {
         AiConfig {
-            enabled: true,
+            review_posts: true,
             endpoint: "https://example.invalid/v1".to_string(),
             api_key: "sk-test".to_string(),
             model: "gpt-4o-mini".to_string(),
