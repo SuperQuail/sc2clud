@@ -786,6 +786,15 @@ pub struct AdminTemplate<'a> {
     pub ban_options: Vec<(String, String)>,
     /// 全站开关：被拉黑后不能在对方帖子下回复（默认关）。
     pub block_reply_enforced: bool,
+    /// AI 审核配置（超管可改；密钥只回「有没有设置」，不回明文）。
+    pub ai_enabled: bool,
+    pub ai_endpoint: String,
+    pub ai_model: String,
+    pub ai_key_set: bool,
+    pub ai_prompt_new_post: String,
+    pub ai_prompt_report: String,
+    pub ai_review_comments: bool,
+    pub ai_review_on_report: bool,
     /// 磁盘预算总览（仅超级管理员可见）。
     pub server_free_human: String,
     pub quota_allocated_human: String,

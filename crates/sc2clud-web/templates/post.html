@@ -477,17 +477,20 @@
 
   // 楼层「⋯」：照 B 站收成下拉，只放我们真有的两项（复制评论链接 / 加入黑名单）
   // 走事件委托：发完评论评论区会整块换 innerHTML，挂在按钮上的监听会跟着一起没
-  const closeMenus = () => document.querySelectorAll('[data-cmenu-panel]').forEach((panel) => { panel.hidden = true; });
+  const setMenu = (menu, open) => {
+    menu.querySelector('[data-cmenu-panel]').hidden = !open;
+    menu.querySelector('[data-cmenu-toggle]').setAttribute('aria-expanded', String(open));
+  };
+  const closeMenus = () => document.querySelectorAll('[data-cmenu]').forEach((menu) => setMenu(menu, false));
   document.addEventListener('click', (event) => {
     const target = event.target;
     if (!(target instanceof Element)) { closeMenus(); return; }
     const toggle = target.closest('[data-cmenu-toggle]');
     if (toggle) {
-      const panel = toggle.parentElement.querySelector('[data-cmenu-panel]');
-      const open = panel.hidden;
+      const menu = toggle.closest('[data-cmenu]');
+      const open = menu.querySelector('[data-cmenu-panel]').hidden;
       closeMenus();
-      panel.hidden = !open;
-      toggle.setAttribute('aria-expanded', String(open));
+      setMenu(menu, open);
       return;
     }
     const copy = target.closest('[data-copy-comment]');

@@ -5,6 +5,7 @@
 //! - 应用常驻内存 ≤ 150 MB：所有缓冲都是有界常数，不随文件大小增长；
 //! - 页面默认服务端渲染，前端只做局部增强。
 
+pub mod ai;
 pub mod error;
 pub mod pages_admin;
 pub mod pages_auth;

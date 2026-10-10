@@ -1182,6 +1182,144 @@ pub async fn create_comment(
     Ok(res.last_insert_rowid())
 }
 
+use crate::{open_secret, seal_secret};
+
+// ---------------------------------------------------------------- AI 审核（配置 / 密钥 / 留痕 / 举报）
+
+/// 读一个 AI 配置项（没设置过就用默认值）。
+pub async fn ai_setting(pool: &SqlitePool, key: &str, default: &str) -> Result<String> {
+    site_text(pool, key, default).await
+}
+
+/// 写一个 AI 配置项。
+pub async fn set_ai_setting(pool: &SqlitePool, key: &str, value: &str, now: i64) -> Result<()> {
+    set_site_text(pool, key, value, None, now).await
+}
+
+/// 存 AI 的 API key（加密后写 ai_secrets 单行表）。
+pub async fn set_ai_key(
+    pool: &SqlitePool,
+    db_path: &std::path::Path,
+    plaintext: &str,
+    by: Option<i64>,
+    now: i64,
+) -> Result<()> {
+    let (cipher, nonce) = seal_secret(db_path, plaintext)?;
+    query(
+        "INSERT INTO ai_secrets (id, key_cipher, key_nonce, updated_at, updated_by) VALUES (1, ?, ?, ?, ?) \
+         ON CONFLICT(id) DO UPDATE SET key_cipher = excluded.key_cipher, key_nonce = excluded.key_nonce, \
+         updated_at = excluded.updated_at, updated_by = excluded.updated_by",
+    )
+    .bind(cipher)
+    .bind(nonce)
+    .bind(now)
+    .bind(by)
+    .execute(pool)
+    .await
+    .map_err(db_err)?;
+    Ok(())
+}
+
+/// 取 AI 的 API key（解密失败返回 None）。
+pub async fn ai_key(pool: &SqlitePool, db_path: &std::path::Path) -> Option<String> {
+    let row: Option<(Vec<u8>, Vec<u8>)> =
+        query_as("SELECT key_cipher, key_nonce FROM ai_secrets WHERE id = 1")
+            .fetch_optional(pool)
+            .await
+            .ok()?;
+    let (cipher, nonce) = row?;
+    open_secret(db_path, &cipher, &nonce)
+}
+
+/// 记一次 AI 审核（留痕：谁触发、判词、理由、原始响应）。
+#[allow(clippy::too_many_arguments)]
+pub async fn log_ai_review(
+    pool: &SqlitePool,
+    target_kind: &str,
+    target_id: i64,
+    source: &str,
+    verdict: &str,
+    reason: &str,
+    raw: &str,
+    model: &str,
+    ok: bool,
+    now: i64,
+) -> Result<()> {
+    query(
+        "INSERT INTO ai_reviews (target_kind, target_id, source, verdict, reason, raw_response, model, ok, created_at) \
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+    )
+    .bind(target_kind)
+    .bind(target_id)
+    .bind(source)
+    .bind(verdict)
+    .bind(reason)
+    .bind(raw)
+    .bind(model)
+    .bind(if ok { 1 } else { 0 })
+    .bind(now)
+    .execute(pool)
+    .await
+    .map_err(db_err)?;
+    Ok(())
+}
+
+/// AI 自动审核的写入（与人工改判分开：这里标记 auto_reviewed = 1）。
+pub async fn set_post_review_state_auto(
+    pool: &SqlitePool,
+    post_id: i64,
+    state: &str,
+    note: &str,
+    now: i64,
+) -> Result<bool> {
+    let affected = query(
+        "UPDATE posts SET review_state = ?, review_note = ?, reviewed_at = ?, auto_reviewed = 1 WHERE id = ?",
+    )
+    .bind(state)
+    .bind(note)
+    .bind(now)
+    .bind(post_id)
+    .execute(pool)
+    .await
+    .map_err(db_err)?
+    .rows_affected();
+    Ok(affected == 1)
+}
+
+/// 取一条评论的正文（AI 审核用）。
+pub async fn comment_body(pool: &SqlitePool, comment_id: i64) -> Result<Option<String>> {
+    let row: Option<(String,)> =
+        query_as("SELECT body FROM comments WHERE id = ? AND deleted_at IS NULL")
+            .bind(comment_id)
+            .fetch_optional(pool)
+            .await
+            .map_err(db_err)?;
+    Ok(row.map(|(body,)| body))
+}
+
+/// 记一条举报。
+pub async fn create_report(
+    pool: &SqlitePool,
+    target_kind: &str,
+    target_id: i64,
+    reporter_id: Option<i64>,
+    reason: &str,
+    now: i64,
+) -> Result<i64> {
+    let res = query(
+        "INSERT INTO reports (target_kind, target_id, reporter_id, reason, created_at) VALUES (?, ?, ?, ?, ?)",
+    )
+    .bind(target_kind)
+    .bind(target_id)
+    .bind(reporter_id)
+    .bind(reason)
+    .bind(now)
+    .execute(pool)
+    .await
+    .map_err(db_err)?;
+    Ok(res.last_insert_rowid())
+}
+
 // ---------------------------------------------------------------- 处罚（禁言）
 
 /// 某个用户当前生效的处罚（未撤销且未到期）。

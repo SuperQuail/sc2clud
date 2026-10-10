@@ -10,6 +10,10 @@ description = "HTTP 层：axum 路由、askama 服务端渲染、流式上传与
 sc2clud-core.workspace = true
 sc2clud-storage.workspace = true
 sc2clud-db.workspace = true
+# AI 调用：Rust 生态标准 HTTP 客户端（rustls，不拖 openssl）
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
+# 与 db crate 同版本（cargo 会统一），只为在签名里写 SqlitePool
+sqlx = { version = "0.8.6", default-features = false, features = ["runtime-tokio", "sqlite", "migrate", "macros"] }
 axum = "0.8.9"
 # 时间解析：业界标准时间库（要同时处理「日期」与「时长」两种输入，不自己造轮子）
 chrono = { version = "0.4", default-features = false, features = ["std", "clock"] }

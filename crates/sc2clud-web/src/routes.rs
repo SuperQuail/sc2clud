@@ -189,6 +189,23 @@ pub fn pages() -> Router<AppState> {
             axum::routing::post(crate::pages_admin::set_trusted),
         )
         .route(
+            "/admin/ai/settings",
+            axum::routing::post(crate::pages_admin::save_ai_settings),
+        )
+        .route("/admin/ai/test", axum::routing::post(crate::pages_admin::test_ai))
+        .route(
+            "/admin/ai/review",
+            axum::routing::post(crate::pages_admin::run_ai_review),
+        )
+        .route(
+            "/admin/ai/preview",
+            axum::routing::post(crate::pages_admin::preview_ai_text),
+        )
+        .route(
+            "/api/v1/reports",
+            axum::routing::post(crate::pages_posts::submit_report),
+        )
+        .route(
             "/admin/sections/{section}/acl",
             axum::routing::post(crate::pages_admin::save_section_acl),
         )

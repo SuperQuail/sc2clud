@@ -201,6 +201,8 @@ async fn build_panel<'a>(
     } else {
         1
     };
+    let db_path = state.config.paths.db_path();
+    let ai_config = crate::ai::AiConfig::load(state.db.pool(), &db_path).await;
     let all_rules = repo::list_all_group_rules(state.db.pool()).await?;
     let mut groups = Vec::new();
     for group in repo::list_user_groups(state.db.pool(), true).await? {
@@ -245,6 +247,14 @@ async fn build_panel<'a>(
         groups,
         block_reply_enforced: repo::site_text(state.db.pool(), "block_reply_enforced", "0").await?
             == "1",
+        ai_enabled: ai_config.enabled,
+        ai_endpoint: ai_config.endpoint.clone(),
+        ai_model: ai_config.model.clone(),
+        ai_key_set: !ai_config.api_key.is_empty(),
+        ai_prompt_new_post: ai_config.prompt_new_post.clone(),
+        ai_prompt_report: ai_config.prompt_report.clone(),
+        ai_review_comments: ai_config.review_comments,
+        ai_review_on_report: ai_config.review_on_report,
         ban_options: BAN_HOUR_OPTIONS
             .iter()
             .map(|(hours, label)| (hours.to_string(), label.to_string()))
@@ -1344,6 +1354,254 @@ pub async fn set_sanction(
     );
     Ok(done(&headers, message, "/admin/users/overview"))
 }
+#[derive(Debug, Deserialize)]
+pub struct AiSettingsForm {
+    pub csrf: String,
+    #[serde(default)]
+    pub enabled: Option<String>,
+    pub endpoint: String,
+    pub model: String,
+    /// 留空表示不改密钥。
+    #[serde(default)]
+    pub api_key: String,
+    pub prompt_new_post: String,
+    pub prompt_report: String,
+    #[serde(default)]
+    pub review_comments: Option<String>,
+    #[serde(default)]
+    pub review_on_report: Option<String>,
+}
+
+/// 保存 AI 审核配置（密钥单独加密存表；留空则保留原密钥）。
+pub async fn save_ai_settings(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Form(form): Form<AiSettingsForm>,
+) -> AppResult<Response> {
+    let actor = require_user(&state, &headers).await?;
+    session::guard(Some(&actor), Permission::ManageUsers)?;
+    session::check_csrf(&actor, &form.csrf)?;
+    let now = now_unix();
+    let pool = state.db.pool();
+    repo::set_ai_setting(
+        pool,
+        "ai_enabled",
+        if form.enabled.as_deref() == Some("1") {
+            "1"
+        } else {
+            "0"
+        },
+        now,
+    )
+    .await?;
+    repo::set_ai_setting(pool, "ai_endpoint", form.endpoint.trim(), now).await?;
+    repo::set_ai_setting(pool, "ai_model", form.model.trim(), now).await?;
+    repo::set_ai_setting(pool, "ai_prompt_new_post", form.prompt_new_post.trim(), now).await?;
+    repo::set_ai_setting(pool, "ai_prompt_report", form.prompt_report.trim(), now).await?;
+    repo::set_ai_setting(
+        pool,
+        "ai_review_comments",
+        if form.review_comments.as_deref() == Some("1") {
+            "1"
+        } else {
+            "0"
+        },
+        now,
+    )
+    .await?;
+    repo::set_ai_setting(
+        pool,
+        "ai_review_on_report",
+        if form.review_on_report.as_deref() == Some("1") {
+            "1"
+        } else {
+            "0"
+        },
+        now,
+    )
+    .await?;
+    if !form.api_key.trim().is_empty() {
+        repo::set_ai_key(
+            pool,
+            &state.config.paths.db_path(),
+            form.api_key.trim(),
+            Some(actor.id),
+            now,
+        )
+        .await?;
+    }
+    tracing::info!(actor.id = actor.id, "保存 AI 审核配置");
+    Ok(done(&headers, "AI 配置已保存", "/admin/users/overview#ai"))
+}
+
+/// 连通性测试：真发一次最短请求。
+pub async fn test_ai(State(state): State<AppState>, headers: HeaderMap) -> AppResult<Response> {
+    let actor = require_user(&state, &headers).await?;
+    session::guard(Some(&actor), Permission::ManageUsers)?;
+    let config = crate::ai::AiConfig::load(state.db.pool(), &state.config.paths.db_path()).await;
+    let result = crate::ai::test_connection(&config).await;
+    Ok(axum::Json(match result {
+        Ok(message) => serde_json::json!({ "ok": true, "message": message }),
+        Err(error) => serde_json::json!({ "ok": false, "message": error }),
+    })
+    .into_response())
+}
+
+#[derive(Debug, Deserialize)]
+pub struct AiTargetForm {
+    pub csrf: String,
+    /// post | comment
+    #[serde(default)]
+    pub kind: String,
+    pub id: i64,
+    /// 只看文本化结果，不调用 AI
+    #[serde(default)]
+    pub dry_run: Option<String>,
+}
+
+/// 预览「帖子/评论会怎么文本化发给 AI」；dry_run=1 时只回文本、不调用。
+pub async fn preview_ai_text(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Form(form): Form<AiTargetForm>,
+) -> AppResult<Response> {
+    let actor = require_user(&state, &headers).await?;
+    session::guard(Some(&actor), Permission::ManageUsers)?;
+    session::check_csrf(&actor, &form.csrf)?;
+    let text = ai_target_text(&state, &form.kind, form.id).await?;
+    Ok(axum::Json(serde_json::json!({ "ok": true, "text": text })).into_response())
+}
+
+/// 立刻审一次（人工点「审核」），把判词落到帖子状态并留痕。
+pub async fn run_ai_review(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Form(form): Form<AiTargetForm>,
+) -> AppResult<Response> {
+    let actor = require_user(&state, &headers).await?;
+    session::guard(Some(&actor), Permission::ManageUsers)?;
+    session::check_csrf(&actor, &form.csrf)?;
+    let kind = if form.kind == "comment" {
+        "comment"
+    } else {
+        "post"
+    };
+    let text = ai_target_text(&state, kind, form.id).await?;
+    let config = crate::ai::AiConfig::load(state.db.pool(), &state.config.paths.db_path()).await;
+    let outcome = run_review(&state, &config, kind, form.id, &text, "manual").await;
+    Ok(axum::Json(match outcome {
+        Ok((verdict, reason)) => {
+            serde_json::json!({ "ok": true, "verdict": verdict, "reason": reason })
+        }
+        Err(error) => serde_json::json!({ "ok": false, "message": error }),
+    })
+    .into_response())
+}
+
+/// 取一段要被审核的文本（帖子含来源，评论带上所属帖子标题）。
+pub(crate) async fn ai_target_text(state: &AppState, kind: &str, id: i64) -> AppResult<String> {
+    if kind == "comment" {
+        let post_id = repo::comment_post_id(state.db.pool(), id)
+            .await?
+            .ok_or_else(|| AppError::not_found("评论不存在"))?;
+        let post = repo::get_post_for(state.db.pool(), post_id, None, true)
+            .await?
+            .ok_or_else(|| AppError::not_found("帖子不存在"))?;
+        let author_id = repo::comment_author(state.db.pool(), id)
+            .await?
+            .unwrap_or(0);
+        let author = repo::find_user_by_id(state.db.pool(), author_id)
+            .await?
+            .map(|user| user.display_name)
+            .unwrap_or_else(|| "未知".to_string());
+        let body = repo::comment_body(state.db.pool(), id)
+            .await?
+            .unwrap_or_default();
+        Ok(sc2clud_core::review::comment_review_text(
+            &body,
+            &author,
+            &post.title,
+        ))
+    } else {
+        let post = repo::get_post_for(state.db.pool(), id, None, true)
+            .await?
+            .ok_or_else(|| AppError::not_found("帖子不存在"))?;
+        let section = sc2clud_core::resource::PostSection::parse(&post.section)
+            .map(|section| section.label().to_string())
+            .unwrap_or_else(|_| post.section.clone());
+        let author = repo::find_user_by_id(state.db.pool(), post.author_id)
+            .await?
+            .map(|user| user.display_name)
+            .unwrap_or_else(|| "未知".to_string());
+        // shortcut: 帖子的下载来源暂不拼进审核文本（来源行的字段名待确认），要加时再补
+        Ok(sc2clud_core::review::post_review_text(
+            &post.title,
+            &section,
+            &post.body,
+            &author,
+            &[],
+        ))
+    }
+}
+
+/// 跑一次审核 + 留痕（+ 帖子落状态）。返回 (判词, 理由)。
+pub async fn run_review(
+    state: &AppState,
+    config: &crate::ai::AiConfig,
+    kind: &str,
+    id: i64,
+    text: &str,
+    source: &str,
+) -> Result<(String, String), String> {
+    let now = now_unix();
+    match crate::ai::review_text(config, text, kind, source).await {
+        Ok(review) => {
+            let verdict = review.verdict.as_str().to_string();
+            let reason = review.reason.clone();
+            let _ = repo::log_ai_review(
+                state.db.pool(),
+                kind,
+                id,
+                source,
+                &verdict,
+                &reason,
+                &review.raw.chars().take(2000).collect::<String>(),
+                &config.model,
+                true,
+                now,
+            )
+            .await;
+            if kind == "post" {
+                let _ = repo::set_post_review_state_auto(
+                    state.db.pool(),
+                    id,
+                    review.verdict.review_state(),
+                    &reason,
+                    now,
+                )
+                .await;
+            }
+            Ok((verdict, reason))
+        }
+        Err(error) => {
+            let _ = repo::log_ai_review(
+                state.db.pool(),
+                kind,
+                id,
+                source,
+                "error",
+                &error,
+                "",
+                &config.model,
+                false,
+                now,
+            )
+            .await;
+            Err(error)
+        }
+    }
+}
+
 pub async fn create_group(
     State(state): State<AppState>,
     headers: HeaderMap,

@@ -1320,6 +1320,66 @@ pub async fn comment_submit(
     }
 }
 
+/// 举报帖子或评论（本次只做后端）。有开关时顺带让 AI 复审一次。
+pub async fn submit_report(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    axum::Json(form): axum::Json<ReportJson>,
+) -> AppResult<Response> {
+    let user = require_user(&state, &headers).await?;
+    session::guard(Some(&user), Permission::Comment)?;
+    Ok(axum::Json(handle_report(&state, &user, &headers, &form).await?).into_response())
+}
+
+#[derive(Debug, Deserialize)]
+pub struct ReportJson {
+    /// post | comment
+    #[serde(default)]
+    pub kind: String,
+    pub id: i64,
+    #[serde(default)]
+    pub reason: String,
+}
+
+async fn handle_report(
+    state: &AppState,
+    user: &crate::session::CurrentUser,
+    headers: &HeaderMap,
+    form: &ReportJson,
+) -> AppResult<serde_json::Value> {
+    // 举报也走 CSRF（同评论点赞：请求头里带令牌）
+    let token = headers
+        .get("x-csrf-token")
+        .and_then(|value| value.to_str().ok())
+        .unwrap_or("");
+    session::check_csrf(user, token)?;
+    let kind = if form.kind == "comment" {
+        "comment"
+    } else {
+        "post"
+    };
+    let reason = form.reason.trim().chars().take(200).collect::<String>();
+    let now = now_unix();
+    repo::create_report(state.db.pool(), kind, form.id, Some(user.id), &reason, now).await?;
+    tracing::info!(kind, id = form.id, reporter = user.id, "收到举报");
+    // 预备机制：被举报就再让 AI 看一遍（默认开；评论是否送审由 ai_review_comments 决定）
+    let config = crate::ai::AiConfig::load(state.db.pool(), &state.config.paths.db_path()).await;
+    let mut reviewed = serde_json::Value::Null;
+    if config.enabled && config.review_on_report && (kind == "post" || config.review_comments) {
+        if let Ok(text) = crate::pages_admin::ai_target_text(state, kind, form.id).await {
+            match crate::pages_admin::run_review(state, &config, kind, form.id, &text, "report")
+                .await
+            {
+                Ok((verdict, reason)) => {
+                    reviewed = serde_json::json!({ "verdict": verdict, "reason": reason })
+                }
+                Err(error) => reviewed = serde_json::json!({ "error": error }),
+            }
+        }
+    }
+    Ok(serde_json::json!({ "ok": true, "reviewed": reviewed }))
+}
+
 async fn add_comment(
     state: &AppState,
     post_id: i64,
