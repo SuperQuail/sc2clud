@@ -1277,9 +1277,9 @@ pub async fn comment_json(
         .and_then(|value| value.to_str().ok())
         .unwrap_or("");
     session::check_csrf(&user, token)?;
-    // 校验交给 add_comment（表单那条路同款），这里只要 body 与 parent_id
+    // 保留已校验的 token，共用普通表单的内容与楼中楼校验。
     let reply = ReplyForm {
-        csrf: String::new(),
+        csrf: token.to_owned(),
         body: form.body,
         parent_id: form.parent_id,
     };

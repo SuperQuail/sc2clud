@@ -105,7 +105,7 @@
     {% for c in comments %}
     <div class="comment" id="c{{ c.id }}">
       {% if let Some(small) = c.avatar_small %}
-      <img class="avatar c-avatar" src="/avatar/{{ small }}"
+      <img class="avatar c-avatar" src="/avatar/{{ small }}" alt="" width="40" height="40" loading="lazy" onerror="this.src='/static/art/miyin/image-unavailable-480.webp'">
       {% else if let Some(avatar) = c.avatar %}
       <img class="avatar c-avatar" src="/avatar/{{ avatar }}" alt="" width="40" height="40" loading="lazy" onerror="this.src='/static/art/miyin/image-unavailable-480.webp'">
       {% else %}
@@ -128,7 +128,7 @@
           {% for r in c.replies %}
           <div class="c-sub" id="c{{ r.id }}">
             {% if let Some(small) = r.avatar_small %}
-            <img class="avatar c-avatar sm" src="/avatar/{{ small }}"
+            <img class="avatar c-avatar sm" src="/avatar/{{ small }}" alt="" width="26" height="26" loading="lazy" onerror="this.src='/static/art/miyin/image-unavailable-480.webp'">
             {% else if let Some(avatar) = r.avatar %}
             <img class="avatar c-avatar sm" src="/avatar/{{ avatar }}" alt="" width="26" height="26" loading="lazy" onerror="this.src='/static/art/miyin/image-unavailable-480.webp'">
             {% else %}
@@ -346,184 +346,213 @@
 
 // 回复区交互：点「回复」带上对方（@昵称#id，id 唯一所以重名不会指错），输入 @ 弹候选
 (() => {
-  const form = document.querySelector('[data-comment-form]');
-  const postId = {{ post.id }};
-  const area = document.getElementById('reply-body');
-  const pop = document.getElementById('mention-pop');
-  if (!form || !area || !pop) return;
-
-  // 点「回复」：在该根楼层所有子回复之下展开就地输入框（不遮挡别的楼层）
-  document.querySelectorAll('[data-reply-id]').forEach((btn) => {
-    btn.addEventListener('click', () => {
-      const box = document.querySelector('[data-reply-box="' + btn.dataset.replyId + '"]');
-      if (!box) return;
-      document.querySelectorAll('[data-reply-box]').forEach((other) => { if (other !== box) other.hidden = true; });
-      box.hidden = false;
-      const input = box.querySelector('.c-reply-input');
-      const token = '@' + btn.dataset.replyName + '#' + btn.dataset.replyUser + ' ';
-      if (input && !input.value.includes(token)) input.value = token;
-      if (input) {
-        input.focus();
-        input.setSelectionRange(input.value.length, input.value.length);
-      }
-    });
-  });
-  document.querySelectorAll('[data-reply-cancel]').forEach((btn) => {
-    btn.addEventListener('click', () => {
-      const box = document.querySelector('[data-reply-box="' + btn.dataset.replyCancel + '"]');
-      if (box) box.hidden = true;
-    });
-  });
-
-  let timer = null;
-  let active = -1;
-  // 预览用：?mention=1 直接展开候选，方便看弹出位置
-  if (new URLSearchParams(location.search).get('mention') === '1') {
-    setTimeout(() => {
-      // 关键词要有内容才会查（空 @ 不弹）
-      area.value = '@t';
-      area.dispatchEvent(new Event('input'));
-      area.focus();
-    }, 300);
-  }
-  const hide = () => { pop.hidden = true; pop.innerHTML = ''; active = -1; };
-  const currentQuery = () => {
-    const upto = area.value.slice(0, area.selectionStart);
-    const at = upto.lastIndexOf('@');
-    if (at < 0) return null;
-    const word = upto.slice(at + 1);
-    if (word.includes(' ') || word.includes('#')) return null;
-    return { at, word };
-  };
-  const render = (users) => {
-    if (!users.length) return hide();
-    pop.innerHTML = '';
-    users.forEach((u, index) => {
-      const item = document.createElement('div');
-      item.className = 'mention-item' + (index === 0 ? ' active' : '');
-      item.innerHTML = '<b></b><span class="mi-id"></span><span class="mi-handle"></span>';
-      item.querySelector('b').textContent = u.name;
-      // 只有重名用户才显示 id（其他同名账号一眼分得开）
-      item.querySelector('.mi-id').textContent = u.dup ? '#' + u.id : '';
-      item.querySelector('.mi-handle').textContent = '@' + u.handle;
-      item.addEventListener('mousedown', (event) => {
-        event.preventDefault();
-        const spot = currentQuery();
-        if (spot) {
-          const token = '@' + u.name + '#' + u.id + ' ';
-          area.value = area.value.slice(0, spot.at) + token + area.value.slice(spot.at + spot.word.length + 1);
-          area.setSelectionRange(spot.at + token.length, spot.at + token.length);
-        }
-        hide();
-        area.focus();
-      });
-      pop.appendChild(item);
-    });
-    pop.hidden = false;
-    active = 0;
-  };
-  const search = async () => {
-    const spot = currentQuery();
-    if (!spot || !spot.word) return hide();
-    try {
-      const res = await fetch('/api/v1/users/search?q=' + encodeURIComponent(spot.word));
-      if (!res.ok) return hide();
-      const data = await res.json();
-      render(data.users || []);
-    } catch (_) { hide(); }
-  };
-  area.addEventListener('input', () => { clearTimeout(timer); timer = setTimeout(search, 180); });
-  area.addEventListener('blur', () => setTimeout(hide, 120));
-
-  // 点赞（点踩接口已就绪，界面按需求暂不接）
-  const csrfInput = form.querySelector('input[name=csrf]');
-  document.querySelectorAll('[data-vote]').forEach((btn) => {
-    btn.addEventListener('click', async () => {
-      const next = btn.classList.contains('on') ? 0 : 1;
-      const res = await fetch('/api/v1/comments/' + btn.dataset.vote + '/vote', {
-        method: 'POST',
-        headers: { 'content-type': 'application/json', 'x-csrf-token': csrfInput ? csrfInput.value : '' },
-        body: JSON.stringify({ value: next }),
-      });
-      if (!res.ok) return;
-      const data = await res.json();
-      btn.classList.toggle('on', data.mine === 1);
-      const count = btn.querySelector('.c-like-count');
-      if (count) count.textContent = data.likes;
-    });
-  });
-
-  // 发评论无感：POST JSON，成功后只重取评论区（不整页刷新、不丢滚动位置）
   const commentsSection = document.getElementById('comments');
-  const refreshComments = async () => {
-    const res = await fetch(location.pathname + location.search);
-    if (!res.ok) return;
-    const doc = new DOMParser().parseFromString(await res.text(), 'text/html');
-    const next = doc.getElementById('comments');
-    if (next && commentsSection) commentsSection.innerHTML = next.innerHTML;
-  };
-  document.querySelectorAll('[data-comment-form], .c-reply-box').forEach((form) => {
-    form.addEventListener('submit', async (event) => {
-      event.preventDefault();
-      const textarea = form.querySelector('textarea[name=body]');
-      const body = textarea ? textarea.value.trim() : '';
-      if (body.length < 2) { if (textarea) textarea.focus(); return; }
-      const parent = form.querySelector('input[name=parent_id]');
-      const submit = form.querySelector('button[type=submit]');
-      if (submit) submit.disabled = true;
-      let res;
+  const postId = {{ post.id }};
+  if (!commentsSection) return;
+  let disposeComments = () => {};
+  let previewMention = new URLSearchParams(location.search).get('mention') === '1';
+
+  // 局部替换后重新绑定当前节点；先清理旧监听、定时器和吸底观察器。
+  const initializeComments = () => {
+    disposeComments();
+    const form = document.querySelector('[data-comment-form]');
+    const area = document.getElementById('reply-body');
+    const pop = document.getElementById('mention-pop');
+    if (!form || !area || !pop) return;
+    const controller = new AbortController();
+    const listen = (node, event, handler) => node.addEventListener(event, handler, { signal: controller.signal });
+    let timer = null;
+    let blurTimer = null;
+    let previewTimer = null;
+    let observer = null;
+    let disposed = false;
+    disposeComments = () => {
+      disposed = true;
+      controller.abort();
+      clearTimeout(timer);
+      clearTimeout(blurTimer);
+      clearTimeout(previewTimer);
+      if (observer) observer.disconnect();
+    };
+
+    // 点「回复」：在该根楼层所有子回复之下展开就地输入框（不遮挡别的楼层）
+    commentsSection.querySelectorAll('[data-reply-id]').forEach((btn) => {
+      listen(btn, 'click', () => {
+        const box = commentsSection.querySelector('[data-reply-box="' + btn.dataset.replyId + '"]');
+        if (!box) return;
+        commentsSection.querySelectorAll('[data-reply-box]').forEach((other) => { if (other !== box) other.hidden = true; });
+        box.hidden = false;
+        const input = box.querySelector('.c-reply-input');
+        const token = '@' + btn.dataset.replyName + '#' + btn.dataset.replyUser + ' ';
+        if (input && !input.value.includes(token)) input.value = token;
+        if (input) {
+          input.focus();
+          input.setSelectionRange(input.value.length, input.value.length);
+        }
+      });
+    });
+    commentsSection.querySelectorAll('[data-reply-cancel]').forEach((btn) => {
+      listen(btn, 'click', () => {
+        const box = commentsSection.querySelector('[data-reply-box="' + btn.dataset.replyCancel + '"]');
+        if (box) box.hidden = true;
+      });
+    });
+
+    let active = -1;
+    // 预览用：?mention=1 直接展开候选，方便看弹出位置
+    if (previewMention) {
+      previewMention = false;
+      previewTimer = setTimeout(() => {
+        // 关键词要有内容才会查（空 @ 不弹）
+        area.value = '@t';
+        area.dispatchEvent(new Event('input'));
+        area.focus();
+      }, 300);
+    }
+    const hide = () => { pop.hidden = true; pop.innerHTML = ''; active = -1; };
+    const currentQuery = () => {
+      const upto = area.value.slice(0, area.selectionStart);
+      const at = upto.lastIndexOf('@');
+      if (at < 0) return null;
+      const word = upto.slice(at + 1);
+      if (word.includes(' ') || word.includes('#')) return null;
+      return { at, word };
+    };
+    const render = (users) => {
+      if (!users.length) return hide();
+      pop.innerHTML = '';
+      users.forEach((u, index) => {
+        const item = document.createElement('div');
+        item.className = 'mention-item' + (index === 0 ? ' active' : '');
+        item.innerHTML = '<b></b><span class="mi-id"></span><span class="mi-handle"></span>';
+        item.querySelector('b').textContent = u.name;
+        // 只有重名用户才显示 id（其他同名账号一眼分得开）
+        item.querySelector('.mi-id').textContent = u.dup ? '#' + u.id : '';
+        item.querySelector('.mi-handle').textContent = '@' + u.handle;
+        listen(item, 'mousedown', (event) => {
+          event.preventDefault();
+          const spot = currentQuery();
+          if (spot) {
+            const token = '@' + u.name + '#' + u.id + ' ';
+            area.value = area.value.slice(0, spot.at) + token + area.value.slice(spot.at + spot.word.length + 1);
+            area.setSelectionRange(spot.at + token.length, spot.at + token.length);
+          }
+          hide();
+          area.focus();
+        });
+        pop.appendChild(item);
+      });
+      pop.hidden = false;
+      active = 0;
+    };
+    const search = async () => {
+      const spot = currentQuery();
+      if (!spot || !spot.word) return hide();
       try {
-        res = await fetch('/api/v1/posts/' + postId + '/comments', {
+        const res = await fetch('/api/v1/users/search?q=' + encodeURIComponent(spot.word));
+        if (!res.ok) return hide();
+        const data = await res.json();
+        if (!disposed) render(data.users || []);
+      } catch (_) { hide(); }
+    };
+    listen(area, 'input', () => { clearTimeout(timer); timer = setTimeout(search, 180); });
+    listen(area, 'blur', () => { blurTimer = setTimeout(hide, 120); });
+
+    // 点赞（点踩接口已就绪，界面按需求暂不接）
+    const csrfInput = form.querySelector('input[name=csrf]');
+    commentsSection.querySelectorAll('[data-vote]').forEach((btn) => {
+      listen(btn, 'click', async () => {
+        const next = btn.classList.contains('on') ? 0 : 1;
+        const res = await fetch('/api/v1/comments/' + btn.dataset.vote + '/vote', {
           method: 'POST',
           headers: { 'content-type': 'application/json', 'x-csrf-token': csrfInput ? csrfInput.value : '' },
-          body: JSON.stringify({
-            body,
-            parent_id: parent && parent.value ? Number(parent.value) : null,
-          }),
+          body: JSON.stringify({ value: next }),
         });
-      } catch (_) {
-        res = null;
-      }
-      if (submit) submit.disabled = false;
-      if (!res || !res.ok) {
-        // 兜底：接口不通或校验失败就退回普通提交（至少消息不丢）
-        form.submit();
-        return;
-      }
-      if (textarea) textarea.value = '';
-      await refreshComments();
-      // 新楼层在最后一页：这种情况才把用户带过去看自己的评论（不是表单刷新）
-      const pager = document.querySelector('.c-pager-total');
-      const total = pager ? Number((pager.textContent.match(/\d+/) || [0])[0]) : 1;
-      const current = Number((location.search.match(/page=(\d+)/) || [0, 1])[1]) || 1;
-      if (total > current) location.assign('?page=' + total + '#comments');
+        if (!res.ok) return;
+        const data = await res.json();
+        btn.classList.toggle('on', data.mine === 1);
+        const count = btn.querySelector('.c-like-count');
+        if (count) count.textContent = data.likes;
+      });
     });
-  });
 
-  // 吸底「写评论」：顶部输入框滚出视野后出现（B 站那样）
-  const float = document.getElementById('c-float');
-  if (float && 'IntersectionObserver' in window) {
-    new IntersectionObserver((entries) => {
-      float.hidden = entries[0].isIntersecting;
-    }, { rootMargin: '-80px 0px 0px 0px' }).observe(form);
-    float.addEventListener('click', () => {
-      area.scrollIntoView({ block: 'center', behavior: 'smooth' });
-      area.focus();
+    // 发评论无感：POST JSON，成功后只重取评论区（不整页刷新、不丢滚动位置）
+    const refreshComments = async () => {
+      const res = await fetch(location.pathname + location.search);
+      if (!res.ok) return;
+      const doc = new DOMParser().parseFromString(await res.text(), 'text/html');
+      const next = doc.getElementById('comments');
+      if (next) {
+        commentsSection.innerHTML = next.innerHTML;
+        initializeComments();
+      }
+    };
+    commentsSection.querySelectorAll('[data-comment-form], .c-reply-box').forEach((form) => {
+      listen(form, 'submit', async (event) => {
+        event.preventDefault();
+        const textarea = form.querySelector('textarea[name=body]');
+        const body = textarea ? textarea.value.trim() : '';
+        if (body.length < 2) { if (textarea) textarea.focus(); return; }
+        const parent = form.querySelector('input[name=parent_id]');
+        const submit = form.querySelector('button[type=submit]');
+        if (submit && submit.disabled) return;
+        if (submit) submit.disabled = true;
+        let res;
+        try {
+          res = await fetch('/api/v1/posts/' + postId + '/comments', {
+            method: 'POST',
+            headers: { 'content-type': 'application/json', 'x-csrf-token': csrfInput ? csrfInput.value : '' },
+            body: JSON.stringify({
+              body,
+              parent_id: parent && parent.value ? Number(parent.value) : null,
+            }),
+          });
+        } catch (_) {
+          res = null;
+        }
+        if (submit) submit.disabled = false;
+        if (!res || !res.ok) {
+          // 兜底：接口不通或校验失败就退回普通提交（至少消息不丢）
+          form.submit();
+          return;
+        }
+        if (textarea) textarea.value = '';
+        await refreshComments();
+        // 新楼层在最后一页：这种情况才把用户带过去看自己的评论（不是表单刷新）
+        const pager = document.querySelector('.c-pager-total');
+        const total = pager ? Number((pager.textContent.match(/\d+/) || [0])[0]) : 1;
+        const current = Number((location.search.match(/page=(\d+)/) || [0, 1])[1]) || 1;
+        if (total > current) location.assign('?page=' + total + '#comments');
+      });
     });
-  }
-  area.addEventListener('keydown', (event) => {
-    if (pop.hidden) return;
-    const items = Array.from(pop.querySelectorAll('.mention-item'));
-    if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
-      event.preventDefault();
-      active = (active + (event.key === 'ArrowDown' ? 1 : items.length - 1)) % items.length;
-      items.forEach((item, index) => item.classList.toggle('active', index === active));
-    } else if (event.key === 'Enter' || event.key === 'Tab') {
-      if (items[active]) { event.preventDefault(); items[active].dispatchEvent(new MouseEvent('mousedown')); }
-    } else if (event.key === 'Escape') {
-      hide();
+
+    // 吸底「写评论」：顶部输入框滚出视野后出现（B 站那样）
+    const float = document.getElementById('c-float');
+    if (float && 'IntersectionObserver' in window) {
+      observer = new IntersectionObserver((entries) => {
+        if (!disposed) float.hidden = entries[0].isIntersecting;
+      }, { rootMargin: '-80px 0px 0px 0px' });
+      observer.observe(form);
+      listen(float, 'click', () => {
+        area.scrollIntoView({ block: 'center', behavior: 'smooth' });
+        area.focus();
+      });
     }
-  });
+    listen(area, 'keydown', (event) => {
+      if (pop.hidden) return;
+      const items = Array.from(pop.querySelectorAll('.mention-item'));
+      if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+        event.preventDefault();
+        active = (active + (event.key === 'ArrowDown' ? 1 : items.length - 1)) % items.length;
+        items.forEach((item, index) => item.classList.toggle('active', index === active));
+      } else if (event.key === 'Enter' || event.key === 'Tab') {
+        if (items[active]) { event.preventDefault(); items[active].dispatchEvent(new MouseEvent('mousedown')); }
+      } else if (event.key === 'Escape') {
+        hide();
+      }
+    });
+  };
+  initializeComments();
 })();
     var box = document.querySelector('[data-post-upload]');
     if (!box) return;

@@ -120,3 +120,6 @@ pub fn router(state: AppState) -> Router {
         .layer(middleware::from_fn(routes::access_log))
         .with_state(state)
 }
+
+#[cfg(test)]
+mod comment_tests;
