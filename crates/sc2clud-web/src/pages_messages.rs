@@ -358,6 +358,14 @@ pub async fn center(
     }
 
     // 右栏：私信线程（选中会话时）；顺带标记已读
+    // 自己的头像：没有就用手气里分到的默认头像（气泡旁边也要有头像）
+    let my_avatar = match user.avatar_hash.clone() {
+        Some(hash) => Some(hash),
+        None => repo::ensure_default_avatar(state.db.pool(), user.id)
+            .await
+            .ok()
+            .flatten(),
+    };
     let mut other_display = String::new();
     let mut other_avatar = None;
     let mut thread = Vec::new();
@@ -428,6 +436,7 @@ pub async fn center(
         selected,
         other_display,
         other_avatar,
+        my_avatar,
         thread,
         like_unread,
         system_unread,

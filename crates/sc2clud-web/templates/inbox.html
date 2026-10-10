@@ -51,9 +51,17 @@
     <div class="inbox-thread">
       {% for m in thread %}
       {% if m.show_date %}<div class="inbox-date">{{ m.date }}</div>{% endif %}
-      <div class="inbox-msg{% if m.mine %} mine{% endif %}">
+      {% if m.mine %}
+      <div class="inbox-msg mine" data-mine>
+        <div class="bubble">{{ m.body }}</div>
+        {% if let Some(hash) = my_avatar %}<img class="avatar msg-avatar" src="/avatar/{{ hash }}" alt="" width="32" height="32" onerror="this.src='/static/art/miyin/image-unavailable-480.webp'">{% else %}<img class="avatar msg-avatar" src="/static/art/miyin-chibi-80.webp" alt="" width="32" height="32">{% endif %}
+      </div>
+      {% else %}
+      <div class="inbox-msg">
+        {% if let Some(hash) = other_avatar %}<img class="avatar msg-avatar" src="/avatar/{{ hash }}" alt="" width="32" height="32" onerror="this.src='/static/art/miyin/image-unavailable-480.webp'">{% else %}<img class="avatar msg-avatar" src="/static/art/miyin-chibi-80.webp" alt="" width="32" height="32">{% endif %}
         <div class="bubble">{{ m.body }}</div>
       </div>
+      {% endif %}
       {% endfor %}
       {% if thread.is_empty() %}<p class="empty">还没有消息，打个招呼吧。</p>{% endif %}
     </div>
@@ -181,20 +189,33 @@
         headers: { 'content-type': 'application/json', 'x-csrf-token': form.querySelector('input[name=csrf]').value },
         body: JSON.stringify({ body: text }),
       });
-      if (!res.ok) { counter.textContent = '发送失败：' + res.status; return; }
-      const data = await res.json();
-      if (thread) {
-        const empty = thread.querySelector('.empty');
-        if (empty) empty.remove();
-        const wrap = document.createElement('div');
-        wrap.className = 'inbox-msg mine';
-        const bubble = document.createElement('div');
-        bubble.className = 'bubble';
-        bubble.textContent = data.body;
-        wrap.appendChild(bubble);
-        thread.appendChild(wrap);
-        wrap.scrollIntoView({ block: 'end' });
+      if (!res.ok) {
+        // 接口失败（会话过期/校验不过）时退回普通表单提交，别让用户以为发出去了
+        counter.textContent = '改用普通发送…';
+        form.submit();
+        return;
       }
+      const data = await res.json();
+      if (!thread) {
+        // 拿不到消息流容器（异常布局）就刷新，保证消息一定看得见
+        location.reload();
+        return;
+      }
+      const empty = thread.querySelector('.empty');
+      if (empty) empty.remove();
+      const wrap = document.createElement('div');
+      wrap.className = 'inbox-msg mine';
+      const bubble = document.createElement('div');
+      bubble.className = 'bubble';
+      bubble.textContent = data.body;
+      wrap.appendChild(bubble);
+      const mineAvatar = document.querySelector('[data-mine] .msg-avatar');
+      if (mineAvatar) {
+        const img = mineAvatar.cloneNode(true);
+        wrap.appendChild(img);
+      }
+      thread.appendChild(wrap);
+      wrap.scrollIntoView({ block: 'end' });
       const preview = document.querySelector('.inbox-item.active .inbox-item-preview');
       if (preview) preview.textContent = data.body;
       input.value = '';
@@ -247,6 +268,7 @@
 .inbox-thread{flex:1;overflow:auto;padding:16px;display:flex;flex-direction:column;gap:12px}
 .inbox-date{text-align:center;font-size:12px;opacity:.55;margin:6px 0}
 .inbox-msg{display:flex;gap:8px;align-items:flex-start}
+.msg-avatar{flex:none;margin-top:2px}
 .inbox-msg.mine{justify-content:flex-end}
 .bubble{max-width:70%;padding:10px 14px;border-radius:12px;background:rgba(127,127,127,.14);line-height:1.6;white-space:pre-wrap;word-break:break-word}
 .inbox-msg.mine .bubble{background:#2563eb;color:#fff}

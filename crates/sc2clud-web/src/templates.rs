@@ -271,6 +271,8 @@ pub struct InboxTemplate<'a> {
     pub selected: String,
     pub other_display: String,
     pub other_avatar: Option<String>,
+    /// 自己的头像（消息流里自己的气泡也要带头像）。
+    pub my_avatar: Option<String>,
     pub thread: Vec<InboxMessageView>,
     /// 删除确认版式：1 二次点击 / 2 弹窗确认 / 3 系统 confirm（预览用，生产恒 1）。
     pub delete_variant: u8,

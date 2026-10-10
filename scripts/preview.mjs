@@ -332,7 +332,12 @@ const main = async () => {
         input.value = '无感发送验证：这条没有刷新页面';
         form.dispatchEvent(new Event('submit', { cancelable: true, bubbles: true }));
         await new Promise((r) => setTimeout(r, 1200));
-        return document.querySelectorAll('.inbox-msg.mine').length;
+        const last = document.querySelector('.inbox-msg.mine:last-child');
+        return JSON.stringify({
+          mine: document.querySelectorAll('.inbox-msg.mine').length,
+          lastHasAvatar: !!(last && last.querySelector('img.msg-avatar')),
+          lastText: last ? last.querySelector('.bubble').textContent.slice(0, 24) : '',
+        });
       })()`,
       awaitPromise: true,
       returnByValue: true,
