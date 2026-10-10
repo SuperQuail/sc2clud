@@ -213,6 +213,9 @@
 .pa-grid{display:grid;grid-template-columns:1fr 1fr;gap:6px;min-width:380px}
 .pa-card{display:flex;flex-direction:column;gap:2px;padding:10px;border:1px solid var(--line,#e5e7eb);border-radius:8px;background:none;color:inherit;font:inherit;text-align:left;cursor:pointer}
 .pa-card:hover{background:rgba(127,127,127,.1)}
+</style>
+
+<script>
   const form = document.querySelector('[data-comment-form]');
   const postId = {{ post.id }};
   const area = document.getElementById('reply-body');
