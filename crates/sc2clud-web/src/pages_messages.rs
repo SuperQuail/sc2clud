@@ -435,3 +435,18 @@ pub async fn notification_mute(
     let tab = form.tab.unwrap_or_else(|| "system".to_string());
     Ok(Redirect::to(&format!("/inbox?tab={tab}")))
 }
+
+/// 老私信列表页 → 消息中心（我的消息）。
+pub async fn messages_landing() -> Response {
+    Redirect::to("/inbox?tab=dm").into_response()
+}
+
+/// 老私信对话页 → 消息中心并选中该会话（发信不受影响，仍走 POST）。
+pub async fn thread_landing(Path(handle): Path<String>) -> Response {
+    Redirect::to(&format!("/inbox?tab=dm&with={handle}")).into_response()
+}
+
+/// 老通知页 → 消息中心（系统通知）。
+pub async fn notifications_landing() -> Response {
+    Redirect::to("/inbox?tab=system").into_response()
+}

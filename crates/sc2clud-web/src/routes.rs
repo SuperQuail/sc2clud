@@ -77,9 +77,10 @@ pub fn pages() -> Router<AppState> {
             "/bookmarks",
             axum::routing::get(crate::pages_social::bookmarks),
         )
+        // 老通知页已并入消息中心：GET 重定向过去（保留书签可达）
         .route(
             "/notifications",
-            axum::routing::get(crate::pages_social::notifications),
+            axum::routing::get(crate::pages_messages::notifications_landing),
         )
         .route(
             "/announcements",
@@ -102,13 +103,14 @@ pub fn pages() -> Router<AppState> {
             "/admin/backup/{name}",
             axum::routing::get(crate::pages_social::download_backup),
         )
+        // 老私信页已并入消息中心：列表与对话页 GET 都重定向；发信仍走 POST /messages/{handle}
         .route(
             "/messages",
-            axum::routing::get(crate::pages_messages::inbox),
+            axum::routing::get(crate::pages_messages::messages_landing),
         )
         .route(
             "/messages/{handle}",
-            axum::routing::get(crate::pages_messages::thread).post(crate::pages_messages::send),
+            axum::routing::get(crate::pages_messages::thread_landing).post(crate::pages_messages::send),
         )
         .route(
             "/u/{handle}/block",
