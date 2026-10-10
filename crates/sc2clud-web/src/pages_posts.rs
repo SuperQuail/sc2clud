@@ -461,8 +461,24 @@ async fn build_post_page<'a>(
     } else {
         1
     };
+    // 标签由数据生成：谁能点亮自己说了算 —— 发布页与详情页都归属「问题与建议」
+    let tabs = vec![
+        crate::templates::PostTabView {
+            label: "帖子内容".to_string(),
+            href: format!("/p/{id}"),
+            active: tab == "content",
+            badge: None,
+        },
+        crate::templates::PostTabView {
+            label: "问题与建议".to_string(),
+            href: format!("/p/{id}/issues"),
+            active: matches!(tab, "issues" | "issue" | "new"),
+            badge: (issue_open > 0).then_some(issue_open),
+        },
+    ];
     Ok(PostPageTemplate {
         ui_variant,
+        tabs,
         issue_open,
         issue_total,
         issues,

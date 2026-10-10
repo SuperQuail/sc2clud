@@ -31,8 +31,7 @@
   <div class="post-main">
 {# 与 GitHub 一样：顶部（横幅 + 标题 + 侧栏）不变，只切换中间那块 #}
 <nav class="post-tabs">
-  <a class="ptab{% if tab != "issues" %} active{% endif %}" href="/p/{{ post.id }}">帖子内容</a>
-  <a class="ptab{% if tab == "issues" %} active{% endif %}" href="/p/{{ post.id }}/issues">问题与建议{% if issue_open > 0 %} <b>{{ issue_open }}</b>{% endif %}</a>
+  {% for t in tabs %}<a class="ptab{% if t.active %} active{% endif %}" href="{{ t.href }}">{{ t.label }}{% if let Some(n) = t.badge %} <b>{{ n }}</b>{% endif %}</a>{% endfor %}
   <span class="ptab-spacer"></span>
   <a class="ptab-cta bug" href="/p/{{ post.id }}/issues?kind=bug">报告 Bug</a>
   <a class="ptab-cta idea" href="/p/{{ post.id }}/issues?kind=feature">改进意见</a>

@@ -245,8 +245,10 @@ pub struct PostPageTemplate<'a> {
     pub issues: Vec<IssueCardView>,
     /// 帖子页「问题与建议」入口版式：1 标签页 / 2 大横幅卡 / 3 双按钮条（预览用，生产恒 1）。
     pub ivi: u8,
-    /// 当前标签：content = 帖子内容（默认）/ issues = 问题与建议（与 GitHub 一样只换中间那块）。
+    /// 当前标签：content = 帖子内容（默认）/ issues = 问题与建议 / issue = 单条详情 / new = 发布。
     pub tab: String,
+    /// 标签行由数据生成（每个标签自己声明归属，避免模板里写取反条件）。
+    pub tabs: Vec<PostTabView>,
     /// issue 筛选（issues 标签用）：状态 open|closed|all 与类型。
     pub issue_state: String,
     pub issue_kind: String,
@@ -553,6 +555,16 @@ pub struct IssuesPageTemplate<'a> {
     /// 布局版式：1 列表式 / 2 卡片式 / 3 双栏式（预览用，生产恒 1）。
     pub ivi: u8,
     pub issues: Vec<IssueCardView>,
+}
+
+/// 帖子页顶部的一个标签（由数据生成，模板只渲染）。
+#[derive(Debug, Clone)]
+pub struct PostTabView {
+    pub label: String,
+    pub href: String,
+    pub active: bool,
+    /// 右侧小红数字（例如待处理条数）。
+    pub badge: Option<i64>,
 }
 
 /// 列表里的一条 issue。
