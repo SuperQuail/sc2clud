@@ -101,6 +101,25 @@ cargo run -p sc2clud -- check                     # 配置与依赖自检
 8. **本站不承载启动器产物的字节**。`releases` / `release_assets` 只存版本与**外部直链**，
    下载走 `/api/v1/launcher/assets/{id}/go` 做 302 转链（便于统计与换镜像）。
    10 Mbps 的单机小站拉安装包会把出口带宽吃光——这条是产品约束，不是实现细节。
+## 6.6 前端开发规范（2026-10 起强制）
+
+**不要再往 askama 模板里写业务 JS、内联 `<style>`、或者用 `fetch` 拼散装逻辑。**
+模板只负责「首屏结构 + 数据」；**交互属于前端岛**（`web/` 里的 Vue 3 + TS + Vite）。
+
+| 场景 | 做法 |
+| --- | --- |
+| 纯展示（列表、详情、表单初值） | askama 服务端渲染，SEO 与首屏不依赖 JS |
+| 有交互（筛选、切换、提交、实时反馈） | 写成 `web/src/*.vue` 岛，挂在 `[data-island="xxx"]` 上 |
+| 数据读写 | 用 **JSON API**（`/api/v1/**`）或表单端点；岛内 `fetch` 只出现在一个 `api.ts` 里 |
+| 样式 | 岛自己的样式写在 `.vue` 的 `<style scoped>`；页面级样式放 `static/*.css`，**禁止内联 `<style>`** |
+| 类型 | 岛的 API 出入参必须有 TS 类型，禁止 `any` |
+
+流程：`pnpm -C web build` → 产物进 `crates/sc2clud-web/static/islands/` → 模板里 `<script type="module" src="/static/islands/<name>.js">`。
+预算：首屏 JS（brotli 后）≤ 60 KB / 岛（见 `docs/BUDGETS.md`），Vue 运行时约 15 KB。
+
+反例（都发生过，别再犯）：模板里塞 `<style>` 又被 `{% if %}` 夹住导致样式失效；
+把 `<select>` 写进 `<style>` 块导致浏览器忽略；用行号范围猜模板块边界导致删错内容。
+改模板一律「整块读出来 → 整块替换 → 立刻编译」；改前端一律走岛。
 
 ## 7. 编码约定
 

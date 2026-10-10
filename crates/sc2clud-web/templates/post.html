@@ -131,25 +131,12 @@
 .issue-empty p{margin:8px 0 0;font-size:13px;opacity:.7}
 </style>
 
-<section class="issue-view issue-new">
-  <h2 style="margin:0 0 6px">发布反馈</h2>
-  <p class="hint" style="margin:0 0 14px;font-size:13px;opacity:.8">选一个类型，写清现象或想法；提交后作者与管理员都会看到。</p>
-  <form method="post" action="/p/{{ post.id }}/issues" class="stack">
-    <input type="hidden" name="csrf" value="{{ csrf }}">
-    <label>类型（必选）
-      <select name="kind" class="ui-select" style="width:100%;margin-top:6px">
-        <option value="bug"{% if issue_kind == "bug" %} selected{% endif %}>报告 Bug —— 打不开、崩溃、闪退、卡关</option>
-        <option value="feature"{% if issue_kind == "feature" %} selected{% endif %}>改进意见 —— 希望新增或调整的功能</option>
-        <option value="difficulty"{% if issue_kind == "difficulty" %} selected{% endif %}>难度建议 —— 太简单 / 太难 / 想要难度选项</option>
-        <option value="other"{% if issue_kind == "other" || issue_kind.is_empty() %} selected{% endif %}>其它 —— 不属于上面三类的问题</option>
-      </select>
-    </label>
-    <label>标题<input type="text" name="title" maxlength="80" required placeholder="一句话说清问题，例如：第三关开局就崩溃"></label>
-    <label>正文<textarea name="body" rows="8" maxlength="5000" placeholder="复现步骤 / 你的版本 / 期望的行为。写清这些，作者才好定位。"></textarea></label>
-    <div class="issue-actions"><button class="btn" type="submit">提交反馈</button>
-      <a class="btn ghost" href="/p/{{ post.id }}/issues">取消</a></div>
-  </form>
-</section>
+  {# 交互归前端岛（AGENTS.md §6.6）：模板只给挂载点与初始数据 #}
+  <div data-island="issues"
+       data-post-id="{{ post.id }}"
+       data-csrf="{{ csrf }}"
+       data-kind="{{ issue_kind }}"></div>
+  <script type="module" src="/static/islands/issues.js"></script>
 {% else if tab == "issues" %}
 <section class="issue-view">
   {# 状态是主切换（对齐 GitHub 的 Open/Closed），类型收进下拉 —— 以后加类型只多一行，不会把筛选条撑爆 #}
