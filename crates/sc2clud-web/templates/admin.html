@@ -240,6 +240,122 @@
     </section>
     {% endif %}
 
+<section class="panel" id="acl">
+  <h2>分区发言权限 <span class="count">{{ sections.len() }}</span></h2>
+  <p class="hint">角色门槛＝「至少哪个等级能在该分区发言 / 评论」；用户组规则是额外的白名单（禁止项优先于一切）。
+    这是设计稿：写入接口待你选定版式后再接，下面的控件暂不可提交。</p>
+  {% if acl_variant == 1 %}
+  {# 版式 1：权限矩阵 —— 行是分区，列是门槛与组白名单，信息密度最高 #}
+  <table class="acl-matrix">
+    <thead><tr><th>分区</th><th>可发言</th><th>可评论</th><th>允许的用户组</th></tr></thead>
+    <tbody>
+    {% for section in sections %}
+    <tr>
+      <th scope="row">{{ section.label }}</th>
+      <td><select disabled><option value="member">普通用户</option><option value="developer">认证开发者</option><option value="admin">管理员</option><option value="super">超级管理员</option></select></td>
+      <td><select disabled><option value="member">普通用户</option><option value="developer">认证开发者</option><option value="admin">管理员</option><option value="super">超级管理员</option></select></td>
+      <td class="acl-chips">
+        {% for group in groups %}<button class="acl-chip" type="button" disabled>{{ group.name }}</button>{% endfor %}
+        {% if groups.is_empty() %}<span class="hint">还没有用户组</span>{% endif %}
+      </td>
+    </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  {% else if acl_variant == 2 %}
+  {# 版式 2：每分区一卡 —— 卡片墙，组用四个开关直接摆开 #}
+  <div class="acl-cards">
+    {% for section in sections %}
+    <article class="acl-card">
+      <h3>{{ section.label }}</h3>
+      <label class="acl-row">可发言<select disabled><option value="member">普通用户</option><option value="developer">认证开发者</option><option value="admin">管理员</option><option value="super">超级管理员</option></select></label>
+      <label class="acl-row">可评论<select disabled><option value="member">普通用户</option><option value="developer">认证开发者</option><option value="admin">管理员</option><option value="super">超级管理员</option></select></label>
+      <div class="acl-groups">
+        {% for group in groups %}
+        <div class="acl-group-row"><span>{{ group.name }}</span><span class="acl-flags">
+          <label><input type="checkbox" disabled>发帖</label>
+          <label><input type="checkbox" disabled>评论</label>
+          <label><input type="checkbox" disabled>禁发</label>
+          <label><input type="checkbox" disabled>禁评</label>
+        </span></div>
+        {% endfor %}
+      </div>
+    </article>
+    {% endfor %}
+  </div>
+  {% else %}
+  {# 版式 3：主从两栏 —— 左选分区，右配权限（像设置页） #}
+  <div class="acl-split">
+    <nav class="acl-list">
+      {% for section in sections %}<button type="button" class="{% if loop.first %}active{% endif %}" disabled>{{ section.label }}</button>{% endfor %}
+    </nav>
+    <div class="acl-detail">
+      <h3>{{ sections[0].label }}</h3>
+      <div class="acl-row">可发言<select disabled><option value="member">普通用户</option><option value="developer">认证开发者</option><option value="admin">管理员</option><option value="super">超级管理员</option></select></div>
+      <div class="acl-row">可评论<select disabled><option value="member">普通用户</option><option value="developer">认证开发者</option><option value="admin">管理员</option><option value="super">超级管理员</option></select></div>
+      <table class="acl-groups-table">
+        <thead><tr><th>用户组</th><th>可发帖</th><th>可评论</th><th>禁发帖</th><th>禁评论</th></tr></thead>
+        <tbody>
+        {% for group in groups %}
+        <tr><th scope="row">{{ group.name }}</th><td><input type="checkbox" disabled></td><td><input type="checkbox" disabled></td><td><input type="checkbox" disabled></td><td><input type="checkbox" disabled></td></tr>
+        {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+  {% endif %}
+</section>
+
+<section class="panel" id="groups">
+  <h2>用户组 <span class="count">{{ groups.len() }}</span></h2>
+  <p class="hint">组是「人群」，分区权限里可以按组给白名单；用户面板里把成员分到组里。设计稿：新建/编辑接口待接。</p>
+  <div class="group-list">
+    {% for group in groups %}
+    <article class="group-card{% if group.archived %} archived{% endif %}">
+      <b>{{ group.name }}</b> <span class="meta">{{ group.key }} · {{ group.member_count }} 人{% if group.archived %} · 已归档{% endif %}</span>
+      <p class="hint">{{ group.description }}</p>
+      <div class="group-rules">
+        {% for rule in group.rules %}<span class="group-rule">{{ rule.0 }}{% if rule.1 %} 可发{% endif %}{% if rule.2 %} 可评{% endif %}{% if rule.3 %} 禁发{% endif %}{% if rule.4 %} 禁评{% endif %}</span>{% endfor %}
+        {% if group.rules.is_empty() %}<span class="hint">没有分区规则</span>{% endif %}
+      </div>
+    </article>
+    {% endfor %}
+    {% if groups.is_empty() %}<p class="hint">还没有用户组。</p>{% endif %}
+  </div>
+  <form class="group-create" method="post" action="#" data-design-only>
+    <input type="text" name="name" placeholder="新组名称（如：汉化组）" disabled>
+    <input type="text" name="description" placeholder="说明（可选）" disabled>
+    <button class="btn" type="button" disabled>新建用户组</button>
+  </form>
+</section>
+
+<style>
+.acl-matrix{width:100%;border-collapse:collapse;font-size:13px}
+.acl-matrix th,.acl-matrix td{padding:8px 10px;border-bottom:1px solid var(--line,#e5e7eb);text-align:left}
+.acl-chips{display:flex;gap:6px;flex-wrap:wrap}
+.acl-chip{padding:3px 10px;border-radius:999px;border:1px solid var(--line,#e5e7eb);background:none;color:inherit;font:inherit;font-size:12px}
+.acl-cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:12px}
+.acl-card{border:1px solid var(--line,#e5e7eb);border-radius:12px;padding:14px}
+.acl-card h3{margin:0 0 10px;font-size:15px}
+.acl-row{display:flex;align-items:center;gap:8px;margin:6px 0;font-size:13px}
+.acl-group-row{display:flex;justify-content:space-between;gap:8px;font-size:13px;padding:4px 0}
+.acl-flags{display:flex;gap:8px;opacity:.85}
+.acl-split{display:grid;grid-template-columns:200px 1fr;gap:14px;align-items:start}
+.acl-list{display:flex;flex-direction:column;gap:2px}
+.acl-list button{text-align:left;padding:8px 10px;border:0;border-radius:8px;background:none;color:inherit;font:inherit;font-size:13px}
+.acl-list button.active{background:rgba(37,99,235,.12);color:#2563eb;font-weight:600}
+.acl-detail h3{margin:0 0 10px;font-size:15px}
+.acl-groups-table{width:100%;border-collapse:collapse;font-size:13px;margin-top:10px}
+.acl-groups-table th,.acl-groups-table td{padding:6px 8px;border-bottom:1px solid var(--line,#e5e7eb);text-align:left}
+.group-list{display:flex;flex-direction:column;gap:10px;margin-bottom:12px}
+.group-card{border:1px solid var(--line,#e5e7eb);border-radius:10px;padding:10px 12px}
+.group-card.archived{opacity:.6}
+.group-rules{display:flex;gap:6px;flex-wrap:wrap;margin-top:6px}
+.group-rule{font-size:12px;padding:2px 8px;border-radius:6px;background:rgba(37,99,235,.1)}
+.group-create{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.group-create input{padding:8px 10px;border:1px solid var(--line,#e5e7eb);border-radius:8px;background:none;color:inherit;font:inherit}
+</style>
+
     <section class="panel cover-manager" id="covers" aria-labelledby="covers-title">
       <header class="covers-heading"><h2 id="covers-title">分区封面与顺序</h2>
         <p class="hint">用每格的 ↑ ↓ 调整顺序：它决定社区左栏导航、首页标签页与发帖分区下拉的排列。</p></header>
@@ -336,6 +452,34 @@
       .pool-list{display:flex;flex-direction:column;gap:8px}
       </style>
       <script>
+  // 分区调序：fetch 提交 → 按返回的新顺序就地重排封面格（不刷新页面）
+  const orderRoot = document.querySelector('.cover-grid');
+  if (orderRoot) {
+    orderRoot.addEventListener('submit', async (event) => {
+      const form = event.target.closest('form[action*="/move"]');
+      if (!form) return;
+      event.preventDefault();
+      const body = new FormData(form);
+      const res = await fetch(form.action, {
+        method: 'POST',
+        headers: { 'x-requested-with': 'fetch' },
+        body,
+      });
+      if (!res.ok) return;
+      const data = await res.json().catch(() => null);
+      if (!data || !Array.isArray(data.order)) return;
+      // 按新顺序把已有的格子重排（不重新渲染、不丢上传状态）
+      const cells = new Map();
+      orderRoot.querySelectorAll('[data-cover-card]').forEach((cell) => {
+        const key = (cell.querySelector('form[action*="/move"]')?.action.match(/\/sections\/([^/]+)\//) || [])[1];
+        if (key) cells.set(key, cell);
+      });
+      data.order.forEach((key) => {
+        const cell = cells.get(key);
+        if (cell) orderRoot.appendChild(cell);
+      });
+    });
+  }
       (() => {
         const file = document.getElementById('pool-file');
         const pick = document.getElementById('pool-pick');

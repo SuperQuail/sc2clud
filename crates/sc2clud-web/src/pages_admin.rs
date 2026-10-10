@@ -152,6 +152,44 @@ async fn build_panel<'a>(
     } else {
         2
     };
+    // 用户组 + 人数 + 规则（人数少，直接逐个查，不值得为它写一条聚合 SQL）
+    let acl_variant = if state.config.server.debug_pages {
+        query
+            .split('&')
+            .find_map(|part| part.strip_prefix("aui="))
+            .and_then(|value| value.parse::<u8>().ok())
+            .filter(|value| (1..=3).contains(value))
+            .unwrap_or(1)
+    } else {
+        1
+    };
+    let all_rules = repo::list_all_group_rules(state.db.pool()).await?;
+    let mut groups = Vec::new();
+    for group in repo::list_user_groups(state.db.pool(), true).await? {
+        let members = repo::list_group_members(state.db.pool(), group.id).await?;
+        let rules = all_rules
+            .iter()
+            .filter(|rule| rule.group_id == group.id)
+            .map(|rule| {
+                (
+                    rule.section.clone(),
+                    rule.can_post != 0,
+                    rule.can_reply != 0,
+                    rule.deny_post != 0,
+                    rule.deny_reply != 0,
+                )
+            })
+            .collect();
+        groups.push(crate::templates::AdminGroupView {
+            id: group.id,
+            key: group.key,
+            name: group.name,
+            description: group.description,
+            member_count: members.len() as i64,
+            archived: group.archived_at.is_some(),
+            rules,
+        });
+    }
     let default_avatars = repo::list_default_avatars(state.db.pool())
         .await?
         .into_iter()
@@ -165,6 +203,8 @@ async fn build_panel<'a>(
     Ok(AdminTemplate {
         default_avatars,
         pool_variant,
+        acl_variant,
+        groups,
         server_free_human: human_bytes(free_bytes),
         quota_allocated_human: human_bytes(allocated.max(0) as u64),
         quota_used_human: human_bytes(used.max(0) as u64),
@@ -902,6 +942,19 @@ pub async fn move_section(
         keys.swap(index, target);
         repo::reorder_sections(state.db.pool(), &keys, now_unix()).await?;
         tracing::info!(section, dir = form.dir, "分区调序");
+    }
+    let order: Vec<String> = repo::list_sections(state.db.pool(), true)
+        .await?
+        .into_iter()
+        .map(|row| row.key)
+        .collect();
+    // 面板里的 ↑↓ 用 fetch 调用：回 JSON 让页面就地重排，不刷新、不用出门再看
+    if headers
+        .get("x-requested-with")
+        .and_then(|v| v.to_str().ok())
+        == Some("fetch")
+    {
+        return Ok(axum::Json(serde_json::json!({ "ok": true, "order": order })).into_response());
     }
     Ok(done(
         &headers,

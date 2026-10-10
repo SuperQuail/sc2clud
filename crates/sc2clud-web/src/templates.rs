@@ -743,6 +743,19 @@ pub struct DebugAuditView {
     pub detail: String,
 }
 
+/// 后台：一个用户组（含人数与它自己的分区规则）。
+#[derive(Debug, Clone)]
+pub struct AdminGroupView {
+    pub id: i64,
+    pub key: String,
+    pub name: String,
+    pub description: String,
+    pub member_count: i64,
+    pub archived: bool,
+    /// (分区 key, 允许发帖, 允许评论, 禁止发帖, 禁止评论)
+    pub rules: Vec<(String, bool, bool, bool, bool)>,
+}
+
 /// 默认头像池里的一张（后台展示用）。
 #[derive(Debug, Clone)]
 pub struct DefaultAvatarView {
@@ -761,6 +774,10 @@ pub struct AdminTemplate<'a> {
     pub default_avatars: Vec<DefaultAvatarView>,
     /// 池子界面版式：1 网格卡 / 2 列表行 / 3 侧栏上传（预览用，生产恒 1）。
     pub pool_variant: u8,
+    /// 权限/用户组界面版式：1 权限矩阵 / 2 每分区一卡 / 3 主从两栏（预览用，生产恒 1）。
+    pub acl_variant: u8,
+    /// 用户组列表（含人数与规则）。
+    pub groups: Vec<AdminGroupView>,
     /// 磁盘预算总览（仅超级管理员可见）。
     pub server_free_human: String,
     pub quota_allocated_human: String,

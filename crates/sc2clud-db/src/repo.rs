@@ -2652,6 +2652,14 @@ pub async fn is_section_moderator(pool: &SqlitePool, section: &str, user_id: i64
 }
 // ---------------------------------------------------------------- 用户组
 
+/// 一次读全部组 × 分区规则（后台权限矩阵用，避免 N+1）。
+pub async fn list_all_group_rules(pool: &SqlitePool) -> Result<Vec<GroupSectionRuleRow>> {
+    query_as::<_, GroupSectionRuleRow>("SELECT * FROM group_section_rules")
+        .fetch_all(pool)
+        .await
+        .map_err(db_err)
+}
+
 pub async fn list_user_groups(
     pool: &SqlitePool,
     include_archived: bool,
