@@ -105,3 +105,20 @@ grep -rn "pub async fn .*issue" crates/sc2clud-db/src/repo.rs   # 仓储
 grep -rn "issue" crates/sc2clud-web/src/routes.rs               # 路由
 grep -rn "issue" crates/sc2clud-web/templates/                  # 页面（当前为空）
 ```
+## 9. 评论控件统一（帖子评论 / issue 评论同一套）
+
+**现状**：帖子回复区是服务端渲染的一大块（已抽成 `post_comments.html`），issue 评论是另一套数据与渲染；
+两边的样式、@ 机制、点赞、分页各写一遍 —— 这正是要消除的重复。
+
+**统一目标**：一个「评论流」组件，两处复用（以后文章/公告也能用）。
+
+| 决策 | 内容 |
+| --- | --- |
+| 渲染位置 | 首屏仍由服务端渲染（SEO + 无 JS 可读），`post_comments.html` 升级为**通用 partial**：只依赖 `CommentView` 列表与几个开关（能否回复、分页信息、目标类型/目标 id） |
+| 交互层 | 交互统一走一个 React 岛 `islands/comments/`：点赞、回复（含 @ 选人）、发表、删除、分页加载；不再在模板里写业务 JS |
+| 数据层 | `web/src/lib/comments.ts`：类型 + fetch（沿用现有 JSON/表单端点）；issue 评论与帖子评论共用同一组类型 |
+| 后端 | issue 评论补齐与帖子评论相同的字段（点赞/回复层级/标题色），必要时让 `IssueCommentRow` 映射到 `CommentView` |
+| 迁移顺序 | ① `post_comments.html` 参数化（去掉 post 专属引用）→ ② 帖子页接上 React 评论岛 → ③ issue 详情复用同一 partial + 同一岛 |
+
+验收：帖子里点赞/回复/分页的行为与 issue 详情完全一致，且**只有一份**评论相关代码。
+
