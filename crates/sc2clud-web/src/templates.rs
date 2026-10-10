@@ -534,6 +534,12 @@ pub struct IssuesPageTemplate<'a> {
     pub post_title: &'a str,
     pub open_count: i64,
     pub closed_count: i64,
+    /// 当前筛选后显示了几条。
+    pub shown_count: i64,
+    /// 状态筛选：open / closed / all。
+    pub state_filter: String,
+    /// 类型筛选：空 = 全部。
+    pub kind_filter: String,
     /// 布局版式：1 列表式 / 2 卡片式 / 3 双栏式（预览用，生产恒 1）。
     pub ivi: u8,
     pub issues: Vec<IssueCardView>,

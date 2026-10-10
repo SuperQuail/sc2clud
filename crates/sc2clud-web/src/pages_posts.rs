@@ -1085,10 +1085,23 @@ pub async fn issues_page(
     .ok()
     .flatten()
     .ok_or_else(|| AppError::not_found("帖子不存在或不可见"))?;
-    let rows = repo::list_issues(state.db.pool(), id, true, 100, 0).await?;
-    let open_count = rows.iter().filter(|row| row.state == "open").count() as i64;
-    let closed_count = rows.len() as i64 - open_count;
-    let issues = rows.into_iter().map(Parties::card).collect::<Vec<_>>();
+    let all_rows = repo::list_issues(state.db.pool(), id, true, 200, 0).await?;
+    let open_count = all_rows.iter().filter(|row| row.state == "open").count() as i64;
+    let closed_count = all_rows.len() as i64 - open_count;
+    // 与 GitHub 一致：默认只看待处理，已关闭的要显式点出来；类型可筛
+    let state_filter = query.state.clone().unwrap_or_else(|| "open".to_string());
+    let kind_filter = query.kind.clone().unwrap_or_default();
+    let issues = all_rows
+        .into_iter()
+        .filter(|row| match state_filter.as_str() {
+            "all" => true,
+            "closed" => row.state == "closed",
+            _ => row.state == "open",
+        })
+        .filter(|row| kind_filter.is_empty() || row.kind == kind_filter)
+        .map(Parties::card)
+        .collect::<Vec<_>>();
+    let shown_count = issues.len() as i64;
     Ok(render(IssuesPageTemplate {
         site_name: &state.config.server.site_name,
         user_label: user.as_ref().map(|user| user.display_name.clone()),
@@ -1101,6 +1114,9 @@ pub async fn issues_page(
         post_title: &post.title,
         open_count,
         closed_count,
+        shown_count,
+        state_filter: state_filter.clone(),
+        kind_filter: kind_filter.clone(),
         ivi: query.ivi.unwrap_or(1),
         issues,
     })
@@ -1134,6 +1150,10 @@ impl Parties {
 pub struct IssuesQuery {
     /// 布局版式（仅开发实例生效）。
     pub ivi: Option<u8>,
+    /// 状态筛选：open（默认，与 GitHub 一致只看待处理）/ closed / all。
+    pub state: Option<String>,
+    /// 类型筛选：bug / feature / other；缺省 = 全部。
+    pub kind: Option<String>,
 }
 
 pub async fn issue_create(

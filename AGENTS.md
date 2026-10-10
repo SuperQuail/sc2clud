@@ -252,5 +252,4 @@ SC2CLUD_SSH_KEY=<私钥路径> node scripts/preview.mjs --server root@<dev 机> 
 4. 改 unit / vhost 后必须 `systemctl daemon-reload` / `nginx -s reload`。
 5. 数据与 Cookie 都是隔离的：prod `/srv/sc2clud/data` + `sc2clud_session`，
    dev `/srv/sc2clud-dev/data` + `sc2clud_dev_session`；**反向同步绝不允许**。
-6. **issue 一律发到公开库** `SuperQuail/sc2clud`（`gh issue create -R SuperQuail/sc2clud`）；
-   私有库 `Tang-Tian-dev/SC2clud`（origin）只放开发分支，不发 issue。说「发 issue」默认指公开库。
+6. **issue 一律发公开库**：`gh issue create -R SuperQuail/sc2clud`（不带 `-R` 会落到 `origin`）。
