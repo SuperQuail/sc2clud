@@ -760,3 +760,86 @@ mod tests {
         assert_eq!(repo::pending_image_jobs(db.pool()).await.expect("队列"), 0);
     }
 }
+// ---------------------------------------------------------------- 密钥加密（AI API key）
+
+/// 加密用的密钥：优先环境变量 SC2CLUD_SECRET，否则用 data/secret.key（首次自动生成，0600）。
+/// 这样数据库被别人拷走也解不开密钥。
+fn secret_key(db_path: &std::path::Path) -> Result<[u8; 32]> {
+    let material = match std::env::var("SC2CLUD_SECRET") {
+        Ok(value) if !value.trim().is_empty() => value.into_bytes(),
+        _ => {
+            let path = db_path.with_file_name("secret.key");
+            if let Ok(existing) = std::fs::read(&path) {
+                existing
+            } else {
+                let fresh = blake3::hash(nanoid_like().as_bytes()).to_hex().to_string();
+                std::fs::write(&path, fresh.as_bytes())?;
+                #[cfg(unix)]
+                {
+                    use std::os::unix::fs::PermissionsExt;
+                    let _ = std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o600));
+                }
+                fresh.into_bytes()
+            }
+        }
+    };
+    Ok(blake3::derive_key("sc2clud ai secret v1", &material))
+}
+
+/// 够用的随机串（生成密钥文件用；不用于加密本身）。
+fn nanoid_like() -> String {
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_nanos())
+        .unwrap_or(0);
+    format!("{now}-{:?}-{}", std::process::id(), std::env::consts::OS)
+}
+
+/// 加密一个密钥：返回 (密文, nonce)。
+pub fn seal_secret(db_path: &std::path::Path, plaintext: &str) -> Result<(Vec<u8>, Vec<u8>)> {
+    use chacha20poly1305::aead::{Aead, KeyInit, OsRng, rand_core::RngCore};
+    use chacha20poly1305::{ChaCha20Poly1305, Nonce};
+    let cipher = ChaCha20Poly1305::new((&secret_key(db_path)?).into());
+    let mut nonce_bytes = [0u8; 12];
+    OsRng.fill_bytes(&mut nonce_bytes);
+    let ciphertext = cipher
+        .encrypt(Nonce::from_slice(&nonce_bytes), plaintext.as_bytes())
+        .map_err(|_| std::io::Error::other("加密失败"))?;
+    Ok((ciphertext, nonce_bytes.to_vec()))
+}
+
+/// 解密（密文坏了返回 None，不让它把后台打挂）。
+pub fn open_secret(db_path: &std::path::Path, ciphertext: &[u8], nonce: &[u8]) -> Option<String> {
+    use chacha20poly1305::aead::{Aead, KeyInit};
+    use chacha20poly1305::{ChaCha20Poly1305, Nonce};
+    if nonce.len() != 12 {
+        return None;
+    }
+    let cipher = ChaCha20Poly1305::new((&secret_key(db_path).ok()?).into());
+    let plain = cipher.decrypt(Nonce::from_slice(nonce), ciphertext).ok()?;
+    String::from_utf8(plain).ok()
+}
+
+#[cfg(test)]
+mod secret_tests {
+    use super::*;
+
+    #[test]
+    fn seal_then_open_round_trips_and_wrong_data_fails() {
+        let dir = std::env::temp_dir().join(format!("sc2clud-secret-test-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).expect("临时目录");
+        let db = dir.join("x.sqlite3");
+        let (cipher, nonce) = seal_secret(&db, "sk-test-123").expect("加密");
+        assert_ne!(cipher, b"sk-test-123".to_vec(), "不能是明文");
+        assert_eq!(
+            open_secret(&db, &cipher, &nonce).as_deref(),
+            Some("sk-test-123")
+        );
+        assert_eq!(
+            open_secret(&db, &cipher, &[0u8; 12]),
+            None,
+            "换 nonce 解不开"
+        );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+}

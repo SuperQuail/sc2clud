@@ -10,6 +10,10 @@ description = "SQLite（WAL）元数据库访问层：连接参数、迁移与�
 sc2clud-core.workspace = true
 sqlx = { version = "0.8.6", default-features = false, features = ["runtime-tokio", "sqlite", "migrate", "macros"] }
 tracing = "0.1.44"
+# 密钥加密：RustCrypto 的 ChaCha20-Poly1305（业界标准 AEAD）
+chacha20poly1305 = "0.10"
+# 派生加密密钥用的哈希（已在 core 用过，这里直接用）
+blake3 = "1"
 
 [dev-dependencies]
 tempfile = "3.27.0"
