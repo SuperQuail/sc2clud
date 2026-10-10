@@ -249,7 +249,9 @@ pub async fn thread_json(
     let user = require_user(&state, &headers).await?;
     let other = find_other(&state, &handle).await?;
     let after = query.after.unwrap_or(0);
-    let rows = repo::list_thread(state.db.pool(), user.id, other.id, 100).await?;
+    let mut rows = repo::list_thread(state.db.pool(), user.id, other.id, 100).await?;
+    // 轮询按 id 升序返回，前端才会把新消息接在末尾
+    rows.reverse();
     // 小站数据量下直接取全量再过滤，不值得为轮询单写一条 SQL
     let messages: Vec<serde_json::Value> = rows
         .into_iter()
@@ -466,7 +468,9 @@ pub async fn center(
             other.display_name.clone()
         };
         other_avatar = other.avatar_hash.clone();
-        let rows = repo::list_thread(state.db.pool(), user.id, other.id, 100).await?;
+        // 仓储按时间倒序返回（新的在前），消息流要正序显示：新的在下面
+        let mut rows = repo::list_thread(state.db.pool(), user.id, other.id, 100).await?;
+        rows.reverse();
         let mut last_day = String::new();
         for row in rows {
             let day = crate::templates::format_date(row.created_at);

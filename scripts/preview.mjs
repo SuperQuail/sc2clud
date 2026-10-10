@@ -326,6 +326,7 @@ const main = async () => {
     const before = await cdp.send('Runtime.evaluate', { expression: "location.pathname + location.search" })
     await cdp.send('Runtime.evaluate', {
       expression: `(async () => {
+        const handleForTest = ${JSON.stringify(dmTo)};
         const form = document.querySelector('[data-composer]');
         if (!form) return 'no-composer';
         const input = form.querySelector('input[name=body]');
@@ -339,6 +340,15 @@ const main = async () => {
         const afterRemove = document.querySelectorAll('[data-msg-id]').length;
         await new Promise((r) => setTimeout(r, 6500));
         const restored = sentId ? !!document.querySelector('[data-msg-id="' + sentId + '"]') : false;
+        // SSE 验证：带会话拉一次事件流，只看响应头（1.5 秒后中断，不真的等消息）
+        let sseInfo = 'n/a';
+        try {
+          const ac = new AbortController();
+          const t = setTimeout(() => ac.abort(), 1500);
+          const es = await fetch('/api/v1/messages/' + encodeURIComponent(handleForTest) + '/stream', { signal: ac.signal });
+          clearTimeout(t);
+          sseInfo = es.status + ' ' + (es.headers.get('content-type') || '') + ' buffering=' + (es.headers.get('x-accel-buffering') || '-');
+        } catch (e) { sseInfo = 'aborted(正常，流已建立): ' + (e.name || e); }
         const last = document.querySelector('.inbox-msg.mine:last-child');
         return JSON.stringify({
           mine: document.querySelectorAll('.inbox-msg.mine').length,
@@ -346,6 +356,7 @@ const main = async () => {
           lastText: last ? last.querySelector('.bubble').textContent.slice(0, 24) : '',
           pollingRestored: restored,
           countAfterRemove: afterRemove,
+          sse: sseInfo,
         });
       })()`,
       awaitPromise: true,

@@ -218,9 +218,10 @@ const appendMessage = (m) => {
         body: JSON.stringify({ body: text }),
       });
       if (!res.ok) {
-        // 接口失败（会话过期/校验不过）时退回普通表单提交，别让用户以为发出去了
-        counter.textContent = '改用普通发送…';
-        form.submit();
+        // 接口失败（会话过期/CSRF 过期）时退回普通表单提交，消息不会丢；同时把状态亮出来便于排查
+        counter.textContent = '接口 ' + res.status + '，改用普通发送…';
+        console.error('私信接口失败：', res.status, await res.text().catch(() => ''));
+        setTimeout(() => form.submit(), 600);
         return;
       }
       const data = await res.json();
