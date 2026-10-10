@@ -332,11 +332,20 @@ const main = async () => {
         input.value = '无感发送验证：这条没有刷新页面';
         form.dispatchEvent(new Event('submit', { cancelable: true, bubbles: true }));
         await new Promise((r) => setTimeout(r, 1200));
+        const sent = document.querySelector('.inbox-msg.mine:last-child');
+        const sentId = sent ? sent.dataset.msgId : null;
+        // 轮询验证：把刚发的那条从 DOM 里摘掉（模拟「本地还没收到」），等一个轮询周期看它是否被补回来
+        if (sent) sent.remove();
+        const afterRemove = document.querySelectorAll('[data-msg-id]').length;
+        await new Promise((r) => setTimeout(r, 6500));
+        const restored = sentId ? !!document.querySelector('[data-msg-id="' + sentId + '"]') : false;
         const last = document.querySelector('.inbox-msg.mine:last-child');
         return JSON.stringify({
           mine: document.querySelectorAll('.inbox-msg.mine').length,
           lastHasAvatar: !!(last && last.querySelector('img.msg-avatar')),
           lastText: last ? last.querySelector('.bubble').textContent.slice(0, 24) : '',
+          pollingRestored: restored,
+          countAfterRemove: afterRemove,
         });
       })()`,
       awaitPromise: true,
