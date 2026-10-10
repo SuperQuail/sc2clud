@@ -175,9 +175,64 @@ async fn deliver_message(
     .await;
     state.counters.bump("message:sent", 1);
     tracing::info!(from.id = user.id, to.id = other.id, "发送私信");
+    // 对方若正开着消息中心，SSE 立刻推送（没接收者就自然丢弃）
+    let _ = state.events.send(crate::MessageEvent {
+        to_user: other.id,
+        from_handle: user.handle.clone(),
+        id,
+        body,
+    });
     Ok((other, id))
 }
 
+/// 新私信推送（SSE）：对方在消息中心时毫秒级到达；断线由浏览器自动重连，另有 5 秒轮询兜底。
+pub async fn messages_stream(
+    State(state): State<AppState>,
+    Path(handle): Path<String>,
+    headers: HeaderMap,
+) -> AppResult<Response> {
+    let user = require_user(&state, &headers).await?;
+    let other = find_other(&state, &handle).await?;
+    let me = user.id;
+    let from_handle = other.handle.clone();
+    let rx = state.events.subscribe();
+    let stream = futures_util::stream::unfold(rx, move |mut rx| {
+        let from_handle = from_handle.clone();
+        async move {
+            loop {
+                match rx.recv().await {
+                    Ok(event) if event.to_user == me && event.from_handle == from_handle => {
+                        let data = serde_json::json!({
+                            "id": event.id,
+                            "mine": false,
+                            "body": event.body,
+                        })
+                        .to_string();
+                        let item = axum::response::sse::Event::default()
+                            .event("message")
+                            .data(data);
+                        return Some((Ok::<_, std::convert::Infallible>(item), rx));
+                    }
+                    // 别人的会话、或没追上进度：继续等（前端会用轮询补齐）
+                    Ok(_) => continue,
+                    Err(tokio::sync::broadcast::error::RecvError::Lagged(_)) => continue,
+                    Err(_) => return None,
+                }
+            }
+        }
+    });
+    let mut response = axum::response::sse::Sse::new(stream)
+        .keep_alive(
+            axum::response::sse::KeepAlive::new().interval(std::time::Duration::from_secs(20)),
+        )
+        .into_response();
+    // nginx 默认会缓冲响应：不关掉的话 SSE 会「攒着不发」（经典坑）
+    response.headers_mut().insert(
+        "x-accel-buffering",
+        axum::http::HeaderValue::from_static("no"),
+    );
+    Ok(response)
+}
 #[derive(Debug, serde::Deserialize)]
 pub struct ThreadQuery {
     /// 只要 id 大于它的消息（前端轮询用）。

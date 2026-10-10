@@ -33,6 +33,17 @@ use tower_http::services::ServeDir;
 
 use crate::upload::UploadGate;
 
+/// 一条新私信事件（SSE 广播用；本进程内一对一投递，不做跨实例）。
+#[derive(Clone, Debug)]
+pub struct MessageEvent {
+    /// 收信人 user id。
+    pub to_user: i64,
+    /// 发信人的 handle（收信方据此判断属于哪个会话）。
+    pub from_handle: String,
+    pub id: i64,
+    pub body: String,
+}
+
 #[derive(Clone)]
 pub struct AppState {
     pub config: Arc<Config>,
@@ -43,6 +54,8 @@ pub struct AppState {
     pub upload_gate: Arc<UploadGate>,
     /// 脚手架阶段的归属用户 id（见 `repo::ensure_bootstrap_user`）。
     pub demo_owner_id: i64,
+    /// 新私信广播（SSE 用）：有接收者时立刻推送，没有就是普通丢弃。
+    pub events: tokio::sync::broadcast::Sender<MessageEvent>,
 }
 
 impl AppState {
@@ -59,6 +72,8 @@ impl AppState {
             // 突发额度给到 1 秒的速率：首块不必等待，之后的块按速率节流。
             config.limits.upload_bytes_per_sec.max(64 * 1024),
         );
+        // 256 条缓冲：够吸收一次突发；接收端跟不上时会 Lagged，前端有轮询兜底
+        let (events, _) = tokio::sync::broadcast::channel(256);
         Self {
             config: Arc::new(config),
             db,
@@ -66,6 +81,7 @@ impl AppState {
             counters,
             upload_gate,
             demo_owner_id,
+            events,
         }
     }
 }

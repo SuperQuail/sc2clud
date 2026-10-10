@@ -161,6 +161,33 @@
     const ask = form.querySelector('[data-del-ask]');
     const bubble = form.querySelector('[data-del-bubble]');
     if (!ask || !bubble) return;
+// 三个来源（就地发送 / SSE 推送 / 轮询兜底）共用同一套追加逻辑
+const appendMessage = (m) => {
+  const thread = document.querySelector('.inbox-thread');
+  if (!thread || !m) return;
+  if (m.id && thread.querySelector('[data-msg-id="' + m.id + '"]')) return; // 已有就不重复
+  const empty = thread.querySelector('.empty');
+  if (empty) empty.remove();
+  const stick = thread.scrollHeight - thread.scrollTop - thread.clientHeight < 120;
+  const wrap = document.createElement('div');
+  wrap.className = 'inbox-msg' + (m.mine ? ' mine' : '');
+  if (m.id) wrap.dataset.msgId = m.id;
+  const bubble = document.createElement('div');
+  bubble.className = 'bubble';
+  bubble.textContent = m.body;
+  const tpl = document.querySelector(m.mine ? '[data-mine] .msg-avatar' : '.inbox-msg:not([data-mine]) .msg-avatar');
+  if (m.mine) {
+    wrap.appendChild(bubble);
+    if (tpl) wrap.appendChild(tpl.cloneNode(true));
+  } else {
+    if (tpl) wrap.appendChild(tpl.cloneNode(true));
+    wrap.appendChild(bubble);
+    const preview = document.querySelector('.inbox-item.active .inbox-item-preview');
+    if (preview) preview.textContent = m.body;
+  }
+  thread.appendChild(wrap);
+  if (stick) thread.scrollTop = thread.scrollHeight;
+};
     ask.addEventListener('click', () => { bubble.hidden = false; ask.hidden = true; });
     form.querySelector('[data-del-cancel]').addEventListener('click', () => { bubble.hidden = true; ask.hidden = false; });
   });
@@ -202,70 +229,48 @@
         location.reload();
         return;
       }
-      const empty = thread.querySelector('.empty');
-      if (empty) empty.remove();
-      const wrap = document.createElement('div');
-      wrap.className = 'inbox-msg mine';
-      wrap.dataset.msgId = data.id;
-      const bubble = document.createElement('div');
-      bubble.className = 'bubble';
-      bubble.textContent = data.body;
-      wrap.appendChild(bubble);
-      const mineAvatar = document.querySelector('[data-mine] .msg-avatar');
-      if (mineAvatar) {
-        const img = mineAvatar.cloneNode(true);
-        wrap.appendChild(img);
-      }
-      thread.appendChild(wrap);
-      wrap.scrollIntoView({ block: 'end' });
+      appendMessage({ id: data.id, mine: true, body: data.body });
       const preview = document.querySelector('.inbox-item.active .inbox-item-preview');
       if (preview) preview.textContent = data.body;
       input.value = '';
       counter.textContent = '0/500';
     });
   });
-
-  // 收信轮询：每 5 秒问一次有没有比本地最新的更新的消息（刚需）
+  // 收信：SSE 为主（毫秒级），另有 30 秒轮询兜底（断线重连/漏事件时补上）
   (() => {
     const form = document.querySelector('[data-composer]');
     const thread = document.querySelector('.inbox-thread');
     if (!form || !thread) return;
     const handle = form.dataset.handle;
+    if (!handle) return;
     const lastId = () => {
       const ids = Array.from(thread.querySelectorAll('[data-msg-id]')).map((el) => Number(el.dataset.msgId));
       return ids.length ? Math.max(...ids) : 0;
     };
-    const nearBottom = () => thread.scrollHeight - thread.scrollTop - thread.clientHeight < 120;
-    const poll = async () => {
-      if (document.hidden || !handle) return;
+    const pull = async () => {
+      if (document.hidden) return;
       try {
         const res = await fetch('/api/v1/messages/' + encodeURIComponent(handle) + '?after=' + lastId());
         if (!res.ok) return;
         const data = await res.json();
-        const list = data.messages || [];
-        if (!list.length) return;
-        const stick = nearBottom();
-        const empty = thread.querySelector('.empty');
-        if (empty) empty.remove();
-        for (const m of list) {
-          const wrap = document.createElement('div');
-          wrap.className = 'inbox-msg' + (m.mine ? ' mine' : '');
-          wrap.dataset.msgId = m.id;
-          const bubble = document.createElement('div');
-          bubble.className = 'bubble';
-          bubble.textContent = m.body;
-          const tpl = document.querySelector(m.mine ? '[data-mine] .msg-avatar' : '.inbox-msg:not([data-mine]) .msg-avatar');
-          if (m.mine) { wrap.appendChild(bubble); if (tpl) wrap.appendChild(tpl.cloneNode(true)); }
-          else { if (tpl) wrap.appendChild(tpl.cloneNode(true)); wrap.appendChild(bubble); }
-          thread.appendChild(wrap);
-          const preview = document.querySelector('.inbox-item.active .inbox-item-preview');
-          if (preview && !m.mine) preview.textContent = m.body;
-        }
-        if (stick) thread.scrollTop = thread.scrollHeight;
+        (data.messages || []).forEach((m) => appendMessage(m));
       } catch (_) {
         // 网络抖动忽略，下一轮再试
       }
     };
+    const base = '/api/v1/messages/' + encodeURIComponent(handle);
+    if (window.EventSource) {
+      // 断线由浏览器自动重连；我们只负责把推来的消息接住
+      const es = new EventSource(base + '/stream');
+      es.addEventListener('message', (event) => {
+        try {
+          appendMessage(JSON.parse(event.data));
+        } catch (_) {}
+      });
+    }
+    // 兜底：不论 SSE 是否可用，都定期核对一次（间隔拉长，省带宽）
+    setInterval(pull, 30000);
+  })();
     setInterval(poll, 5000);
   })();
 

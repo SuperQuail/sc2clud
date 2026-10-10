@@ -109,6 +109,10 @@ pub fn pages() -> Router<AppState> {
             axum::routing::get(crate::pages_messages::messages_landing),
         )
         .route(
+            "/api/v1/messages/{handle}/stream",
+            axum::routing::get(crate::pages_messages::messages_stream),
+        )
+        .route(
             "/api/v1/messages/{handle}",
             axum::routing::post(crate::pages_messages::send_json)
                 .get(crate::pages_messages::thread_json),
