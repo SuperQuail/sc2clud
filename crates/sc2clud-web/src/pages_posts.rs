@@ -696,6 +696,45 @@ async fn save_edit(
     };
     if staged {
         tracing::info!(post.id = id, editor.id = user.id, "编辑已暂存，等待审核");
+        // AI 审核接入（编辑）：管理员与信任账号跳过 —— 沿用 review_for_author 的判定，不另写身份规则；
+        // 编辑不覆盖原帖状态，所以 apply_state = false：AI 说通过就应用这份修订，否则留在暂存等人工。
+        if outcome.automatic && !user.trusted {
+            let config =
+                crate::ai::AiConfig::load(state.db.pool(), &state.config.paths.db_path()).await;
+            if config.reviews("post") {
+                let text = sc2clud_core::review::post_review_text(
+                    &title,
+                    section.label(),
+                    &body,
+                    &user.display_name,
+                    &[],
+                );
+                match crate::pages_admin::run_review(
+                    state, &config, "post", id, &text, "edit", false,
+                )
+                .await
+                {
+                    Ok((verdict, _)) if verdict == "approve" => {
+                        if let Ok(true) =
+                            repo::apply_pending_revision(state.db.pool(), id, now_unix()).await
+                        {
+                            tracing::info!(post.id = id, "AI 通过，编辑已直接生效");
+                        }
+                    }
+                    Ok((verdict, reason)) => {
+                        tracing::info!(
+                            post.id = id,
+                            verdict,
+                            reason,
+                            "AI 未通过编辑，保留暂存等人工"
+                        );
+                    }
+                    Err(error) => {
+                        tracing::warn!(post.id = id, error, "AI 审核编辑失败，保留暂存等人工");
+                    }
+                }
+            }
+        }
         return Ok(true);
     }
     // 下载来源整体重写：编辑页允许增删，逐个 diff 反而更容易出错
@@ -1367,8 +1406,10 @@ async fn handle_report(
     let mut reviewed = serde_json::Value::Null;
     if config.review_on_report && config.reviews(kind) {
         if let Ok(text) = crate::pages_admin::ai_target_text(state, kind, form.id).await {
-            match crate::pages_admin::run_review(state, &config, kind, form.id, &text, "report")
-                .await
+            match crate::pages_admin::run_review(
+                state, &config, kind, form.id, &text, "report", true,
+            )
+            .await
             {
                 Ok((verdict, reason)) => {
                     reviewed = serde_json::json!({ "verdict": verdict, "reason": reason })
@@ -1652,5 +1693,58 @@ pub async fn new_post_submit(
         state = outcome.state.as_str(),
         "发帖"
     );
+    // AI 审核接入（新帖）：管理员与信任账号跳过；审核机已硬拒的不再浪费一次调用。
+    if outcome.automatic && !user.trusted {
+        let config =
+            crate::ai::AiConfig::load(state.db.pool(), &state.config.paths.db_path()).await;
+        if config.reviews("post") {
+            let source_lines: Vec<String> = sources
+                .iter()
+                .map(|(provider, label, url, _)| match label {
+                    Some(label) => format!("{} {} {}", provider.as_str(), label, url),
+                    None => format!("{} {}", provider.as_str(), url),
+                })
+                .collect();
+            let text = sc2clud_core::review::post_review_text(
+                &title,
+                section.label(),
+                &body,
+                &user.display_name,
+                &source_lines,
+            );
+            if let Err(error) =
+                crate::pages_admin::run_review(&state, &config, "post", id, &text, "new_post", true)
+                    .await
+            {
+                tracing::warn!(post.id = id, error, "AI 审核新帖失败，已转人工");
+            }
+            // AI 可能把它判成待定/不通过：作者看不到就回发帖页说明原因
+            if let Ok(Some(row)) =
+                repo::get_post_for(state.db.pool(), id, Some(user.id), user.is_staff()).await
+                && !ReviewState::parse(&row.review_state)
+                    .unwrap_or(ReviewState::Pending)
+                    .visible_to(false, false)
+            {
+                return render(NewPostTemplate {
+                    site_name: &state.config.server.site_name,
+                    user_label: Some(user.display_name.clone()),
+                    is_staff: user.is_staff(),
+                    csrf: user.csrf_token.clone(),
+                    error: Some(format!(
+                        "AI 审核未通过：{}",
+                        row.review_note
+                            .as_deref()
+                            .unwrap_or("内容不符合规范，已转人工复核")
+                    )),
+                    kinds: kind_options(kind.as_str()),
+                    sections: section_options(section.as_str(), Some(&user)),
+                    providers: provider_options(),
+                    source_slots: empty_slots(),
+                    title: &title,
+                    body: &body,
+                });
+            }
+        }
+    }
     Redirect::to(&format!("/p/{id}")).into_response()
 }

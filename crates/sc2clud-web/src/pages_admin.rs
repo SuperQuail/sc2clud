@@ -1500,7 +1500,7 @@ pub async fn run_ai_review(
     };
     let text = ai_target_text(&state, kind, form.id).await?;
     let config = crate::ai::AiConfig::load(state.db.pool(), &state.config.paths.db_path()).await;
-    let outcome = run_review(&state, &config, kind, form.id, &text, "manual").await;
+    let outcome = run_review(&state, &config, kind, form.id, &text, "manual", true).await;
     Ok(axum::Json(match outcome {
         Ok((verdict, reason)) => {
             serde_json::json!({ "ok": true, "verdict": verdict, "reason": reason })
@@ -1564,6 +1564,8 @@ pub async fn run_review(
     id: i64,
     text: &str,
     source: &str,
+    // 新帖/举报/手动 = true（判词直接落到帖子上）；编辑 = false（由编辑流程自己决定要不要应用修订）
+    apply_state: bool,
 ) -> Result<(String, String), String> {
     let now = now_unix();
     // 第一次；失败自动重试一次（偶发不调工具/网络抖动靠这一次救回来）
@@ -1589,7 +1591,7 @@ pub async fn run_review(
                 now,
             )
             .await;
-            if kind == "post" {
+            if kind == "post" && apply_state {
                 let _ = repo::set_post_review_state_auto(
                     state.db.pool(),
                     id,
@@ -1616,7 +1618,7 @@ pub async fn run_review(
                 now,
             )
             .await;
-            if kind == "post" {
+            if kind == "post" && apply_state {
                 let _ = repo::set_post_review_state_auto(
                     state.db.pool(),
                     id,
