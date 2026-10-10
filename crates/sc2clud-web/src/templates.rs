@@ -516,6 +516,39 @@ pub struct SectionOption {
     pub cover: Option<String>,
 }
 
+/// Issue 列表页（资源帖的「问题与建议」）。
+#[derive(Template)]
+#[template(path = "issues.html")]
+pub struct IssuesPageTemplate<'a> {
+    pub site_name: &'a str,
+    pub user_label: Option<String>,
+    pub is_staff: bool,
+    pub csrf: String,
+    pub post_id: i64,
+    pub post_title: &'a str,
+    pub open_count: i64,
+    pub closed_count: i64,
+    /// 布局版式：1 列表式 / 2 卡片式 / 3 双栏式（预览用，生产恒 1）。
+    pub ivi: u8,
+    pub issues: Vec<IssueCardView>,
+}
+
+/// 列表里的一条 issue。
+#[derive(Debug, Clone)]
+pub struct IssueCardView {
+    pub id: i64,
+    pub kind: String,
+    pub kind_label: String,
+    pub title: String,
+    pub body: String,
+    pub author: String,
+    pub handle: String,
+    pub created: String,
+    pub comments: i64,
+    pub state: String,
+    pub open: bool,
+}
+
 /// 发帖页的来源下拉项。
 pub struct ProviderOption {
     pub value: String,

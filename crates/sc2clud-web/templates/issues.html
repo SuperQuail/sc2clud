@@ -1,0 +1,134 @@
+{% extends "base.html" %}
+
+{% block title %}问题与建议 · {{ post_title }} · {{ site_name }}{% endblock %}
+
+{% block content %}
+<div class="wrap issue-page">
+  <header class="issue-head">
+    <nav class="crumbs"><a href="/p/{{ post_id }}">← 回到资源帖</a></nav>
+    <h1>问题与建议</h1>
+    <p class="sub">这里是「{{ post_title }}」的反馈区：遇到问题点<b>报告 Bug</b>，想要新功能点<b>功能建议</b>；作者与管理员会在这里回复。</p>
+    <div class="issue-actions">
+      <a class="btn" href="/p/{{ post_id }}/issues?kind=bug">报告 Bug</a>
+      <a class="btn ghost" href="/p/{{ post_id }}/issues?kind=feature">功能建议</a>
+      <span class="counter"><b>{{ open_count }}</b> 待处理 · {{ closed_count }} 已关闭</span>
+    </div>
+  </header>
+
+  <div class="issue-filters">
+    <div class="chips"><span class="chip on">待处理 {{ open_count }}</span><span class="chip">已关闭 {{ closed_count }}</span></div>
+    <div class="chips"><span class="chip on">全部类型</span><span class="chip">Bug</span><span class="chip">建议</span><span class="chip">其它</span></div>
+  </div>
+
+  {% if issues.is_empty() %}
+  <div class="issue-empty"><b>还没有人反馈问题。</b><p>发现问题就点上面的「报告 Bug」，想要新功能点「功能建议」——作者会看到。</p></div>
+  {% else %}
+
+  {% if ivi == 1 %}
+  {# 版式 1 · 列表式（对齐 GitHub Issues）：一行一条，密度最高 #}
+  <ul class="issue-list">
+    {% for issue in issues %}
+    <li class="issue-row{% if !issue.open %} closed{% endif %}">
+      <span class="state-dot" title="{% if issue.open %}待处理{% else %}已关闭{% endif %}"></span>
+      <span class="kind kind-{{ issue.kind }}">{{ issue.kind_label }}</span>
+      <a class="issue-title" href="/p/{{ post_id }}/issues/{{ issue.id }}">{{ issue.title }}</a>
+      {% if !issue.open %}<span class="tag">已关闭</span>{% endif %}
+      <span class="meta">{{ issue.author }} · {{ issue.created }}</span>
+      <span class="comments">💬 {{ issue.comments }}</span>
+    </li>
+    {% endfor %}
+  </ul>
+
+  {% else if ivi == 2 %}
+  {# 版式 2 · 卡片式（对齐 B 站动态）：对非技术用户最友好 #}
+  <div class="issue-cards">
+    {% for issue in issues %}
+    <article class="issue-card{% if !issue.open %} closed{% endif %}">
+      <div class="card-kind kind-{{ issue.kind }}"><span>{{ issue.kind_label }}</span></div>
+      <div class="card-body">
+        <a class="issue-title" href="/p/{{ post_id }}/issues/{{ issue.id }}">{{ issue.title }}</a>
+        <p class="snippet">{{ issue.body }}</p>
+        <div class="card-meta"><span>{{ issue.author }}</span><span>{{ issue.created }}</span><span>💬 {{ issue.comments }}</span>{% if !issue.open %}<span class="tag">已关闭</span>{% endif %}</div>
+      </div>
+    </article>
+    {% endfor %}
+  </div>
+
+  {% else %}
+  {# 版式 3 · 双栏式：左列表右详情，翻看最快 #}
+  <div class="issue-split">
+    <ul class="issue-col">
+      {% for issue in issues %}
+      <li class="col-item{% if loop.first %} active{% endif %}{% if !issue.open %} closed{% endif %}">
+        <span class="kind kind-{{ issue.kind }}">{{ issue.kind_label }}</span>
+        <span class="col-title">{{ issue.title }}</span>
+        <span class="col-meta">{{ issue.author }} · 💬 {{ issue.comments }}</span>
+      </li>
+      {% endfor %}
+    </ul>
+    <section class="issue-detail">
+      {% if let Some(first) = issues.first() %}
+      <span class="kind kind-{{ first.kind }}">{{ first.kind_label }}</span>
+      <h2>{{ first.title }}</h2>
+      <p class="meta">{{ first.author }} 提交于 {{ first.created }} · {% if first.open %}待处理{% else %}已关闭{% endif %}</p>
+      <div class="detail-body">{{ first.body }}</div>
+      <div class="detail-actions"><button class="btn ghost sm" type="button">关闭</button><button class="btn ghost sm" type="button">编辑</button></div>
+      <p class="hint">（版式预览：右侧固定展示列表第一条；实际交互点击左侧切换。）</p>
+      {% endif %}
+    </section>
+  </div>
+  {% endif %}
+  {% endif %}
+
+  <style>
+  .issue-page{max-width:960px}
+  .issue-head h1{margin:6px 0 4px}
+  .issue-head .sub{margin:0 0 12px;opacity:.8;font-size:14px;line-height:1.7}
+  .issue-actions{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:14px}
+  .issue-actions .counter{margin-left:auto;font-size:13px;opacity:.75}
+  .issue-filters{display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:12px}
+  .chips{display:flex;gap:6px}
+  .chip{font-size:13px;padding:4px 12px;border-radius:999px;border:1px solid var(--line,#e5e7eb)}
+  .chip.on{border-color:#2563eb;background:rgba(37,99,235,.12);color:#2563eb;font-weight:600}
+  .kind{font-size:12px;padding:2px 9px;border-radius:999px;white-space:nowrap}
+  .kind-bug{border:1px solid #dc2626;background:#fee2e2;color:#991b1b}
+  .kind-feature{border:1px solid #2563eb;background:#dbeafe;color:#1d4ed8}
+  .kind-other{border:1px solid #9ca3af;background:#f3f4f6;color:#4b5563}
+  .issue-list{list-style:none;margin:0;padding:0;border:1px solid var(--line,#e5e7eb);border-radius:12px;overflow:hidden}
+  .issue-row{display:flex;align-items:center;gap:10px;padding:12px 14px;border-bottom:1px solid var(--line,#e5e7eb);font-size:14px}
+  .issue-row:last-child{border-bottom:0}
+  .issue-row.closed{opacity:.62}
+  .state-dot{width:9px;height:9px;border-radius:50%;background:#16a34a;flex:0 0 auto}
+  .issue-row.closed .state-dot{background:#9ca3af}
+  .issue-title{font-weight:600;color:inherit;text-decoration:none}
+  .issue-title:hover{color:#2563eb}
+  .issue-row .meta{margin-left:auto;font-size:12px;opacity:.65;white-space:nowrap}
+  .issue-row .comments{font-size:12px;opacity:.75;white-space:nowrap}
+  .tag{font-size:12px;padding:1px 8px;border-radius:6px;background:rgba(0,0,0,.06)}
+  .issue-cards{display:flex;flex-direction:column;gap:12px}
+  .issue-card{display:flex;gap:14px;border:1px solid var(--line,#e5e7eb);border-radius:14px;padding:14px}
+  .issue-card.closed{opacity:.66}
+  .card-kind{flex:0 0 96px;border-radius:10px;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:600}
+  .card-kind.kind-bug{background:#fee2e2;color:#991b1b}
+  .card-kind.kind-feature{background:#dbeafe;color:#1d4ed8}
+  .card-kind.kind-other{background:#f3f4f6;color:#4b5563}
+  .card-body{flex:1;min-width:0}
+  .snippet{margin:6px 0 8px;font-size:13px;line-height:1.6;opacity:.8}
+  .card-meta{display:flex;gap:12px;font-size:12px;opacity:.7}
+  .issue-split{display:grid;grid-template-columns:300px 1fr;gap:14px;align-items:start}
+  .issue-col{list-style:none;margin:0;padding:0;border:1px solid var(--line,#e5e7eb);border-radius:12px;overflow:hidden}
+  .col-item{display:flex;flex-direction:column;gap:4px;padding:10px 12px;border-bottom:1px solid var(--line,#e5e7eb);font-size:13px}
+  .col-item:last-child{border-bottom:0}
+  .col-item.active{background:rgba(37,99,235,.08)}
+  .col-item.closed{opacity:.6}
+  .col-title{font-weight:600}
+  .col-meta{font-size:12px;opacity:.65}
+  .issue-detail{border:1px solid var(--line,#e5e7eb);border-radius:12px;padding:16px}
+  .issue-detail h2{margin:8px 0 4px;font-size:18px}
+  .detail-body{margin:12px 0;font-size:14px;line-height:1.75;white-space:pre-wrap}
+  .detail-actions{display:flex;gap:8px}
+  .issue-empty{border:1px dashed var(--line,#e5e7eb);border-radius:12px;padding:26px;text-align:center}
+  .issue-empty p{margin:8px 0 0;font-size:13px;opacity:.7}
+  </style>
+</div>
+{% endblock %}

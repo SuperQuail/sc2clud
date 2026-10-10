@@ -4,7 +4,7 @@
 //! 写操作一律「登录 + 已激活 + CSRF」三道门。
 
 use axum::Form;
-use axum::extract::{Path, State};
+use axum::extract::{Path, Query, State};
 use axum::http::HeaderMap;
 use axum::response::{IntoResponse, Redirect, Response};
 use bytes::Bytes;
@@ -23,9 +23,9 @@ use crate::error::{AppError, AppResult};
 use crate::routes::{require_user, wants_html};
 use crate::session::{self, CurrentUser};
 use crate::templates::{
-    CommentView, EditImageView, EditPostTemplate, ImageView, KindOption, MirrorView,
-    NewPostTemplate, PostDetailView, PostPageTemplate, ProviderOption, SectionOption, SourceSlot,
-    SourceView, format_date, render,
+    CommentView, EditImageView, EditPostTemplate, ImageView, IssueCardView, IssuesPageTemplate,
+    KindOption, MirrorView, NewPostTemplate, PostDetailView, PostPageTemplate, ProviderOption,
+    SectionOption, SourceSlot, SourceView, format_date, render,
 };
 
 /// 手工解析过的发帖/编辑表单。
@@ -1046,6 +1046,75 @@ pub struct IssueForm {
 }
 
 /// 提 issue（bug / 功能建议）。门槛与回帖一致：登录 + 已激活 + 分区允许回帖。
+/// 资源帖的「问题与建议」列表页（issue 的后端早就有了，这个页面是给它做的门面）。
+pub async fn issues_page(
+    State(state): State<AppState>,
+    Path(id): Path<i64>,
+    headers: HeaderMap,
+    Query(query): Query<crate::pages_posts::IssuesQuery>,
+) -> AppResult<Response> {
+    let user = session::current_user(&state, &headers).await.ok().flatten();
+    let post = repo::get_post_for(
+        state.db.pool(),
+        id,
+        user.as_ref().map(|user| user.id),
+        user.as_ref().is_some_and(|user| user.is_staff()),
+    )
+    .await
+    .ok()
+    .flatten()
+    .ok_or_else(|| AppError::not_found("帖子不存在或不可见"))?;
+    let rows = repo::list_issues(state.db.pool(), id, true, 100, 0).await?;
+    let open_count = rows.iter().filter(|row| row.state == "open").count() as i64;
+    let closed_count = rows.len() as i64 - open_count;
+    let issues = rows.into_iter().map(Parties::card).collect::<Vec<_>>();
+    Ok(render(IssuesPageTemplate {
+        site_name: &state.config.server.site_name,
+        user_label: user.as_ref().map(|user| user.display_name.clone()),
+        is_staff: user.as_ref().is_some_and(|user| user.is_staff()),
+        csrf: user
+            .as_ref()
+            .map(|user| user.csrf_token.clone())
+            .unwrap_or_default(),
+        post_id: id,
+        post_title: &post.title,
+        open_count,
+        closed_count,
+        ivi: query.ivi.unwrap_or(1),
+        issues,
+    })
+    .into_response())
+}
+
+/// 版式与数据组装的小工位（放这里免得处理器太长）。
+struct Parties;
+
+impl Parties {
+    fn card(row: sc2clud_db::models::PostIssueRow) -> IssueCardView {
+        let kind = sc2clud_core::community::IssueKind::parse(&row.kind)
+            .unwrap_or(sc2clud_core::community::IssueKind::Other);
+        IssueCardView {
+            id: row.id,
+            kind: kind.as_str().to_string(),
+            kind_label: kind.label().to_string(),
+            title: row.title,
+            body: row.body.chars().take(160).collect(),
+            author: row.author_display_name,
+            handle: row.author_handle,
+            created: crate::templates::format_date(row.created_at),
+            comments: row.comment_count,
+            state: row.state.clone(),
+            open: row.state == "open",
+        }
+    }
+}
+
+#[derive(Debug, Deserialize)]
+pub struct IssuesQuery {
+    /// 布局版式（仅开发实例生效）。
+    pub ivi: Option<u8>,
+}
+
 pub async fn issue_create(
     State(state): State<AppState>,
     Path(id): Path<i64>,
