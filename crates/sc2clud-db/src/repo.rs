@@ -2519,6 +2519,24 @@ pub async fn update_section(
 }
 
 /// 归档 / 取回分区。**只标记，不删内容**——取回后帖子原样回来。
+/// 分区是否启用用户组检查（关掉时只看角色门槛）。
+pub async fn set_section_group_check(
+    pool: &SqlitePool,
+    key: &str,
+    enabled: bool,
+    now: i64,
+) -> Result<bool> {
+    let affected = query("UPDATE sections SET group_check = ?, updated_at = ? WHERE key = ?")
+        .bind(if enabled { 1 } else { 0 })
+        .bind(now)
+        .bind(key)
+        .execute(pool)
+        .await
+        .map_err(db_err)?
+        .rows_affected();
+    Ok(affected == 1)
+}
+
 pub async fn set_section_archived(
     pool: &SqlitePool,
     key: &str,

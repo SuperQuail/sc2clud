@@ -189,6 +189,10 @@ pub fn pages() -> Router<AppState> {
             axum::routing::post(crate::pages_admin::set_trusted),
         )
         .route(
+            "/admin/sections/{section}/acl",
+            axum::routing::post(crate::pages_admin::save_section_acl),
+        )
+        .route(
             "/admin/groups",
             axum::routing::post(crate::pages_admin::create_group),
         )

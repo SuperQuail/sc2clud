@@ -993,6 +993,83 @@ pub struct GroupCreateForm {
 }
 
 /// 新建用户组。
+#[derive(Debug, Deserialize)]
+pub struct SectionAclForm {
+    pub csrf: String,
+    pub post_min_role: String,
+    pub reply_min_role: String,
+    #[serde(default)]
+    pub group_check: Option<String>,
+    /// 允许的用户组 id，逗号分隔（绿标签集合）。
+    #[serde(default)]
+    pub groups: String,
+}
+
+/// 保存一个分区的发言权限：角色门槛 + 是否启用用户组检查 + 允许的组白名单。
+/// 组白名单的语义是「允许发帖且允许评论」；不在名单里的组会被删掉规则（不留残余）。
+pub async fn save_section_acl(
+    State(state): State<AppState>,
+    Path(section): Path<String>,
+    headers: HeaderMap,
+    axum::Json(form): axum::Json<SectionAclForm>,
+) -> AppResult<Response> {
+    let actor = require_user(&state, &headers).await?;
+    session::guard(Some(&actor), Permission::ManageUsers)?;
+    session::check_csrf(&actor, &form.csrf)?;
+    let current = repo::get_section(state.db.pool(), &section)
+        .await?
+        .ok_or_else(|| AppError::not_found("分区不存在"))?;
+    let now = now_unix();
+    // 角色门槛：复用 update_section（名称与说明原样传回，不改它们）
+    repo::update_section(
+        state.db.pool(),
+        &current.key,
+        &current.label,
+        &current.description,
+        &form.post_min_role,
+        &form.reply_min_role,
+        now,
+    )
+    .await?;
+    repo::set_section_group_check(
+        state.db.pool(),
+        &section,
+        form.group_check.as_deref() == Some("1"),
+        now,
+    )
+    .await?;
+    let allowed: Vec<i64> = form
+        .groups
+        .split(',')
+        .filter_map(|value| value.trim().parse::<i64>().ok())
+        .collect();
+    for group in repo::list_user_groups(state.db.pool(), true).await? {
+        if allowed.contains(&group.id) {
+            repo::set_group_section_rule_full(
+                state.db.pool(),
+                group.id,
+                &section,
+                true,
+                true,
+                false,
+                false,
+            )
+            .await?;
+        } else {
+            repo::remove_group_section_rule(state.db.pool(), group.id, &section).await?;
+        }
+    }
+    tracing::info!(
+        section,
+        post = form.post_min_role,
+        reply = form.reply_min_role,
+        groups = ?allowed,
+        actor.id = actor.id,
+        "保存分区发言权限"
+    );
+    Ok(axum::Json(serde_json::json!({ "ok": true })).into_response())
+}
+
 pub async fn create_group(
     State(state): State<AppState>,
     headers: HeaderMap,

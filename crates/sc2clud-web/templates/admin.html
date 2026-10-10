@@ -155,6 +155,7 @@
         <tr data-user-row
             data-id="{{ user.id }}"
             data-handle="{{ user.handle }}"
+        data-user-id="{{ user.id }}"
         data-groups="{% for g in user.groups %}{{ g }}{% if !loop.last %},{% endif %}{% endfor %}"
             data-name="{{ user.display_name }}"
             data-role="{{ user.role }}"
@@ -511,11 +512,27 @@
   const groupBoxes = () => Array.from(document.querySelectorAll('[data-modal-group]'));
   const dialog = document.getElementById('user-dialog');
   let pendingGroups = [];
+  let pendingUser = '';
   document.querySelectorAll('tr[data-groups]').forEach((row) => {
     row.addEventListener('click', () => {
       pendingGroups = (row.dataset.groups || '').split(',').filter(Boolean);
+      pendingUser = row.dataset.userId || '';
     });
   });
+  // 「组」按钮：记住该用户的组，然后点真正的编辑按钮把弹窗打开（原来是死按钮，点了没反应）
+  document.querySelectorAll('[data-user-groups]').forEach((btn) => {
+    btn.addEventListener('click', (event) => {
+      event.stopPropagation();
+      const row = btn.closest('tr');
+      pendingGroups = ((row && row.dataset.groups) || '').split(',').filter(Boolean);
+      pendingUser = btn.dataset.userGroups || '';
+      pendingGroupsReady = true;
+      const edit = row && row.querySelector('[data-edit-user]');
+      if (edit) edit.click();
+      syncGroups();
+    });
+  });
+  let pendingGroupsReady = false;
   const syncGroups = () => {
     groupBoxes().forEach((box) => { box.checked = pendingGroups.includes(box.value); });
   };
@@ -525,8 +542,9 @@
     const form = dialog.querySelector('#user-form');
     if (form) {
       form.addEventListener('submit', () => {
-        const id = (form.action.match(/\/users\/(\d+)\//) || [])[1];
-        if (!id) return;
+        // 弹窗 action 里的 id 由 admin.js 写入；万一还没写就用「组」按钮记下的 id
+        const id = pendingUser || (form.action.match(/\/users\/(\d+)\//) || [])[1];
+        if (!id || id === '0') return;
         const csrf = form.querySelector('input[name=csrf]');
         const body = new URLSearchParams();
         body.set('csrf', csrf ? csrf.value : '');
