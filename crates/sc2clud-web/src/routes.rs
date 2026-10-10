@@ -634,7 +634,7 @@ async fn build_index<'a>(
                     .into_iter()
                     .map(|(section, hash, _mime)| (section, hash))
                     .collect();
-            crate::routes::ordered_sections(state, None)
+            crate::routes::ordered_sections(state)
                 .await
                 .iter()
                 .map(|s| SectionOption {
@@ -736,8 +736,10 @@ pub async fn not_found(headers: HeaderMap) -> Response {
 // ------------------------------------------------------------ 帖子图片
 
 /// 认图片格式只看魔数，不信客户端声明的 Content-Type。
-/// 分区顺序以库里的 position 为准（后台可调）；库里缺的枚举值补在末尾，新分区不会因此消失。
-pub async fn ordered_sections(state: &AppState, user: Option<&CurrentUser>) -> Vec<PostSection> {
+/// 分区顺序以库里的 position 为准（后台可调）。
+/// **不做权限过滤**：首页导航与帖子页左栏原本就对所有人显示全部分区；
+/// 按权限筛选只属于发帖下拉那条路（`section_options`）。库里缺的枚举值补在末尾，新分区不会消失。
+pub async fn ordered_sections(state: &AppState) -> Vec<PostSection> {
     let stored: Vec<String> = repo::list_sections(state.db.pool(), false)
         .await
         .map(|rows| rows.into_iter().map(|row| row.key).collect())
@@ -756,11 +758,7 @@ pub async fn ordered_sections(state: &AppState, user: Option<&CurrentUser>) -> V
         }
     }
     ordered
-        .into_iter()
-        .filter(|section| crate::session::allows_for(user, section.required_permission()))
-        .collect()
 }
-
 pub(crate) fn sniff_image_mime(head: &[u8]) -> Option<&'static str> {
     if head.starts_with(&[0x89, b'P', b'N', b'G']) {
         Some("image/png")
