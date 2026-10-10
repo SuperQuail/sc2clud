@@ -33,6 +33,6 @@
 
 基础分 B = 有效点赞数 + 3 × 有效一级评论数；普通帖为 B，精华帖为 1.2 × B + 20，不取整、不衰减，置顶仍优先。普通热门帖可超过精华帖，取消点赞/删除评论即时反映实际数据。打赏、收藏与 issue 数量不计分。
 
-最新互动取发布时间、有效普通评论、新建 issue、有效 issue 回复时间的最大值；关闭/重开 issue、编辑正文、点赞、收藏不顶帖，删除回复后回退到上一有效时间。普通评论仍无 parent_id/reply_to，全部单层；issue 回复独立存储，只贡献互动时间。
+最新互动取发布时间、有效普通评论、新建 issue、有效 issue 回复时间的最大值；关闭/重开 issue、编辑正文、点赞、收藏不顶帖，删除回复后回退到上一有效时间。普通评论已有 `parent_id` 楼中楼；只有 `parent_id IS NULL` 的未删除评论计分，有效楼中楼参与最新互动及展示回复数。issue 回复独立存储，只贡献互动时间。
 
-本机先完成前端构建、Rust 门禁与真实预览，经 PR 合入 dev 后，通过 ssh-skill 上传完整 islands，执行 `SC2CLUD_BRANCH=dev bash deploy/dev.sh`。用户验收后再 PR 合入 main。生产发布需按项目确认流程运行 promote，使用已验收 DEV 二进制与完整静态；旧整套备份回滚时一并恢复清单，旧备份无清单则删除当前生产清单。本次仅完成本地验证，未执行真实服务器部署或生产 promote。
+本机先完成前端构建、Rust 门禁与真实预览；每个功能一个分支、worktree 与独立 DEV，先在独立实例用户验收。审查后串行 PR 合入共享 dev，通过 ssh-skill 上传对应完整 islands，执行 `SC2CLUD_BRANCH=dev bash deploy/dev.sh` 做共享集成验收，再 PR 合入 main。独立精华 DEV 使用 `/opt/sc2clud-featured-dev`、`/srv/sc2clud-featured-dev`、`sc2clud-featured-dev` 与回环端口 8082，数据库、静态、二进制、环境与 Cookie 各自独立，不直接 promote。生产发布需按项目确认流程运行 promote，使用已验收 DEV 二进制与完整静态；旧整套备份回滚时一并恢复清单，旧备份无清单则删除当前生产清单。本次仅完成本地验证，未执行真实服务器部署或生产 promote。

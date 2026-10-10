@@ -31,7 +31,7 @@ impl FeedSort {
     fn order(self) -> &'static str {
         match self {
             Self::Recommended => {
-                "(CASE WHEN p.featured_at IS NULL THEN 5 * (COALESCE(l.like_count,0) + 3 * COALESCE(c.comment_count,0)) ELSE 6 * (COALESCE(l.like_count,0) + 3 * COALESCE(c.comment_count,0)) + 100 END) DESC"
+                "(CASE WHEN p.featured_at IS NULL THEN 5 * (COALESCE(l.like_count,0) + 3 * COALESCE(c.root_comment_count,0)) ELSE 6 * (COALESCE(l.like_count,0) + 3 * COALESCE(c.root_comment_count,0)) + 100 END) DESC"
             }
             Self::Active => {
                 "max(p.created_at, COALESCE(c.active_at,p.created_at), COALESCE(i.active_at,p.created_at), COALESCE(ic.active_at,p.created_at)) DESC"
@@ -51,7 +51,7 @@ AND NOT EXISTS (SELECT 1 FROM sections sec WHERE sec.key=p.section AND sec.archi
 AND (?3='' OR p.section=?3)
 AND (?4='' OR instr(lower(p.title || ' ' || p.body),lower(?4))>0)
 AND (p.review_state='approved' OR ?2=1 OR (p.review_state='pending' AND p.author_id=?1))";
-const AGGREGATES: &str = "LEFT JOIN (SELECT post_id, COUNT(*) AS comment_count, MAX(created_at) AS active_at FROM comments WHERE deleted_at IS NULL GROUP BY post_id) c ON c.post_id=p.id
+const AGGREGATES: &str = "LEFT JOIN (SELECT post_id, COUNT(*) AS comment_count, SUM(CASE WHEN parent_id IS NULL THEN 1 ELSE 0 END) AS root_comment_count, MAX(created_at) AS active_at FROM comments WHERE deleted_at IS NULL GROUP BY post_id) c ON c.post_id=p.id
 LEFT JOIN (SELECT post_id, COUNT(*) AS like_count FROM post_likes GROUP BY post_id) l ON l.post_id=p.id
 LEFT JOIN (SELECT post_id, MAX(created_at) AS active_at FROM post_issues GROUP BY post_id) i ON i.post_id=p.id
 LEFT JOIN (SELECT pi.post_id, MAX(ic.created_at) AS active_at FROM issue_comments ic JOIN post_issues pi ON pi.id=ic.issue_id WHERE ic.deleted_at IS NULL GROUP BY pi.post_id) ic ON ic.post_id=p.id";

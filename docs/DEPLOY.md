@@ -112,3 +112,20 @@ sudo systemctl restart sc2clud && sleep 1 && curl -s -o /dev/null -w '%{http_cod
 
 二进制是自包含的，回滚即换回旧二进制并重启。数据库迁移是**只前进**的：
 发布前用上面的 `.backup` 留一份快照；若新版本改了 schema，回滚二进制前先从快照恢复数据库。
+
+
+## 独立功能 DEV 与共享集成
+
+每个功能使用自己的分支、worktree 与独立 DEV，审查并在独立实例用户验收后，再协调发布者串行合入共享 `dev`，发布 `/dev/` 做集成验收，之后合入 `main`。共享 DEV 不接收并行的未合并功能发布。
+
+`deploy/dev.sh` 默认保持服务 `sc2clud-debug`、端口 `8081`、前缀 `/srv/sc2clud-dev`。精华分支的独立实例由部署负责人预置自己的 systemd unit、环境、Cookie 名与数据库；脚本只负责选定实例的版本产物与重启：
+
+```bash
+SC2CLUD_REPO=/opt/sc2clud-featured-dev \
+SC2CLUD_BRANCH=codex/featured-ranking \
+SC2CLUD_DEV_PREFIX=/srv/sc2clud-featured-dev \
+SC2CLUD_DEV_SERVICE=sc2clud-featured-dev \
+SC2CLUD_DEV_PORT=8082 bash deploy/dev.sh
+```
+
+独立实例的二进制、完整 static、环境和数据都在自己的前缀；健康检查固定为校验过的回环端口（此例 `http://127.0.0.1:8082/healthz`）。可用服务名为 `sc2clud-` 开头的字母、数字、连字符或下划线名称，可选 `.service` 后缀。生产服务、生产目录、8080、无效单元名/端口以及独立服务混用共享端口或共享目录，在拉取、构建、替换产物之前拒绝。独立实例不直接 promote；验收后先走共享 DEV 集成流程。

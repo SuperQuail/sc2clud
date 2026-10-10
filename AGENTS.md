@@ -96,6 +96,8 @@ cargo run -p sc2clud -- check                     # 配置与依赖自检
    最终判定走 `core::auth::allows_feature_post`；页面与提交共用 `pages_featured::can_feature_post`，任职只从真实帖子分区的 `section_capabilities` 取得。
    添加精华仅限已通过审核、未删除、未归档且分区未归档的帖子；取消允许已归档的现存帖，并保留既有可见性。
    分区任职不扩张审核、编辑他人、归档权限；精华状态条件更新与审计必须在同一事务，重复目标不得覆盖时间或操作者。
+   综合分 B = 有效点赞数 + 3 × 有效顶层普通评论数（`comments.parent_id IS NULL`）；普通排序键 5B，精华 6B+100。
+   楼中楼不计分，但有效楼中楼创建时间参与最新互动；展示回复数仍包含有效楼中楼，删除行不计入。
 
 7. **发帖权限与可见性**（`core::review`，改动请同步 `AGENTS.md` 与测试）：
    - 讨论 / 资源 / 转载三类帖子对**所有已激活用户**开放，不设发布门槛；
@@ -159,12 +161,13 @@ pwsh -File scripts/smoke.ps1     # 改动触及上传/下载/存储/计数时必
 
 ## 11. 开发与测试流程：先 dev，后生产
 
-站点有**两个实例**，**各自的二进制与数据**（`dev.sh` 只写测试端，`promote.sh` 才发布到生产）：
+生产、共享 DEV 与每个功能的独立 DEV 均使用**各自的二进制、静态、环境、数据库与 Cookie**（`dev.sh` 只写选定测试端，`promote.sh` 才发布到生产）：
 
 | 实例 | 端点 | 数据目录 | 用途 |
 | --- | --- | --- | --- |
 | 生产 | `/`（对外） | `/srv/sc2clud/data`（二进制 `/srv/sc2clud/sc2clud`） | 只放已验证的版本 |
-| 测试 | `/dev/`（对外，nginx `sub_filter` 补前缀） | `/srv/sc2clud-dev/data`（二进制 `/srv/sc2clud-dev/sc2clud`） | **所有开发与测试都在这里** |
+| 共享 DEV | `/dev/`（对外，nginx `sub_filter` 补前缀） | `/srv/sc2clud-dev/data`（二进制 `/srv/sc2clud-dev/sc2clud`） | 串行集成与合并后验收 |
+| 功能独立 DEV（精华） | `127.0.0.1:8082`（经授权隧道访问） | `/srv/sc2clud-featured-dev/data`（二进制位于同前缀） | 功能分支在合并前验收 |
 
 流程：
 
@@ -232,36 +235,37 @@ SC2CLUD_SSH_KEY=<私钥路径> node scripts/preview.mjs --server root@<dev 机> 
 出图命令：`node scripts/preview.mjs --server <dev 机> --handle <账号> --pages '<路径>'`；
 `--qr-test` 会造三张不同分辨率的纯蓝测试收款码，`--dm <handle>` 会先发一条私信，`--send-test` 会验证无感发送与 SSE。
 
-### 多人协作约定（都会往 dev 发）
+### 多人协作约定（独立验收、共享 DEV 串行集成）
 
 **唯一入口是仓库里的脚本**，不要手工 `systemctl` / 不要给 unit 加覆盖 `ExecStart` 的 drop-in：
 
 | 脚本 | 作用 |
 | --- | --- |
-| `bash deploy/dev.sh` | 拉 `main` → 构建 → 装二进制 → **只重启 /dev** |
+| `bash deploy/dev.sh` | 拉选定分支 → 构建 → 装二进制 → **只重启选定 DEV**（默认共享 /dev） |
 | `bash deploy/dev-restart.sh` | 不重新构建，只重启 /dev（改了 env、排查用） |
 | `bash deploy/dev-sync.sh` | 生产库**只读快照** → /dev 数据目录 |
 | `bash deploy/promote.sh` | 把已在 /dev 验过的二进制与完整静态推给生产 |
 
 规则：
 
-1. **代码改动走 git**：本地/自己的分支改 → PR 合入 `dev` → `SC2CLUD_BRANCH=dev bash deploy/dev.sh` → 用户验收 `/dev/` → PR 合入 `main`。
+1. **一项功能一个分支、worktree 与独立 DEV**：在自己的 worktree 开发，审查并在独立 DEV 用户验收后，才串行 PR 合入共享 `dev` → `SC2CLUD_BRANCH=dev bash deploy/dev.sh` → 共享 DEV 集成验收 → PR 合入 `main`。共享 DEV 有并行发布者，发布前协调占用，禁止用未合并的功能分支覆盖共享实例。
    直接在服务器 `/opt/sc2clud` 里改文件会被下一次 `dev.sh` 的 `reset --hard` 覆盖
    请勿依赖服务器工作区保存未提交改动。
-2. **两个实例各自独立**：测试端前缀 `/srv/sc2clud-dev`（二进制/静态/env 都在这里），
+2. **实例各自独立**：共享测试端前缀 `/srv/sc2clud-dev`（二进制/静态/env 都在这里），
    生产端 `/srv/sc2clud`。`dev.sh` 只写测试前缀，碰不到生产；`promote.sh` 才把测试端那份二进制
    复制成生产二进制并重启生产 —— 所以「验证过再发布」是真的两道关。
 3. 排查「代码改了没效果」先看两条：`systemctl cat sc2clud-debug`（有没有 drop-in 覆盖 ExecStart）
    与 `git -C /opt/sc2clud log --oneline -1`（服务器上到底是哪个提交）。
 4. 改 unit / vhost 后必须 `systemctl daemon-reload` / `nginx -s reload`。
 5. 数据与 Cookie 都是隔离的：prod `/srv/sc2clud/data` + `sc2clud_session`，
-   dev `/srv/sc2clud-dev/data` + `sc2clud_dev_session`；**反向同步绝不允许**。
+   dev `/srv/sc2clud-dev/data` + `sc2clud_dev_session`；独立 DEV 使用自己的数据目录与不同 Cookie 名。**反向同步绝不允许**。
+6. 独立精华实例使用 `/opt/sc2clud-featured-dev`、`/srv/sc2clud-featured-dev`、服务 `sc2clud-featured-dev` 与回环端口 `8082`。以 `SC2CLUD_REPO`、`SC2CLUD_DEV_PREFIX`、`SC2CLUD_DEV_SERVICE`、`SC2CLUD_DEV_PORT`、`SC2CLUD_BRANCH` 选择；配置在任何拉取、构建或替换之前校验。独立实例验收后先合入共享 DEV，不从独立实例直接 promote；实际实例配置与启动由部署负责人处理。
 
 ### 前端产物交付与版本校验
 
 - 本机先执行 `pnpm -C web typecheck`、`pnpm -C web build` 和 Rust 门禁；真实预览通过后，经 ssh-skill 将完整 `crates/sc2clud-web/static/islands/` 上传到服务器仓库同路径（替换整个目录，避免遗留旧文件）。服务器没有 Node，不在服务器构建前端；不要执行 `push-islands.ps1` 或 `preview.mjs` 的 raw ssh/scp 路径。
 - `build` 清空 islands 后生成 `SOURCE.sha256`（将全部已跟踪 web 输入按路径的 UTF-8 字节排序，再以 NUL 分隔各路径及其 Git 规范化内容哈希计算，与整个 HEAD 无关）和 `SHA256SUMS`。只运行 watch 不产生可发布证明；新文件须先 git add 再 build。
-- `deploy/dev.sh` reset 到 `SC2CLUD_BRANCH`（默认 main）；走 PR→dev 后使用 `SC2CLUD_BRANCH=dev bash deploy/dev.sh` 验证，用户验收后再 PR→main。指纹必须与 reset 后前端源码一致。缺精华入口、清单、哈希不符均在替换 DEV 活跃产物前中止。
+- `deploy/dev.sh` reset 到 `SC2CLUD_BRANCH`（默认 main）；功能分支先发布到自己的独立 DEV 验收，审查后 PR→dev，再串行发布共享 DEV 集成验收，之后 PR→main。指纹必须与 reset 后前端源码一致。缺精华入口、清单、哈希不符均在替换 DEV 活跃产物前中止。
 - DEV 暂存完整二进制与 static，生成整套 `SHA256SUMS`；只重启测试实例。`promote.sh` 只从这份 DEV 整套复制，校验后先备份生产旧整套到 `releases/`，再替换及重启。预检查失败不改活跃文件、不重启。生产 promote 仍须按项目流程获得用户确认。
 - 本地部署行为回归：`bash scripts/test-deploy.sh`，临时目录与桩命令，不操作真实服务器。
 
