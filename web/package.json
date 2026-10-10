@@ -9,10 +9,18 @@
     "typecheck": "vue-tsc --noEmit"
   },
   "dependencies": {
+    "@radix-ui/react-dialog": "^1.2.0",
+    "@radix-ui/react-select": "^2.3.8",
+    "@radix-ui/react-tabs": "^1.1.22",
+    "react": "^18.0.0",
+    "react-dom": "^18.0.0",
     "reka-ui": "^2.11.0",
     "vue": "^3.5.13"
   },
   "devDependencies": {
+    "@types/react": "^18.3.31",
+    "@types/react-dom": "^18.0.0",
+    "@vitejs/plugin-react": "^4.0.0",
     "@vitejs/plugin-vue": "^5.2.1",
     "typescript": "^5.7.3",
     "vite": "^6.0.11",
