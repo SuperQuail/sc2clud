@@ -1307,7 +1307,7 @@ pub async fn list_comments(
                 (SELECT COUNT(*) FROM comment_votes v WHERE v.comment_id = c.id AND v.value = 1) AS likes, \
                 (SELECT COUNT(*) FROM comment_votes v WHERE v.comment_id = c.id AND v.value = -1) AS dislikes, \
                 COALESCE((SELECT v.value FROM comment_votes v \
-                          WHERE v.comment_id = c.id AND v.user_id = COALESCE(?2, -1)), 0) AS my_vote \
+                          WHERE v.comment_id = c.id AND v.user_id = -1), 0) AS my_vote \
          FROM comments c JOIN users u ON u.id = c.author_id \
          WHERE c.post_id = ? AND c.deleted_at IS NULL ORDER BY c.created_at, c.id LIMIT ?",
     )

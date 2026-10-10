@@ -239,6 +239,18 @@ pub struct PostPageTemplate<'a> {
     pub ui_variant: u8,
     /// 回复区样式：1 B 站原味 / 2 卡片流 / 3 紧凑列表。
     pub comments_variant: u8,
+    /// 回复区分页（每页 15 个主楼层）。
+    pub comments_total: i64,
+    pub comments_page: i64,
+    pub comments_pages: i64,
+    pub comments_prev: i64,
+    pub comments_next: i64,
+    /// 页码条：省略号用 gap 标记，免得模板里比类型。
+    pub comments_page_links: Vec<PageLink>,
+    /// 文本框样式：1 参考图版 / 2 Material 填充 / 3 Linear 极简。
+    pub textbox_variant: u8,
+    /// 子 agent 的文本框覆盖层（生产为空串，避免模板里再判一次）。
+    pub textbox_css: &'a str,
     /// 赞助弹窗样式（1 左右分栏 / 2 顶部标签 / 3 卡片网格）。
     pub donate_variant: u8,
     /// 赞助前提示样式（1 红顶卡 / 2 红标题横条 / 3 红圆图标卡）。
@@ -444,6 +456,13 @@ pub struct ImageView {
     pub href: String,
 }
 
+/// 页码条上的一项。
+#[derive(Debug, Clone)]
+pub struct PageLink {
+    pub number: i64,
+    pub gap: bool,
+}
+
 /// 回复视图。
 pub struct CommentView {
     /// 楼层 id（回复按钮用它当 parent_id）。
@@ -458,6 +477,10 @@ pub struct CommentView {
     /// 已渲染正文（含 @ 链接，模板里 `|safe`）。
     pub body_html: String,
     pub created_at: String,
+    /// 赞 / 踩；my_vote：1 赞 / -1 踩 / 0 没投。
+    pub likes: i64,
+    pub dislikes: i64,
+    pub my_vote: i64,
     /// 楼中楼：挂在这一层下面的回复。
     pub replies: Vec<CommentView>,
 }

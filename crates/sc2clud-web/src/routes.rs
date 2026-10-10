@@ -263,6 +263,10 @@ pub fn pages() -> Router<AppState> {
 pub fn api_read() -> Router<AppState> {
     Router::new()
         .route(
+            "/api/v1/comments/{id}/vote",
+            axum::routing::post(crate::pages_posts::comment_vote),
+        )
+        .route(
             "/api/v1/posts",
             axum::routing::get(list_posts).post(create_post),
         )

@@ -197,6 +197,8 @@ fn kind_options(selected: &str) -> Vec<KindOption> {
         .collect()
 }
 
+// 预览开关逐个传参（cui/tbi/page 等）；下次重构时收拢成一个结构体
+#[allow(clippy::too_many_arguments)]
 async fn build_post_page<'a>(
     state: &'a AppState,
     id: i64,
@@ -205,6 +207,8 @@ async fn build_post_page<'a>(
     dui: Option<&str>,
     nui: Option<&str>,
     cui: Option<&str>,
+    tbi: Option<&str>,
+    query_page: i64,
 ) -> AppResult<PostPageTemplate<'a>> {
     // 预览开关：只有开发实例看这个参数（生产恒为样式 1，预览代码不影响线上）
     // 生产恒用已评审通过的样式：菜单=2（分组下拉）、赞助=1（左渠道右二维码）、提示=3（红圆图标卡）
@@ -221,6 +225,8 @@ async fn build_post_page<'a>(
     let donate_variant = pick(dui, 1);
     let notice_variant = pick(nui, 3);
     let comments_variant = pick(cui, 1);
+    let textbox_variant = pick(tbi, 1);
+    let page = query_page;
     let user = session::current_user(state, headers).await?;
     let viewer_id = user.as_ref().map(|u| u.id);
     let is_staff = user.as_ref().is_some_and(CurrentUser::is_staff);
@@ -324,8 +330,98 @@ async fn build_post_page<'a>(
             image_hash: c.image_hash.clone(),
         })
         .collect();
+    // 楼中楼 + 分页：先在语句里算完再进模板字面量
+    // （askama 模板字面量按字段顺序求值：计算写在里面会先读到旧值，分页就等于没做）
+    const COMMENT_PAGE_SIZE: i64 = 15;
+    // 计数要在 move 之前取（下面把 comments 消费掉了）
+    let comment_count = comments.len() as i64;
+    let mut roots: Vec<CommentView> = Vec::new();
+    let mut replies: Vec<(i64, CommentView)> = Vec::new();
+    for c in comments {
+        let view = CommentView {
+            id: c.id,
+            author_id: c.author_id,
+            handle: c.author_handle,
+            author: c.author_display_name,
+            avatar: c.author_avatar,
+            // 普通用户不挂徽章，省得每层都是标签
+            role: sc2clud_core::auth::Role::parse(&c.author_role)
+                .ok()
+                .filter(|role| *role != sc2clud_core::auth::Role::Member)
+                .map(|role| role.label().to_string()),
+            body_html: sc2clud_core::community::render_body(&c.body),
+            created_at: format_date(c.created_at),
+            likes: c.likes,
+            dislikes: c.dislikes,
+            my_vote: c.my_vote,
+            replies: Vec::new(),
+        };
+        match c.parent_id {
+            None => roots.push(view),
+            Some(parent) => replies.push((parent, view)),
+        }
+    }
+    // 父楼层被拉黑过滤掉时，它的回复也一起不显示（不留孤儿）
+    for (parent, reply) in replies {
+        if let Some(root) = roots.iter_mut().find(|root| root.id == parent) {
+            root.replies.push(reply);
+        }
+    }
+    let comments_total = roots.len() as i64;
+    let comments_pages = ((comments_total + COMMENT_PAGE_SIZE - 1) / COMMENT_PAGE_SIZE).max(1);
+    let comments_page = page.min(comments_pages).max(1);
+    let comments_prev = if comments_page > 1 {
+        comments_page - 1
+    } else {
+        0
+    };
+    let comments_next = if comments_page < comments_pages {
+        comments_page + 1
+    } else {
+        0
+    };
+    // 页码条：页数不多就全列，多了只列首末页与当前页附近
+    let mut comments_page_links: Vec<crate::templates::PageLink> = Vec::new();
+    // 闭包只造值不碰 vec，避免同时持有可变借用
+    let link = |number: i64, gap: bool| crate::templates::PageLink { number, gap };
+    if comments_pages <= 7 {
+        for page_number in 1..=comments_pages {
+            comments_page_links.push(link(page_number, false));
+        }
+    } else {
+        comments_page_links.push(link(1, false));
+        if comments_page > 3 {
+            comments_page_links.push(link(0, true));
+        }
+        for page_number in (comments_page - 1).max(2)..=(comments_page + 1).min(comments_pages - 1)
+        {
+            comments_page_links.push(link(page_number, false));
+        }
+        if comments_page < comments_pages - 2 {
+            comments_page_links.push(link(0, true));
+        }
+        comments_page_links.push(link(comments_pages, false));
+    }
+    let page_start = ((comments_page - 1) * COMMENT_PAGE_SIZE) as usize;
+    let comments_view: Vec<CommentView> = roots
+        .into_iter()
+        .skip(page_start)
+        .take(COMMENT_PAGE_SIZE as usize)
+        .collect();
     Ok(PostPageTemplate {
         ui_variant,
+        textbox_variant,
+        textbox_css: match textbox_variant {
+            2 => include_str!("../templates/textbox-b.css"),
+            3 => include_str!("../templates/textbox-c.css"),
+            _ => "",
+        },
+        comments_total,
+        comments_page,
+        comments_pages,
+        comments_prev,
+        comments_next,
+        comments_page_links,
         comments_variant,
         donate_variant,
         notice_variant,
@@ -380,7 +476,7 @@ async fn build_post_page<'a>(
                 .map(|u| u.handle.clone())
                 .unwrap_or_default(),
             author_role_label: author_role.label().to_string(),
-            comment_count: comments.len() as i64,
+            comment_count,
             created_at: format_date(row.created_at),
             image_count: row.image_count,
             is_mine: viewer_id == Some(row.author_id),
@@ -391,39 +487,7 @@ async fn build_post_page<'a>(
             like_count: like_count as i64,
             bookmark_count: bookmark_count as i64,
         },
-        // 楼中楼：主楼层按时间顺序，回复挂到自己根楼层下（一级到底）
-        comments: {
-            let mut roots: Vec<CommentView> = Vec::new();
-            let mut replies: Vec<(i64, CommentView)> = Vec::new();
-            for c in comments {
-                let view = CommentView {
-                    id: c.id,
-                    author_id: c.author_id,
-                    handle: c.author_handle,
-                    author: c.author_display_name,
-                    avatar: c.author_avatar,
-                    // 普通用户不挂徽章，省得每层都是标签
-                    role: sc2clud_core::auth::Role::parse(&c.author_role)
-                        .ok()
-                        .filter(|role| *role != sc2clud_core::auth::Role::Member)
-                        .map(|role| role.label().to_string()),
-                    body_html: sc2clud_core::community::render_body(&c.body),
-                    created_at: format_date(c.created_at),
-                    replies: Vec::new(),
-                };
-                match c.parent_id {
-                    None => roots.push(view),
-                    Some(parent) => replies.push((parent, view)),
-                }
-            }
-            // 父楼层被拉黑过滤掉时，它的回复也一起不显示（不留孤儿）
-            for (parent, reply) in replies {
-                if let Some(root) = roots.iter_mut().find(|root| root.id == parent) {
-                    root.replies.push(reply);
-                }
-            }
-            roots
-        },
+        comments: comments_view,
     })
 }
 
@@ -436,6 +500,10 @@ pub struct UiQuery {
     nui: Option<String>,
     /// 回复区样式编号（1 B 站原味 / 2 卡片流 / 3 紧凑列表）。
     cui: Option<String>,
+    /// 文本框样式编号（1 参考图版 / 2 Material / 3 Linear）。
+    tbi: Option<String>,
+    /// 回复区页码（每页 15 个主楼层）。
+    page: Option<String>,
 }
 
 pub async fn post_page(
@@ -452,6 +520,13 @@ pub async fn post_page(
         query.dui.as_deref(),
         query.nui.as_deref(),
         query.cui.as_deref(),
+        query.tbi.as_deref(),
+        query
+            .page
+            .as_deref()
+            .and_then(|value| value.parse::<i64>().ok())
+            .unwrap_or(1)
+            .max(1),
     )
     .await
     {
@@ -1125,6 +1200,44 @@ pub async fn issue_json(
         "state": issue.state,
         "comments": comments,
     }))
+    .into_response())
+}
+
+#[derive(Debug, serde::Deserialize)]
+pub struct VoteForm {
+    value: i64,
+}
+
+/// 回复投票（JSON）：value = 1 赞 / -1 踩 / 0 取消。
+/// 前端目前只接点赞；点踩走同一个接口，先不接界面。
+pub async fn comment_vote(
+    State(state): State<AppState>,
+    Path(id): Path<i64>,
+    headers: HeaderMap,
+    axum::Json(form): axum::Json<VoteForm>,
+) -> AppResult<Response> {
+    let user = require_user(&state, &headers).await?;
+    session::guard(Some(&user), Permission::Comment)?;
+    let token = headers
+        .get("x-csrf-token")
+        .and_then(|value| value.to_str().ok())
+        .unwrap_or("");
+    session::check_csrf(&user, token)?;
+    if !matches!(form.value, -1..=1) {
+        return Err(invalid("投票只能是赞、踩或取消"));
+    }
+    // 只能投自己看得到的帖子下的回复
+    let post_id = repo::comment_post_id(state.db.pool(), id)
+        .await?
+        .ok_or_else(|| AppError::not_found("回复不存在"))?;
+    repo::get_post_for(state.db.pool(), post_id, Some(user.id), user.is_staff())
+        .await?
+        .ok_or_else(|| AppError::not_found("帖子不存在或不可见"))?;
+    let (likes, dislikes, mine) =
+        repo::vote_comment(state.db.pool(), id, user.id, form.value, now_unix()).await?;
+    Ok(axum::Json(
+        serde_json::json!({ "ok": true, "likes": likes, "dislikes": dislikes, "mine": mine }),
+    )
     .into_response())
 }
 
