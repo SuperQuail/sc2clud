@@ -75,6 +75,8 @@ pub struct PostWithAuthorRow {
 /// 分区（管理员可增删 / 归档 / 排序，所以不写死在枚举里）。
 #[derive(Debug, Clone, FromRow)]
 pub struct SectionRow {
+    /// 是否启用用户组检查（迁移 0026）。
+    pub group_check: i64,
     pub key: String,
     pub label: String,
     pub description: String,

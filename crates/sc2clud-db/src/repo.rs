@@ -2429,6 +2429,7 @@ fn section_from_row(row: SectionRow) -> sc2clud_core::community::SectionRecord {
         archived: row.archived_at.is_some(),
         post_min_role: Role::parse(&row.post_min_role).unwrap_or(Role::Member),
         reply_min_role: Role::parse(&row.reply_min_role).unwrap_or(Role::Member),
+        group_mode: row.group_check,
     }
 }
 
@@ -2523,11 +2524,12 @@ pub async fn update_section(
 pub async fn set_section_group_check(
     pool: &SqlitePool,
     key: &str,
-    enabled: bool,
+    mode: i64,
     now: i64,
 ) -> Result<bool> {
+    // 0 = 不启用 / 1 = 白名单 / 2 = 黑名单（列是整数，语义按档位解释）
     let affected = query("UPDATE sections SET group_check = ?, updated_at = ? WHERE key = ?")
-        .bind(if enabled { 1 } else { 0 })
+        .bind(mode.clamp(0, 2))
         .bind(now)
         .bind(key)
         .execute(pool)

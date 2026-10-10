@@ -1031,13 +1031,14 @@ pub async fn save_section_acl(
         now,
     )
     .await?;
-    repo::set_section_group_check(
-        state.db.pool(),
-        &section,
-        form.group_check.as_deref() == Some("1"),
-        now,
-    )
-    .await?;
+    // 档位：0 不启用 / 1 白名单 / 2 黑名单（前端目前是复选/下拉，值直接给数字）
+    let group_mode = form
+        .group_check
+        .as_deref()
+        .and_then(|value| value.parse::<i64>().ok())
+        .unwrap_or(0)
+        .clamp(0, 2);
+    repo::set_section_group_check(state.db.pool(), &section, group_mode, now).await?;
     let allowed: Vec<i64> = form
         .groups
         .split(',')

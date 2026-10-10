@@ -769,22 +769,50 @@ async fn ensure_section_action(
     } else {
         record.can_reply(role)
     };
+    let what = if want_post { "发帖" } else { "回帖" };
+    // 管理员及以上无视用户组（组规则再严也不拦管理员）
+    if user.is_staff() {
+        return Ok(());
+    }
+    // 用户组规则：禁止项优先于一切 → 再看白名单（只在开了「用户组检查」的分区生效）
+    let rules = repo::group_rules_for_user_section(state.db.pool(), user.id, section).await?;
+    let tuples: Vec<(bool, bool, bool, bool)> = rules
+        .iter()
+        .map(|rule| {
+            (
+                rule.can_post == 1,
+                rule.can_reply == 1,
+                rule.deny_post == 1,
+                rule.deny_reply == 1,
+            )
+        })
+        .collect();
+    // 0 = 不启用（完全跳过组逻辑）、1 = 白名单、2 = 黑名单（只认禁止项）
+    let group_mode = record.group_mode;
+    if sc2clud_core::community::group_verdict(group_mode != 0, false, want_post, &tuples)
+        == sc2clud_core::community::GroupVerdict::Deny
+    {
+        return Err(AppError::Domain(DomainError::Forbidden(format!(
+            "你在「{}」被用户组规则禁止{what}",
+            record.label
+        ))));
+    }
     if allowed_by_role {
         return Ok(());
     }
-    // 用户组白名单：任一组给了允许就算允许（组是加成，不是限制）
-    let rules = repo::group_rules_for_user_section(state.db.pool(), user.id, section).await?;
-    let allowed_by_group = rules.iter().any(|rule| {
-        if want_post {
-            rule.can_post == 1
-        } else {
-            rule.can_reply == 1
+    // 只有白名单档要求组命中；黑名单档不要求（组没意见就交给角色门槛）
+    if group_mode == 1 {
+        let allowed_by_group = rules.iter().any(|rule| {
+            if want_post {
+                rule.can_post == 1
+            } else {
+                rule.can_reply == 1
+            }
+        });
+        if allowed_by_group {
+            return Ok(());
         }
-    });
-    if allowed_by_group {
-        return Ok(());
     }
-    let what = if want_post { "发帖" } else { "回帖" };
     Err(AppError::Domain(DomainError::Forbidden(format!(
         "你在「{}」没有{what}权限",
         record.label

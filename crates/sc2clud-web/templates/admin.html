@@ -253,23 +253,24 @@
 <section class="panel" id="acl">
   <h2>分区发言权限 <span class="count">{{ sections.len() }}</span></h2>
   <p class="hint">角色门槛＝「至少哪个等级能在该分区发言 / 评论」；用户组规则是额外的白名单（禁止项优先于一切）。
-    这是设计稿：写入接口待你选定版式后再接，下面的控件暂不可提交。</p>
+    改完点该行右侧的「保存」立即生效（不刷新页面）；管理员及以上始终无视用户组。</p>
   {% if acl_variant == 1 %}
-  {# 版式 1：权限矩阵 —— 行是分区，列是门槛与组白名单，信息密度最高 #}
+  {# 版式 1：权限矩阵 —— 行是分区，列是门槛、启用开关与组白名单；每行一个保存按钮 #}
   <table class="acl-matrix">
-    <thead><tr><th>分区</th><th>可发言</th><th>可评论</th><th>启用用户组检查</th><th>允许的用户组</th></tr></thead>
+    <thead><tr><th>分区</th><th>可发言</th><th>可评论</th><th>启用用户组检查</th><th>允许的用户组</th><th></th></tr></thead>
     <tbody>
     {% for section in sections %}
-    <tr>
+    <tr data-acl-row="{{ section.value }}">
       <th scope="row">{{ section.label }}</th>
-      <td><select disabled><option value="member">普通用户</option><option value="developer">认证开发者</option><option value="admin">管理员</option><option value="super">超级管理员</option></select></td>
-      <td><select disabled><option value="member">普通用户</option><option value="developer">认证开发者</option><option value="admin">管理员</option><option value="super">超级管理员</option></select></td>
+      <td><select data-acl-post><option value="member">普通用户</option><option value="developer">认证开发者</option><option value="admin">管理员</option><option value="super">超级管理员</option></select></td>
+      <td><select data-acl-reply><option value="member">普通用户</option><option value="developer">认证开发者</option><option value="admin">管理员</option><option value="super">超级管理员</option></select></td>
       {# 关掉时该分区忽略用户组白名单，只看角色门槛；管理员及以上始终无视用户组 #}
-      <td><label class="acl-switch"><input type="checkbox" disabled data-group-check><span>启用</span></label></td>
+      <td><label class="acl-switch"><input type="checkbox" data-acl-check><span>启用</span></label></td>
       <td class="acl-chips">
-        {% for group in groups %}<button class="acl-chip" type="button" disabled data-group-chip aria-pressed="false">{{ group.name }}</button>{% endfor %}
+        {% for group in groups %}<button class="acl-chip" type="button" data-acl-chip data-group-id="{{ group.id }}" aria-pressed="false">{{ group.name }}</button>{% endfor %}
         {% if groups.is_empty() %}<span class="hint">还没有用户组</span>{% endif %}
       </td>
+      <td><button class="btn sm" type="button" data-acl-save="{{ section.value }}">保存</button></td>
     </tr>
     {% endfor %}
     </tbody>
@@ -558,6 +559,37 @@
       });
     }
   }
+
+  // 矩阵保存：收集该行的角色门槛 / 启用开关 / 绿色标签，POST /admin/sections/{key}/acl
+  document.querySelectorAll('[data-acl-chip]').forEach((chip) => {
+    chip.addEventListener('click', () => {
+      const on = chip.classList.toggle('is-on');
+      chip.setAttribute('aria-pressed', on ? 'true' : 'false');
+    });
+  });
+  document.querySelectorAll('[data-acl-save]').forEach((btn) => {
+    btn.addEventListener('click', async () => {
+      const row = btn.closest('[data-acl-row]');
+      if (!row) return;
+      const csrf = document.querySelector('input[name=csrf]');
+      const chips = Array.from(row.querySelectorAll('[data-acl-chip].is-on')).map((chip) => chip.dataset.groupId);
+      const body = {
+        csrf: csrf ? csrf.value : '',
+        post_min_role: row.querySelector('[data-acl-post]').value,
+        reply_min_role: row.querySelector('[data-acl-reply]').value,
+        group_check: row.querySelector('[data-acl-check]').checked ? '1' : '0',
+        groups: chips.join(','),
+      };
+      const res = await fetch('/admin/sections/' + btn.dataset.aclSave + '/acl', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+      const label = btn.textContent;
+      btn.textContent = res.ok ? '已保存 ✓' : '失败 ' + res.status;
+      setTimeout(() => { btn.textContent = label; }, 1600);
+    });
+  });
 
   // 用户组：点「编辑」展开就地改名/说明
   document.querySelectorAll('[data-group-edit]').forEach((btn) => {
