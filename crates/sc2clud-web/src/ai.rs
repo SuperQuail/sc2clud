@@ -175,20 +175,38 @@ pub async fn review_text(
     parse_reply(&value)
 }
 
-/// 连通性测试：发一句最短的话，看能不能拿到正常响应（不要求它调用工具）。
+/// 审核探针用的样本文本（固定内容，方便对照）。
+const PROBE_TEXT: &str = "【帖子】\n标题：测试帖（AI 审核自检）\n分区：公告\n作者：系统自检\n正文：\n这是一条用于自检的示例内容，请按提示词判定。\n";
+
+/// 连通性 + 工具调用自检：先发一句最短请求确认能通，再用真实提示词与三个工具跑一次，
+/// 确认模型会调用工具、判词能解析出来。返回给人看的一行结论。
 pub async fn test_connection(config: &AiConfig) -> Result<String, String> {
     let body = serde_json::json!({
         "model": config.model,
         "messages": [{ "role": "user", "content": "ping" }],
         "max_tokens": 8
     });
+    let started = std::time::Instant::now();
     let value = post_chat(config, &body).await?;
     let model = value
         .get("model")
         .and_then(|model| model.as_str())
         .unwrap_or(&config.model)
         .to_string();
-    Ok(format!("连通正常，模型：{model}"))
+    let ping_ms = started.elapsed().as_millis();
+    // 第二步：真的让它审一段文本，确认工具调用这条链路是通的
+    let probe = std::time::Instant::now();
+    let review = review_text(config, PROBE_TEXT, "post", "manual").await?;
+    let probe_ms = probe.elapsed().as_millis();
+    Ok(format!(
+        "连通正常 · 模型 {model} · 首字节 {ping_ms}ms；工具调用正常（自检判词：{}，理由：{}）· 审核耗时 {probe_ms}ms",
+        review.verdict.as_str(),
+        if review.reason.is_empty() {
+            "（模型没给理由）"
+        } else {
+            review.reason.as_str()
+        }
+    ))
 }
 
 #[cfg(test)]

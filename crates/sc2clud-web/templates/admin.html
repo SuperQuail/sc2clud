@@ -730,6 +730,9 @@
       .ai-tag.on{border-color:#16a34a;background:#16a34a;color:#fff}
       .ai-tag.wip{border-color:#d97706;background:#fef3c7;color:#92400e}
       .ai-wip{opacity:.75}
+      .ai-result{margin:10px 0 0;padding:10px 12px;border-radius:10px;font-size:13px;line-height:1.6;white-space:pre-wrap}
+      .ai-result[data-state=ok]{border:1px solid #16a34a;background:#dcfce7;color:#14532d}
+      .ai-result[data-state=bad]{border:1px solid #dc2626;background:#fee2e2;color:#991b1b}
       .ai-out{white-space:pre-wrap;word-break:break-word;background:rgba(37,99,235,.05);border:1px solid var(--line,#e5e7eb);border-radius:10px;padding:10px 12px;font-size:12px;line-height:1.6;margin:10px 0 0}
       </style>
       <form method="post" action="/admin/ai/settings" data-ai-form id="ai-form">
@@ -785,6 +788,7 @@
         <div class="ai-actions"><button class="btn" type="submit" form="ai-form">保存全部设置</button>
           <span class="hint" data-ai-note>三个板块共用同一份接口配置：点任意一个保存按钮都会把整页设置一起存下来。</span></div>
       </form>
+      <p class="ai-result" data-ai-result hidden></p>
       <pre class="ai-out" data-ai-out hidden></pre>
       <script>
       (() => {
@@ -799,8 +803,28 @@
           note.textContent = data.ok === false ? (data.message || '失败')
             : (data.message || (data.verdict ? ('判词：' + data.verdict + (data.reason ? '（' + data.reason + '）' : '')) : '完成'));
         };
+        const result = document.querySelector('[data-ai-result]');
+        const showResult = (text, good) => {
+          if (!result) return;
+          result.hidden = false;
+          result.textContent = (good ? '✓ ' : '✗ ') + text;
+          result.dataset.state = good ? 'ok' : 'bad';
+        };
         const test = document.querySelector('[data-ai-test]');
-        if (test) test.addEventListener('click', () => post('/admin/ai/test', new URLSearchParams()));
+        if (test) test.addEventListener('click', async () => {
+          test.disabled = true;
+          const label = test.textContent;
+          test.textContent = '正在测试…';
+          showResult('正在发起真实调用（连通 + 工具调用各一次，最多等 60 秒）', true);
+          const res = await fetch('/admin/ai/test', { method: 'POST', headers: { 'x-csrf-token': csrf() } });
+          const data = await res.json().catch(() => null);
+          if (!data) showResult('请求失败 ' + res.status, false);
+          else showResult(data.message || '没有返回内容', data.ok === true);
+          test.disabled = false;
+          test.textContent = label;
+        });
+        // 预览用：带上 ?aitest=1 进页面就直接跑一次（出图/自检省一次点击）
+        if (new URLSearchParams(location.search).get('aitest') === '1' && test) test.click();
         document.querySelectorAll('[data-ai-block]').forEach((block) => {
           const kind = block.dataset.aiBlock;
           const idOf = () => Number((block.querySelector('[data-ai-id]') || {}).value || 0);
