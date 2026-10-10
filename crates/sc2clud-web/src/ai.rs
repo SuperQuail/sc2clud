@@ -87,6 +87,8 @@ pub struct AiReview {
 
 /// 拼请求体：工具定义来自 core（三个工具），tool_choice 强制模型调用其中之一。
 fn request_body(config: &AiConfig, system: &str, user: &str, target: &str) -> serde_json::Value {
+    // 只有显式 none 才是非思考模式；不传（服务端默认 high）与 low/high/max 都算思考模式
+    let thinking = !matches!(config.reasoning_effort.as_str(), "none");
     let mut body = serde_json::json!({
         "model": config.model,
         "messages": [
@@ -94,7 +96,9 @@ fn request_body(config: &AiConfig, system: &str, user: &str, target: &str) -> se
             { "role": "user", "content": user }
         ],
         "tools": ai_tools(target),
-        "tool_choice": "required",
+        // DeepSeek 的思考模式不接受 tool_choice=required（会 400 Thinking mode does not support this tool_choice），
+        // 所以思考开启时用 auto + 提示词里要求「必须调用其中一个工具」；没调工具就按待定处理。
+        "tool_choice": if thinking { "auto" } else { "required" },
         "temperature": 0
     });
     // 只认这四个取值（DeepSeek/OpenAI 都收 reasoning_effort；不传就用服务端默认）
@@ -118,10 +122,26 @@ fn parse_reply(value: &serde_json::Value) -> Result<AiReview, String> {
         .and_then(|choices| choices.get(0))
         .and_then(|choice| choice.get("message"))
         .ok_or_else(|| "AI 响应里没有 choices".to_string())?;
-    let call = message
-        .get("tool_calls")
-        .and_then(|calls| calls.get(0))
-        .ok_or_else(|| "AI 没有调用任何工具（可能是模型不支持工具调用）".to_string())?;
+    // 思考模式下没法强制工具调用：模型可能直接给一段话。这时按「待定」交人工，
+    // 比报错更安全（宁可让人看一眼，也不要自动放行）。
+    let Some(call) = message.get("tool_calls").and_then(|calls| calls.get(0)) else {
+        let said = message
+            .get("content")
+            .and_then(|content| content.as_str())
+            .unwrap_or("")
+            .chars()
+            .take(200)
+            .collect::<String>();
+        return Ok(AiReview {
+            verdict: AiVerdict::Pending,
+            reason: if said.is_empty() {
+                "模型既没调用工具也没给内容，交人工".to_string()
+            } else {
+                format!("模型未调用工具（思考模式），交人工：{said}")
+            },
+            raw: value.to_string(),
+        });
+    };
     let name = call
         .get("function")
         .and_then(|function| function.get("name"))
@@ -247,7 +267,18 @@ mod ai_client_tests {
     #[test]
     fn body_carries_three_tools_and_forces_a_choice() {
         let body = request_body(&config(), "s", "u", "post");
-        assert_eq!(body["tool_choice"], "required");
+        assert_eq!(
+            body["tool_choice"], "auto",
+            "思考模式（默认 high）不能用 required"
+        );
+
+        let mut plain = config();
+        plain.reasoning_effort = "none".to_string();
+        assert_eq!(
+            request_body(&plain, "s", "u", "post")["tool_choice"],
+            "required",
+            "关掉思考才强制调用"
+        );
         assert_eq!(body["tools"].as_array().map(|tools| tools.len()), Some(3));
         assert_eq!(body["messages"][1]["content"], "u");
         assert_eq!(body["reasoning_effort"], "high");
@@ -272,7 +303,8 @@ mod ai_client_tests {
 
         let no_call =
             serde_json::json!({ "choices": [ { "message": { "content": "我觉得还行" } } ] });
-        assert!(parse_reply(&no_call).is_err());
+        let soft = parse_reply(&no_call).expect("思考模式下不该报错");
+        assert_eq!(soft.verdict, AiVerdict::Pending, "没调工具就交人工");
 
         let weird = serde_json::json!({ "choices": [ { "message": { "tool_calls": [ { "function": {
             "name": "delete_post", "arguments": "{}" } } ] } } ] });

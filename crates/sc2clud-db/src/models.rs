@@ -119,6 +119,25 @@ pub struct GroupSectionRuleRow {
     pub deny_reply: i64,
 }
 
+/// 一个 SMTP 发信账号（主 + 备选，按 priority 排序做故障转移）。
+#[derive(Debug, Clone, FromRow)]
+pub struct SmtpAccountRow {
+    pub id: i64,
+    pub label: String,
+    pub host: String,
+    pub port: i64,
+    pub username: String,
+    pub from_address: String,
+    pub from_name: String,
+    pub tls: String,
+    pub priority: i64,
+    pub archived_at: Option<i64>,
+    pub last_ok_at: Option<i64>,
+    pub last_error: String,
+    pub last_error_at: Option<i64>,
+    pub created_at: i64,
+}
+
 /// 一条处罚（禁止发帖 / 禁止评论，可限定分区）。
 #[derive(Debug, Clone, FromRow)]
 pub struct UserSanctionRow {

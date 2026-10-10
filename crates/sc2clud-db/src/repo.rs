@@ -15,12 +15,9 @@ use crate::models::{
     FileWithOwnerRow, GroupSectionRuleRow, ImageJobRow, IssueCommentRow, MessageRow,
     NotificationRow, PaymentChannelRow, PostImageRow, PostIssueRow, PostRevisionRow, PostRow,
     PostSearchRow, PostSourceRow, PostWithAuthorRow, ReleaseAssetRow, ReleaseRow,
-    SectionModeratorRow, SectionRow, SessionRow, SiteDomainRow, TitleRow, UploadSessionRow,
-    UserGroupRow, UserHitRow, UserRow, UserSanctionRow, UserTitleRow,
+    SectionModeratorRow, SectionRow, SessionRow, SiteDomainRow, SmtpAccountRow, TitleRow,
+    UploadSessionRow, UserGroupRow, UserHitRow, UserRow, UserSanctionRow, UserTitleRow,
 };
-
-// ---------------------------------------------------------------- 用户
-
 pub async fn create_user(
     pool: &SqlitePool,
     handle: &str,
@@ -1183,6 +1180,232 @@ pub async fn create_comment(
 }
 
 use crate::{open_secret, seal_secret};
+
+// ---------------------------------------------------------------- SMTP 验证码
+
+/// 发信账号：按优先级排序（主用在前，风控了往下走）。
+pub async fn list_smtp_accounts(
+    pool: &SqlitePool,
+    include_archived: bool,
+) -> Result<Vec<SmtpAccountRow>> {
+    let sql = if include_archived {
+        "SELECT * FROM smtp_accounts ORDER BY priority, id"
+    } else {
+        "SELECT * FROM smtp_accounts WHERE archived_at IS NULL ORDER BY priority, id"
+    };
+    query_as::<_, SmtpAccountRow>(sql)
+        .fetch_all(pool)
+        .await
+        .map_err(db_err)
+}
+
+#[allow(clippy::too_many_arguments)]
+pub async fn add_smtp_account(
+    pool: &SqlitePool,
+    label: &str,
+    host: &str,
+    port: i64,
+    username: &str,
+    from_address: &str,
+    from_name: &str,
+    tls: &str,
+    priority: i64,
+    now: i64,
+) -> Result<i64> {
+    let res = query(
+        "INSERT INTO smtp_accounts (label, host, port, username, from_address, from_name, tls, priority, created_at) \
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+    )
+    .bind(label)
+    .bind(host)
+    .bind(port)
+    .bind(username)
+    .bind(from_address)
+    .bind(from_name)
+    .bind(tls)
+    .bind(priority)
+    .bind(now)
+    .execute(pool)
+    .await
+    .map_err(db_err)?;
+    Ok(res.last_insert_rowid())
+}
+
+/// 存 SMTP 密码（加密；单独表？不——就地加密存在本行，和 AI 密钥同一套 AEAD）。
+pub async fn set_smtp_password(
+    pool: &SqlitePool,
+    db_path: &std::path::Path,
+    id: i64,
+    password: &str,
+) -> Result<()> {
+    let (cipher, nonce) = seal_secret(db_path, password)?;
+    query("UPDATE smtp_accounts SET pass_cipher = ?, pass_nonce = ? WHERE id = ?")
+        .bind(cipher)
+        .bind(nonce)
+        .bind(id)
+        .execute(pool)
+        .await
+        .map_err(db_err)?;
+    Ok(())
+}
+
+pub async fn smtp_password(
+    pool: &SqlitePool,
+    db_path: &std::path::Path,
+    id: i64,
+) -> Option<String> {
+    // 密文与 nonce 两列（类型写一次就够，别让 clippy 数括号）
+    type CipherPair = (Option<Vec<u8>>, Option<Vec<u8>>);
+    let row: Option<CipherPair> =
+        query_as("SELECT pass_cipher, pass_nonce FROM smtp_accounts WHERE id = ?")
+            .bind(id)
+            .fetch_optional(pool)
+            .await
+            .ok()?;
+    let (cipher, nonce) = row?;
+    open_secret(db_path, cipher.as_deref()?, nonce.as_deref()?)
+}
+
+pub async fn archive_smtp_account(
+    pool: &SqlitePool,
+    id: i64,
+    archived: bool,
+    now: i64,
+) -> Result<bool> {
+    let affected = query(
+        "UPDATE smtp_accounts SET archived_at = ? WHERE id = ? AND ((archived_at IS NULL) = ?)",
+    )
+    .bind(if archived { Some(now) } else { None })
+    .bind(id)
+    .bind(archived)
+    .execute(pool)
+    .await
+    .map_err(db_err)?
+    .rows_affected();
+    Ok(affected == 1)
+}
+
+/// 记一次发信结果（成功清错误、失败留原因，后台能看到是被谁风控了）。
+pub async fn record_smtp_result(
+    pool: &SqlitePool,
+    id: i64,
+    ok: bool,
+    error: &str,
+    now: i64,
+) -> Result<()> {
+    query(
+        "UPDATE smtp_accounts SET last_ok_at = CASE WHEN ? THEN ? ELSE last_ok_at END, \
+                                   last_error = CASE WHEN ? THEN '' ELSE ? END, \
+                                   last_error_at = CASE WHEN ? THEN last_error_at ELSE ? END \
+         WHERE id = ?",
+    )
+    .bind(ok)
+    .bind(now)
+    .bind(ok)
+    .bind(error)
+    .bind(ok)
+    .bind(now)
+    .bind(id)
+    .execute(pool)
+    .await
+    .map_err(db_err)?;
+    Ok(())
+}
+
+/// 写一条验证码（只存哈希与盐）。
+#[allow(clippy::too_many_arguments)]
+pub async fn create_email_code(
+    pool: &SqlitePool,
+    email: &str,
+    code_hash: &str,
+    salt: &str,
+    purpose: &str,
+    expires_at: i64,
+    account_id: Option<i64>,
+    now: i64,
+) -> Result<i64> {
+    let res = query(
+        "INSERT INTO email_codes (email, code_hash, salt, purpose, expires_at, account_id, created_at) \
+         VALUES (?, ?, ?, ?, ?, ?, ?)",
+    )
+    .bind(email)
+    .bind(code_hash)
+    .bind(salt)
+    .bind(purpose)
+    .bind(expires_at)
+    .bind(account_id)
+    .bind(now)
+    .execute(pool)
+    .await
+    .map_err(db_err)?;
+    Ok(res.last_insert_rowid())
+}
+
+/// 最近一分钟给这个邮箱发过几条（限流用）。
+pub async fn email_codes_since(
+    pool: &SqlitePool,
+    email: &str,
+    since: i64,
+) -> Result<(i64, Option<i64>)> {
+    let row: (i64, Option<i64>) = query_as(
+        "SELECT COUNT(*), MAX(created_at) FROM email_codes WHERE email = ? AND created_at >= ?",
+    )
+    .bind(email)
+    .bind(since)
+    .fetch_one(pool)
+    .await
+    .map_err(db_err)?;
+    Ok(row)
+}
+
+/// 全站最近一分钟发了几条（限流用）。
+pub async fn email_codes_total_since(pool: &SqlitePool, since: i64) -> Result<i64> {
+    let row: (i64,) = query_as("SELECT COUNT(*) FROM email_codes WHERE created_at >= ?")
+        .bind(since)
+        .fetch_one(pool)
+        .await
+        .map_err(db_err)?;
+    Ok(row.0)
+}
+
+/// 取一条未消费、未过期的最新验证码（校验用）。
+pub async fn newest_email_code(
+    pool: &SqlitePool,
+    email: &str,
+    purpose: &str,
+    now: i64,
+) -> Result<Option<(i64, String, String, i64)>> {
+    query_as(
+        "SELECT id, code_hash, salt, attempts FROM email_codes \
+         WHERE email = ? AND purpose = ? AND consumed_at IS NULL AND expires_at > ? \
+         ORDER BY id DESC LIMIT 1",
+    )
+    .bind(email)
+    .bind(purpose)
+    .bind(now)
+    .fetch_optional(pool)
+    .await
+    .map_err(db_err)
+}
+
+pub async fn bump_email_code_attempts(pool: &SqlitePool, id: i64) -> Result<()> {
+    query("UPDATE email_codes SET attempts = attempts + 1 WHERE id = ?")
+        .bind(id)
+        .execute(pool)
+        .await
+        .map_err(db_err)?;
+    Ok(())
+}
+
+pub async fn consume_email_code(pool: &SqlitePool, id: i64, now: i64) -> Result<()> {
+    query("UPDATE email_codes SET consumed_at = ? WHERE id = ? AND consumed_at IS NULL")
+        .bind(now)
+        .bind(id)
+        .execute(pool)
+        .await
+        .map_err(db_err)?;
+    Ok(())
+}
 
 // ---------------------------------------------------------------- AI 审核（配置 / 密钥 / 留痕 / 举报）
 
