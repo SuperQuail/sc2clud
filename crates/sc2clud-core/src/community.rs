@@ -558,3 +558,125 @@ mod tests {
         assert!(!section.accepts_content());
     }
 }
+
+// ---------------------------------------------------------------- @ 提及
+
+/// 从正文里取出被 @ 的用户 id（按出现顺序，去重）。
+/// 只认写入时归一化过的 `@显示名#id`：手打的 `@名字` 不解析，免得重名指错人。
+pub fn mentions(body: &str) -> Vec<i64> {
+    let mut ids = Vec::new();
+    for (_, id) in mention_spans(body) {
+        if !ids.contains(&id) {
+            ids.push(id);
+        }
+    }
+    ids
+}
+
+/// 渲染回复正文：先转义，再把 `@显示名#id` 变成指向 `/u/id/{id}` 的链接，
+/// 显示时丢掉 `#id`（链接本身唯一，重名也不会指错）。
+pub fn render_body(body: &str) -> String {
+    let mut out = String::with_capacity(body.len() + 32);
+    let mut cursor = 0usize;
+    for (start, id) in mention_spans(body) {
+        let end = body[start..]
+            .find(' ')
+            .map(|offset| start + offset)
+            .unwrap_or(body.len());
+        out.push_str(&escape_html(&body[cursor..start]));
+        let name = body[start + 1..end].split('#').next().unwrap_or_default();
+        out.push_str(&format!(
+            r#"<a class="mention" href="/u/id/{id}">@{}</a>"#,
+            escape_html(name)
+        ));
+        cursor = end;
+    }
+    out.push_str(&escape_html(&body[cursor..]));
+    out
+}
+
+/// 找出所有 `@名字#数字` 的位置与 id（名字里除空格外都可以有）。
+fn mention_spans(body: &str) -> Vec<(usize, i64)> {
+    let bytes = body.as_bytes();
+    let mut spans = Vec::new();
+    let mut index = 0usize;
+    while index < bytes.len() {
+        if bytes[index] != b'@' {
+            index += 1;
+            continue;
+        }
+        let rest = &body[index + 1..];
+        let end = rest
+            .find(' ')
+            .map(|offset| index + 1 + offset)
+            .unwrap_or(body.len());
+        let token = &body[index + 1..end];
+        let Some((_, digits)) = token.rsplit_once('#') else {
+            index += 1;
+            continue;
+        };
+        if digits.is_empty() || !digits.bytes().all(|b| b.is_ascii_digit()) {
+            index += 1;
+            continue;
+        }
+        match digits.parse::<i64>() {
+            Ok(id) => {
+                spans.push((index, id));
+                index = end;
+            }
+            Err(_) => index += 1,
+        }
+    }
+    spans
+}
+
+/// 转义 HTML（回复正文是我们自己拼的 HTML，必须自己把关）。
+fn escape_html(raw: &str) -> String {
+    let mut out = String::with_capacity(raw.len());
+    for ch in raw.chars() {
+        match ch {
+            '&' => out.push_str("&amp;"),
+            '<' => out.push_str("&lt;"),
+            '>' => out.push_str("&gt;"),
+            '"' => out.push_str("&quot;"),
+            '\'' => out.push_str("&#39;"),
+            _ => out.push(ch),
+        }
+    }
+    out
+}
+
+#[cfg(test)]
+mod mention_tests {
+    use super::*;
+
+    #[test]
+    fn plain_text_passes_through_escaped() {
+        assert_eq!(render_body("a < b & c"), "a &lt; b &amp; c");
+        assert!(mentions("没有提及").is_empty());
+    }
+
+    #[test]
+    fn mention_links_and_hides_id() {
+        let out = render_body("@唐天#7 看看这个");
+        assert_eq!(
+            out,
+            r#"<a class="mention" href="/u/id/7">@唐天</a> 看看这个"#
+        );
+        assert_eq!(mentions("@唐天#7 看看这个"), vec![7]);
+    }
+
+    #[test]
+    fn duplicate_names_point_at_the_right_user() {
+        let body = "@唐天#7 和 @唐天#9 是两个人";
+        assert_eq!(mentions(body), vec![7, 9]);
+        assert!(render_body(body).contains(r#"/u/id/9">@唐天</a>"#));
+    }
+
+    #[test]
+    fn hand_typed_mention_stays_text() {
+        assert!(mentions("@唐天 你好").is_empty());
+        assert_eq!(render_body("@唐天 你好"), "@唐天 你好");
+        assert!(mentions("@名字#abc").is_empty());
+    }
+}
