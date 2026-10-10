@@ -115,12 +115,12 @@
         <div class="c-head">
           <span class="c-floor">NO.{{ c.id }}</span>
           <b class="c-name">{{ c.author }}</b>
-          {% if let Some(role) = c.role %}<span class="c-role">{{ role }}</span>{% endif %}
+          {% if let Some(title) = c.title %}<span class="c-title" style="--tc: {{ c.title_color }}">{{ title }}</span>{% endif %}
         </div>
         <div class="c-body">{{ c.body_html|safe }}</div>
         <div class="c-actions">
           <time class="meta">{{ c.created_at }}</time>
-          {% if can_reply %}<button class="c-act c-like{% if c.my_vote == 1 %} on{% endif %}" type="button" data-vote="{{ c.id }}" title="点赞">👍 <span class="c-like-count">{{ c.likes }}</span></button>
+          {% if can_reply %}<button class="c-act c-like{% if c.my_vote == 1 %} on{% endif %}" type="button" data-vote="{{ c.id }}" title="点赞" aria-label="点赞"><svg class="c-ico i-off" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M6.633 10.25c.806 0 1.533-.446 2.031-1.08a9.041 9.041 0 0 1 2.861-2.4c.723-.384 1.35-.956 1.653-1.715a4.498 4.498 0 0 0 .322-1.672V3a.75.75 0 0 1 .75-.75 2.25 2.25 0 0 1 2.25 2.25c0 1.152-.26 2.243-.723 3.218-.266.558.107 1.282.725 1.282h3.126c1.026 0 1.945.694 2.054 1.715.045.422.068.85.068 1.285a11.95 11.95 0 0 1-2.649 7.521c-.388.482-.987.729-1.605.729H13.48c-.483 0-.964-.078-1.423-.23l-3.114-1.04a4.501 4.501 0 0 0-1.423-.23H5.904M14.25 9h2.25M5.904 18.75c.083.205.173.405.27.602.197.4-.078.898-.523.898h-.908c-.889 0-1.713-.518-1.972-1.368a12 12 0 0 1-.521-3.507c0-1.553.295-3.036.831-4.398C3.387 9.953 4.167 9.5 5 9.5h1.053c.472 0 .745.556.5.96a8.958 8.958 0 0 0-1.302 4.665c0 1.194.232 2.333.654 3.375Z"/></svg><svg class="c-ico i-on" viewBox="0 0 24 24" width="16" height="16" fill="currentColor" aria-hidden="true"><path d="M6.633 10.25c.806 0 1.533-.446 2.031-1.08a9.041 9.041 0 0 1 2.861-2.4c.723-.384 1.35-.956 1.653-1.715a4.498 4.498 0 0 0 .322-1.672V3a.75.75 0 0 1 .75-.75 2.25 2.25 0 0 1 2.25 2.25c0 1.152-.26 2.243-.723 3.218-.266.558.107 1.282.725 1.282h3.126c1.026 0 1.945.694 2.054 1.715.045.422.068.85.068 1.285a11.95 11.95 0 0 1-2.649 7.521c-.388.482-.987.729-1.605.729H13.48c-.483 0-.964-.078-1.423-.23l-3.114-1.04a4.501 4.501 0 0 0-1.423-.23H5.904M14.25 9h2.25M5.904 18.75c.083.205.173.405.27.602.197.4-.078.898-.523.898h-.908c-.889 0-1.713-.518-1.972-1.368a12 12 0 0 1-.521-3.507c0-1.553.295-3.036.831-4.398C3.387 9.953 4.167 9.5 5 9.5h1.053c.472 0 .745.556.5.96a8.958 8.958 0 0 0-1.302 4.665c0 1.194.232 2.333.654 3.375Z"/></svg><span class="c-like-count">{{ c.likes }}</span></button>
             <button class="c-act" type="button" data-reply-id="{{ c.id }}" data-reply-user="{{ c.author_id }}" data-reply-name="{{ c.author }}">回复</button>{% endif %}
         </div>
         {% if !c.replies.is_empty() %}
@@ -133,11 +133,11 @@
             <img class="avatar c-avatar sm" src="/static/art/miyin-chibi-80.webp" alt="" width="26" height="26" loading="lazy">
             {% endif %}
             <div class="c-main">
-              <div class="c-head"><b class="c-name">{{ r.author }}</b>{% if let Some(role) = r.role %}<span class="c-role">{{ role }}</span>{% endif %}</div>
+              <div class="c-head"><b class="c-name">{{ r.author }}</b>{% if let Some(title) = r.title %}<span class="c-title" style="--tc: {{ r.title_color }}">{{ title }}</span>{% endif %}</div>
               <div class="c-body">{{ r.body_html|safe }}</div>
               <div class="c-actions">
                 <time class="meta">{{ r.created_at }}</time>
-                {% if can_reply %}<button class="c-act c-like{% if r.my_vote == 1 %} on{% endif %}" type="button" data-vote="{{ r.id }}" title="点赞">👍 <span class="c-like-count">{{ r.likes }}</span></button>
+                {% if can_reply %}<button class="c-act c-like{% if r.my_vote == 1 %} on{% endif %}" type="button" data-vote="{{ r.id }}" title="点赞" aria-label="点赞"><svg class="c-ico i-off" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M6.633 10.25c.806 0 1.533-.446 2.031-1.08a9.041 9.041 0 0 1 2.861-2.4c.723-.384 1.35-.956 1.653-1.715a4.498 4.498 0 0 0 .322-1.672V3a.75.75 0 0 1 .75-.75 2.25 2.25 0 0 1 2.25 2.25c0 1.152-.26 2.243-.723 3.218-.266.558.107 1.282.725 1.282h3.126c1.026 0 1.945.694 2.054 1.715.045.422.068.85.068 1.285a11.95 11.95 0 0 1-2.649 7.521c-.388.482-.987.729-1.605.729H13.48c-.483 0-.964-.078-1.423-.23l-3.114-1.04a4.501 4.501 0 0 0-1.423-.23H5.904M14.25 9h2.25M5.904 18.75c.083.205.173.405.27.602.197.4-.078.898-.523.898h-.908c-.889 0-1.713-.518-1.972-1.368a12 12 0 0 1-.521-3.507c0-1.553.295-3.036.831-4.398C3.387 9.953 4.167 9.5 5 9.5h1.053c.472 0 .745.556.5.96a8.958 8.958 0 0 0-1.302 4.665c0 1.194.232 2.333.654 3.375Z"/></svg><svg class="c-ico i-on" viewBox="0 0 24 24" width="16" height="16" fill="currentColor" aria-hidden="true"><path d="M6.633 10.25c.806 0 1.533-.446 2.031-1.08a9.041 9.041 0 0 1 2.861-2.4c.723-.384 1.35-.956 1.653-1.715a4.498 4.498 0 0 0 .322-1.672V3a.75.75 0 0 1 .75-.75 2.25 2.25 0 0 1 2.25 2.25c0 1.152-.26 2.243-.723 3.218-.266.558.107 1.282.725 1.282h3.126c1.026 0 1.945.694 2.054 1.715.045.422.068.85.068 1.285a11.95 11.95 0 0 1-2.649 7.521c-.388.482-.987.729-1.605.729H13.48c-.483 0-.964-.078-1.423-.23l-3.114-1.04a4.501 4.501 0 0 0-1.423-.23H5.904M14.25 9h2.25M5.904 18.75c.083.205.173.405.27.602.197.4-.078.898-.523.898h-.908c-.889 0-1.713-.518-1.972-1.368a12 12 0 0 1-.521-3.507c0-1.553.295-3.036.831-4.398C3.387 9.953 4.167 9.5 5 9.5h1.053c.472 0 .745.556.5.96a8.958 8.958 0 0 0-1.302 4.665c0 1.194.232 2.333.654 3.375Z"/></svg><span class="c-like-count">{{ r.likes }}</span></button>
                   <button class="c-act" type="button" data-reply-id="{{ c.id }}" data-reply-user="{{ r.author_id }}" data-reply-name="{{ r.author }}">回复</button>{% endif %}
               </div>
             </div>
@@ -196,7 +196,7 @@
 .c-main{flex:1;min-width:0}
 .c-head{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
 .c-name{font-size:14px}
-.c-role{font-size:11px;padding:1px 6px;border-radius:999px;background:rgba(37,99,235,.14);color:#2563eb}
+.c-title{font-size:11px;padding:1px 7px;border-radius:999px;border:1px solid color-mix(in srgb, var(--tc) 45%, transparent);background:color-mix(in srgb, var(--tc) 18%, transparent);color:var(--tc)}
 .c-floor{font-size:11px;opacity:.45;letter-spacing:.02em}
 .c-body{margin:6px 0 4px;line-height:1.75;white-space:pre-wrap;word-break:break-word}
 .c-body .mention{color:#2563eb;text-decoration:none}
@@ -226,6 +226,11 @@
 .mention-item .mi-id{opacity:.55;font-size:12px}
 .mention-item .mi-handle{opacity:.55;font-size:12px}
 .c-like{display:inline-flex;align-items:center;gap:4px}
+/* 图标来自 Heroicons 24（MIT）：未点赞 = 描边，已点赞 = 实色 */
+.c-like .c-ico{display:none}
+.c-like .i-off{display:inline-block}
+.c-like.on .i-off{display:none}
+.c-like.on .i-on{display:inline-block}
 .c-like.on{color:#2563eb;opacity:1}
 .c-like-count{font-variant-numeric:tabular-nums}
 .c-pager{display:flex;align-items:center;gap:10px;margin-top:18px;font-size:13px;flex-wrap:wrap}

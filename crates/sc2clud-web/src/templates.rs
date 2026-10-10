@@ -472,8 +472,9 @@ pub struct CommentView {
     pub author_id: i64,
     pub handle: String,
     pub avatar: Option<String>,
-    /// 身份徽章文案（普通用户为空）。
-    pub role: Option<String>,
+    /// 头衔（佩戴了才显示）；color 是头衔色。
+    pub title: Option<String>,
+    pub title_color: String,
     /// 已渲染正文（含 @ 链接，模板里 `|safe`）。
     pub body_html: String,
     pub created_at: String,

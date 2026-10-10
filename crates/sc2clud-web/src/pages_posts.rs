@@ -225,7 +225,8 @@ async fn build_post_page<'a>(
     let donate_variant = pick(dui, 1);
     let notice_variant = pick(nui, 3);
     let comments_variant = pick(cui, 1);
-    let textbox_variant = pick(tbi, 1);
+    // 已选 B 版作为基础（它的 CSS 全站挂在 base.html），tbi=3 仍可预览 C 版
+    let textbox_variant = pick(tbi, 2);
     let page = query_page;
     let user = session::current_user(state, headers).await?;
     let viewer_id = user.as_ref().map(|u| u.id);
@@ -344,11 +345,12 @@ async fn build_post_page<'a>(
             handle: c.author_handle,
             author: c.author_display_name,
             avatar: c.author_avatar,
-            // 普通用户不挂徽章，省得每层都是标签
-            role: sc2clud_core::auth::Role::parse(&c.author_role)
-                .ok()
-                .filter(|role| *role != sc2clud_core::auth::Role::Member)
-                .map(|role| role.label().to_string()),
+            // 显示头衔而不是权限：有头衔才挂（没佩戴就是空）
+            title: c.author_title.clone(),
+            title_color: c
+                .author_title_color
+                .clone()
+                .unwrap_or_else(|| "#2563eb".to_string()),
             body_html: sc2clud_core::community::render_body(&c.body),
             created_at: format_date(c.created_at),
             likes: c.likes,

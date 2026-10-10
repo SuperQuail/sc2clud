@@ -23,6 +23,8 @@
   <link rel="icon" href="/static/art/miyin-chibi-80.webp" type="image/webp">
   <link rel="apple-touch-icon" href="/static/art/miyin-chibi-160.webp">
   {% block head %}<link rel="stylesheet" href="/static/site.css?v=20261009-covers-v14">{% endblock %}
+{# 文本框设计（B 版，已选为全站基础）：覆盖层，必须排在 site.css 之后 #}
+<link rel="stylesheet" href="/static/textbox.css?v=20261010-b">
 </head>
 <body class="{% block body_class %}site-page{% endblock %}">
   {% block header %}

@@ -1275,7 +1275,9 @@ pub async fn list_comments_for(
 ) -> Result<Vec<CommentWithAuthorRow>> {
     query_as::<_, CommentWithAuthorRow>(
         "SELECT c.id, c.post_id, c.author_id, u.handle AS author_handle, \
-                u.display_name AS author_display_name, u.avatar_hash AS author_avatar, u.role AS author_role, \
+                u.display_name AS author_display_name, u.avatar_hash AS author_avatar, \
+                (SELECT t.name FROM titles t WHERE t.id = u.equipped_title_id) AS author_title, \
+                (SELECT t.color FROM titles t WHERE t.id = u.equipped_title_id) AS author_title_color, \
                 c.body, c.created_at, c.parent_id, \
                 (SELECT COUNT(*) FROM comment_votes v WHERE v.comment_id = c.id AND v.value = 1) AS likes, \
                 (SELECT COUNT(*) FROM comment_votes v WHERE v.comment_id = c.id AND v.value = -1) AS dislikes, \
@@ -1302,7 +1304,9 @@ pub async fn list_comments(
 ) -> Result<Vec<CommentWithAuthorRow>> {
     query_as::<_, CommentWithAuthorRow>(
         "SELECT c.id, c.post_id, c.author_id, u.handle AS author_handle, \
-                u.display_name AS author_display_name, u.avatar_hash AS author_avatar, u.role AS author_role, \
+                u.display_name AS author_display_name, u.avatar_hash AS author_avatar, \
+                (SELECT t.name FROM titles t WHERE t.id = u.equipped_title_id) AS author_title, \
+                (SELECT t.color FROM titles t WHERE t.id = u.equipped_title_id) AS author_title_color, \
                 c.body, c.created_at, c.parent_id, \
                 (SELECT COUNT(*) FROM comment_votes v WHERE v.comment_id = c.id AND v.value = 1) AS likes, \
                 (SELECT COUNT(*) FROM comment_votes v WHERE v.comment_id = c.id AND v.value = -1) AS dislikes, \

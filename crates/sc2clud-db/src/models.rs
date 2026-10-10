@@ -272,8 +272,9 @@ pub struct CommentWithAuthorRow {
     pub created_at: i64,
     /// 楼中楼：挂在哪个楼层下面（None = 主楼层）。一级到底，回复的回复挂到根楼层。
     pub parent_id: Option<i64>,
-    /// 作者角色（评论区显示身份徽章）。
-    pub author_role: String,
+    /// 佩戴的头衔（评论区显示它，不显示权限）。
+    pub author_title: Option<String>,
+    pub author_title_color: Option<String>,
     /// 点赞数。
     pub likes: i64,
     /// 点踩数（前端暂未接，接口留着）。
