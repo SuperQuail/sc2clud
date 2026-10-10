@@ -96,9 +96,7 @@
   </div>
 </section>
 
-{# 子 agent 的文本框设计：作为覆盖层内联在站点 CSS 之后（B 版作者特别提醒的顺序要求） #}
-{% if !textbox_css.is_empty() %}<style>{{ textbox_css|safe }}</style>{% endif %}
-<section class="card tbi-{{ textbox_variant }}" id="comments">
+<section class="card" id="comments">
   <h2>回复 <span class="count">{{ comments_total }}</span></h2>
   {% if comments.is_empty() %}
   <div class="community-empty"><img src="/static/art/miyin/smile-160.webp" width="80" height="80" alt="">还没有人回复，来抢第一楼。</div>
@@ -343,6 +341,7 @@
 // 回复区交互：点「回复」带上对方（@昵称#id，id 唯一所以重名不会指错），输入 @ 弹候选
 (() => {
   const form = document.querySelector('[data-comment-form]');
+  const postId = {{ post.id }};
   const area = document.getElementById('reply-body');
   const parentField = document.getElementById('reply-parent');
   const pop = document.getElementById('mention-pop');
@@ -437,6 +436,53 @@
       btn.classList.toggle('on', data.mine === 1);
       const count = btn.querySelector('.c-like-count');
       if (count) count.textContent = data.likes;
+    });
+  });
+
+  // 发评论无感：POST JSON，成功后只重取评论区（不整页刷新、不丢滚动位置）
+  const commentsSection = document.getElementById('comments');
+  const refreshComments = async () => {
+    const res = await fetch(location.pathname + location.search);
+    if (!res.ok) return;
+    const doc = new DOMParser().parseFromString(await res.text(), 'text/html');
+    const next = doc.getElementById('comments');
+    if (next && commentsSection) commentsSection.innerHTML = next.innerHTML;
+  };
+  document.querySelectorAll('[data-comment-form], .c-reply-box').forEach((form) => {
+    form.addEventListener('submit', async (event) => {
+      event.preventDefault();
+      const textarea = form.querySelector('textarea[name=body]');
+      const body = textarea ? textarea.value.trim() : '';
+      if (body.length < 2) { if (textarea) textarea.focus(); return; }
+      const parent = form.querySelector('input[name=parent_id]');
+      const submit = form.querySelector('button[type=submit]');
+      if (submit) submit.disabled = true;
+      let res;
+      try {
+        res = await fetch('/api/v1/posts/' + postId + '/comments', {
+          method: 'POST',
+          headers: { 'content-type': 'application/json', 'x-csrf-token': csrfInput ? csrfInput.value : '' },
+          body: JSON.stringify({
+            body,
+            parent_id: parent && parent.value ? Number(parent.value) : null,
+          }),
+        });
+      } catch (_) {
+        res = null;
+      }
+      if (submit) submit.disabled = false;
+      if (!res || !res.ok) {
+        // 兜底：接口不通或校验失败就退回普通提交（至少消息不丢）
+        form.submit();
+        return;
+      }
+      if (textarea) textarea.value = '';
+      await refreshComments();
+      // 新楼层在最后一页：这种情况才把用户带过去看自己的评论（不是表单刷新）
+      const pager = document.querySelector('.c-pager-total');
+      const total = pager ? Number((pager.textContent.match(/\d+/) || [0])[0]) : 1;
+      const current = Number((location.search.match(/page=(\d+)/) || [0, 1])[1]) || 1;
+      if (total > current) location.assign('?page=' + total + '#comments');
     });
   });
 

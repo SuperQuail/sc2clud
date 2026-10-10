@@ -207,7 +207,6 @@ async fn build_post_page<'a>(
     dui: Option<&str>,
     nui: Option<&str>,
     cui: Option<&str>,
-    tbi: Option<&str>,
     query_page: i64,
 ) -> AppResult<PostPageTemplate<'a>> {
     // 预览开关：只有开发实例看这个参数（生产恒为样式 1，预览代码不影响线上）
@@ -225,8 +224,6 @@ async fn build_post_page<'a>(
     let donate_variant = pick(dui, 1);
     let notice_variant = pick(nui, 3);
     let comments_variant = pick(cui, 1);
-    // 已选 B 版作为基础（它的 CSS 全站挂在 base.html），tbi=3 仍可预览 C 版
-    let textbox_variant = pick(tbi, 2);
     let page = query_page;
     let user = session::current_user(state, headers).await?;
     let viewer_id = user.as_ref().map(|u| u.id);
@@ -412,12 +409,6 @@ async fn build_post_page<'a>(
         .collect();
     Ok(PostPageTemplate {
         ui_variant,
-        textbox_variant,
-        textbox_css: match textbox_variant {
-            2 => include_str!("../templates/textbox-b.css"),
-            3 => include_str!("../templates/textbox-c.css"),
-            _ => "",
-        },
         comments_total,
         comments_page,
         comments_pages,
@@ -502,8 +493,6 @@ pub struct UiQuery {
     nui: Option<String>,
     /// 回复区样式编号（1 B 站原味 / 2 卡片流 / 3 紧凑列表）。
     cui: Option<String>,
-    /// 文本框样式编号（1 参考图版 / 2 Material / 3 Linear）。
-    tbi: Option<String>,
     /// 回复区页码（每页 15 个主楼层）。
     page: Option<String>,
 }
@@ -522,7 +511,6 @@ pub async fn post_page(
         query.dui.as_deref(),
         query.nui.as_deref(),
         query.cui.as_deref(),
-        query.tbi.as_deref(),
         query
             .page
             .as_deref()
@@ -1241,6 +1229,37 @@ pub async fn comment_vote(
         serde_json::json!({ "ok": true, "likes": likes, "dislikes": dislikes, "mine": mine }),
     )
     .into_response())
+}
+
+#[derive(Debug, serde::Deserialize)]
+pub struct CommentJsonForm {
+    body: String,
+    #[serde(default)]
+    parent_id: Option<i64>,
+}
+
+/// 发回复（JSON）：页面上的表单与楼中楼输入框都走这里，成功后前端只重取评论区。
+pub async fn comment_json(
+    State(state): State<AppState>,
+    Path(id): Path<i64>,
+    headers: HeaderMap,
+    axum::Json(form): axum::Json<CommentJsonForm>,
+) -> AppResult<Response> {
+    let user = require_user(&state, &headers).await?;
+    session::guard(Some(&user), Permission::Comment)?;
+    let token = headers
+        .get("x-csrf-token")
+        .and_then(|value| value.to_str().ok())
+        .unwrap_or("");
+    session::check_csrf(&user, token)?;
+    // 校验交给 add_comment（表单那条路同款），这里只要 body 与 parent_id
+    let reply = ReplyForm {
+        csrf: String::new(),
+        body: form.body,
+        parent_id: form.parent_id,
+    };
+    add_comment(&state, id, &headers, &reply).await?;
+    Ok(axum::Json(serde_json::json!({ "ok": true })).into_response())
 }
 
 pub async fn comment_submit(

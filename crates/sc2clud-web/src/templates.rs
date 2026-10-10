@@ -247,10 +247,7 @@ pub struct PostPageTemplate<'a> {
     pub comments_next: i64,
     /// 页码条：省略号用 gap 标记，免得模板里比类型。
     pub comments_page_links: Vec<PageLink>,
-    /// 文本框样式：1 参考图版 / 2 Material 填充 / 3 Linear 极简。
-    pub textbox_variant: u8,
-    /// 子 agent 的文本框覆盖层（生产为空串，避免模板里再判一次）。
-    pub textbox_css: &'a str,
+
     /// 赞助弹窗样式（1 左右分栏 / 2 顶部标签 / 3 卡片网格）。
     pub donate_variant: u8,
     /// 赞助前提示样式（1 红顶卡 / 2 红标题横条 / 3 红圆图标卡）。
