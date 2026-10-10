@@ -70,6 +70,13 @@
           <a class="btn ghost sm" id="modal-more" href="#">更多设置</a>
           <button class="btn sm" type="submit">保存</button>
         </footer>
+        <fieldset class="modal-groups">
+          <legend>用户组（可多选）</legend>
+          {% for group in groups %}
+          <label><input type="checkbox" name="user-groups" value="{{ group.id }}" data-modal-group> {{ group.name }}</label>
+          {% endfor %}
+          {% if groups.is_empty() %}<p class="hint">还没有用户组</p>{% endif %}
+        </fieldset>
       </form>
     </dialog>
 
@@ -148,6 +155,7 @@
         <tr data-user-row
             data-id="{{ user.id }}"
             data-handle="{{ user.handle }}"
+        data-groups="{% for g in user.groups %}{{ g }}{% if !loop.last %},{% endif %}{% endfor %}"
             data-name="{{ user.display_name }}"
             data-role="{{ user.role }}"
             data-email="{{ user.email }}"
@@ -194,7 +202,8 @@
             <button class="icon-btn" type="button" data-edit-user title="编辑用户">
               <svg viewBox="0 0 16 16" width="15" height="15"><path d="M3 13h3l7-7-3-3-7 7v3z" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/></svg>
             </button>
-            <a class="icon-btn" href="/u/{{ user.handle }}" title="查看主页" aria-label="查看主页">
+            <button class="icon-btn" type="button" title="设置用户组" aria-label="设置用户组" data-user-groups="{{ user.id }}">组</button>
+        <a class="icon-btn" href="/u/{{ user.handle }}" title="查看主页" aria-label="查看主页">
               <svg viewBox="0 0 16 16" width="15" height="15"><path d="M1 8s2.6-4.5 7-4.5S15 8 15 8s-2.6 4.5-7 4.5S1 8 1 8z" fill="none" stroke="currentColor" stroke-width="1.4"/><circle cx="8" cy="8" r="1.8" fill="currentColor"/></svg>
             </a>
             <a class="icon-btn" href="/admin/users/{{ user.id }}" title="更多设置" aria-label="更多设置">
@@ -314,8 +323,26 @@
   <div class="group-list">
     {% for group in groups %}
     <article class="group-card{% if group.archived %} archived{% endif %}">
-      <b>{{ group.name }}</b> <span class="meta">{{ group.key }} · {{ group.member_count }} 人{% if group.archived %} · 已归档{% endif %}</span>
+      <div class="group-head">
+        <b>{{ group.name }}</b> <span class="meta">{{ group.key }} · {{ group.member_count }} 人{% if group.archived %} · 已归档{% endif %}</span>
+        <span class="group-actions">
+          <button class="btn ghost sm" type="button" data-group-edit="{{ group.id }}">编辑</button>
+          <form method="post" action="/admin/groups/archive">
+            <input type="hidden" name="csrf" value="{{ csrf }}">
+            <input type="hidden" name="id" value="{{ group.id }}">
+            <input type="hidden" name="archived" value="{% if group.archived %}0{% else %}1{% endif %}">
+            <button class="btn ghost sm" type="submit">{% if group.archived %}恢复{% else %}归档{% endif %}</button>
+          </form>
+        </span>
+      </div>
       <p class="hint">{{ group.description }}</p>
+      <form class="group-edit" method="post" action="/admin/groups/update" data-group-form="{{ group.id }}" hidden>
+        <input type="hidden" name="csrf" value="{{ csrf }}">
+        <input type="hidden" name="id" value="{{ group.id }}">
+        <input type="text" name="name" value="{{ group.name }}" maxlength="40" required placeholder="组名">
+        <input type="text" name="description" value="{{ group.description }}" maxlength="200" placeholder="说明">
+        <button class="btn sm" type="submit">保存</button>
+      </form>
       <div class="group-rules">
         {% for rule in group.rules %}<span class="group-rule">{{ rule.0 }}{% if rule.1 %} 可发{% endif %}{% if rule.2 %} 可评{% endif %}{% if rule.3 %} 禁发{% endif %}{% if rule.4 %} 禁评{% endif %}</span>{% endfor %}
         {% if group.rules.is_empty() %}<span class="hint">没有分区规则</span>{% endif %}
@@ -324,10 +351,12 @@
     {% endfor %}
     {% if groups.is_empty() %}<p class="hint">还没有用户组。</p>{% endif %}
   </div>
-  <form class="group-create" method="post" action="#" data-design-only>
-    <input type="text" name="name" placeholder="新组名称（如：汉化组）" disabled>
-    <input type="text" name="description" placeholder="说明（可选）" disabled>
-    <button class="btn" type="button" disabled>新建用户组</button>
+  <form class="group-create" method="post" action="/admin/groups">
+    <input type="hidden" name="csrf" value="{{ csrf }}">
+    <input type="text" name="key" placeholder="标识（英文，如 localization）" maxlength="32" required pattern="[A-Za-z0-9_]+">
+    <input type="text" name="name" placeholder="组名（如：汉化组）" maxlength="40" required>
+    <input type="text" name="description" placeholder="说明（可选）" maxlength="200">
+    <button class="btn" type="submit">新建用户组</button>
   </form>
 </section>
 
@@ -357,6 +386,11 @@
 .group-list{display:flex;flex-direction:column;gap:10px;margin-bottom:12px}
 .group-card{border:1px solid var(--line,#e5e7eb);border-radius:10px;padding:10px 12px}
 .group-card.archived{opacity:.6}
+.group-head{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.group-actions{margin-left:auto;display:flex;gap:6px;align-items:center}
+.group-actions form{display:inline}
+.group-edit{display:flex;gap:8px;flex-wrap:wrap;margin-top:8px}
+.group-edit input{padding:6px 10px;border:1px solid var(--line,#e5e7eb);border-radius:8px;background:none;color:inherit;font:inherit;font-size:13px}
 .group-rules{display:flex;gap:6px;flex-wrap:wrap;margin-top:6px}
 .group-rule{font-size:12px;padding:2px 8px;border-radius:6px;background:rgba(37,99,235,.1)}
 .group-create{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
@@ -466,11 +500,54 @@
     document.querySelectorAll('a[href="#create"]').forEach((btn) => {
       btn.addEventListener('click', (event) => {
         event.preventDefault();
-        createBox.hidden = false;
-        createBox.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        // 再点一次收起（原来只开不合）
+        createBox.hidden = !createBox.hidden;
+        if (!createBox.hidden) createBox.scrollIntoView({ behavior: 'smooth', block: 'start' });
       });
     });
   }
+
+  // 用户组编辑：点用户行先记住该用户的组 → 弹窗打开时预勾选 → 保存时一并提交到 /admin/users/{id}/groups
+  const groupBoxes = () => Array.from(document.querySelectorAll('[data-modal-group]'));
+  const dialog = document.getElementById('user-dialog');
+  let pendingGroups = [];
+  document.querySelectorAll('tr[data-groups]').forEach((row) => {
+    row.addEventListener('click', () => {
+      pendingGroups = (row.dataset.groups || '').split(',').filter(Boolean);
+    });
+  });
+  const syncGroups = () => {
+    groupBoxes().forEach((box) => { box.checked = pendingGroups.includes(box.value); });
+  };
+  if (dialog) {
+    // 弹窗是 <dialog>：用 MutationObserver 盯 open 属性，打开时同步一次
+    new MutationObserver(syncGroups).observe(dialog, { attributes: true, attributeFilter: ['open'] });
+    const form = dialog.querySelector('#user-form');
+    if (form) {
+      form.addEventListener('submit', () => {
+        const id = (form.action.match(/\/users\/(\d+)\//) || [])[1];
+        if (!id) return;
+        const csrf = form.querySelector('input[name=csrf]');
+        const body = new URLSearchParams();
+        body.set('csrf', csrf ? csrf.value : '');
+        groupBoxes().filter((box) => box.checked).forEach((box) => body.append('groups', box.value));
+        // 与保存并发发出（fire-and-forget）：用户资料照旧由原表单提交
+        fetch('/admin/users/' + id + '/groups', {
+          method: 'POST',
+          headers: { 'content-type': 'application/x-www-form-urlencoded' },
+          body,
+        }).catch(() => {});
+      });
+    }
+  }
+
+  // 用户组：点「编辑」展开就地改名/说明
+  document.querySelectorAll('[data-group-edit]').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const form = document.querySelector('[data-group-form="' + btn.dataset.groupEdit + '"]');
+      if (form) form.hidden = !form.hidden;
+    });
+  });
 
   // 允许的用户组：点一下切换选中（选中变绿）。设计稿阶段只改外观，保存接口待接。
   document.querySelectorAll('[data-group-chip]').forEach((chip) => {

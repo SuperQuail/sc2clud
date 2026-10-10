@@ -189,6 +189,22 @@ pub fn pages() -> Router<AppState> {
             axum::routing::post(crate::pages_admin::set_trusted),
         )
         .route(
+            "/admin/groups",
+            axum::routing::post(crate::pages_admin::create_group),
+        )
+        .route(
+            "/admin/groups/update",
+            axum::routing::post(crate::pages_admin::update_group),
+        )
+        .route(
+            "/admin/groups/archive",
+            axum::routing::post(crate::pages_admin::archive_group),
+        )
+        .route(
+            "/admin/users/{id}/groups",
+            axum::routing::post(crate::pages_admin::set_user_groups),
+        )
+        .route(
             "/admin/sections/{section}/move",
             axum::routing::post(crate::pages_admin::move_section),
         )

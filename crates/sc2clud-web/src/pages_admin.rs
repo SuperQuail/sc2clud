@@ -982,6 +982,166 @@ pub async fn move_section(
     ))
 }
 
+#[derive(Debug, Deserialize)]
+pub struct GroupCreateForm {
+    pub csrf: String,
+    /// 英文标识：规则与代码引用它，建成后不可改。
+    pub key: String,
+    pub name: String,
+    #[serde(default)]
+    pub description: String,
+}
+
+/// 新建用户组。
+pub async fn create_group(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Form(form): Form<GroupCreateForm>,
+) -> AppResult<Response> {
+    let actor = require_user(&state, &headers).await?;
+    session::guard(Some(&actor), Permission::ManageUsers)?;
+    session::check_csrf(&actor, &form.csrf)?;
+    let key = form.key.trim().to_lowercase();
+    if key.is_empty() || !key.chars().all(|c| c.is_ascii_alphanumeric() || c == '_') {
+        return Err(AppError::Domain(DomainError::InvalidInput(
+            "标识只能用英文字母、数字与下划线".to_string(),
+        )));
+    }
+    let name = form.name.trim();
+    if name.is_empty() {
+        return Err(AppError::Domain(DomainError::InvalidInput(
+            "组名不能为空".to_string(),
+        )));
+    }
+    // 仓储用 INSERT OR IGNORE 并在冲突时回查 id：拿不到「是否新建」，就统一按「已保存」提示
+    let _group_id = repo::create_user_group(
+        state.db.pool(),
+        &key,
+        name,
+        form.description.trim(),
+        now_unix(),
+    )
+    .await?;
+    tracing::info!(group.key = %key, actor.id = actor.id, "新建用户组");
+    let message = "用户组已保存（标识重复时会复用已有组）";
+    Ok(done(&headers, message, "/admin/users/overview#groups"))
+}
+
+#[derive(Debug, Deserialize)]
+pub struct GroupUpdateForm {
+    pub csrf: String,
+    pub id: i64,
+    pub name: String,
+    #[serde(default)]
+    pub description: String,
+}
+
+/// 改用户组的名称与说明。
+pub async fn update_group(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Form(form): Form<GroupUpdateForm>,
+) -> AppResult<Response> {
+    let actor = require_user(&state, &headers).await?;
+    session::guard(Some(&actor), Permission::ManageUsers)?;
+    session::check_csrf(&actor, &form.csrf)?;
+    let name = form.name.trim();
+    if name.is_empty() {
+        return Err(AppError::Domain(DomainError::InvalidInput(
+            "组名不能为空".to_string(),
+        )));
+    }
+    let updated =
+        repo::update_user_group(state.db.pool(), form.id, name, form.description.trim()).await?;
+    tracing::info!(group.id = form.id, actor.id = actor.id, "编辑用户组");
+    let message = if updated {
+        "用户组已更新"
+    } else {
+        "用户组不存在"
+    };
+    Ok(done(&headers, message, "/admin/users/overview#groups"))
+}
+
+#[derive(Debug, Deserialize)]
+pub struct GroupArchiveForm {
+    pub csrf: String,
+    pub id: i64,
+    /// "1" 归档 / "0" 恢复。
+    pub archived: String,
+}
+
+/// 归档 / 恢复用户组。归档而不是物理删除：成员与规则都留着，误删可恢复。
+pub async fn archive_group(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Form(form): Form<GroupArchiveForm>,
+) -> AppResult<Response> {
+    let actor = require_user(&state, &headers).await?;
+    session::guard(Some(&actor), Permission::ManageUsers)?;
+    session::check_csrf(&actor, &form.csrf)?;
+    let archived = form.archived == "1";
+    let changed =
+        repo::set_user_group_archived(state.db.pool(), form.id, archived, now_unix()).await?;
+    tracing::info!(
+        group.id = form.id,
+        archived,
+        actor.id = actor.id,
+        "归档/恢复用户组"
+    );
+    let message = if changed {
+        if archived {
+            "用户组已归档"
+        } else {
+            "用户组已恢复"
+        }
+    } else {
+        "用户组不存在"
+    };
+    Ok(done(&headers, message, "/admin/users/overview#groups"))
+}
+
+#[derive(Debug, Deserialize)]
+pub struct UserGroupsForm {
+    pub csrf: String,
+    /// 勾选的用户组 id（可多个；重复字段由 serde 收成 Vec）。
+    #[serde(default)]
+    pub groups: Vec<i64>,
+}
+
+/// 设置某个用户所属的用户组（先算差集，再增删，不动其它组）。
+pub async fn set_user_groups(
+    State(state): State<AppState>,
+    Path(id): Path<i64>,
+    headers: HeaderMap,
+    Form(form): Form<UserGroupsForm>,
+) -> AppResult<Response> {
+    let actor = require_user(&state, &headers).await?;
+    session::guard(Some(&actor), Permission::ManageUsers)?;
+    session::check_csrf(&actor, &form.csrf)?;
+    let current: Vec<i64> = repo::list_user_groups_for(state.db.pool(), id)
+        .await?
+        .into_iter()
+        .map(|group| group.id)
+        .collect();
+    let now = now_unix();
+    for group_id in &form.groups {
+        if !current.contains(group_id) {
+            repo::add_group_member(state.db.pool(), *group_id, id, now).await?;
+        }
+    }
+    for group_id in &current {
+        if !form.groups.contains(group_id) {
+            repo::remove_group_member(state.db.pool(), *group_id, id).await?;
+        }
+    }
+    tracing::info!(user.id = id, actor.id = actor.id, groups = ?form.groups, "设置用户组");
+    Ok(done(
+        &headers,
+        "用户组已更新",
+        "/admin/users/overview#users",
+    ))
+}
+
 pub async fn set_section_cover(
     State(state): State<AppState>,
     Path(section): Path<String>,

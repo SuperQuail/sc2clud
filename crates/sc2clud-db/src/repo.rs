@@ -2699,6 +2699,24 @@ pub async fn create_user_group(
     Ok(row.0)
 }
 
+/// 改用户组的名称与说明（key 不可改：它是规则与代码引用的锚）。
+pub async fn update_user_group(
+    pool: &SqlitePool,
+    id: i64,
+    name: &str,
+    description: &str,
+) -> Result<bool> {
+    let affected = query("UPDATE user_groups SET name = ?, description = ? WHERE id = ?")
+        .bind(name)
+        .bind(description)
+        .bind(id)
+        .execute(pool)
+        .await
+        .map_err(db_err)?
+        .rows_affected();
+    Ok(affected == 1)
+}
+
 pub async fn set_user_group_archived(
     pool: &SqlitePool,
     id: i64,
