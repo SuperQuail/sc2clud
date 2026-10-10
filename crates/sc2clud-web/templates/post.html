@@ -29,14 +29,18 @@
 
   {# 中栏：正文主体 #}
   <div class="post-main">
-<section class="card">
-  <div class="head" style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px">
-    <span class="tag">{{ post.section_label }}</span>
-    <span class="kind kind-{{ post.kind }}">{{ post.kind_label }}</span>
-    {% if post.state != "approved" %}<span class="kind state-{{ post.state }}">{{ post.state_label }}</span>{% endif %}
-  </div>
-  {# 已定版（方案 2）：只留这张横幅卡，不点进去不占帖子空间；具体条目在 /p/{id}/issues #}
-  <section class="issue-banner">
+{# 与 GitHub 一样：顶部（横幅 + 标题 + 侧栏）不变，只切换中间那块 #}
+<nav class="post-tabs">
+  <a class="ptab{% if tab != "issues" %} active{% endif %}" href="/p/{{ post.id }}">帖子内容</a>
+  <a class="ptab{% if tab == "issues" %} active{% endif %}" href="/p/{{ post.id }}/issues">问题与建议{% if issue_open > 0 %} <b>{{ issue_open }}</b>{% endif %}</a>
+  <span class="ptab-spacer"></span>
+  <a class="ptab-cta bug" href="/p/{{ post.id }}/issues?kind=bug">报告 Bug</a>
+  <a class="ptab-cta idea" href="/p/{{ post.id }}/issues?kind=feature">改进意见</a>
+  <a class="ptab-cta difficulty" href="/p/{{ post.id }}/issues?kind=difficulty">难度建议</a>
+  <a class="btn sm" style="margin-left:10px" href="/p/{{ post.id }}/issues/new">发布反馈</a>
+</nav>
+
+{% if tab == "new" %}
     <div class="ib-text">
       <b>这个 Mod 有问题，或者你有想法？</b>
       <p>反馈直接送到作者那里：报 Bug 请写清版本与复现步骤，改进意见说说你希望它变成什么样。</p>
@@ -126,15 +130,14 @@
 .issue-count{font-size:13px;opacity:.7;margin:10px 2px}
 .issue-new form{display:flex;flex-direction:column;gap:14px}
 .issue-new label{display:block;font-size:14px}
-.issue-new input[type=text],.issue-new textarea{width:100%;margin-top:6px;padding:10px 12px;border:1px solid var(--line,#e5e7eb);border-radius:10px;background:none;color:inherit;font:inherit;font-size:14px}
-.kind-pick{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:10px;border:0;padding:0;margin:0}
-.kind-pick legend{font-size:14px;padding:0 0 8px}
-.kind-pick .kp{display:flex;flex-direction:column;gap:2px;padding:12px 14px;border:1px solid var(--line,#e5e7eb);border-radius:12px;cursor:pointer;font-size:13px}
-.kind-pick .kp b{font-size:15px}
-.kind-pick .kp span{opacity:.8}
-.kind-pick .kp:has(input:checked){border-width:2px}
-.kind-pick .kp.bug:has(input:checked){border-color:#dc2626;background:#fef2f2}
-.kind-pick .kp.idea:has(input:checked){border-color:#2563eb;background:#eff6ff}
+    <label>类型（必选）
+      <select name="kind" class="ui-select" style="width:100%;margin-top:6px">
+        <option value="bug"{% if issue_kind == "bug" %} selected{% endif %}>报告 Bug —— 打不开、崩溃、闪退、卡关</option>
+        <option value="feature"{% if issue_kind == "feature" %} selected{% endif %}>改进意见 —— 希望新增或调整的功能</option>
+        <option value="difficulty"{% if issue_kind == "difficulty" %} selected{% endif %}>难度建议 —— 太简单 / 太难 / 想要难度选项</option>
+        <option value="other"{% if issue_kind == "other" || issue_kind.is_empty() %} selected{% endif %}>其它 —— 不属于上面三类的问题</option>
+      </select>
+    </label>
 .kind-pick .kp.difficulty:has(input:checked){border-color:#7c3aed;background:#f5f3ff}
 .kind-pick .kp.other:has(input:checked){border-color:#6b7280;background:#f9fafb}
 .kind-pick .kp input{position:absolute;opacity:0;width:0;height:0}
@@ -142,18 +145,6 @@
 .issue-empty p{margin:8px 0 0;font-size:13px;opacity:.7}
 </style>
 
-{# 与 GitHub 一样：顶部（横幅 + 标题 + 侧栏）不变，只切换中间那块 #}
-<nav class="post-tabs">
-  <a class="ptab{% if tab != "issues" %} active{% endif %}" href="/p/{{ post.id }}">帖子内容</a>
-  <a class="ptab{% if tab == "issues" %} active{% endif %}" href="/p/{{ post.id }}/issues">问题与建议{% if issue_open > 0 %} <b>{{ issue_open }}</b>{% endif %}</a>
-  <span class="ptab-spacer"></span>
-  <a class="ptab-cta bug" href="/p/{{ post.id }}/issues?kind=bug">报告 Bug</a>
-  <a class="ptab-cta idea" href="/p/{{ post.id }}/issues?kind=feature">改进意见</a>
-  <a class="ptab-cta difficulty" href="/p/{{ post.id }}/issues?kind=difficulty">难度建议</a>
-  <a class="btn sm" style="margin-left:10px" href="/p/{{ post.id }}/issues/new">发布反馈</a>
-</nav>
-
-{% if tab == "new" %}
 <section class="issue-view issue-new">
   <h2 style="margin:0 0 6px">发布反馈</h2>
   <p class="hint" style="margin:0 0 14px;font-size:13px;opacity:.8">选一个类型，写清现象或想法；提交后作者与管理员都会看到。</p>
@@ -522,8 +513,8 @@
     </div>
   </aside>
 
-<style>
 {% endif %}
+<style>
 .pa-item{display:block;width:100%;text-align:left;padding:8px 10px;border:0;border-radius:8px;background:none;color:inherit;font:inherit;cursor:pointer}
 .pa-item:hover{background:rgba(127,127,127,.12)}
 .pa-item.ok{color:#15803d}.pa-item.danger{color:#b91c1c}
