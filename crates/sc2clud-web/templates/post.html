@@ -40,6 +40,7 @@
   <a class="btn sm" style="margin-left:10px" href="/p/{{ post.id }}/issues/new">发布反馈</a>
 </nav>
 
+{% if tab == "issues" %}
 <section class="issue-banner">
     <div class="ib-text">
       <b>这个 Mod 有问题，或者你有想法？</b>
@@ -54,6 +55,7 @@
 
 
   </section>
+{% endif %}
 
 
   <h1 class="site-post-title">{{ post.title }}</h1>
