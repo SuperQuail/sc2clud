@@ -222,6 +222,7 @@ SC2CLUD_SSH_KEY=<私钥路径> node scripts/preview.mjs --server root@<dev 机> 
 | `?av=1\|2\|3` | 默认头像池界面（1 网格卡 / 2 列表行 / 3 侧栏上传） | **2** |
 | `?tui=1\|2\|3` | 头衔徽章（1 半透明胶囊 / 2 实心 / 3 下划线） | **1** |
 | `?dui=1\|2\|3` + `?nui=1\|2\|3` | 赞助弹窗 / 赞助前提示样式 | **1 / 3** |
+| `?ivi=1\|2\|3` | 资源帖「问题与建议」列表版式（1 列表式 GitHub 风 / 2 卡片式 B 站动态风 / 3 双栏式左列表右详情） | 待定（见 docs/ISSUES_DESIGN.md） |
 | `?dvc=1`、`?donate=1`、`?ack=1`、`?menu=1`、`?titles=1`、`?avatar=1` | 预览时把交互态直接展开（弹窗/菜单/确认），便于出图 | — |
 
 出图命令：`node scripts/preview.mjs --server <dev 机> --handle <账号> --pages '<路径>'`；
@@ -251,3 +252,5 @@ SC2CLUD_SSH_KEY=<私钥路径> node scripts/preview.mjs --server root@<dev 机> 
 4. 改 unit / vhost 后必须 `systemctl daemon-reload` / `nginx -s reload`。
 5. 数据与 Cookie 都是隔离的：prod `/srv/sc2clud/data` + `sc2clud_session`，
    dev `/srv/sc2clud-dev/data` + `sc2clud_dev_session`；**反向同步绝不允许**。
+6. **issue 一律发到公开库** `SuperQuail/sc2clud`（`gh issue create -R SuperQuail/sc2clud`）；
+   私有库 `Tang-Tian-dev/SC2clud`（origin）只放开发分支，不发 issue。说「发 issue」默认指公开库。
