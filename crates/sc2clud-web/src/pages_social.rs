@@ -15,8 +15,8 @@ use crate::error::{AppError, AppResult};
 use crate::routes::require_user;
 use crate::session;
 use crate::templates::{
-    AnnouncementView, AnnouncementsTemplate, BookmarkView, BookmarksTemplate, NotificationView,
-    NotificationsTemplate, format_date, format_relative, render,
+    AnnouncementView, AnnouncementsTemplate, BookmarkView, BookmarksTemplate, format_date,
+    format_relative, render,
 };
 
 #[derive(Debug, Deserialize)]
@@ -147,43 +147,6 @@ async fn build_bookmarks<'a>(
     })
 }
 
-/// 通知中心（打开即标记已读）。
-pub async fn notifications(State(state): State<AppState>, headers: HeaderMap) -> Response {
-    match build_notifications(&state, &headers).await {
-        Ok(template) => render(template),
-        Err(e) => e.into_page_response(true),
-    }
-}
-
-async fn build_notifications<'a>(
-    state: &'a AppState,
-    headers: &HeaderMap,
-) -> AppResult<NotificationsTemplate<'a>> {
-    let user = require_user(state, headers).await?;
-    let now = now_unix();
-    let rows = repo::list_notifications(state.db.pool(), user.id, 100).await?;
-    let items = rows
-        .into_iter()
-        .map(|row| NotificationView {
-            kind: row.kind,
-            title: row.title,
-            body: row.body.unwrap_or_default(),
-            link: row.link,
-            when: format_relative(row.created_at, now),
-            unread: row.read_at.is_none(),
-        })
-        .collect();
-    let _ = repo::mark_notifications_read(state.db.pool(), user.id, now).await;
-    Ok(NotificationsTemplate {
-        site_name: &state.config.server.site_name,
-        user_label: Some(user.display_name.clone()),
-        is_staff: user.is_staff(),
-        csrf: user.csrf_token.clone(),
-        items,
-    })
-}
-
-/// 未读通知数（顶栏红点用，前端定时问一次）。
 pub async fn unread_badge(
     State(state): State<AppState>,
     headers: HeaderMap,

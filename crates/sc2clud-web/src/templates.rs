@@ -321,18 +321,6 @@ pub struct InboxConversationView {
     pub active: bool,
 }
 
-/// 消息中心的通知项。
-#[derive(Debug, Clone)]
-pub struct InboxNotificationView {
-    pub title: String,
-    pub body: String,
-    pub link: String,
-    pub date: String,
-    pub unread: bool,
-}
-
-/// 消息流里的一条。
-#[derive(Debug, Clone)]
 pub struct InboxMessageView {
     /// 消息 id（前端轮询用它算「最新到哪儿了」）。
     pub id: i64,
@@ -597,27 +585,6 @@ pub struct BookmarkView {
     pub when: String,
 }
 
-/// 通知中心。
-#[derive(Template)]
-#[template(path = "notifications.html")]
-pub struct NotificationsTemplate<'a> {
-    pub site_name: &'a str,
-    pub user_label: Option<String>,
-    pub is_staff: bool,
-    pub csrf: String,
-    pub items: Vec<NotificationView>,
-}
-
-/// 一条通知。
-pub struct NotificationView {
-    pub kind: String,
-    pub title: String,
-    pub body: String,
-    pub link: Option<String>,
-    pub when: String,
-    pub unread: bool,
-}
-
 /// 系统公告页。
 #[derive(Template)]
 #[template(path = "announcements.html")]
@@ -634,51 +601,6 @@ pub struct AnnouncementView {
     pub title: String,
     pub body: String,
     pub when: String,
-}
-
-/// 私信收件箱。
-#[derive(Template)]
-#[template(path = "messages.html")]
-pub struct MessagesTemplate<'a> {
-    pub site_name: &'a str,
-    pub user_label: Option<String>,
-    pub is_staff: bool,
-    pub csrf: String,
-    pub conversations: Vec<ConversationView>,
-}
-
-/// 会话列表一行。
-pub struct ConversationView {
-    pub handle: String,
-    pub display_name: String,
-    pub avatar: Option<String>,
-    pub preview: String,
-    pub when: String,
-    pub from_me: bool,
-    pub unread: i64,
-}
-
-/// 一个会话。
-#[derive(Template)]
-#[template(path = "thread.html")]
-pub struct ThreadTemplate<'a> {
-    pub site_name: &'a str,
-    pub user_label: Option<String>,
-    pub is_staff: bool,
-    pub csrf: String,
-    pub handle: String,
-    pub display_name: String,
-    pub avatar: Option<String>,
-    pub messages: Vec<MessageView>,
-    pub blocked: bool,
-}
-
-/// 一条私信。
-pub struct MessageView {
-    pub mine: bool,
-    pub body: String,
-    pub when: String,
-    pub read: bool,
 }
 
 /// 黑名单一行（账户设置里展示）。

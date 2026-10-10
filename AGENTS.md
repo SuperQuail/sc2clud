@@ -127,19 +127,15 @@ pwsh -File scripts/smoke.ps1     # 改动触及上传/下载/存储/计数时必
 
 | 项 | 现状 | 下一步 |
 | --- | --- | --- |
-| 鉴权 | 未接入：内容归属 `repo::ensure_bootstrap_user` 里的 `demo` 用户 | 会话 Cookie（HttpOnly+SameSite）+ CSRF + argon2，替换 `demo_owner_id` |
-| 上传限速主体 | 按客户端 IP 分桶 | 登录后换成 user id（改 `routes::client_subject` 一处） |
-| 分片续传 | 建表与仓储函数已就绪（`upload_sessions`），HTTP 分片接口未接 | 提供 `POST/PATCH` 分片接口 + 合并 |
+| **管理员改他人简介**的界面 | 后端 `repo::set_bio` 已支持（同一函数，带审核意见） | 在 `/admin/user/{id}` 上加一个表单 |
+| 缩略图 / 转码 | 表与队列就绪（`post_images` / `image_jobs`），**工作线程未实现** | 接 `image` crate 的异步压缩线程 + 原图保留 API |
+| 分片续传 | 建表与仓储就绪（`upload_sessions`），HTTP 分片接口未接 | 提供 `POST/PATCH` 分片接口 + 合并 |
 | S3 后端 | `StorageBackend` 抽象已定，`S3Backend` 是返回 `Unsupported` 的占位 | 补 SigV4 预签名与分片上传 |
-| sqlx 编译期校验 | 当前用运行时查询（避免构建依赖数据库） | schema 稳定后切 `query!` + `cargo sqlx prepare` 离线缓存 |
-| 缩略图 / 转码 | 表与任务队列已就绪（`post_images` / `image_jobs`），**工作线程未实现** | 接 `image` crate 的异步压缩线程 + 原图保留 API |
-| 注册 / 登录 / 管理员页面 | ✅ 已完成（`/login`、`/register`、`/admin`，含激活与等级管理） | — |
-| 帖子页面 | ✅ 已完成（feed / 详情 / 发帖 / 回复 / 分区 / 资源来源 / 封面图） | — |
-| 夜间模式 | ✅ 已完成（跟随系统 + 手动切换，记在 localStorage） | — |
-| 调试页 | ✅ 已完成（`/debug`，默认关闭；独立实例见 `deploy/systemd/sc2clud-debug.service`） | — |
-| 启动器下载页 | `releases` 索引与转链函数已就绪，页面与 API 未接 | 补 `/download` 与 `/api/v1/launcher/latest` |
-| **用户头像** | ✅ 已完成（浏览器侧裁剪压缩 ≤64KB；`/u/{handle}` 主页里换） | — |
-| 前端岛发布 | 产物在 .gitignore 里，服务器无 Node | 本机构建带校验清单，经 ssh-skill 上传完整目录；见 §11 |
+| sqlx 编译期校验 | 用运行时查询（避免构建依赖数据库） | schema 稳定后切 `query!` + `cargo sqlx prepare` 离线缓存 |
+| 启动器下载页 | `releases` 索引与转链就绪，页面与 API 未接 | 补 `/download` 与 `/api/v1/launcher/latest` |
+| 消息中心「已静音内容」列表 | 静音写入 `notification_mutes`，但**没有取消静音的入口** | 加一个「不再通知的内容」列表 + 恢复 |
+| 前端岛发布 | 本地开发验证完成，DEV 待验收；产物在 .gitignore 里，服务器无 Node | 本机构建带校验清单，经 ssh-skill 上传完整目录；见 §11 |
+| SSE 广播范围 | 进程内 `tokio::broadcast`：单进程够用 | 多实例部署时换跨进程通知（或依赖 30 秒轮询兜底） |
 
 ### 头像实现（已完成，留档）
 
@@ -219,6 +215,23 @@ SC2CLUD_SSH_KEY=<私钥路径> node scripts/preview.mjs --server root@<dev 机> 
    都必须提供 **≥3 种**设计方案（各自的预览图 + 一句话取舍），让用户挑，不许自己拍板。
 5. 预览图落在仓库外层 `shots/preview/`（不进版本库）；交付时直接贴图或给出路径。
 
+### 预览开关与已定版（改前端前先看这张表）
+
+这些 `?xx=` 只在**开发实例**生效（`debug_pages` 门控），生产恒用「已定版」那一列：
+
+| 开关 | 作用 | 已定版 |
+| --- | --- | --- |
+| `?sv=1\|2\|3` | 搜索页版式（1 一行标签栏 / 2 两行筛选+右侧相关用户 / 3 左侧筛选栏） | **1** |
+| `?ui=1\|2\|3` | 帖子右上角「⋯」菜单（1 紧凑 / 2 分组 / 3 说明卡） | **2** |
+| `?dv=1\|2\|3` | 删除通知确认（1 就地气泡 / 2 居中弹窗 / 3 系统 confirm） | **2** |
+| `?av=1\|2\|3` | 默认头像池界面（1 网格卡 / 2 列表行 / 3 侧栏上传） | **2** |
+| `?tui=1\|2\|3` | 头衔徽章（1 半透明胶囊 / 2 实心 / 3 下划线） | **1** |
+| `?dui=1\|2\|3` + `?nui=1\|2\|3` | 赞助弹窗 / 赞助前提示样式 | **1 / 3** |
+| `?dvc=1`、`?donate=1`、`?ack=1`、`?menu=1`、`?titles=1`、`?avatar=1` | 预览时把交互态直接展开（弹窗/菜单/确认），便于出图 | — |
+
+出图命令：`node scripts/preview.mjs --server <dev 机> --handle <账号> --pages '<路径>'`；
+`--qr-test` 会造三张不同分辨率的纯蓝测试收款码，`--dm <handle>` 会先发一条私信，`--send-test` 会验证无感发送与 SSE。
+
 ### 多人协作约定（都会往 dev 发）
 
 **唯一入口是仓库里的脚本**，不要手工 `systemctl` / 不要给 unit 加覆盖 `ExecStart` 的 drop-in：
@@ -234,7 +247,7 @@ SC2CLUD_SSH_KEY=<私钥路径> node scripts/preview.mjs --server root@<dev 机> 
 
 1. **代码改动走 git**：本地/自己的分支改 → PR 合入 `dev` → `SC2CLUD_BRANCH=dev bash deploy/dev.sh` → 用户验收 `/dev/` → PR 合入 `main`。
    直接在服务器 `/opt/sc2clud` 里改文件会被下一次 `dev.sh` 的 `reset --hard` 覆盖
-   （脚本会先 `git stash` 备份，但别指望它）。
+   请勿依赖服务器工作区保存未提交改动。
 2. **两个实例各自独立**：测试端前缀 `/srv/sc2clud-dev`（二进制/静态/env 都在这里），
    生产端 `/srv/sc2clud`。`dev.sh` 只写测试前缀，碰不到生产；`promote.sh` 才把测试端那份二进制
    复制成生产二进制并重启生产 —— 所以「验证过再发布」是真的两道关。
@@ -251,3 +264,21 @@ SC2CLUD_SSH_KEY=<私钥路径> node scripts/preview.mjs --server root@<dev 机> 
 - `deploy/dev.sh` reset 到 `SC2CLUD_BRANCH`（默认 main）；走 PR→dev 后使用 `SC2CLUD_BRANCH=dev bash deploy/dev.sh` 验证，用户验收后再 PR→main。指纹必须与 reset 后前端源码一致。缺精华入口、清单、哈希不符均在替换 DEV 活跃产物前中止。
 - DEV 暂存完整二进制与 static，生成整套 `SHA256SUMS`；只重启测试实例。`promote.sh` 只从这份 DEV 整套复制，校验后先备份生产旧整套到 `releases/`，再替换及重启。预检查失败不改活跃文件、不重启。生产 promote 仍须按项目流程获得用户确认。
 - 本地部署行为回归：`bash scripts/test-deploy.sh`，临时目录与桩命令，不操作真实服务器。
+
+### 首次升级旧版 DEV 发布脚本
+
+旧版 dev.sh 不能可靠更新正在执行的自身。首次升级须先把本次分支经 PR 合入 dev，并在本机构建对应完整 islands，通过 ssh-skill 上传到服务器仓库同路径。然后通过 ssh-skill 在服务器运行以下版本库脚本引导步骤；不手改服务器源码、不执行 raw ssh/scp 上传脚本：
+
+```bash
+(
+  set -euo pipefail
+  repo="${SC2CLUD_REPO:-/opt/sc2clud}"
+  git -C "$repo" fetch origin dev
+  upgrade_script=$(mktemp)
+  trap 'rm -f "$upgrade_script"' EXIT
+  git -C "$repo" show origin/dev:deploy/dev.sh > "$upgrade_script"
+  SC2CLUD_REPO="$repo" SC2CLUD_BRANCH=dev bash "$upgrade_script"
+)
+```
+
+临时新脚本会先 reset 到已合入的 origin/dev，再 source 该版本的 deploy/artifacts.sh 并校验完整前端产物。后续使用正常的 `SC2CLUD_BRANCH=dev bash deploy/dev.sh`。用户验收 DEV 后再 PR 合入 main，生产 promote 仍按项目确认流程执行。
