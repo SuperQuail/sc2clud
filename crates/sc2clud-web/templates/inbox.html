@@ -175,7 +175,8 @@
   document.querySelectorAll('[data-composer]').forEach((form) => {
     const input = form.querySelector('input[name=body]');
     const counter = form.querySelector('.inbox-counter');
-    const thread = document.querySelector('.inbox-bubbles');
+    // 容器名必须和模板一致（之前写成 .inbox-bubbles，选择器不命中 → 追加静默失败）
+  const thread = document.querySelector('.inbox-thread');
     const handle = form.dataset.handle || '';
     if (!input || !handle) return;
     input.addEventListener('input', () => { counter.textContent = input.value.length + '/500'; });
