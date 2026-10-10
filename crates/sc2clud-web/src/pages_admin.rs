@@ -1145,6 +1145,22 @@ pub async fn ban_user(
     } else {
         None
     };
+    // 写进处罚表（全局禁止发帖）；解禁时撤销同一类同范围的处罚
+    if let Some(until) = until {
+        repo::add_sanction(
+            state.db.pool(),
+            id,
+            "post",
+            "",
+            until,
+            Some(actor.id),
+            now_unix(),
+        )
+        .await?;
+    } else {
+        repo::revoke_sanctions(state.db.pool(), id, "post", "", now_unix()).await?;
+    }
+    // 兼容：老的单列也一并清掉，免得两个地方各说各话
     repo::set_post_ban(state.db.pool(), id, until).await?;
     tracing::info!(user.id = id, hours, actor.id = actor.id, "限期禁言");
     let message = if hours > 0 {
