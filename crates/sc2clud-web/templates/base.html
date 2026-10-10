@@ -23,6 +23,8 @@
   <link rel="icon" href="/static/art/miyin-chibi-80.webp" type="image/webp">
   <link rel="apple-touch-icon" href="/static/art/miyin-chibi-160.webp">
   {% block head %}<link rel="stylesheet" href="/static/site.css?v=20261009-covers-v14">{% endblock %}
+{# 文本框设计（B 版，已选为全站基础）：覆盖层，必须排在 site.css 之后 #}
+<link rel="stylesheet" href="/static/textbox.css?v=20261010-b">
 </head>
 <body class="{% block body_class %}site-page{% endblock %}">
   {% block header %}
@@ -132,5 +134,24 @@
 {% if user_label.is_some() %}<script type="module" src="/static/islands/account.js?v=20261009-theme-v12"></script>{% endif %}
 <script type="module" src="/static/islands/post-images.js?v=20261009-art-v7"></script>
 {% if user_label.is_none() %}<script type="module" src="/static/islands/auth.js?v=20261009-art-v7"></script>{% endif %}
+{# 图片失败自愈：429/网络抖动时退避重试，慢慢到而不是留一张破图 #}
+<script>
+(() => {
+  let ticket = 0;
+  // error 事件不冒泡，必须用捕获阶段监听
+  document.addEventListener('error', (event) => {
+    const img = event.target;
+    if (!(img instanceof HTMLImageElement)) return;
+    if (img.dataset.noRetry) return;
+    const tries = Number(img.dataset.retry || 0);
+    if (tries >= 3) { img.dataset.noRetry = '1'; return; }
+    img.dataset.retry = String(tries + 1);
+    const origin = img.dataset.origin || img.src.split('?')[0];
+    img.dataset.origin = origin;
+    // 带一个新的查询串绕开被缓存的失败响应；0.8s / 1.6s / 3.2s 退避
+    setTimeout(() => { img.src = origin + '?r=' + (++ticket); }, 800 * Math.pow(2, tries));
+  }, true);
+})();
+</script>
 </body>
 </html>

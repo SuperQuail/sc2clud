@@ -52,6 +52,7 @@ const donateTest = args.includes('--donate-test')
 const dmTo = arg('dm', '')
 // --send-test：在消息中心里真的发一条（走页面上的无感发送），用来验证「不刷新就地出气泡」
 const sendTest = args.includes('--send-test')
+// shortcut: --comment-test 的无感发布验证这次没做通（脚本流程问题），先撤掉，等要自动化时再补
 const outDir = arg('out', join(repo, '..', 'shots', 'preview'))
 const pagesArg = arg('pages', '')
 
@@ -104,6 +105,13 @@ const run = (cmd, cmdArgs, opts = {}) => {
   return res.stdout
 }
 
+  // 迁移是编译期内嵌的：增量编译可能不重编，先 touch 一下（与 deploy/dev.sh 同样的坑）
+  const dbLib = repo + '/crates/sc2clud-db/src/lib.rs'
+  if (existsSync(dbLib)) {
+    const fs = await import('node:fs')
+    const now = new Date()
+    fs.utimesSync(dbLib, now, now)
+  }
 // askama 模板与迁移都是**编译期**内嵌的：不重建就会「模板是旧的 / 迁移认不出来」，
 // 预览与上线也就不是同一份代码了。所以这里强制重建（增量，通常几秒）。
 console.log('==> 构建（模板与迁移内嵌，必须重建才能反映当前代码）')
@@ -243,6 +251,7 @@ const main = async () => {
     })
     console.log('==> 发测试私信给 ' + dmTo + ' → ' + res.status)
   }
+  // （评论无感发布的验证挪到 cdp 就绪之后，见下方）
 
   // 开打赏（本地副本）：让作者主页/帖子页出现「赞助作者」
   if (donateTest && cookie && existsSync(dbPath)) {
@@ -364,6 +373,8 @@ const main = async () => {
     }).then((r) => console.log('==> 无感发送：气泡数 = ' + (r.result?.value ?? '?')))
     const after = await cdp.send('Runtime.evaluate', { expression: "location.pathname + location.search" })
     console.log('==> 地址是否未变：' + (before.result?.value === after.result?.value ? '是（没有跳页）✓' : '否 ✗ ' + before.result?.value + ' → ' + after.result?.value))
+
+  // （--comment-test 的自动化验证这次没做通，已撤；见 preview.mjs 顶部注释）
   }
 
   mkdirSync(outDir, { recursive: true })

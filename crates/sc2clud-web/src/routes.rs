@@ -90,6 +90,11 @@ pub fn pages() -> Router<AppState> {
             "/api/v1/notifications/unread",
             axum::routing::get(crate::pages_social::unread_badge),
         )
+        // @ 提及的下拉候选（重名账号会带 dup 标记）
+        .route(
+            "/api/v1/users/search",
+            axum::routing::get(crate::pages_search::mention_candidates),
+        )
         .route(
             "/admin/announcements",
             axum::routing::post(crate::pages_social::create_announcement),
@@ -147,6 +152,10 @@ pub fn pages() -> Router<AppState> {
             axum::routing::post(crate::pages_settings::update_password),
         )
         .route(
+            "/u/id/{id}",
+            axum::routing::get(crate::pages_profile::profile_by_id),
+        )
+        .route(
             "/u/{handle}",
             axum::routing::get(crate::pages_profile::profile),
         )
@@ -178,6 +187,10 @@ pub fn pages() -> Router<AppState> {
         .route(
             "/admin/users/{id}/trusted",
             axum::routing::post(crate::pages_admin::set_trusted),
+        )
+        .route(
+            "/admin/sections/{section}/move",
+            axum::routing::post(crate::pages_admin::move_section),
         )
         .route(
             "/admin/sections/{section}/cover",
@@ -255,6 +268,14 @@ pub fn pages() -> Router<AppState> {
 pub fn api_read() -> Router<AppState> {
     Router::new()
         .route(
+            "/api/v1/posts/{id}/comments",
+            axum::routing::post(crate::pages_posts::comment_json),
+        )
+        .route(
+            "/api/v1/comments/{id}/vote",
+            axum::routing::post(crate::pages_posts::comment_vote),
+        )
+        .route(
             "/api/v1/posts",
             axum::routing::get(list_posts).post(create_post),
         )
@@ -272,6 +293,10 @@ pub fn api_read() -> Router<AppState> {
 pub fn api_upload() -> Router<AppState> {
     Router::new()
         .route("/api/v1/files", axum::routing::put(upload_file))
+        .route(
+            "/api/v1/me/avatar/small",
+            axum::routing::post(upload_avatar_small),
+        )
         .route(
             "/api/v1/me/avatar",
             axum::routing::post(upload_avatar)
@@ -611,7 +636,8 @@ async fn build_index<'a>(
                     .into_iter()
                     .map(|(section, hash, _mime)| (section, hash))
                     .collect();
-            PostSection::ALL
+            crate::routes::ordered_sections(state)
+                .await
                 .iter()
                 .map(|s| SectionOption {
                     value: s.as_str().to_string(),
@@ -713,6 +739,29 @@ pub async fn not_found(headers: HeaderMap) -> Response {
 // ------------------------------------------------------------ 帖子图片
 
 /// 认图片格式只看魔数，不信客户端声明的 Content-Type。
+/// 分区顺序以库里的 position 为准（后台可调）。
+/// **不做权限过滤**：首页导航与帖子页左栏原本就对所有人显示全部分区；
+/// 按权限筛选只属于发帖下拉那条路（`section_options`）。库里缺的枚举值补在末尾，新分区不会消失。
+pub async fn ordered_sections(state: &AppState) -> Vec<PostSection> {
+    let stored: Vec<String> = repo::list_sections(state.db.pool(), false)
+        .await
+        .map(|rows| rows.into_iter().map(|row| row.key).collect())
+        .unwrap_or_default();
+    let mut ordered: Vec<PostSection> = Vec::new();
+    for key in stored {
+        if let Ok(section) = PostSection::parse(&key) {
+            if !ordered.contains(&section) {
+                ordered.push(section);
+            }
+        }
+    }
+    for section in PostSection::ALL {
+        if !ordered.contains(&section) {
+            ordered.push(section);
+        }
+    }
+    ordered
+}
 pub(crate) fn sniff_image_mime(head: &[u8]) -> Option<&'static str> {
     if head.starts_with(&[0x89, b'P', b'N', b'G']) {
         Some("image/png")
@@ -902,6 +951,46 @@ pub async fn serve_image(
 /// 上传头像。
 ///
 /// 压缩与裁剪**已经在浏览器里做完**（canvas，压到 ≤64KB），服务端只做：
+/// 小图头像上限：48px 的 WebP 正常只有几 KB，32KB 足够且能给坏人兜底。
+const AVATAR_SMALL_LIMIT: usize = 32 * 1024;
+
+/// 列表页用的小图头像（48px）。页面在换头像后自动生成并上传，失败不影响换头像本身。
+/// 体积很小，直接读进内存 + 魔数校验，不走流式那条重路径。
+pub async fn upload_avatar_small(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    body: Body,
+) -> AppResult<Json<serde_json::Value>> {
+    let user = require_user(&state, &headers).await?;
+    session::guard(Some(&user), Permission::SetAvatar)?;
+    let token = headers
+        .get("x-csrf-token")
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or("");
+    session::check_csrf(&user, token)?;
+    let bytes = axum::body::to_bytes(body, AVATAR_SMALL_LIMIT)
+        .await
+        .map_err(|_| invalid("小图太大"))?;
+    let Some(mime) = sniff_image_mime(&bytes) else {
+        return Err(invalid("只接受 PNG / JPEG / GIF / WebP 图片"));
+    };
+    let size = bytes.len() as i64;
+    let reader: BlobReader = Box::pin(StreamReader::new(futures_util::stream::once(async move {
+        Ok::<_, std::io::Error>(bytes)
+    })));
+    let outcome = state
+        .storage
+        .put_stream(reader, None)
+        .await
+        .map_err(AppError::from)?;
+    let hash = outcome.stat.hash.to_string();
+    repo::ensure_blob(state.db.pool(), &hash, size, sc2clud_core::now_unix()).await?;
+    repo::set_avatar_small(state.db.pool(), user.id, Some(&hash)).await?;
+    Ok(axum::Json(
+        serde_json::json!({ "ok": true, "small_hash": hash, "mime": mime, "bytes": size }),
+    ))
+}
+
 /// 登录 + 已激活 + CSRF + 魔数认类型 + 体积上限（流式计数，超了直接断）+ 磁盘闸门。
 pub async fn upload_avatar(
     State(state): State<AppState>,

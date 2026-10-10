@@ -1082,21 +1082,109 @@ pub async fn create_comment(
     post_id: i64,
     author_id: i64,
     body: &str,
+    parent_id: Option<i64>,
     now: i64,
 ) -> Result<i64> {
     // 回复表没有图片列：这是数据层对「回复不能带图」的硬保证。
-    let res =
-        query("INSERT INTO comments (post_id, author_id, body, created_at) VALUES (?, ?, ?, ?)")
-            .bind(post_id)
-            .bind(author_id)
-            .bind(body)
-            .bind(now)
-            .execute(pool)
-            .await
-            .map_err(db_err)?;
+    let res = query(
+        "INSERT INTO comments (post_id, author_id, body, parent_id, created_at) \
+         VALUES (?, ?, ?, ?, ?)",
+    )
+    .bind(post_id)
+    .bind(author_id)
+    .bind(body)
+    .bind(parent_id)
+    .bind(now)
+    .execute(pool)
+    .await
+    .map_err(db_err)?;
     Ok(res.last_insert_rowid())
 }
 
+// ---------------------------------------------------------------- 回复投票（赞 / 踩）
+
+/// 投票：value = 1 赞、-1 踩、0 取消。返回 (赞数, 踩数, 我的票)。
+pub async fn vote_comment(
+    pool: &SqlitePool,
+    comment_id: i64,
+    user_id: i64,
+    value: i64,
+    now: i64,
+) -> Result<(i64, i64, i64)> {
+    if value == 0 {
+        query("DELETE FROM comment_votes WHERE comment_id = ? AND user_id = ?")
+            .bind(comment_id)
+            .bind(user_id)
+            .execute(pool)
+            .await
+            .map_err(db_err)?;
+    } else {
+        query(
+            "INSERT INTO comment_votes (comment_id, user_id, value, created_at) VALUES (?, ?, ?, ?) \
+             ON CONFLICT(comment_id, user_id) DO UPDATE SET value = excluded.value, created_at = excluded.created_at",
+        )
+        .bind(comment_id)
+        .bind(user_id)
+        .bind(value)
+        .bind(now)
+        .execute(pool)
+        .await
+        .map_err(db_err)?;
+    }
+    let row: (i64, i64) = query_as(
+        "SELECT COALESCE(SUM(value = 1), 0), COALESCE(SUM(value = -1), 0) FROM comment_votes WHERE comment_id = ?",
+    )
+    .bind(comment_id)
+    .fetch_one(pool)
+    .await
+    .map_err(db_err)?;
+    let mine: Option<(i64,)> =
+        query_as("SELECT value FROM comment_votes WHERE comment_id = ? AND user_id = ?")
+            .bind(comment_id)
+            .bind(user_id)
+            .fetch_optional(pool)
+            .await
+            .map_err(db_err)?;
+    Ok((row.0, row.1, mine.map(|(v,)| v).unwrap_or(0)))
+}
+
+/// 这条回复属于哪个帖子（投票前校验，别让人投别人看不到的帖子）。
+pub async fn comment_post_id(pool: &SqlitePool, comment_id: i64) -> Result<Option<i64>> {
+    let row: Option<(i64,)> =
+        query_as("SELECT post_id FROM comments WHERE id = ? AND deleted_at IS NULL")
+            .bind(comment_id)
+            .fetch_optional(pool)
+            .await
+            .map_err(db_err)?;
+    Ok(row.map(|(id,)| id))
+}
+
+/// 某个楼层的作者 id（回复通知用）。
+pub async fn comment_author(pool: &SqlitePool, comment_id: i64) -> Result<Option<i64>> {
+    let row: Option<(i64,)> =
+        query_as("SELECT author_id FROM comments WHERE id = ? AND deleted_at IS NULL")
+            .bind(comment_id)
+            .fetch_optional(pool)
+            .await
+            .map_err(db_err)?;
+    Ok(row.map(|(id,)| id))
+}
+/// 楼中楼只允许一层：父楼层如果本身是回复，就挂到它的根楼层下（B 站规则）。
+pub async fn comment_root_of(
+    pool: &SqlitePool,
+    post_id: i64,
+    parent_id: i64,
+) -> Result<Option<i64>> {
+    let row: Option<(i64, Option<i64>)> = query_as(
+        "SELECT id, parent_id FROM comments WHERE id = ? AND post_id = ? AND deleted_at IS NULL",
+    )
+    .bind(parent_id)
+    .bind(post_id)
+    .fetch_optional(pool)
+    .await
+    .map_err(db_err)?;
+    Ok(row.map(|(id, parent)| parent.unwrap_or(id)))
+}
 /// 回复列表：**过滤掉查看者拉黑的人**（拉黑的另一半意义就在这里）。
 pub async fn list_comments_for(
     pool: &SqlitePool,
@@ -1107,7 +1195,14 @@ pub async fn list_comments_for(
     query_as::<_, CommentWithAuthorRow>(
         "SELECT c.id, c.post_id, c.author_id, u.handle AS author_handle, \
                 u.display_name AS author_display_name, u.avatar_hash AS author_avatar, \
-                c.body, c.created_at \
+                u.avatar_small AS author_avatar_small, \
+                (SELECT t.name FROM titles t WHERE t.id = u.equipped_title_id) AS author_title, \
+                (SELECT t.color FROM titles t WHERE t.id = u.equipped_title_id) AS author_title_color, \
+                c.body, c.created_at, c.parent_id, \
+                (SELECT COUNT(*) FROM comment_votes v WHERE v.comment_id = c.id AND v.value = 1) AS likes, \
+                (SELECT COUNT(*) FROM comment_votes v WHERE v.comment_id = c.id AND v.value = -1) AS dislikes, \
+                COALESCE((SELECT v.value FROM comment_votes v \
+                          WHERE v.comment_id = c.id AND v.user_id = COALESCE(?2, -1)), 0) AS my_vote \
          FROM comments c JOIN users u ON u.id = c.author_id \
          WHERE c.post_id = ?1 AND c.deleted_at IS NULL \
            AND NOT EXISTS (SELECT 1 FROM blocks b \
@@ -1130,7 +1225,14 @@ pub async fn list_comments(
     query_as::<_, CommentWithAuthorRow>(
         "SELECT c.id, c.post_id, c.author_id, u.handle AS author_handle, \
                 u.display_name AS author_display_name, u.avatar_hash AS author_avatar, \
-                c.body, c.created_at \
+                u.avatar_small AS author_avatar_small, \
+                (SELECT t.name FROM titles t WHERE t.id = u.equipped_title_id) AS author_title, \
+                (SELECT t.color FROM titles t WHERE t.id = u.equipped_title_id) AS author_title_color, \
+                c.body, c.created_at, c.parent_id, \
+                (SELECT COUNT(*) FROM comment_votes v WHERE v.comment_id = c.id AND v.value = 1) AS likes, \
+                (SELECT COUNT(*) FROM comment_votes v WHERE v.comment_id = c.id AND v.value = -1) AS dislikes, \
+                COALESCE((SELECT v.value FROM comment_votes v \
+                          WHERE v.comment_id = c.id AND v.user_id = -1), 0) AS my_vote \
          FROM comments c JOIN users u ON u.id = c.author_id \
          WHERE c.post_id = ? AND c.deleted_at IS NULL ORDER BY c.created_at, c.id LIMIT ?",
     )
@@ -1404,6 +1506,27 @@ pub async fn avatar_is_used(pool: &SqlitePool, hash: &str) -> Result<bool> {
         .await
         .map_err(db_err)?;
     Ok(row.is_some())
+}
+
+/// 列表页用的小图头像（48px）；没上传过返回 None，渲染时回落原图。
+pub async fn avatar_small_of(pool: &SqlitePool, user_id: i64) -> Result<Option<String>> {
+    let row: Option<(Option<String>,)> = query_as("SELECT avatar_small FROM users WHERE id = ?")
+        .bind(user_id)
+        .fetch_optional(pool)
+        .await
+        .map_err(db_err)?;
+    Ok(row.and_then(|(hash,)| hash))
+}
+
+/// 记下小图头像（换头像后由页面自动生成并上传）。
+pub async fn set_avatar_small(pool: &SqlitePool, user_id: i64, hash: Option<&str>) -> Result<()> {
+    query("UPDATE users SET avatar_small = ? WHERE id = ?")
+        .bind(hash)
+        .bind(user_id)
+        .execute(pool)
+        .await
+        .map_err(db_err)?;
+    Ok(())
 }
 
 /// 头像的 MIME（给 `/avatar/{hash}` 定 Content-Type）。
@@ -2448,6 +2571,14 @@ pub async fn is_section_moderator(pool: &SqlitePool, section: &str, user_id: i64
 }
 // ---------------------------------------------------------------- 用户组
 
+/// 一次读全部组 × 分区规则（后台权限矩阵用，避免 N+1）。
+pub async fn list_all_group_rules(pool: &SqlitePool) -> Result<Vec<GroupSectionRuleRow>> {
+    query_as::<_, GroupSectionRuleRow>("SELECT * FROM group_section_rules")
+        .fetch_all(pool)
+        .await
+        .map_err(db_err)
+}
+
 pub async fn list_user_groups(
     pool: &SqlitePool,
     include_archived: bool,
@@ -3287,11 +3418,13 @@ pub async fn clear_avatar(pool: &SqlitePool, user_id: i64) -> Result<Option<Stri
         .await
         .map_err(db_err)?;
     let previous = row.and_then(|r| r.0);
-    query("UPDATE users SET avatar_hash = NULL, avatar_mime = NULL WHERE id = ?")
-        .bind(user_id)
-        .execute(pool)
-        .await
-        .map_err(db_err)?;
+    query(
+        "UPDATE users SET avatar_hash = NULL, avatar_mime = NULL, avatar_small = NULL WHERE id = ?",
+    )
+    .bind(user_id)
+    .execute(pool)
+    .await
+    .map_err(db_err)?;
     Ok(previous)
 }
 
@@ -3460,7 +3593,7 @@ pub async fn mute_notification(
 pub async fn search_users(pool: &SqlitePool, term: &str, limit: i64) -> Result<Vec<UserHitRow>> {
     let pattern = like_pattern(term);
     query_as::<_, UserHitRow>(
-        "SELECT u.handle, u.display_name, u.avatar_hash, u.role, u.bio, \
+        "SELECT u.id, u.handle, u.display_name, u.avatar_hash, u.role, u.bio, \
                 (SELECT COUNT(*) FROM posts p WHERE p.author_id = u.id \
                    AND p.deleted_at IS NULL AND p.review_state = 'approved') AS post_count \
          FROM users u \
@@ -4232,7 +4365,7 @@ mod discovery_tests {
         create_post(db.pool(), author, "新帖", "新帖正文", 2)
             .await
             .unwrap();
-        create_comment(db.pool(), old, author, "实际回复", 3)
+        create_comment(db.pool(), old, author, "实际回复", None, 3)
             .await
             .unwrap();
         let filter = FeedFilter {

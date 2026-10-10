@@ -11,6 +11,8 @@ use sc2clud_db::repo;
 use crate::AppState;
 use crate::error::AppResult;
 use crate::session;
+use axum::response::IntoResponse;
+
 use crate::templates::{PostHitView, SearchPageTemplate, UserHitView, render};
 
 #[derive(Debug, Deserialize)]
@@ -118,4 +120,50 @@ pub async fn search_page(
         post_count,
         user_count,
     }))
+}
+
+#[derive(Debug, serde::Deserialize)]
+pub struct MentionQuery {
+    q: Option<String>,
+}
+
+/// @ 提及的下拉候选：返回昵称、登录名与 id；重名的账号带上 `dup` 标记，
+/// 前端据此在列表里显示 `#id`（插入正文的永远是 `@昵称#id`，所以不会指错人）。
+pub async fn mention_candidates(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    axum::extract::Query(query): axum::extract::Query<MentionQuery>,
+) -> AppResult<Response> {
+    let _ = session::current_user(&state, &headers).await?;
+    let term = query.q.unwrap_or_default();
+    let term = term.trim();
+    if term.is_empty() {
+        return Ok(axum::Json(serde_json::json!({ "users": [] })).into_response());
+    }
+    let rows = repo::search_users(state.db.pool(), term, 8).await?;
+    let counts: Vec<(String, i64)> = rows
+        .iter()
+        .map(|row| {
+            (
+                row.display_name.clone(),
+                rows.iter()
+                    .filter(|other| other.display_name == row.display_name)
+                    .count() as i64,
+            )
+        })
+        .collect();
+    let users: Vec<serde_json::Value> = rows
+        .iter()
+        .zip(counts.iter())
+        .map(|(row, (_, same_name))| {
+            serde_json::json!({
+                "id": row.id,
+                "name": row.display_name,
+                "handle": row.handle,
+                "avatar": row.avatar_hash,
+                "dup": *same_name > 1,
+            })
+        })
+        .collect();
+    Ok(axum::Json(serde_json::json!({ "users": users })).into_response())
 }

@@ -26,6 +26,19 @@ pub struct ChannelQuery {
 }
 
 /// 上传自己的收款码：**认证开发者及以上**（沿用「能发资源帖」这条既有权限，不新加枚举）。
+/// `/u/id/{id}`：按 id 进主页。@ 提及的链接用它，重名也不会指错人。
+pub async fn profile_by_id(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path(id): Path<i64>,
+) -> AppResult<Response> {
+    let _ = session::current_user(&state, &headers).await?;
+    let target = repo::find_user_by_id(state.db.pool(), id)
+        .await?
+        .ok_or_else(|| AppError::not_found("用户不存在"))?;
+    Ok(Redirect::to(&format!("/u/{}", target.handle)).into_response())
+}
+
 pub async fn payment_channel_add(
     State(state): State<AppState>,
     headers: HeaderMap,

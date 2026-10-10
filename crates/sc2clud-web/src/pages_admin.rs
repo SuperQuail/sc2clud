@@ -84,6 +84,8 @@ fn forbidden(msg: &str) -> AppError {
 pub struct AdminQuery {
     /// 预览用：默认头像池界面版式。
     av: Option<String>,
+    /// 权限/用户组界面版式。
+    aui: Option<String>,
     #[serde(default)]
     pub q: Option<String>,
 }
@@ -93,6 +95,7 @@ async fn build_panel<'a>(
     headers: &HeaderMap,
     query: &str,
     av: Option<&str>,
+    aui: Option<&str>,
 ) -> AppResult<AdminTemplate<'a>> {
     let user = require_user(state, headers).await?;
     session::guard(Some(&user), Permission::ManageUsers)?;
@@ -106,10 +109,19 @@ async fn build_panel<'a>(
     let unused = (allocated - used).max(0);
     let quota_over_committed =
         allocated.max(0) as u64 > free_bytes.saturating_add(used.max(0) as u64);
+    // 每个用户所属的用户组（人数少，逐个查即可；将来量大再换成一条 JOIN）
+    let mut member_groups: std::collections::HashMap<i64, Vec<i64>> =
+        std::collections::HashMap::new();
+    for group in repo::list_user_groups(state.db.pool(), true).await? {
+        for member in repo::list_group_members(state.db.pool(), group.id).await? {
+            member_groups.entry(member.0).or_default().push(group.id);
+        }
+    }
     let users = rows
         .into_iter()
         .map(|row| AdminUserView {
             id: row.id,
+            groups: member_groups.get(&row.id).cloned().unwrap_or_default(),
             trusted: row.trusted != 0,
             initial: row
                 .display_name
@@ -152,6 +164,42 @@ async fn build_panel<'a>(
     } else {
         2
     };
+    // 用户组 + 人数 + 规则（人数少，直接逐个查，不值得为它写一条聚合 SQL）
+    // 版式编号走 AdminQuery（从搜索词里找参数是错的 —— av= 那次就栽过）
+    let acl_variant = if state.config.server.debug_pages {
+        aui.and_then(|value| value.parse::<u8>().ok())
+            .filter(|value| (1..=3).contains(value))
+            .unwrap_or(1)
+    } else {
+        1
+    };
+    let all_rules = repo::list_all_group_rules(state.db.pool()).await?;
+    let mut groups = Vec::new();
+    for group in repo::list_user_groups(state.db.pool(), true).await? {
+        let members = repo::list_group_members(state.db.pool(), group.id).await?;
+        let rules = all_rules
+            .iter()
+            .filter(|rule| rule.group_id == group.id)
+            .map(|rule| {
+                (
+                    rule.section.clone(),
+                    rule.can_post != 0,
+                    rule.can_reply != 0,
+                    rule.deny_post != 0,
+                    rule.deny_reply != 0,
+                )
+            })
+            .collect();
+        groups.push(crate::templates::AdminGroupView {
+            id: group.id,
+            key: group.key,
+            name: group.name,
+            description: group.description,
+            member_count: members.len() as i64,
+            archived: group.archived_at.is_some(),
+            rules,
+        });
+    }
     let default_avatars = repo::list_default_avatars(state.db.pool())
         .await?
         .into_iter()
@@ -165,6 +213,8 @@ async fn build_panel<'a>(
     Ok(AdminTemplate {
         default_avatars,
         pool_variant,
+        acl_variant,
+        groups,
         server_free_human: human_bytes(free_bytes),
         quota_allocated_human: human_bytes(allocated.max(0) as u64),
         quota_used_human: human_bytes(used.max(0) as u64),
@@ -242,6 +292,7 @@ async fn build_user_edit<'a>(
             .map(|r| (r.as_str().to_string(), r.label().to_string()))
             .collect(),
         user: AdminUserView {
+            groups: Vec::new(),
             id: row.id,
             trusted: row.trusted != 0,
             initial: row
@@ -569,7 +620,15 @@ pub async fn panel(
     axum::extract::Query(query): axum::extract::Query<AdminQuery>,
 ) -> Response {
     let q = query.q.unwrap_or_default();
-    match build_panel(&state, &headers, &q, query.av.as_deref()).await {
+    match build_panel(
+        &state,
+        &headers,
+        &q,
+        query.av.as_deref(),
+        query.aui.as_deref(),
+    )
+    .await
+    {
         Ok(template) => render(template),
         Err(e) => e.into_page_response(true),
     }
@@ -865,6 +924,64 @@ pub async fn set_trusted(
 }
 
 /// 分区封面：管理员及以上可以设置（直接上传图片，服务端只做魔数校验与体积上限）。
+#[derive(Debug, Deserialize)]
+pub struct SectionMoveForm {
+    pub csrf: String,
+    /// "up" / "down"
+    pub dir: String,
+}
+
+/// 分区调序（↑↓ 一次换一格）：读当前顺序 → 与相邻项交换 → 整体写回。
+/// 仓储只排给出的 key，其余按原顺序接在后面，不会互相撞 position。
+pub async fn move_section(
+    State(state): State<AppState>,
+    Path(section): Path<String>,
+    headers: HeaderMap,
+    Form(form): Form<SectionMoveForm>,
+) -> AppResult<Response> {
+    let actor = require_user(&state, &headers).await?;
+    session::guard(Some(&actor), Permission::ManageUsers)?;
+    session::check_csrf(&actor, &form.csrf)?;
+    let mut keys: Vec<String> = repo::list_sections(state.db.pool(), true)
+        .await?
+        .into_iter()
+        .map(|row| row.key)
+        .collect();
+    let Some(index) = keys.iter().position(|key| *key == section) else {
+        return Err(AppError::not_found("分区不存在"));
+    };
+    let target = if form.dir == "up" {
+        index.checked_sub(1)
+    } else if index + 1 < keys.len() {
+        Some(index + 1)
+    } else {
+        None
+    };
+    if let Some(target) = target {
+        keys.swap(index, target);
+        repo::reorder_sections(state.db.pool(), &keys, now_unix()).await?;
+        tracing::info!(section, dir = form.dir, "分区调序");
+    }
+    let order: Vec<String> = repo::list_sections(state.db.pool(), true)
+        .await?
+        .into_iter()
+        .map(|row| row.key)
+        .collect();
+    // 面板里的 ↑↓ 用 fetch 调用：回 JSON 让页面就地重排，不刷新、不用出门再看
+    if headers
+        .get("x-requested-with")
+        .and_then(|v| v.to_str().ok())
+        == Some("fetch")
+    {
+        return Ok(axum::Json(serde_json::json!({ "ok": true, "order": order })).into_response());
+    }
+    Ok(done(
+        &headers,
+        "分区顺序已更新",
+        "/admin/users/overview#covers",
+    ))
+}
+
 pub async fn set_section_cover(
     State(state): State<AppState>,
     Path(section): Path<String>,

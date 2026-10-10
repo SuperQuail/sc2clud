@@ -239,6 +239,17 @@ pub struct PostPageTemplate<'a> {
     pub donation_visible: bool,
     /// 预览用的界面样式编号（1/2/3，生产恒为 2 —— 已评审通过的「分组下拉」）。
     pub ui_variant: u8,
+    /// 回复区样式：1 B 站原味 / 2 卡片流 / 3 紧凑列表。
+    pub comments_variant: u8,
+    /// 回复区分页（每页 15 个主楼层）。
+    pub comments_total: i64,
+    pub comments_page: i64,
+    pub comments_pages: i64,
+    pub comments_prev: i64,
+    pub comments_next: i64,
+    /// 页码条：省略号用 gap 标记，免得模板里比类型。
+    pub comments_page_links: Vec<PageLink>,
+
     /// 赞助弹窗样式（1 左右分栏 / 2 顶部标签 / 3 卡片网格）。
     pub donate_variant: u8,
     /// 赞助前提示样式（1 红顶卡 / 2 红标题横条 / 3 红圆图标卡）。
@@ -447,12 +458,36 @@ pub struct ImageView {
     pub href: String,
 }
 
+/// 页码条上的一项。
+#[derive(Debug, Clone)]
+pub struct PageLink {
+    pub number: i64,
+    pub gap: bool,
+}
+
 /// 回复视图。
 pub struct CommentView {
+    /// 楼层 id（回复按钮用它当 parent_id）。
+    pub id: i64,
     pub author: String,
+    /// 小图头像（48px）；为空就回落到 avatar。
+    pub avatar_small: Option<String>,
+    /// 作者 user id：回复时拼成 `@昵称#id`，重名也指得准。
+    pub author_id: i64,
+    pub handle: String,
     pub avatar: Option<String>,
-    pub body: String,
+    /// 头衔（佩戴了才显示）；color 是头衔色。
+    pub title: Option<String>,
+    pub title_color: String,
+    /// 已渲染正文（含 @ 链接，模板里 `|safe`）。
+    pub body_html: String,
     pub created_at: String,
+    /// 赞 / 踩；my_vote：1 赞 / -1 踩 / 0 没投。
+    pub likes: i64,
+    pub dislikes: i64,
+    pub my_vote: i64,
+    /// 楼中楼：挂在这一层下面的回复。
+    pub replies: Vec<CommentView>,
 }
 
 /// 发帖页。
@@ -713,6 +748,19 @@ pub struct DebugAuditView {
     pub detail: String,
 }
 
+/// 后台：一个用户组（含人数与它自己的分区规则）。
+#[derive(Debug, Clone)]
+pub struct AdminGroupView {
+    pub id: i64,
+    pub key: String,
+    pub name: String,
+    pub description: String,
+    pub member_count: i64,
+    pub archived: bool,
+    /// (分区 key, 允许发帖, 允许评论, 禁止发帖, 禁止评论)
+    pub rules: Vec<(String, bool, bool, bool, bool)>,
+}
+
 /// 默认头像池里的一张（后台展示用）。
 #[derive(Debug, Clone)]
 pub struct DefaultAvatarView {
@@ -731,6 +779,10 @@ pub struct AdminTemplate<'a> {
     pub default_avatars: Vec<DefaultAvatarView>,
     /// 池子界面版式：1 网格卡 / 2 列表行 / 3 侧栏上传（预览用，生产恒 1）。
     pub pool_variant: u8,
+    /// 权限/用户组界面版式：1 权限矩阵 / 2 每分区一卡 / 3 主从两栏（预览用，生产恒 1）。
+    pub acl_variant: u8,
+    /// 用户组列表（含人数与规则）。
+    pub groups: Vec<AdminGroupView>,
     /// 磁盘预算总览（仅超级管理员可见）。
     pub server_free_human: String,
     pub quota_allocated_human: String,
@@ -762,6 +814,8 @@ pub struct AdminTemplate<'a> {
 /// 管理员面板里的用户行。
 pub struct AdminUserView {
     pub id: i64,
+    /// 所属用户组 id（可多个）。
+    pub groups: Vec<i64>,
     /// 是否被信任（发帖只走自动审核）。
     pub trusted: bool,
     pub email: String,

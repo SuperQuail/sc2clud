@@ -163,6 +163,7 @@ pub struct PostRevisionRow {
 /// 搜索命中的用户。
 #[derive(Debug, Clone, FromRow)]
 pub struct UserHitRow {
+    pub id: i64,
     pub handle: String,
     pub display_name: String,
     pub avatar_hash: Option<String>,
@@ -268,8 +269,21 @@ pub struct CommentWithAuthorRow {
     pub author_handle: String,
     pub author_display_name: String,
     pub author_avatar: Option<String>,
+    /// 小图头像（48px），列表页用它省带宽；没上传过就是 NULL。
+    pub author_avatar_small: Option<String>,
     pub body: String,
     pub created_at: i64,
+    /// 楼中楼：挂在哪个楼层下面（None = 主楼层）。一级到底，回复的回复挂到根楼层。
+    pub parent_id: Option<i64>,
+    /// 佩戴的头衔（评论区显示它，不显示权限）。
+    pub author_title: Option<String>,
+    pub author_title_color: Option<String>,
+    /// 点赞数。
+    pub likes: i64,
+    /// 点踩数（前端暂未接，接口留着）。
+    pub dislikes: i64,
+    /// 当前查看者投的票：1 赞 / -1 踩 / 0 没投。
+    pub my_vote: i64,
 }
 
 /// 启动器发布版本。
