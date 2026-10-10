@@ -354,6 +354,7 @@ async fn build_post_page<'a>(
             handle: c.author_handle,
             author: c.author_display_name,
             avatar: c.author_avatar,
+            avatar_small: c.author_avatar_small,
             // 显示头衔而不是权限：有头衔才挂（没佩戴就是空）
             title: c.author_title.clone(),
             title_color: c

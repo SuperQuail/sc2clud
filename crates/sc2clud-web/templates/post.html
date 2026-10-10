@@ -104,7 +104,9 @@
   <div class="comments cui-{{ comments_variant }}">
     {% for c in comments %}
     <div class="comment" id="c{{ c.id }}">
-      {% if let Some(avatar) = c.avatar %}
+      {% if let Some(small) = c.avatar_small %}
+      <img class="avatar c-avatar" src="/avatar/{{ small }}"
+      {% else if let Some(avatar) = c.avatar %}
       <img class="avatar c-avatar" src="/avatar/{{ avatar }}" alt="" width="40" height="40" loading="lazy" onerror="this.src='/static/art/miyin/image-unavailable-480.webp'">
       {% else %}
       <img class="avatar c-avatar" src="/static/art/miyin-chibi-80.webp" alt="" width="40" height="40" loading="lazy">
@@ -125,7 +127,9 @@
         <div class="c-subs">
           {% for r in c.replies %}
           <div class="c-sub" id="c{{ r.id }}">
-            {% if let Some(avatar) = r.avatar %}
+            {% if let Some(small) = r.avatar_small %}
+            <img class="avatar c-avatar sm" src="/avatar/{{ small }}"
+            {% else if let Some(avatar) = r.avatar %}
             <img class="avatar c-avatar sm" src="/avatar/{{ avatar }}" alt="" width="26" height="26" loading="lazy" onerror="this.src='/static/art/miyin/image-unavailable-480.webp'">
             {% else %}
             <img class="avatar c-avatar sm" src="/static/art/miyin-chibi-80.webp" alt="" width="26" height="26" loading="lazy">

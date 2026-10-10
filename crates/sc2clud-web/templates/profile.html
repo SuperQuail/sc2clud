@@ -34,6 +34,39 @@
   });
   // 预览用：?avatar=1 直接打开弹窗
   if (new URLSearchParams(location.search).get('avatar') === '1') show(true);
+// 换头像后自动做一张 48px 小图：列表页几十个头像用它，省带宽；失败不影响换头像本身
+(() => {
+  const img = document.querySelector('.avatar-lg');
+  if (!img || typeof createImageBitmap !== 'function') return;
+  let last = img.getAttribute('src');
+  const make = async () => {
+    const src = img.getAttribute('src');
+    if (!src || src === last || !src.startsWith('/avatar/')) return;
+    last = src;
+    try {
+      const blob = await (await fetch(src, { cache: 'force-cache' })).blob();
+      const bitmap = await createImageBitmap(blob);
+      const canvas = document.createElement('canvas');
+      canvas.width = 48;
+      canvas.height = 48;
+      const ctx = canvas.getContext('2d');
+      const side = Math.min(bitmap.width, bitmap.height);
+      ctx.drawImage(bitmap, (bitmap.width - side) / 2, (bitmap.height - side) / 2, side, side, 0, 0, 48, 48);
+      const small = await new Promise((resolve) => canvas.toBlob(resolve, 'image/webp', 0.8));
+      if (!small) return;
+      const island = document.querySelector('[data-island="avatar"]');
+      await fetch('/api/v1/me/avatar/small', {
+        method: 'POST',
+        headers: { 'x-csrf-token': island ? island.dataset.csrf : '' },
+        body: small,
+      });
+    } catch (_) {
+      // 小图只是优化，失败就当没有（渲染会回落原图）
+    }
+  };
+  new MutationObserver(make).observe(img, { attributes: true, attributeFilter: ['src'] });
+  make();
+})();
 })();
 </script>
 {% endblock %}

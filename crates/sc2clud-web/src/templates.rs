@@ -465,6 +465,8 @@ pub struct CommentView {
     /// 楼层 id（回复按钮用它当 parent_id）。
     pub id: i64,
     pub author: String,
+    /// 小图头像（48px）；为空就回落到 avatar。
+    pub avatar_small: Option<String>,
     /// 作者 user id：回复时拼成 `@昵称#id`，重名也指得准。
     pub author_id: i64,
     pub handle: String,

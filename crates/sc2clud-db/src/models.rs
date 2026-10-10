@@ -268,6 +268,8 @@ pub struct CommentWithAuthorRow {
     pub author_handle: String,
     pub author_display_name: String,
     pub author_avatar: Option<String>,
+    /// 小图头像（48px），列表页用它省带宽；没上传过就是 NULL。
+    pub author_avatar_small: Option<String>,
     pub body: String,
     pub created_at: i64,
     /// 楼中楼：挂在哪个楼层下面（None = 主楼层）。一级到底，回复的回复挂到根楼层。

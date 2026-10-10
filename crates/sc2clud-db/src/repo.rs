@@ -1276,6 +1276,7 @@ pub async fn list_comments_for(
     query_as::<_, CommentWithAuthorRow>(
         "SELECT c.id, c.post_id, c.author_id, u.handle AS author_handle, \
                 u.display_name AS author_display_name, u.avatar_hash AS author_avatar, \
+                u.avatar_small AS author_avatar_small, \
                 (SELECT t.name FROM titles t WHERE t.id = u.equipped_title_id) AS author_title, \
                 (SELECT t.color FROM titles t WHERE t.id = u.equipped_title_id) AS author_title_color, \
                 c.body, c.created_at, c.parent_id, \
@@ -1305,6 +1306,7 @@ pub async fn list_comments(
     query_as::<_, CommentWithAuthorRow>(
         "SELECT c.id, c.post_id, c.author_id, u.handle AS author_handle, \
                 u.display_name AS author_display_name, u.avatar_hash AS author_avatar, \
+                u.avatar_small AS author_avatar_small, \
                 (SELECT t.name FROM titles t WHERE t.id = u.equipped_title_id) AS author_title, \
                 (SELECT t.color FROM titles t WHERE t.id = u.equipped_title_id) AS author_title_color, \
                 c.body, c.created_at, c.parent_id, \
@@ -1585,6 +1587,27 @@ pub async fn avatar_is_used(pool: &SqlitePool, hash: &str) -> Result<bool> {
         .await
         .map_err(db_err)?;
     Ok(row.is_some())
+}
+
+/// 列表页用的小图头像（48px）；没上传过返回 None，渲染时回落原图。
+pub async fn avatar_small_of(pool: &SqlitePool, user_id: i64) -> Result<Option<String>> {
+    let row: Option<(Option<String>,)> = query_as("SELECT avatar_small FROM users WHERE id = ?")
+        .bind(user_id)
+        .fetch_optional(pool)
+        .await
+        .map_err(db_err)?;
+    Ok(row.and_then(|(hash,)| hash))
+}
+
+/// 记下小图头像（换头像后由页面自动生成并上传）。
+pub async fn set_avatar_small(pool: &SqlitePool, user_id: i64, hash: Option<&str>) -> Result<()> {
+    query("UPDATE users SET avatar_small = ? WHERE id = ?")
+        .bind(hash)
+        .bind(user_id)
+        .execute(pool)
+        .await
+        .map_err(db_err)?;
+    Ok(())
 }
 
 /// 头像的 MIME（给 `/avatar/{hash}` 定 Content-Type）。
@@ -3490,11 +3513,13 @@ pub async fn clear_avatar(pool: &SqlitePool, user_id: i64) -> Result<Option<Stri
         .await
         .map_err(db_err)?;
     let previous = row.and_then(|r| r.0);
-    query("UPDATE users SET avatar_hash = NULL, avatar_mime = NULL WHERE id = ?")
-        .bind(user_id)
-        .execute(pool)
-        .await
-        .map_err(db_err)?;
+    query(
+        "UPDATE users SET avatar_hash = NULL, avatar_mime = NULL, avatar_small = NULL WHERE id = ?",
+    )
+    .bind(user_id)
+    .execute(pool)
+    .await
+    .map_err(db_err)?;
     Ok(previous)
 }
 

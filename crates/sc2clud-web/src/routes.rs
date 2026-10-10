@@ -289,6 +289,10 @@ pub fn api_upload() -> Router<AppState> {
     Router::new()
         .route("/api/v1/files", axum::routing::put(upload_file))
         .route(
+            "/api/v1/me/avatar/small",
+            axum::routing::post(upload_avatar_small),
+        )
+        .route(
             "/api/v1/me/avatar",
             axum::routing::post(upload_avatar)
                 .get(crate::pages_profile::avatar_info)
@@ -916,6 +920,46 @@ pub async fn serve_image(
 /// 上传头像。
 ///
 /// 压缩与裁剪**已经在浏览器里做完**（canvas，压到 ≤64KB），服务端只做：
+/// 小图头像上限：48px 的 WebP 正常只有几 KB，32KB 足够且能给坏人兜底。
+const AVATAR_SMALL_LIMIT: usize = 32 * 1024;
+
+/// 列表页用的小图头像（48px）。页面在换头像后自动生成并上传，失败不影响换头像本身。
+/// 体积很小，直接读进内存 + 魔数校验，不走流式那条重路径。
+pub async fn upload_avatar_small(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    body: Body,
+) -> AppResult<Json<serde_json::Value>> {
+    let user = require_user(&state, &headers).await?;
+    session::guard(Some(&user), Permission::SetAvatar)?;
+    let token = headers
+        .get("x-csrf-token")
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or("");
+    session::check_csrf(&user, token)?;
+    let bytes = axum::body::to_bytes(body, AVATAR_SMALL_LIMIT)
+        .await
+        .map_err(|_| invalid("小图太大"))?;
+    let Some(mime) = sniff_image_mime(&bytes) else {
+        return Err(invalid("只接受 PNG / JPEG / GIF / WebP 图片"));
+    };
+    let size = bytes.len() as i64;
+    let reader: BlobReader = Box::pin(StreamReader::new(futures_util::stream::once(async move {
+        Ok::<_, std::io::Error>(bytes)
+    })));
+    let outcome = state
+        .storage
+        .put_stream(reader, None)
+        .await
+        .map_err(AppError::from)?;
+    let hash = outcome.stat.hash.to_string();
+    repo::ensure_blob(state.db.pool(), &hash, size, sc2clud_core::now_unix()).await?;
+    repo::set_avatar_small(state.db.pool(), user.id, Some(&hash)).await?;
+    Ok(axum::Json(
+        serde_json::json!({ "ok": true, "small_hash": hash, "mime": mime, "bytes": size }),
+    ))
+}
+
 /// 登录 + 已激活 + CSRF + 魔数认类型 + 体积上限（流式计数，超了直接断）+ 磁盘闸门。
 pub async fn upload_avatar(
     State(state): State<AppState>,
