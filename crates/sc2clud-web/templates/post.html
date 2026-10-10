@@ -30,6 +30,16 @@
   {# 中栏：正文主体 #}
   <div class="post-main">
 {# 与 GitHub 一样：顶部（横幅 + 标题 + 侧栏）不变，只切换中间那块 #}
+<nav class="post-tabs">
+  <a class="ptab{% if tab != "issues" %} active{% endif %}" href="/p/{{ post.id }}">帖子内容</a>
+  <a class="ptab{% if tab == "issues" %} active{% endif %}" href="/p/{{ post.id }}/issues">问题与建议{% if issue_open > 0 %} <b>{{ issue_open }}</b>{% endif %}</a>
+  <span class="ptab-spacer"></span>
+  <a class="ptab-cta bug" href="/p/{{ post.id }}/issues?kind=bug">报告 Bug</a>
+  <a class="ptab-cta idea" href="/p/{{ post.id }}/issues?kind=feature">改进意见</a>
+  <a class="ptab-cta difficulty" href="/p/{{ post.id }}/issues?kind=difficulty">难度建议</a>
+  <a class="btn sm" style="margin-left:10px" href="/p/{{ post.id }}/issues/new">发布反馈</a>
+</nav>
+
 <section class="issue-banner">
     <div class="ib-text">
       <b>这个 Mod 有问题，或者你有想法？</b>
@@ -42,15 +52,6 @@
     </div>
     <span class="ib-count">{% if issue_open > 0 %}{{ issue_open }} 条待处理{% else %}暂无待处理{% endif %}{% if issue_total > issue_open %} · 共 {{ issue_total }} 条{% endif %}</span>
 
-<nav class="post-tabs">
-  <a class="ptab{% if tab != "issues" %} active{% endif %}" href="/p/{{ post.id }}">帖子内容</a>
-  <a class="ptab{% if tab == "issues" %} active{% endif %}" href="/p/{{ post.id }}/issues">问题与建议{% if issue_open > 0 %} <b>{{ issue_open }}</b>{% endif %}</a>
-  <span class="ptab-spacer"></span>
-  <a class="ptab-cta bug" href="/p/{{ post.id }}/issues?kind=bug">报告 Bug</a>
-  <a class="ptab-cta idea" href="/p/{{ post.id }}/issues?kind=feature">改进意见</a>
-  <a class="ptab-cta difficulty" href="/p/{{ post.id }}/issues?kind=difficulty">难度建议</a>
-  <a class="btn sm" style="margin-left:10px" href="/p/{{ post.id }}/issues/new">发布反馈</a>
-</nav>
 
   </section>
 
@@ -121,14 +122,6 @@
 .issue-count{font-size:13px;opacity:.7;margin:10px 2px}
 .issue-new form{display:flex;flex-direction:column;gap:14px}
 .issue-new label{display:block;font-size:14px}
-    <label>类型（必选）
-      <select name="kind" class="ui-select" style="width:100%;margin-top:6px">
-        <option value="bug"{% if issue_kind == "bug" %} selected{% endif %}>报告 Bug —— 打不开、崩溃、闪退、卡关</option>
-        <option value="feature"{% if issue_kind == "feature" %} selected{% endif %}>改进意见 —— 希望新增或调整的功能</option>
-        <option value="difficulty"{% if issue_kind == "difficulty" %} selected{% endif %}>难度建议 —— 太简单 / 太难 / 想要难度选项</option>
-        <option value="other"{% if issue_kind == "other" || issue_kind.is_empty() %} selected{% endif %}>其它 —— 不属于上面三类的问题</option>
-      </select>
-    </label>
 .kind-pick .kp.difficulty:has(input:checked){border-color:#7c3aed;background:#f5f3ff}
 .kind-pick .kp.other:has(input:checked){border-color:#6b7280;background:#f9fafb}
 .kind-pick .kp input{position:absolute;opacity:0;width:0;height:0}
@@ -141,13 +134,14 @@
   <p class="hint" style="margin:0 0 14px;font-size:13px;opacity:.8">选一个类型，写清现象或想法；提交后作者与管理员都会看到。</p>
   <form method="post" action="/p/{{ post.id }}/issues" class="stack">
     <input type="hidden" name="csrf" value="{{ csrf }}">
-    <fieldset class="kind-pick">
-      <legend>类型（必选）</legend>
-      <label class="kp bug"><input type="radio" name="kind" value="bug"{% if issue_kind == "bug" %} checked{% endif %}><b>报告 Bug</b><span>打不开、崩溃、闪退、卡关</span></label>
-      <label class="kp idea"><input type="radio" name="kind" value="feature"{% if issue_kind == "feature" %} checked{% endif %}><b>改进意见</b><span>希望新增或调整的功能</span></label>
-      <label class="kp difficulty"><input type="radio" name="kind" value="difficulty"{% if issue_kind == "difficulty" %} checked{% endif %}><b>难度建议</b><span>太简单 / 太难 / 想要难度选项</span></label>
-      <label class="kp other"><input type="radio" name="kind" value="other"{% if issue_kind == "other" || issue_kind.is_empty() %} checked{% endif %}><b>其它</b><span>不属于上面三类的问题</span></label>
-    </fieldset>
+    <label>类型（必选）
+      <select name="kind" class="ui-select" style="width:100%;margin-top:6px">
+        <option value="bug"{% if issue_kind == "bug" %} selected{% endif %}>报告 Bug —— 打不开、崩溃、闪退、卡关</option>
+        <option value="feature"{% if issue_kind == "feature" %} selected{% endif %}>改进意见 —— 希望新增或调整的功能</option>
+        <option value="difficulty"{% if issue_kind == "difficulty" %} selected{% endif %}>难度建议 —— 太简单 / 太难 / 想要难度选项</option>
+        <option value="other"{% if issue_kind == "other" || issue_kind.is_empty() %} selected{% endif %}>其它 —— 不属于上面三类的问题</option>
+      </select>
+    </label>
     <label>标题<input type="text" name="title" maxlength="80" required placeholder="一句话说清问题，例如：第三关开局就崩溃"></label>
     <label>正文<textarea name="body" rows="8" maxlength="5000" placeholder="复现步骤 / 你的版本 / 期望的行为。写清这些，作者才好定位。"></textarea></label>
     <div class="issue-actions"><button class="btn" type="submit">提交反馈</button>

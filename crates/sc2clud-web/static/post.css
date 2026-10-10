@@ -81,3 +81,10 @@
 .issue-new input[type=text],.issue-new input[type=search],.issue-new textarea{width:100%;margin-top:6px;padding:10px 12px;border:1px solid var(--line,#e5e7eb);border-radius:10px;background:none;color:inherit;font:inherit;font-size:14px}
 .issue-new .issue-actions{display:flex;gap:10px;align-items:center}
 .issue-new .issue-actions .btn{display:inline-flex;align-items:center;text-decoration:none}
+
+/* 页签贴在内容列最上方并占满宽度 */
+.post-main > .post-tabs{margin:0 0 14px;padding:0}
+.post-main > .post-tabs .ptab{padding:14px 22px}
+/* 发布表单的类型下拉 */
+.issue-new select{width:100%;margin-top:6px}
+
