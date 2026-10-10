@@ -425,7 +425,7 @@ mod tests {
         )
         .await
         .expect("发帖");
-        repo::create_comment(db.pool(), post, user, "回复也用显示名。", now)
+        repo::create_comment(db.pool(), post, user, "回复也用显示名。", None, now)
             .await
             .expect("回复");
 

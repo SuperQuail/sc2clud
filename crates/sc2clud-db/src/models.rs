@@ -162,6 +162,7 @@ pub struct PostRevisionRow {
 /// 搜索命中的用户。
 #[derive(Debug, Clone, FromRow)]
 pub struct UserHitRow {
+    pub id: i64,
     pub handle: String,
     pub display_name: String,
     pub avatar_hash: Option<String>,
@@ -269,6 +270,10 @@ pub struct CommentWithAuthorRow {
     pub author_avatar: Option<String>,
     pub body: String,
     pub created_at: i64,
+    /// 楼中楼：挂在哪个楼层下面（None = 主楼层）。一级到底，回复的回复挂到根楼层。
+    pub parent_id: Option<i64>,
+    /// 作者角色（评论区显示身份徽章）。
+    pub author_role: String,
 }
 
 /// 启动器发布版本。

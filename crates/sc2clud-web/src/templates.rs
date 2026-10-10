@@ -237,6 +237,8 @@ pub struct PostPageTemplate<'a> {
     pub donation_visible: bool,
     /// 预览用的界面样式编号（1/2/3，生产恒为 2 —— 已评审通过的「分组下拉」）。
     pub ui_variant: u8,
+    /// 回复区样式：1 B 站原味 / 2 卡片流 / 3 紧凑列表。
+    pub comments_variant: u8,
     /// 赞助弹窗样式（1 左右分栏 / 2 顶部标签 / 3 卡片网格）。
     pub donate_variant: u8,
     /// 赞助前提示样式（1 红顶卡 / 2 红标题横条 / 3 红圆图标卡）。
@@ -444,10 +446,20 @@ pub struct ImageView {
 
 /// 回复视图。
 pub struct CommentView {
+    /// 楼层 id（回复按钮用它当 parent_id）。
+    pub id: i64,
     pub author: String,
+    /// 作者 user id：回复时拼成 `@昵称#id`，重名也指得准。
+    pub author_id: i64,
+    pub handle: String,
     pub avatar: Option<String>,
-    pub body: String,
+    /// 身份徽章文案（普通用户为空）。
+    pub role: Option<String>,
+    /// 已渲染正文（含 @ 链接，模板里 `|safe`）。
+    pub body_html: String,
     pub created_at: String,
+    /// 楼中楼：挂在这一层下面的回复。
+    pub replies: Vec<CommentView>,
 }
 
 /// 发帖页。

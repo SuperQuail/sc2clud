@@ -99,29 +99,58 @@
 <section class="card">
   <h2>回复 <span class="count">{{ comments.len() }}</span></h2>
   {% if comments.is_empty() %}
-  <div class="community-empty"><img src="/static/art/miyin/smile-160.webp" width="80" height="80" alt="" loading="lazy"><p class="empty">还没有回复。来聊聊你的想法吧。</p></div>
-  {% else %}
-  <div class="comments">
+  <div class="comments cui-{{ comments_variant }}">
     {% for c in comments %}
-    <div class="comment">
-      <div class="who byline">
-        {% if let Some(avatar) = c.avatar %}
-        <img class="avatar" src="/avatar/{{ avatar }}" alt="" width="20" height="20" loading="lazy">
-        {% else %}
-        <img class="avatar" src="/static/art/miyin-chibi-80.webp" alt="" width="20" height="20" loading="lazy">
+    <div class="comment" id="c{{ c.id }}">
+      {% if let Some(avatar) = c.avatar %}
+      <img class="avatar c-avatar" src="/avatar/{{ avatar }}" alt="" width="40" height="40" loading="lazy" onerror="this.src='/static/art/miyin/image-unavailable-480.webp'">
+      {% else %}
+      <img class="avatar c-avatar" src="/static/art/miyin-chibi-80.webp" alt="" width="40" height="40" loading="lazy">
+      {% endif %}
+      <div class="c-main">
+        <div class="c-head">
+          <span class="c-floor">NO.{{ c.id }}</span>
+          <b class="c-name">{{ c.author }}</b>
+          {% if let Some(role) = c.role %}<span class="c-role">{{ role }}</span>{% endif %}
+        </div>
+        <div class="c-body">{{ c.body_html|safe }}</div>
+        <div class="c-actions">
+          <time class="meta">{{ c.created_at }}</time>
+          {% if can_reply %}<button class="c-act" type="button" data-reply-id="{{ c.id }}" data-reply-user="{{ c.author_id }}" data-reply-name="{{ c.author }}">回复</button>{% endif %}
+        </div>
+        {% if !c.replies.is_empty() %}
+        <div class="c-subs">
+          {% for r in c.replies %}
+          <div class="c-sub" id="c{{ r.id }}">
+            {% if let Some(avatar) = r.avatar %}
+            <img class="avatar c-avatar sm" src="/avatar/{{ avatar }}" alt="" width="26" height="26" loading="lazy" onerror="this.src='/static/art/miyin/image-unavailable-480.webp'">
+            {% else %}
+            <img class="avatar c-avatar sm" src="/static/art/miyin-chibi-80.webp" alt="" width="26" height="26" loading="lazy">
+            {% endif %}
+            <div class="c-main">
+              <div class="c-head"><b class="c-name">{{ r.author }}</b>{% if let Some(role) = r.role %}<span class="c-role">{{ role }}</span>{% endif %}</div>
+              <div class="c-body">{{ r.body_html|safe }}</div>
+              <div class="c-actions">
+                <time class="meta">{{ r.created_at }}</time>
+                {% if can_reply %}<button class="c-act" type="button" data-reply-id="{{ c.id }}" data-reply-user="{{ r.author_id }}" data-reply-name="{{ r.author }}">回复</button>{% endif %}
+              </div>
+            </div>
+          </div>
+          {% endfor %}
+        </div>
         {% endif %}
-        {{ c.author }}
       </div>
-      <p>{{ c.body }}</p>
-      <time class="meta" datetime="{{ c.created_at }}">{{ c.created_at }}</time>
     </div>
     {% endfor %}
   </div>
   {% endif %}
   {% if can_reply %}
-  <form method="post" action="/p/{{ post.id }}/comments" class="stack" style="margin-top:18px">
+  <form method="post" action="/p/{{ post.id }}/comments" class="stack" style="margin-top:18px" data-comment-form>
     <input type="hidden" name="csrf" value="{{ csrf }}">
-    <label>回复内容<textarea name="body" required minlength="2" maxlength="5000"></textarea></label>
+    {# 楼中楼：点某层的「回复」时填这里，留空即主楼层 #}
+    <input type="hidden" name="parent_id" id="reply-parent" value="">
+    <label>回复内容<textarea name="body" id="reply-body" required minlength="2" maxlength="5000" placeholder="支持 @某人；点某层右下角的「回复」会自动带上对方"></textarea></label>
+    <div class="mention-pop" id="mention-pop" hidden></div>
     <button class="btn" type="submit">发布回复</button>
   </form>
   {% else if user_label.is_none() %}
@@ -130,6 +159,43 @@
   <p class="hint" style="margin-top:16px">账号激活后才能回复。</p>
   {% endif %}
 </section>
+<style>
+.comments{display:flex;flex-direction:column;gap:18px}
+.comment{display:flex;gap:12px}
+.c-avatar{flex:none;border-radius:50%;object-fit:cover}
+.c-main{flex:1;min-width:0}
+.c-head{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.c-name{font-size:14px}
+.c-role{font-size:11px;padding:1px 6px;border-radius:999px;background:rgba(37,99,235,.14);color:#2563eb}
+.c-floor{font-size:11px;opacity:.45;letter-spacing:.02em}
+.c-body{margin:6px 0 4px;line-height:1.75;white-space:pre-wrap;word-break:break-word}
+.c-body .mention{color:#2563eb;text-decoration:none}
+.c-body .mention:hover{text-decoration:underline}
+.c-actions{display:flex;align-items:center;gap:14px;font-size:12px;opacity:.75}
+.c-act{border:0;background:none;color:inherit;font:inherit;font-size:12px;cursor:pointer;padding:0}
+.c-act:hover{color:#2563eb}
+.c-subs{margin-top:12px;display:flex;flex-direction:column;gap:12px}
+.c-sub{display:flex;gap:10px}
+.c-sub .c-body{margin:4px 0 2px}
+/* 版式 1：B 站原味（楼层号靠右，楼中楼浅底缩进） */
+.cui-1 .c-head{position:relative;padding-right:64px}
+.cui-1 .c-floor{position:absolute;right:0;top:2px}
+.cui-1 .c-subs{margin-left:10px;padding:10px 12px;border-radius:10px;background:rgba(127,127,127,.07)}
+/* 版式 2：卡片流（每层浅底卡片，楼中楼竖线） */
+.cui-2 .comment{padding:14px;border-radius:12px;background:var(--card-soft,rgba(127,127,127,.06))}
+.cui-2 .c-subs{margin-left:0;padding-left:14px;border-left:2px solid rgba(37,99,235,.25)}
+/* 版式 3：紧凑列表（楼层号在最左，行距紧、无缩进） */
+.cui-3{gap:12px}
+.cui-3 .c-head{gap:6px}
+.cui-3 .c-floor{order:-1;font-weight:600;opacity:.6}
+.cui-3 .c-body{margin:4px 0 2px;line-height:1.6}
+.cui-3 .c-subs{margin-top:8px;gap:8px}
+.mention-pop{position:absolute;z-index:40;margin-top:4px;min-width:220px;max-height:220px;overflow:auto;background:var(--card,#fff);color:inherit;border:1px solid var(--line,#e5e7eb);border-radius:10px;box-shadow:0 8px 24px rgba(0,0,0,.14)}
+.mention-item{display:flex;align-items:center;gap:8px;padding:8px 10px;cursor:pointer;font-size:13px}
+.mention-item:hover,.mention-item.active{background:rgba(37,99,235,.1)}
+.mention-item .mi-id{opacity:.55;font-size:12px}
+.mention-item .mi-handle{opacity:.55;font-size:12px}
+</style>
   </div>{# /post-main #}
 
   {# 右栏：作者 + 资源 + 数据 #}
@@ -219,6 +285,89 @@
 <script>
   // 配图上传：作者与管理员可以随时补图（整份文件当请求体，服务端按魔数认类型）
   (function () {
+
+// 回复区交互：点「回复」带上对方（@昵称#id，id 唯一所以重名不会指错），输入 @ 弹候选
+(() => {
+  const form = document.querySelector('[data-comment-form]');
+  const area = document.getElementById('reply-body');
+  const parentField = document.getElementById('reply-parent');
+  const pop = document.getElementById('mention-pop');
+  if (!form || !area || !pop) return;
+
+  document.querySelectorAll('[data-reply-id]').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      parentField.value = btn.dataset.replyId;
+      const token = '@' + btn.dataset.replyName + '#' + btn.dataset.replyUser + ' ';
+      if (!area.value.includes(token)) area.value = token + area.value.replace(/^@\S+\s/, '');
+      area.focus();
+      area.setSelectionRange(area.value.length, area.value.length);
+    });
+  });
+
+  let timer = null;
+  let active = -1;
+  const hide = () => { pop.hidden = true; pop.innerHTML = ''; active = -1; };
+  const currentQuery = () => {
+    const upto = area.value.slice(0, area.selectionStart);
+    const at = upto.lastIndexOf('@');
+    if (at < 0) return null;
+    const word = upto.slice(at + 1);
+    if (word.includes(' ') || word.includes('#')) return null;
+    return { at, word };
+  };
+  const render = (users) => {
+    if (!users.length) return hide();
+    pop.innerHTML = '';
+    users.forEach((u, index) => {
+      const item = document.createElement('div');
+      item.className = 'mention-item' + (index === 0 ? ' active' : '');
+      item.innerHTML = '<b></b><span class="mi-id"></span><span class="mi-handle"></span>';
+      item.querySelector('b').textContent = u.name;
+      // 只有重名用户才显示 id（其他同名账号一眼分得开）
+      item.querySelector('.mi-id').textContent = u.dup ? '#' + u.id : '';
+      item.querySelector('.mi-handle').textContent = '@' + u.handle;
+      item.addEventListener('mousedown', (event) => {
+        event.preventDefault();
+        const spot = currentQuery();
+        if (spot) {
+          const token = '@' + u.name + '#' + u.id + ' ';
+          area.value = area.value.slice(0, spot.at) + token + area.value.slice(spot.at + spot.word.length + 1);
+          area.setSelectionRange(spot.at + token.length, spot.at + token.length);
+        }
+        hide();
+        area.focus();
+      });
+      pop.appendChild(item);
+    });
+    pop.hidden = false;
+    active = 0;
+  };
+  const search = async () => {
+    const spot = currentQuery();
+    if (!spot || !spot.word) return hide();
+    try {
+      const res = await fetch('/api/v1/users/search?q=' + encodeURIComponent(spot.word));
+      if (!res.ok) return hide();
+      const data = await res.json();
+      render(data.users || []);
+    } catch (_) { hide(); }
+  };
+  area.addEventListener('input', () => { clearTimeout(timer); timer = setTimeout(search, 180); });
+  area.addEventListener('blur', () => setTimeout(hide, 120));
+  area.addEventListener('keydown', (event) => {
+    if (pop.hidden) return;
+    const items = Array.from(pop.querySelectorAll('.mention-item'));
+    if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+      event.preventDefault();
+      active = (active + (event.key === 'ArrowDown' ? 1 : items.length - 1)) % items.length;
+      items.forEach((item, index) => item.classList.toggle('active', index === active));
+    } else if (event.key === 'Enter' || event.key === 'Tab') {
+      if (items[active]) { event.preventDefault(); items[active].dispatchEvent(new MouseEvent('mousedown')); }
+    } else if (event.key === 'Escape') {
+      hide();
+    }
+  });
+})();
     var box = document.querySelector('[data-post-upload]');
     if (!box) return;
     var input = document.getElementById('post-image-input');

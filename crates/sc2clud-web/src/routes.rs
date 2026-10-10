@@ -90,6 +90,11 @@ pub fn pages() -> Router<AppState> {
             "/api/v1/notifications/unread",
             axum::routing::get(crate::pages_social::unread_badge),
         )
+        // @ 提及的下拉候选（重名账号会带 dup 标记）
+        .route(
+            "/api/v1/users/search",
+            axum::routing::get(crate::pages_search::mention_candidates),
+        )
         .route(
             "/admin/announcements",
             axum::routing::post(crate::pages_social::create_announcement),
@@ -145,6 +150,10 @@ pub fn pages() -> Router<AppState> {
         .route(
             "/settings/password",
             axum::routing::post(crate::pages_settings::update_password),
+        )
+        .route(
+            "/u/id/{id}",
+            axum::routing::get(crate::pages_profile::profile_by_id),
         )
         .route(
             "/u/{handle}",

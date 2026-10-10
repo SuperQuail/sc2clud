@@ -81,6 +81,9 @@ pub fn parse_post_form(bytes: &[u8]) -> ParsedPostForm {
 pub struct ReplyForm {
     pub csrf: String,
     pub body: String,
+    /// 楼中楼：回复某条回复时带上它的楼层 id。
+    #[serde(default)]
+    pub parent_id: Option<i64>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -201,6 +204,7 @@ async fn build_post_page<'a>(
     ui: Option<&str>,
     dui: Option<&str>,
     nui: Option<&str>,
+    cui: Option<&str>,
 ) -> AppResult<PostPageTemplate<'a>> {
     // 预览开关：只有开发实例看这个参数（生产恒为样式 1，预览代码不影响线上）
     // 生产恒用已评审通过的样式：菜单=2（分组下拉）、赞助=1（左渠道右二维码）、提示=3（红圆图标卡）
@@ -216,6 +220,7 @@ async fn build_post_page<'a>(
     let ui_variant = pick(ui, 2);
     let donate_variant = pick(dui, 1);
     let notice_variant = pick(nui, 3);
+    let comments_variant = pick(cui, 1);
     let user = session::current_user(state, headers).await?;
     let viewer_id = user.as_ref().map(|u| u.id);
     let is_staff = user.as_ref().is_some_and(CurrentUser::is_staff);
@@ -321,6 +326,7 @@ async fn build_post_page<'a>(
         .collect();
     Ok(PostPageTemplate {
         ui_variant,
+        comments_variant,
         donate_variant,
         notice_variant,
         site_name: &state.config.server.site_name,
@@ -385,15 +391,39 @@ async fn build_post_page<'a>(
             like_count: like_count as i64,
             bookmark_count: bookmark_count as i64,
         },
-        comments: comments
-            .into_iter()
-            .map(|c| CommentView {
-                author: c.author_display_name,
-                avatar: c.author_avatar,
-                body: c.body,
-                created_at: format_date(c.created_at),
-            })
-            .collect(),
+        // 楼中楼：主楼层按时间顺序，回复挂到自己根楼层下（一级到底）
+        comments: {
+            let mut roots: Vec<CommentView> = Vec::new();
+            let mut replies: Vec<(i64, CommentView)> = Vec::new();
+            for c in comments {
+                let view = CommentView {
+                    id: c.id,
+                    author_id: c.author_id,
+                    handle: c.author_handle,
+                    author: c.author_display_name,
+                    avatar: c.author_avatar,
+                    // 普通用户不挂徽章，省得每层都是标签
+                    role: sc2clud_core::auth::Role::parse(&c.author_role)
+                        .ok()
+                        .filter(|role| *role != sc2clud_core::auth::Role::Member)
+                        .map(|role| role.label().to_string()),
+                    body_html: sc2clud_core::community::render_body(&c.body),
+                    created_at: format_date(c.created_at),
+                    replies: Vec::new(),
+                };
+                match c.parent_id {
+                    None => roots.push(view),
+                    Some(parent) => replies.push((parent, view)),
+                }
+            }
+            // 父楼层被拉黑过滤掉时，它的回复也一起不显示（不留孤儿）
+            for (parent, reply) in replies {
+                if let Some(root) = roots.iter_mut().find(|root| root.id == parent) {
+                    root.replies.push(reply);
+                }
+            }
+            roots
+        },
     })
 }
 
@@ -404,6 +434,8 @@ pub struct UiQuery {
     /// 赞助弹窗 / 提示的预览样式编号。
     dui: Option<String>,
     nui: Option<String>,
+    /// 回复区样式编号（1 B 站原味 / 2 卡片流 / 3 紧凑列表）。
+    cui: Option<String>,
 }
 
 pub async fn post_page(
@@ -419,6 +451,7 @@ pub async fn post_page(
         query.ui.as_deref(),
         query.dui.as_deref(),
         query.nui.as_deref(),
+        query.cui.as_deref(),
     )
     .await
     {
@@ -1131,13 +1164,50 @@ async fn add_comment(
         return Err(invalid("回复最长 5000 字"));
     }
     // 只能在**自己看得到**的帖子下回复。
-    repo::get_post_for(state.db.pool(), post_id, Some(user.id), user.is_staff())
+    let post_row = repo::get_post_for(state.db.pool(), post_id, Some(user.id), user.is_staff())
         .await?
         .ok_or_else(|| AppError::not_found("帖子不存在或不可见"))?;
 
-    repo::create_comment(state.db.pool(), post_id, user.id, body, now_unix()).await?;
+    // 楼中楼只一层：父楼层本身是回复时挂到根楼层下（B 站规则）
+    let root = match form.parent_id {
+        Some(parent) => repo::comment_root_of(state.db.pool(), post_id, parent).await?,
+        None => None,
+    };
+    let now = now_unix();
+    let comment_id =
+        repo::create_comment(state.db.pool(), post_id, user.id, body, root, now).await?;
     state.counters.bump("comment:created", 1);
     tracing::info!(post.id = post_id, user.id = user.id, "新增回复");
+
+    // 通知：先被回复的人，再被 @ 的人（跳过自己、去重）
+    let mut targets: Vec<i64> = Vec::new();
+    if let Some(parent) = root
+        && let Some(author) = repo::comment_author(state.db.pool(), parent).await?
+        && author != user.id
+    {
+        targets.push(author);
+    }
+    for id in sc2clud_core::community::mentions(body) {
+        if id != user.id && !targets.contains(&id) {
+            targets.push(id);
+        }
+    }
+    let preview: String = body.chars().take(60).collect();
+    for target in targets {
+        let _ = repo::notify(
+            state.db.pool(),
+            repo::NewNotification {
+                user_id: target,
+                actor_id: Some(user.id),
+                kind: "reply",
+                title: &format!("{} 在《{}》里回复了你", user.display_name, post_row.title),
+                body: Some(&preview),
+                link: Some(&format!("/p/{post_id}#c{comment_id}")),
+                now,
+            },
+        )
+        .await;
+    }
     Ok(())
 }
 
