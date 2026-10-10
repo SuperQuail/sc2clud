@@ -84,6 +84,8 @@ fn forbidden(msg: &str) -> AppError {
 pub struct AdminQuery {
     /// 预览用：默认头像池界面版式。
     av: Option<String>,
+    /// 权限/用户组界面版式。
+    aui: Option<String>,
     #[serde(default)]
     pub q: Option<String>,
 }
@@ -93,6 +95,7 @@ async fn build_panel<'a>(
     headers: &HeaderMap,
     query: &str,
     av: Option<&str>,
+    aui: Option<&str>,
 ) -> AppResult<AdminTemplate<'a>> {
     let user = require_user(state, headers).await?;
     session::guard(Some(&user), Permission::ManageUsers)?;
@@ -153,11 +156,9 @@ async fn build_panel<'a>(
         2
     };
     // 用户组 + 人数 + 规则（人数少，直接逐个查，不值得为它写一条聚合 SQL）
+    // 版式编号走 AdminQuery（从搜索词里找参数是错的 —— av= 那次就栽过）
     let acl_variant = if state.config.server.debug_pages {
-        query
-            .split('&')
-            .find_map(|part| part.strip_prefix("aui="))
-            .and_then(|value| value.parse::<u8>().ok())
+        aui.and_then(|value| value.parse::<u8>().ok())
             .filter(|value| (1..=3).contains(value))
             .unwrap_or(1)
     } else {
@@ -609,7 +610,15 @@ pub async fn panel(
     axum::extract::Query(query): axum::extract::Query<AdminQuery>,
 ) -> Response {
     let q = query.q.unwrap_or_default();
-    match build_panel(&state, &headers, &q, query.av.as_deref()).await {
+    match build_panel(
+        &state,
+        &headers,
+        &q,
+        query.av.as_deref(),
+        query.aui.as_deref(),
+    )
+    .await
+    {
         Ok(template) => render(template),
         Err(e) => e.into_page_response(true),
     }
