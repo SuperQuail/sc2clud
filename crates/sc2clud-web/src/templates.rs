@@ -1169,6 +1169,18 @@ pub struct AdminDonationsTemplate<'a> {
     pub next_page: Option<String>,
 }
 
+/// 管理端：发信配置（多账号 + 全局开关）。
+#[derive(Template)]
+#[template(path = "admin_mail.html")]
+pub struct AdminMailTemplate<'a> {
+    pub site_name: &'a str,
+    pub user_label: Option<String>,
+    pub is_staff: bool,
+    pub csrf: String,
+    /// 岛初值：账号列表 + 全局开关（JSON 字符串）。
+    pub mail_json: String,
+}
+
 /// 统一的模板渲染出口：渲染失败只记日志、回 500。
 pub fn render<T: Template>(template: T) -> axum::response::Response {
     use axum::response::IntoResponse;

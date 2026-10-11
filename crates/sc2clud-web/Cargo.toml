@@ -17,6 +17,13 @@ sqlx = { version = "0.8.6", default-features = false, features = ["runtime-tokio
 axum = "0.8.9"
 # SMTP：Rust 生态标准发信库（rustls，不拖 openssl）
 lettre = { version = "0.11", default-features = false, features = ["smtp-transport", "rustls-tls", "builder"] }
+# Resend 官方 SDK。默认特性是 native-tls（会拖 openssl），关掉后必须显式打开它的 rustls-tls：
+# SDK 依赖的是 reqwest 0.13，和上面那行 reqwest 0.12 是**两个不同的 crate 版本**，
+# 特性不会跨版本合并 —— 漏了这一句，0.13 那份就一个 TLS 后端都没有，HTTPS 直接发不出去
+# （报错长这样：网络错误：error sending request for url (https://api.resend.com/emails)）。
+resend-rs = { version = "0.34", default-features = false, features = ["rustls-tls"] }
+# dyn Provider 需要它（async fn in trait 还不是 dyn-safe）
+async-trait = "0.1"
 # 时间解析：业界标准时间库（要同时处理「日期」与「时长」两种输入，不自己造轮子）
 chrono = { version = "0.4", default-features = false, features = ["std", "clock"] }
 askama = "0.14.0"

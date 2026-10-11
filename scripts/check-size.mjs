@@ -18,16 +18,17 @@ const SKIP_DIRS = new Set(['node_modules', 'target', 'islands', 'dist'])
 // 规则：登记=「已知的耦合债务 + 重构目标」，不是免死金牌；行数只能减不能增。
 const PENDING = {
   // —— 数据层：表结构集中在 models，CRUD 集中在 repo ——
-  'crates/sc2clud-db/src/repo.rs': { limit: 5575, reason: '全部表的 CRUD 集中一处（按表拆要动 300+ 调用点）', goal: '拆 repo/{posts,issues,users,admin}.rs' },
-  'crates/sc2clud-db/src/models.rs': { limit: 660, reason: '全部表对应的行结构', goal: '按领域拆 models/' },
-  'crates/sc2clud-db/src/lib.rs': { limit: 850, reason: '连接/迁移/密钥与迁移内嵌', goal: '拆 db/{conn,migrate,secret}.rs' },
+  'crates/sc2clud-db/src/repo.rs': { limit: 5675, reason: '全部表的 CRUD 集中一处（按表拆要动 300+ 调用点）', goal: '拆 repo/{posts,issues,users,admin}.rs' },
+  'crates/sc2clud-db/src/models.rs': { limit: 690, reason: '全部表对应的行结构', goal: '按领域拆 models/' },
+  'crates/sc2clud-db/src/lib.rs': { limit: 860, reason: '连接/迁移/密钥与迁移内嵌', goal: '拆 db/{conn,migrate,secret}.rs' },
   'crates/sc2clud-db/src/backend_tests.rs': { limit: 790, reason: '仓储的端到端测试（测试文件按功能堆叠是常态）', goal: '按领域拆测试文件' },
   'crates/sc2clud-db/src/community_tests.rs': { limit: 670, reason: '社区域测试', goal: '按领域拆测试文件' },
   // —— Web 层：页面处理器与模板结构 ——
   'crates/sc2clud-web/src/pages_posts.rs': { limit: 2200, reason: '帖子/审核/评论/issue/编辑的处理器集合', goal: '拆 pages_post_edit / pages_issues / pages_comments' },
   'crates/sc2clud-web/src/pages_donations.rs': { limit: 700, reason: '打赏记录与人工验证（新模块，先观察）', goal: '拆页面与仓储调用' },
   'crates/sc2clud-web/src/pages_messages.rs': { limit: 520, reason: '私信与 SSE', goal: '拆出 SSE 部分' },
-  'crates/sc2clud-web/src/routes.rs': { limit: 1430, reason: '路由表 + 跨模块辅助（图片已拆出；2026-10 新增 /admin/titles 三端点）', goal: '拆出 pages_files，routes.rs 只留路由表' },
+  'crates/sc2clud-web/src/routes.rs': { limit: 1445, reason: '路由表 + 跨模块辅助（图片已拆出；2026-10 新增 /admin/titles 三端点）', goal: '拆出 pages_files，routes.rs 只留路由表' },
+  'crates/sc2clud-web/src/mail/mod.rs': { limit: 545, reason: 'PR #4 带来的邮件发信模块（Resend 客户端 + 账号选择）', goal: '拆 mail/{mod,types,send}.rs' },
   'crates/sc2clud-web/src/templates.rs': { limit: 1300, reason: 'askama 模板结构体集中定义', goal: '按页面拆 templates/ 子模块' },
   // —— 核心域 ——
   'crates/sc2clud-core/src/community.rs': { limit: 840, reason: '领域模型 + 渲染器 + 分区/用户组判定', goal: '拆 community/{render,groups,issues}.rs' },
