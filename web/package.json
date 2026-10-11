@@ -17,12 +17,15 @@
     "@tiptap/pm": "^3.31.4",
     "@tiptap/react": "^3.31.4",
     "@tiptap/starter-kit": "^3.31.4",
+    "marked": "^18.1.0",
     "react": "^18.0.0",
-    "react-dom": "^18.0.0"
+    "react-dom": "^18.0.0",
+    "turndown": "^7.2.4"
   },
   "devDependencies": {
     "@types/react": "^18.3.31",
     "@types/react-dom": "^18.0.0",
+    "@types/turndown": "^5.0.6",
     "@vitejs/plugin-react": "^4.0.0",
     "typescript": "^5.7.3",
     "vite": "^6.0.11"

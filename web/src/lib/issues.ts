@@ -1,5 +1,5 @@
-// issue 数据层：只有这里允许出现 fetch（见 AGENTS §6.6）
-import { appUrl } from './base'
+﻿// issue 数据层：只有这里允许出现 fetch（见 AGENTS §6.6）
+import { appUrl } from './paths'
 
 export type IssueKind = 'bug' | 'feature' | 'difficulty' | 'other'
 export type IssueState = 'open' | 'closed'

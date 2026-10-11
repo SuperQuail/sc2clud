@@ -1,5 +1,5 @@
-// 评论数据层：唯一允许出现 fetch 的地方（AGENTS §6.6）
-import { appUrl } from './base'
+﻿// 评论数据层：唯一允许出现 fetch 的地方（AGENTS §6.6）
+import { appUrl } from './paths'
 
 export interface CommentItem {
   id: number

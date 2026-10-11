@@ -55,3 +55,9 @@ vnstat -h
 
 `scripts/check-budgets.mjs` 在 CI 与本地都会跑：三条断言（首屏 CSS / 首屏 JS / 单岛上限）任一超限即失败，
 并额外校验「模板引用的岛确实存在」。改模板里的 island `<script>` 时，同步脚本顶部的 `SHARED` / `SHELL_ALTERNATIVES`。
+## 具名豁免
+
+| 岛 | 上限 | 理由 |
+| --- | --- | --- |
+| `editor.js` | 200 KB | 富文本编辑器（TipTap + ProseMirror + marked/turndown 往返）天生重；只在登录后的编辑页加载，不进首屏（首屏 3.5/60）。正文存储仍是 markdown，所以没有为它引入第二套渲染。 |
+

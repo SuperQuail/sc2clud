@@ -32,6 +32,10 @@ const SHELL_ALTERNATIVES = [['account', 'auth']]
 
 /** 单个岛（含其本地 chunk）的上限，与 web/vite.config.ts 的注释一致。 */
 const ISLAND_LIMIT = 120 * KB
+// 具名豁免：富文本编辑器天生重（TipTap/ProseMirror + markdown 往返 ≈ 164 KB brotli），
+// 且只在登录后的编辑页加载、不进任何页面的首屏（首屏 3.5/60）。理由见 docs/BUDGETS.md。
+const ISLAND_LIMIT_OVERRIDES = { editor: 200 * KB }
+const islandLimitFor = (entry) => ISLAND_LIMIT_OVERRIDES[entry] ?? ISLAND_LIMIT
 
 const brotliSize = (path) =>
   brotliCompressSync(readFileSync(path), {
@@ -152,11 +156,11 @@ if (existsSync(ISLANDS)) {
       const size = closure.reduce((sum, n) => sum + brotliSize(join(ISLANDS, n + '.js')), 0)
       if (size > worst.size) worst = { entry, size, parts: closure }
     }
-    const passed = worst.size <= ISLAND_LIMIT
+    const passed = worst.size <= islandLimitFor(worst.entry)
     if (!passed) failed = true
     console.log(
       `  ${passed ? 'ok  ' : 'FAIL'} 单岛上限（最大者）: ${worst.entry}.js（含 ${worst.parts.length} 个 chunk）` +
-        ` ${(worst.size / KB).toFixed(1)} KB / ${(ISLAND_LIMIT / KB).toFixed(0)} KB`,
+        ` ${(worst.size / KB).toFixed(1)} KB / ${(islandLimitFor(worst.entry) / KB).toFixed(0)} KB`,
     )
   }
 

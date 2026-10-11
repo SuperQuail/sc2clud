@@ -1,14 +1,16 @@
-// 正文工具栏岛：只挂一排按钮，增强编辑页原有的 textarea（无 JS 时表单照常提交）
+// 正文富文本岛：可复用控件 ui/RichText.tsx；模板里的 textarea 仍然存在（无 JS 时照常提交）
 import { createRoot } from 'react-dom/client'
-import { EditorToolbar, type EditorImage } from '../../ui/MarkdownEditor'
+import { RichText } from '../../ui/RichText'
 import '../../ui/ui.css'
 
-document.querySelectorAll<HTMLElement>('[data-island="editor-toolbar"]').forEach((host) => {
-  let images: EditorImage[] = []
-  try {
-    images = JSON.parse(host.dataset.images || '[]') as EditorImage[]
-  } catch {
-    images = []
-  }
-  createRoot(host).render(<EditorToolbar targetId={host.dataset.target || 'post-body'} images={images} />)
+document.querySelectorAll<HTMLElement>('[data-island="editor"]').forEach((host) => {
+  const target = document.getElementById(host.dataset.target || 'post-body') as HTMLTextAreaElement | null
+  createRoot(host).render(
+    <RichText
+      targetId={host.dataset.target || 'post-body'}
+      initial={target?.value ?? ''}
+      uploadEndpoint={host.dataset.upload || undefined}
+      csrf={host.dataset.csrf || ''}
+    />,
+  )
 })

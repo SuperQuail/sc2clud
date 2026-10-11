@@ -646,7 +646,7 @@ pub fn render_body(body: &str) -> String {
             start,
             end,
             format!(
-                r#"<img class="body-image" src="/img/{hash}" alt="{}" loading="lazy">"#,
+                r#"<img class="body-image" data-post-image src="/img/{hash}" alt="{}" loading="lazy">"#,
                 escape_html(&alt)
             ),
         ));
@@ -797,7 +797,7 @@ mod mention_tests {
         // 配图：只认 /img/{十六进制}，其余按文本
         assert_eq!(
             render_body("看看 ![截图](/img/ab12cd) 这张"),
-            "看看 <img class=\"body-image\" src=\"/img/ab12cd\" alt=\"截图\" loading=\"lazy\"> 这张"
+            "看看 <img class=\"body-image\" data-post-image src=\"/img/ab12cd\" alt=\"截图\" loading=\"lazy\"> 这张"
         );
         assert_eq!(
             render_body("![x](javascript:alert(1))"),

@@ -72,20 +72,11 @@
         <span class="hint">留空的整行会被忽略；保存后按这里的顺序重写</span>
       </div>
     </fieldset>
-      <fieldset style="border:0;padding:0;margin:0">
-        <legend style="font-size:14px;font-weight:600;margin-bottom:8px">配图 <span class="hint">（顺序即帖子页展示顺序）</span></legend>
-        {# 配图管理（列表/排序/删除/上传）是控件库里的 React 控件：web/src/ui/PostImages.tsx #}
-        <div data-island="post-images-edit"
-             data-post-id="{{ id }}"
-             data-csrf="{{ csrf }}"
-             data-max="10"
-             data-images="[{% for image in images %}{&quot;id&quot;:{{ image.id }},&quot;number&quot;:{{ image.number }},&quot;href&quot;:&quot;{{ image.href }}&quot;,&quot;is_first&quot;:{{ image.is_first }},&quot;is_last&quot;:{{ image.is_last }}}{% if !loop.last %},{% endif %}{% endfor %}]"></div>
-        <script type="module" src="/static/islands/postimages.js"></script>
-      </fieldset>
-      {# 正文工具栏：渐进增强（无 JS 时 textarea 照常提交；插入的是 markdown，服务端 render_body 渲染） #}
-      <div data-island="editor-toolbar"
+      {# 正文富文本：控件库里的可复用组件 web/src/ui/RichText.tsx（图片直接嵌在正文里） #}
+      <div data-island="editor"
            data-target="post-body"
-           data-images="[{% for image in images %}{&quot;href&quot;:&quot;{{ image.href }}&quot;}{% if !loop.last %},{% endif %}{% endfor %}]"></div>
+           data-upload="/api/v1/posts/{{ id }}/images"
+           data-csrf="{{ csrf }}"></div>
       <script type="module" src="/static/islands/editor.js"></script>
       <label>正文<textarea name="body" id="post-body" required minlength="2" maxlength="20000">{{ body }}</textarea></label>
     </div>
