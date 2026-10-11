@@ -201,6 +201,7 @@ pwsh -File scripts/smoke.ps1     # 改动触及上传/下载/存储/计数时必
 
 | 项 | 现状 | 下一步 |
 | --- | --- | --- |
+| **自定义分区（新建分区）** | **根因比缺界面更深**：分区 key 写死在 `core::resource::PostSection` **枚举**里，而 `routes::ordered_sections` 用 `PostSection::parse(&key)` 过滤 → **不认识的 key 会被静默丢弃**（2026-10-12 实测：手写 SQL 插入 `emperor`/皇帝区，DB 有行、首页左栏不显示）。管理面板也因此只能改已有分区（排序/封面/权限），没有新建入口 | 把分区从枚举改成「表驱动」：`PostSection` 退化为字符串包装 + 默认展示名/图标查表；`ordered_sections` 不再 parse 过滤；再在管理面板加「分区管理」（新建/改名/归档/删除确认）|
 | **管理员改他人简介**的界面 | 后端 `repo::set_bio` 已支持（同一函数，带审核意见） | 在 `/admin/user/{id}` 上加一个表单 |
 | 缩略图 / 转码 | 表与队列就绪（`post_images` / `image_jobs`），**工作线程未实现** | 接 `image` crate 的异步压缩线程 + 原图保留 API |
 | 分片续传 | 建表与仓储就绪（`upload_sessions`），HTTP 分片接口未接 | 提供 `POST/PATCH` 分片接口 + 合并 |
