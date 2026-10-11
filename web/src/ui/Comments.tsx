@@ -155,6 +155,10 @@ export function Comments({ list, action, csrf, canReply, showActions, loggedIn }
   }
 
   const total = items.reduce((sum, item) => sum + 1 + (item.replies?.length ?? 0), 0)
+  const when = (value: string | number) => {
+    if (typeof value !== 'number') return value
+    return new Date(value * 1000).toLocaleDateString('zh-CN')
+  }
 
   return (
     <section className="card" id="comments">
@@ -186,7 +190,7 @@ export function Comments({ list, action, csrf, canReply, showActions, loggedIn }
                   ? <div className="c-body" dangerouslySetInnerHTML={{ __html: item.body_html }} />
                   : <div className="c-body">{item.body}</div>}
                 <div className="c-actions">
-                  <time className="meta">{item.created_at}</time>
+                  <time className="meta">{when(item.created_at)}</time>
                   {showActions && (
                     <>
                       <button
@@ -221,7 +225,7 @@ export function Comments({ list, action, csrf, canReply, showActions, loggedIn }
                             ? <div className="c-body" dangerouslySetInnerHTML={{ __html: sub.body_html }} />
                             : <div className="c-body">{sub.body}</div>}
                           <div className="c-actions">
-                            <time className="meta">{sub.created_at}</time>
+                            <time className="meta">{when(sub.created_at)}</time>
                             {showActions && (
                               <>
                                 <button className={`c-act c-like${sub.my_vote === 1 ? ' on' : ''}`} type="button" onClick={() => void vote(sub)}>

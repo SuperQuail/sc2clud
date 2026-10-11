@@ -1591,6 +1591,39 @@ pub struct CommentJsonForm {
 }
 
 /// 发回复（JSON）：页面上的表单与楼中楼输入框都走这里，成功后前端只重取评论区。
+/// 评论列表（JSON）：评论控件的数据源（帖子页与详情页共用同一个控件）。
+pub async fn comments_json(
+    State(state): State<AppState>,
+    Path(id): Path<i64>,
+    headers: HeaderMap,
+) -> AppResult<Response> {
+    let viewer = session::current_user(&state, &headers).await.ok().flatten();
+    let viewer_id = viewer.as_ref().map(|user| user.id);
+    let rows = repo::list_comments_for(state.db.pool(), id, viewer_id, 200).await?;
+    let items: Vec<serde_json::Value> = rows
+        .into_iter()
+        .map(|row| {
+            serde_json::json!({
+                "id": row.id,
+                "parent_id": row.parent_id,
+                "author": row.author_display_name,
+                "handle": row.author_handle,
+                "author_id": row.author_id,
+                "avatar": row.author_avatar,
+                "avatar_small": row.author_avatar_small,
+                "title": row.author_title,
+                "title_color": row.author_title_color,
+                "body_html": sc2clud_core::community::render_body(&row.body),
+                "likes": row.likes,
+                "dislikes": row.dislikes,
+                "my_vote": row.my_vote,
+                "created_at": row.created_at,
+            })
+        })
+        .collect();
+    Ok(axum::Json(items).into_response())
+}
+
 pub async fn comment_json(
     State(state): State<AppState>,
     Path(id): Path<i64>,

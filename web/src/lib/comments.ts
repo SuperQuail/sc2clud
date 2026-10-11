@@ -16,6 +16,7 @@ export interface CommentItem {
   likes: number
   dislikes: number
   my_vote: number
+  parent_id?: number | null
   replies?: CommentItem[]
 }
 
@@ -24,9 +25,24 @@ export async function loadComments(url: string): Promise<CommentItem[]> {
   const res = await fetch(appUrl(url))
   if (!res.ok) throw new Error(`加载失败（${res.status}）`)
   const data: unknown = await res.json()
-  if (Array.isArray(data)) return data as CommentItem[]
-  const boxed = data as { comments?: CommentItem[] }
-  return boxed.comments ?? []
+  const raw = Array.isArray(data) ? (data as CommentItem[]) : ((data as { comments?: CommentItem[] }).comments ?? [])
+  return nest(raw)
+}
+
+/** 服务端给的是扁平列表（带 parent_id），控件按楼层组装成楼中楼。 */
+function nest(flat: CommentItem[]): CommentItem[] {
+  const roots: CommentItem[] = []
+  const byId = new Map<number, CommentItem>()
+  for (const item of flat) {
+    item.replies = []
+    byId.set(item.id, item)
+  }
+  for (const item of flat) {
+    const parent = item.parent_id ? byId.get(item.parent_id) : undefined
+    if (parent) parent.replies!.push(item)
+    else roots.push(item)
+  }
+  return roots
 }
 
 /** 发表：服务端是表单端点，csrf 走隐藏字段 */
