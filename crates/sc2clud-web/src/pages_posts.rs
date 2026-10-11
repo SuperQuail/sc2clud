@@ -539,6 +539,8 @@ async fn build_post_page<'a>(
     Ok(PostPageTemplate {
         ui_variant,
         comments: issue_feed.unwrap_or(comments_view),
+        tab: tab.to_string(),
+        issue_state: issue_state.to_string(),
         issue_open,
         issue_total,
         tabs,
