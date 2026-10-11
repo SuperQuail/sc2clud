@@ -251,8 +251,10 @@ pub struct PostPageTemplate<'a> {
     pub tabs: Vec<PostTabView>,
     /// 当前查看的 issue（tab=issue 时才有）。
     pub issue_detail: Option<IssueDetailView>,
-    /// 该 issue 的评论（与帖子评论共用同一套展示类名）。
-    pub issue_comments: Vec<IssueCommentView>,
+    /// 评论提交地址（帖子与 issue 共用同一个评论控件，只是地址不同）。
+    pub comment_action: String,
+    /// 是否显示点赞/回复等动作（issue 评论暂时没有这些端点）。
+    pub show_comment_actions: bool,
     /// issue 筛选（issues 标签用）：状态 open|closed|all 与类型。
     pub issue_state: String,
     pub issue_kind: String,
@@ -569,15 +571,6 @@ pub struct PostTabView {
     pub active: bool,
     /// 右侧小红数字（例如待处理条数）。
     pub badge: Option<i64>,
-}
-
-/// issue 详情里的一条评论。
-#[derive(Debug, Clone)]
-pub struct IssueCommentView {
-    pub author: String,
-    pub avatar: Option<String>,
-    pub body: String,
-    pub created: String,
 }
 
 /// issue 详情（tab=issue）。
