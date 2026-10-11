@@ -134,8 +134,16 @@ export function Comments({ list, action, csrf, canReply, showActions, loggedIn }
     try {
       setItems(await loadComments(list))
       setError('')
-    } catch (e) {
-      setError(e instanceof Error ? e.message : '加载失败')
+    } catch (first) {
+      // 站点的并发闸门会偶发 429：退避后自动重试一次，再失败才提示
+      try {
+        await new Promise((done) => setTimeout(done, 900))
+        setItems(await loadComments(list))
+        setError('')
+      } catch (e) {
+        setError(e instanceof Error ? e.message : '加载失败')
+      }
+      void first
     } finally {
       setLoading(false)
     }
@@ -164,10 +172,14 @@ export function Comments({ list, action, csrf, canReply, showActions, loggedIn }
     <section className="card" id="comments">
       <h2>回复 <span className="count">{total}</span></h2>
       {loading && <p className="hint">正在加载回复…</p>}
+      {error && (
+        <p className="hint">
+          <button className="btn sm" type="button" onClick={() => { setLoading(true); void reload() }}>重试</button>
+        </p>
+      )}
       {error && <p className="hint" style={{ color: '#b91c1c' }}>{error}</p>}
       {!loading && items.length === 0 && (
         <div className="community-empty">
-          <img src="/static/art/miyin/smile-160.webp" width={80} height={80} alt="" />
           <p>还没有回复，来说两句吧。</p>
         </div>
       )}

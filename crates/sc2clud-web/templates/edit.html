@@ -107,16 +107,14 @@
         </figure>
         {% endfor %}
       </div>
-      <p class="hint">用 ← / → 调整顺序，✕ 删除；顺序就是帖子页里的展示顺序。</p>
       {% endif %}
-      <div class="upload-row" data-post-upload data-post-id="{{ id }}" data-csrf="{{ csrf }}">
-        <input type="file" accept="image/*" id="post-image-input" multiple hidden>
-        <button class="btn ghost sm" type="button" id="post-image-add">添加配图</button>
-        <span class="hint" data-post-image-status>最多 10 张，单张 50 MB 以内；上传后立即生效</span>
-      </div>
-    </fieldset>
-    <label>正文<textarea name="body" required minlength="2" maxlength="20000">{{ body }}</textarea></label>
-    <div class="actions-inline">
+  {# 配图上传：统一控件（压缩为内置行为） #}
+  <div data-island="uploader"
+       data-endpoint="/api/v1/posts/{{ id }}/images"
+       data-csrf="{{ csrf }}"
+       data-max="10"
+       data-existing="{{ images.len() }}"></div>
+  <script type="module" src="/static/islands/uploader.js"></script>
       <button class="btn" type="submit">保存</button>
       <a class="btn ghost" href="/p/{{ id }}">取消</a>
     </div>

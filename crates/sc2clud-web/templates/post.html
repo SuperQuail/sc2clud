@@ -198,18 +198,7 @@
     {% endfor %}
   </div>
   {% endif %}
-
-  {# 配图上传：统一的 Uploader 控件（原图 / 压缩可选），逻辑在 web/src/ui/Uploader.tsx #}
-  {% if post.can_edit %}
-  <div data-island="uploader"
-       data-endpoint="/api/v1/posts/{{ post.id }}/images"
-       data-csrf="{{ csrf }}"
-       data-max="10"
-       data-existing="{{ post.image_count }}"></div>
-  <script type="module" src="/static/islands/uploader.js"></script>
-  {% endif %}
-  <div class="post-actions">
-    <form method="post" action="/p/{{ post.id }}/like" class="inline-form" data-like>
+  {# 配图上传改到编辑页（帖子页只展示） #}
       <input type="hidden" name="csrf" value="{{ csrf }}">
       <button class="btn {% if post.liked %}liked{% else %}ghost{% endif %}" type="submit">
         <svg viewBox="0 0 20 20" width="16" height="16" aria-hidden="true"><path d="M6 9.4l3.6-6.2c.6-1 2.2-.6 2.2.6v4h3.1c1.1 0 1.9 1 1.7 2.1l-1 5c-.2.9-.9 1.5-1.7 1.5H6z" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/><path d="M6 9.4H3v8h3z" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/></svg>

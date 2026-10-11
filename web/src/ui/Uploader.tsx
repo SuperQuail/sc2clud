@@ -46,7 +46,6 @@ async function compress(file: File, targetBytes: number): Promise<Blob> {
  * 帖子配图、issue 配图、将来任何地方都用它 —— 不要再各写一份上传 JS。
  */
 export function Uploader({ endpoint, csrf, max = 10, targetBytes = 512 * 1024, existing = 0 }: UploaderProps) {
-  const [mode, setMode] = useState<UploadMode>('compressed')
   const [items, setItems] = useState<Item[]>([])
   const [busy, setBusy] = useState(false)
   const [msg, setMsg] = useState('')
@@ -63,13 +62,14 @@ export function Uploader({ endpoint, csrf, max = 10, targetBytes = 512 * 1024, e
     setMsg('')
     const next: Item[] = []
     for (const file of picked) {
-      const blob = mode === 'original' ? file : await compress(file, targetBytes)
+      // 压缩是内置行为（2C2G + 10Mbps 的机器不该收原图）；小图压不动就原样上传
+      const blob = file.size <= targetBytes ? file : await compress(file, targetBytes)
       next.push({
         key: `${file.name}-${file.size}-${next.length}`,
         name: file.name,
         originalBytes: file.size,
         bytes: blob.size,
-        mode,
+        mode: 'compressed' as UploadMode,
         preview: URL.createObjectURL(blob),
         blob,
       })
@@ -103,16 +103,6 @@ export function Uploader({ endpoint, csrf, max = 10, targetBytes = 512 * 1024, e
 
   return (
     <div className="uploader-ui">
-      <div className="uploader-modes" role="radiogroup" aria-label="上传方式">
-        <label className={mode === 'compressed' ? 'on' : ''}>
-          <input type="radio" name="upload-mode" checked={mode === 'compressed'} onChange={() => setMode('compressed')} />
-          压缩后上传<span>省流量，画质够看</span>
-        </label>
-        <label className={mode === 'original' ? 'on' : ''}>
-          <input type="radio" name="upload-mode" checked={mode === 'original'} onChange={() => setMode('original')} />
-          上传原图<span>保留原始画质，体积大</span>
-        </label>
-      </div>
 
       <div className="uploader-actions">
         <button className="ui-btn ui-btn-sm" type="button" disabled={busy} onClick={() => input.current?.click()}>
