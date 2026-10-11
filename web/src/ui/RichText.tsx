@@ -53,10 +53,15 @@ export function RichText({ targetId, initial, uploadEndpoint, csrf }: RichTextPr
     },
   })
 
-  // 组件挂载时把 target 的初值同步进来（模板本来就是服务端渲染的，无 JS 也能用）
+  // 编辑器起来了才隐藏原始 textarea：它是表单字段（提交用），无 JS 时必须仍然可见可用
   useEffect(() => {
     const target = document.getElementById(targetId) as HTMLTextAreaElement | null
-    if (target && target.value) markdown.current = target.value
+    if (!target) return
+    if (target.value) markdown.current = target.value
+    target.hidden = true
+    return () => {
+      target.hidden = false
+    }
   }, [targetId])
 
   async function onPick(event: ChangeEvent<HTMLInputElement>) {
