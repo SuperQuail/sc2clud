@@ -6,7 +6,6 @@ export interface PostImage {
   id: number
   number: number
   href: string
-  url: string
   is_first: boolean
   is_last: boolean
 }
@@ -57,7 +56,7 @@ export function PostImages({ postId, csrf, images: initial, max, base }: PostIma
           {images.map((image) => (
             <figure className="image-cell" key={image.id}>
               <a href={image.href} target="_blank" rel="noopener">
-                <img data-post-image src={image.url} alt="" />
+                <img data-post-image src={image.href} alt="" />
               </a>
               <figcaption>
                 <span className="meta">#{image.number}</span>

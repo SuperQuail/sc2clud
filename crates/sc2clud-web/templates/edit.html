@@ -72,49 +72,18 @@
         <span class="hint">留空的整行会被忽略；保存后按这里的顺序重写</span>
       </div>
     </fieldset>
-    <fieldset style="border:0;padding:0;margin:0">
-      <legend style="font-size:14px;font-weight:600;margin-bottom:8px">配图 <span class="hint">{{ image_count }} / 10</span></legend>
-      {% if !images.is_empty() %}
-      <div class="image-manager">
-        {% for image in images %}
-        <figure class="image-cell">
-          <a href="{{ image.href }}" target="_blank" rel="noopener"><img data-post-image src="{{ image.href }}" loading="lazy" alt="配图 {{ image.number }}"></a>
-          <figcaption>
-            <span class="meta">#{{ image.number }}</span>
-            <span class="image-actions">
-              <form method="post" action="/p/{{ id }}/images/{{ image.id }}/move">
-                <input type="hidden" name="csrf" value="{{ csrf }}">
-                <input type="hidden" name="dir" value="forward">
-                <button class="icon-btn" type="submit" title="往前挪一位"{% if image.is_first %} disabled{% endif %}>
-                  <svg viewBox="0 0 16 16" width="15" height="15"><path d="M10 3L5 8l5 5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
-                </button>
-              </form>
-              <form method="post" action="/p/{{ id }}/images/{{ image.id }}/move">
-                <input type="hidden" name="csrf" value="{{ csrf }}">
-                <input type="hidden" name="dir" value="back">
-                <button class="icon-btn" type="submit" title="往后挪一位"{% if image.is_last %} disabled{% endif %}>
-                  <svg viewBox="0 0 16 16" width="15" height="15"><path d="M6 3l5 5-5 5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
-                </button>
-              </form>
-              <form method="post" action="/p/{{ id }}/images/{{ image.id }}/delete" data-confirm="删除这张配图？">
-                <input type="hidden" name="csrf" value="{{ csrf }}">
-                <button class="icon-btn danger" type="submit" title="删除这张配图">
-                  <svg viewBox="0 0 16 16" width="15" height="15"><path d="M4 4l8 8M12 4l-8 8" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
-                </button>
-              </form>
-            </span>
-          </figcaption>
-        </figure>
-        {% endfor %}
-      </div>
-      {% endif %}
-  {# 配图上传：统一控件（压缩为内置行为） #}
-  <div data-island="uploader"
-       data-endpoint="/api/v1/posts/{{ id }}/images"
-       data-csrf="{{ csrf }}"
-       data-max="10"
-       data-existing="{{ images.len() }}"></div>
-  <script type="module" src="/static/islands/uploader.js"></script>
+      <fieldset style="border:0;padding:0;margin:0">
+        <legend style="font-size:14px;font-weight:600;margin-bottom:8px">配图 <span class="hint">（顺序即帖子页展示顺序）</span></legend>
+        {# 配图管理（列表/排序/删除/上传）是控件库里的 React 控件：web/src/ui/PostImages.tsx #}
+        <div data-island="post-images-edit"
+             data-post-id="{{ id }}"
+             data-csrf="{{ csrf }}"
+             data-max="10"
+             data-images="[{% for image in images %}{&quot;id&quot;:{{ image.id }},&quot;number&quot;:{{ image.number }},&quot;href&quot;:&quot;{{ image.href }}&quot;,&quot;is_first&quot;:{{ image.is_first }},&quot;is_last&quot;:{{ image.is_last }}}{% if !loop.last %},{% endif %}{% endfor %}]"></div>
+        <script type="module" src="/static/islands/postimages.js"></script>
+      </fieldset>
+    </div>
+    <div class="actions-inline">
       <button class="btn" type="submit">保存</button>
       <a class="btn ghost" href="/p/{{ id }}">取消</a>
     </div>
@@ -146,42 +115,6 @@
     if (!rows.querySelector('.source-row')) rows.appendChild(makeRow());
     Array.prototype.forEach.call(rows.querySelectorAll('.source-row'), bind);
     add.addEventListener('click', function () { rows.appendChild(makeRow()); });
-  })();
-</script>
-<script>
-  // 编辑页也能加配图：直接传文件本体，走同一个接口
-  (function () {
-    var box = document.querySelector('[data-post-upload]');
-    if (!box) return;
-    var input = document.getElementById('post-image-input');
-    var button = document.getElementById('post-image-add');
-    var status = box.querySelector('[data-post-image-status]');
-    if (!input || !button) return;
-    var csrf = box.dataset.csrf;
-    var id = box.dataset.postId;
-    button.addEventListener('click', function () { input.click(); });
-    input.addEventListener('change', function () {
-      var files = Array.prototype.slice.call(input.files || []);
-      if (!files.length) return;
-      var send = function (index) {
-        if (index >= files.length) {
-          if (status) status.textContent = '已上传，刷新中…';
-          location.reload();
-          return;
-        }
-        if (status) status.textContent = '上传中 ' + (index + 1) + '/' + files.length + '…';
-        fetch('/api/v1/posts/' + id + '/images', {
-          method: 'POST',
-          headers: { 'x-csrf-token': csrf },
-          body: files[index],
-          credentials: 'same-origin',
-        })
-          .then(function (r) { return r.ok ? r.json() : r.json().then(function (d) { return Promise.reject(d.message || r.status); }); })
-          .then(function () { send(index + 1); })
-          .catch(function (message) { if (status) status.textContent = '上传失败：' + message; });
-      };
-      send(0);
-    });
   })();
 </script>
 {% endblock %}
