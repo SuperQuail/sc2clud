@@ -36,64 +36,6 @@
       {% if is_super %}<a class="btn" href="#create">添加用户</a>{% endif %}
     </div>
 
-
-    {# 编辑用户弹窗：列表里点铅笔打开，改完直接保存（等级也就地切换，不用跳页） #}
-    <dialog class="modal" id="user-dialog">
-      <form class="modal-form" method="post" data-async data-after="refresh" id="user-form" action="/admin/users/0/update">
-        <input type="hidden" name="csrf" value="{{ csrf }}">
-        <header class="modal-head">
-          <div class="modal-who">
-            <span class="avatar-initial avatar-lg c0" id="modal-initial" hidden>?</span>
-            <img class="avatar avatar-xl" id="modal-avatar" src="/static/art/miyin-chibi-160.webp" alt="" width="64" height="64" hidden>
-            <div>
-              <strong id="modal-name">—</strong>
-              <div class="meta"><span id="modal-handle"></span></div>
-            </div>
-          </div>
-          <button class="icon-btn" type="button" data-modal-close aria-label="关闭">
-            <svg viewBox="0 0 16 16" width="15" height="15"><path d="M4 4l8 8M12 4l-8 8" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg>
-          </button>
-        </header>
-        <div class="modal-body">
-          <label>角色<select name="role" id="modal-role">
-            {% for role in roles %}
-            <option value="{{ role.0 }}">{{ role.1 }}</option>
-            {% endfor %}
-          </select></label>
-          <label>显示名<input type="text" name="display_name" id="modal-display" maxlength="20"></label>
-          <label>电子邮箱<input type="text" id="modal-email" disabled></label>
-          <label>磁盘预算（GB）<input type="number" name="quota_gb" id="modal-quota" min="0" max="10240" step="0.5"></label>
-          <label class="check"><input type="checkbox" name="trusted" value="1" id="modal-trusted"> 信任（发帖只走自动审核）</label>
-          <label class="check"><input type="checkbox" name="activated" value="1" id="modal-activated"> 账号已激活</label>
-          <label>新密码（留空表示不改）<input type="password" name="new_password" id="modal-password" minlength="8" placeholder="至少 8 位"></label>
-          <p class="hint" id="modal-note"></p>
-        </div>
-        <footer class="modal-foot">
-          <a class="btn ghost sm" id="modal-more" href="#">更多设置</a>
-          <button class="btn sm" type="submit">保存</button>
-        </footer>
-        <fieldset class="modal-sanctions">
-          <legend>处罚（禁止发帖 / 禁止评论，可限定分区）</legend>
-          <p class="hint" data-sanction-list>（点用户行后显示当前处罚）</p>
-          <div class="sanction-add">
-            <select data-sanction-kind><option value="post">禁止发帖</option><option value="reply">禁止评论</option></select>
-            <select data-sanction-scope><option value="">全站</option>{% for section in sections %}<option value="{{ section.value }}">{{ section.label }}</option>{% endfor %}</select>
-            <input type="text" data-sanction-until placeholder="到期：3d / 12h / 2026-10-20 12:00" maxlength="32">
-            <button class="btn sm" type="button" data-sanction-apply>设置</button>
-          </div>
-          <p class="hint" data-sanction-note></p>
-        </fieldset>
-        <label>禁言（限期禁止发帖）<select data-modal-ban>{% for option in ban_options %}<option value="{{ option.0 }}">{{ option.1 }}</option>{% endfor %}</select></label>
-        <fieldset class="modal-groups">
-          <legend>用户组（可多选）</legend>
-          {% for group in groups %}
-          <label><input type="checkbox" name="user-groups" value="{{ group.id }}" data-modal-group> {{ group.name }}</label>
-          {% endfor %}
-          {% if groups.is_empty() %}<p class="hint">还没有用户组</p>{% endif %}
-        </fieldset>
-      </form>
-    </dialog>
-
     {% if is_super %}
     <section class="panel" id="create">
       <h2>添加用户</h2>
@@ -120,134 +62,16 @@
 
     {% if !pending.is_empty() %}
     <section class="panel" id="pending">
-      <h2>待审核 <span class="count">{{ pending.len() }}</span></h2>
-      <p class="hint">审核机判为「审核中」的帖子只有作者与管理员可见，这里人工过审或拒绝。</p>
-      <div class="review-list">
-        {% for post in pending %}
-        <article class="review-row">
-          <div class="review-main">
-            <div class="chips"><span class="chip">{{ post.section_label }}</span><span class="chip">{{ post.kind_label }}</span></div>
-            <h3><a href="/p/{{ post.id }}">{{ post.title }}</a></h3>
-            <p class="row-preview">{{ post.preview }}</p>
-            <p class="meta byline">{{ post.author }} · {{ post.time_ago }}</p>
-          </div>
-          <div class="review-actions">
-            <form method="post" action="/admin/posts/{{ post.id }}/approve" data-async data-after="refresh" class="inline-form">
-              <input type="hidden" name="csrf" value="{{ csrf }}">
-              <button class="btn ok sm" type="submit">通过</button>
-            </form>
-            <form method="post" action="/admin/posts/{{ post.id }}/revision" data-async data-after="refresh" class="inline-form">
-              <input type="hidden" name="csrf" value="{{ csrf }}">
-              <button class="btn ghost sm" type="submit">打回修改</button>
-              <input type="text" name="note" placeholder="修改意见（可选）" maxlength="80" aria-label="修改意见">
-            </form>
-            <form method="post" action="/admin/posts/{{ post.id }}/reject" data-async data-after="refresh" class="inline-form">
-              <input type="hidden" name="csrf" value="{{ csrf }}">
-              <button class="btn ghost danger sm" type="submit">拒绝</button>
-              <input type="text" name="note" placeholder="拒绝理由（可选）" maxlength="80" aria-label="拒绝理由">
-            </form>
-          </div>
-        </article>
-        {% endfor %}
-      </div>
+      {# 待审核：React 控件（web/src/ui/AdminPending.tsx） #}
+      <div data-island="admin-pending" data-csrf="{{ csrf }}" data-json="{{ pending_json }}"></div>
+      <script type="module" src="/static/islands/admin-pending.js"></script>
     </section>
     {% endif %}
 
     <section class="panel" id="users">
-      {% if users.is_empty() %}
-      <p class="empty">没有匹配的用户。</p>
-      {% else %}
-    {# 参考 Open WebUI：外层横向滚动容器 + table-auto，表格放不下时整体横向滚动，
-       而不是压缩列宽把按钮挤重叠。 #}
-    <div class="table-wrap">
-    <table class="admin-table users">
-      <thead>
-        <tr><th>名称</th><th>角色</th><th>电子邮箱</th><th>最后在线时间</th><th>创建于</th><th></th></tr>
-      </thead>
-      <tbody>
-        {% for user in users %}
-        <tr data-user-row
-            data-id="{{ user.id }}"
-            data-handle="{{ user.handle }}"
-        data-user-id="{{ user.id }}"
-        data-sanctions="{{ user.sanctions }}"
-        data-groups="{% for g in user.groups %}{{ g }}{% if !loop.last %},{% endif %}{% endfor %}"
-            data-name="{{ user.display_name }}"
-            data-role="{{ user.role }}"
-            data-email="{{ user.email }}"
-            data-quota="{{ user.quota_gb }}"
-            data-trusted="{% if user.trusted %}1{% else %}0{% endif %}"
-            data-activated="{% if user.activated %}1{% else %}0{% endif %}"
-            data-is-self="{% if user.is_self %}1{% else %}0{% endif %}"
-            data-avatar="{% if let Some(avatar) = user.avatar %}{{ avatar }}{% endif %}"
-            data-initial="{{ user.initial }}"
-            data-color="{{ user.color_index }}">
-          <td class="name-cell">
-            <span class="name-wrap">
-            {% if let Some(avatar) = user.avatar %}
-            <img class="avatar avatar-sm" src="/avatar/{{ avatar }}" alt="" width="28" height="28" loading="lazy">
-            {% else %}
-            <span class="avatar-initial c{{ user.color_index }}" aria-hidden="true">{{ user.initial }}</span>
-            {% endif %}
-            <span class="user-name" title="{{ user.display_name }}">{{ user.display_name }}</span>
-            {% if user.activated %}<span class="tag ok" title="可以登录、发帖与上传">已激活</span>{% else %}<span class="tag warn" title="未激活：不能发帖与上传，需要管理员激活">未激活</span>{% endif %}
-            {% if user.online %}<span class="dot on" title="最近 5 分钟有活动"></span>{% endif %}
-            {% if user.trusted %}<span class="tag ok" title="发帖只走自动审核">信任</span>{% endif %}
-            {% if !user.ban_label.is_empty() %}<span class="tag ban">{{ user.ban_label }}</span>{% endif %}
-            {% if user.is_self %}<span class="tag">我</span>{% endif %}
-            </span>
-          </td>
-          <td class="role-cell">
-            {# 参考 Open WebUI：角色本身是个按钮，点开直接改等级（这就是「快捷切换」） #}
-            <details class="role-menu">
-              <summary class="role-badge role-{{ user.role }}">{{ user.role_label }}</summary>
-              <div class="role-menu-panel">
-                {% for role in roles %}
-                <form method="post" data-async data-after="refresh" action="/admin/users/{{ user.id }}/role">
-                  <input type="hidden" name="csrf" value="{{ csrf }}">
-                  <input type="hidden" name="role" value="{{ role.0 }}">
-                  <button class="role-option{% if role.0 == user.role %} active{% endif %}" type="submit">{{ role.1 }}</button>
-                </form>
-                {% endfor %}
-              </div>
-            </details>
-          </td>
-          <td class="muted email-cell">{{ user.email }}</td>
-          <td class="muted">{{ user.last_seen }}</td>
-          <td class="muted">{{ user.created_at }}</td>
-          <td class="row-actions">
-            <button class="icon-btn" type="button" data-edit-user title="编辑用户">
-              <svg viewBox="0 0 16 16" width="15" height="15"><path d="M3 13h3l7-7-3-3-7 7v3z" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/></svg>
-            </button>
-            <button class="icon-btn" type="button" title="设置用户组" aria-label="设置用户组" data-user-groups="{{ user.id }}">组</button>
-        <a class="icon-btn" href="/u/{{ user.handle }}" title="查看主页" aria-label="查看主页">
-              <svg viewBox="0 0 16 16" width="15" height="15"><path d="M1 8s2.6-4.5 7-4.5S15 8 15 8s-2.6 4.5-7 4.5S1 8 1 8z" fill="none" stroke="currentColor" stroke-width="1.4"/><circle cx="8" cy="8" r="1.8" fill="currentColor"/></svg>
-            </a>
-            <a class="icon-btn" href="/admin/users/{{ user.id }}" title="更多设置" aria-label="更多设置">
-              <svg viewBox="0 0 16 16" width="15" height="15"><path d="M3 8h10M8 3v10" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
-            </a>
-            <form class="inline-form" method="post" data-async data-after="refresh" action="/admin/users/{{ user.id }}/trusted">
-              <input type="hidden" name="csrf" value="{{ csrf }}">
-              <input type="hidden" name="trusted" value="{% if user.trusted %}0{% else %}1{% endif %}">
-              <button class="icon-btn {% if user.trusted %}danger{% else %}ok{% endif %}" type="submit" title="{% if user.trusted %}取消信任（红色＝撤销）{% else %}设为信任（绿色＝授予）{% endif %}">
-                <svg viewBox="0 0 16 16" width="15" height="15"><path d="M8 2l1.8 3.9 4.2.5-3.1 2.9.8 4.2L8 11.6 4.3 13.5l.8-4.2L2 6.4l4.2-.5z" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/></svg>
-              </button>
-            </form>
-            {% if !user.is_self %}
-            <form class="inline-form" method="post" data-async data-after="refresh" action="/admin/users/{{ user.id }}/{% if user.activated %}deactivate{% else %}activate{% endif %}">
-              <input type="hidden" name="csrf" value="{{ csrf }}">
-              <button class="icon-btn {% if user.activated %}danger{% else %}ok{% endif %}" type="submit" title="{% if user.activated %}停用账号（危险操作，按钮为红色）{% else %}激活账号{% endif %}">
-                <svg viewBox="0 0 16 16" width="15" height="15"><path d="M8 2v6" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/><path d="M4.6 4.4a5 5 0 106.8 0" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
-              </button>
-            </form>
-            {% endif %}
-          </td>
-        </tr>
-        {% endfor %}
-      </tbody>
-    </table>
-    </div>
-    {% endif %}
+      {# 用户列表 + 角色菜单 + 编辑弹窗：React 控件（web/src/ui/AdminUsers.tsx） #}
+      <div data-island="admin-users" data-csrf="{{ csrf }}" data-json="{{ users_json }}"></div>
+      <script type="module" src="/static/islands/admin-users.js"></script>
     </section>
 
     {% if is_super %}
@@ -267,13 +91,9 @@
     {% endif %}
 
   <section class="panel" id="community-switch">
-    <h2>社区开关</h2>
-    <form method="post" action="/admin/settings/block-reply" class="acl-row">
-      <input type="hidden" name="csrf" value="{{ csrf }}">
-      <label class="acl-switch"><input type="checkbox" name="enabled" value="1"{% if block_reply_enforced %} checked{% endif %}><span>被拉黑后不能在对方帖子下回复</span></label>
-      <button class="btn sm" type="submit">保存</button>
-    </form>
-    <p class="hint">默认关闭（现状）：被拉黑只影响私信与列表显示；开启后，被他拉黑的人无法在他的帖子下回复。</p>
+    {# 社区开关：React 控件（web/src/ui/AdminCommunity.tsx） #}
+    <div data-island="admin-community" data-csrf="{{ csrf }}" data-json="{{ community_json }}"></div>
+    <script type="module" src="/static/islands/admin-community.js"></script>
   </section>
 
 <section class="panel" id="acl">
@@ -352,10 +172,6 @@
 .group-list{display:flex;flex-direction:column;gap:10px;margin-bottom:12px}
 .group-card{border:1px solid var(--line,#e5e7eb);border-radius:10px;padding:10px 12px}
 .group-card.archived{opacity:.6}
-.tag.ban{border:1px solid #dc2626;background:#fee2e2;color:#991b1b}
-.sanction-add{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin:6px 0}
-.sanction-add input{padding:6px 10px;border:1px solid var(--line,#e5e7eb);border-radius:8px;background:none;color:inherit;font:inherit;font-size:13px}
-.sanction-row{display:inline-flex;align-items:center;gap:6px;margin:0 8px 6px 0;padding:3px 8px;border:1px solid var(--line,#e5e7eb);border-radius:999px;font-size:12px}
 .group-head{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
 .group-actions{margin-left:auto;display:flex;gap:6px;align-items:center}
 .group-actions form{display:inline}
@@ -477,152 +293,6 @@
     });
   }
 
-  // 用户组编辑：点用户行先记住该用户的组 → 弹窗打开时预勾选 → 保存时一并提交到 /admin/users/{id}/groups
-  const groupBoxes = () => Array.from(document.querySelectorAll('[data-modal-group]'));
-  const dialog = document.getElementById('user-dialog');
-  let pendingGroups = [];
-  let pendingUser = '';
-  let pendingSanctions = '';
-  document.querySelectorAll('tr[data-groups]').forEach((row) => {
-    row.addEventListener('click', () => {
-      pendingGroups = (row.dataset.groups || '').split(',').filter(Boolean);
-      pendingUser = row.dataset.userId || '';
-      pendingSanctions = row.dataset.sanctions || '';
-      if (typeof renderSanctions === 'function') renderSanctions();
-    });
-  });
-  // 「组」按钮：记住该用户的组，然后点真正的编辑按钮把弹窗打开（原来是死按钮，点了没反应）
-  document.querySelectorAll('[data-user-groups]').forEach((btn) => {
-    btn.addEventListener('click', (event) => {
-      event.stopPropagation();
-      const row = btn.closest('tr');
-      pendingGroups = ((row && row.dataset.groups) || '').split(',').filter(Boolean);
-      pendingUser = btn.dataset.userGroups || '';
-      pendingGroupsReady = true;
-      const edit = row && row.querySelector('[data-edit-user]');
-      if (edit) edit.click();
-      syncGroups();
-    });
-  });
-  let pendingGroupsReady = false;
-  const syncGroups = () => {
-    groupBoxes().forEach((box) => { box.checked = pendingGroups.includes(box.value); });
-  };
-  if (dialog) {
-    // 弹窗是 <dialog>：用 MutationObserver 盯 open 属性，打开时同步一次
-    new MutationObserver(syncGroups).observe(dialog, { attributes: true, attributeFilter: ['open'] });
-    const form = dialog.querySelector('#user-form');
-    if (form) {
-      form.addEventListener('submit', () => {
-        // 弹窗 action 里的 id 由 admin.js 写入；万一还没写就用「组」按钮记下的 id
-        const id = pendingUser || (form.action.match(/\/users\/(\d+)\//) || [])[1];
-        if (!id || id === '0') return;
-        const csrf = form.querySelector('input[name=csrf]');
-        const body = new URLSearchParams();
-        body.set('csrf', csrf ? csrf.value : '');
-        groupBoxes().filter((box) => box.checked).forEach((box) => body.append('groups', box.value));
-        // 与保存并发发出（fire-and-forget）：用户资料照旧由原表单提交
-        // 禁言时长与用户组一起提交（都是并发 fire-and-forget）
-        const banSelect = dialog.querySelector('[data-modal-ban]');
-        if (banSelect) {
-          const banBody = new URLSearchParams();
-          banBody.set('csrf', csrf ? csrf.value : '');
-          banBody.set('hours', banSelect.value);
-          fetch('/admin/users/' + id + '/ban', {
-            method: 'POST',
-            headers: { 'content-type': 'application/x-www-form-urlencoded' },
-            body: banBody,
-          }).catch(() => {});
-        }
-        fetch('/admin/users/' + id + '/groups', {
-          method: 'POST',
-          headers: { 'content-type': 'application/x-www-form-urlencoded' },
-          body,
-        }).catch(() => {});
-      });
-    }
-  }
-
-  // 矩阵保存：收集该行的角色门槛 / 启用开关 / 绿色标签，POST /admin/sections/{key}/acl
-  document.querySelectorAll('[data-acl-chip]').forEach((chip) => {
-    chip.addEventListener('click', () => {
-      const on = chip.classList.toggle('is-on');
-      chip.setAttribute('aria-pressed', on ? 'true' : 'false');
-    });
-  });
-  document.querySelectorAll('[data-acl-save]').forEach((btn) => {
-    btn.addEventListener('click', async () => {
-      const row = btn.closest('[data-acl-row]');
-      if (!row) return;
-      const csrf = document.querySelector('input[name=csrf]');
-      const chips = Array.from(row.querySelectorAll('[data-acl-chip].is-on')).map((chip) => chip.dataset.groupId);
-      const body = {
-        csrf: csrf ? csrf.value : '',
-        post_min_role: row.querySelector('[data-acl-post]').value,
-        reply_min_role: row.querySelector('[data-acl-reply]').value,
-        group_mode: row.querySelector('[data-acl-mode]').value,
-        groups: chips.join(','),
-      };
-      const res = await fetch('/admin/sections/' + btn.dataset.aclSave + '/acl', {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify(body),
-      });
-      const label = btn.textContent;
-      btn.textContent = res.ok ? '已保存 ✓' : '失败 ' + res.status;
-      setTimeout(() => { btn.textContent = label; }, 1600);
-    });
-  });
-
-  // 处罚：打开弹窗时列出该用户生效中的处罚，并支持就地设置/解除
-  const sanctionList = document.querySelector('[data-sanction-list]');
-  const sanctionNote = document.querySelector('[data-sanction-note]');
-  const renderSanctions = () => {
-    if (!sanctionList) return;
-    const items = (pendingSanctions || '').split(';').filter(Boolean);
-    if (!items.length) { sanctionList.textContent = '当前没有处罚'; return; }
-    sanctionList.innerHTML = '';
-    items.forEach((item) => {
-      const [kind, section, until] = item.split(':');
-      const row = document.createElement('span');
-      row.className = 'sanction-row';
-      const when = new Date(Number(until) * 1000).toISOString().slice(0, 16).replace('T', ' ');
-      row.textContent = (kind === 'reply' ? '禁止评论' : '禁止发帖') + (section ? ' @ ' + section : '（全站）') + ' 至 ' + when + ' UTC ';
-      const drop = document.createElement('button');
-      drop.className = 'btn ghost sm';
-      drop.type = 'button';
-      drop.textContent = '解除';
-      drop.addEventListener('click', () => sendSanction(kind, section, ''));
-      row.appendChild(drop);
-      sanctionList.appendChild(row);
-    });
-  };
-  const sendSanction = async (kind, section, until) => {
-    const id = pendingUser || (dialog && (dialog.querySelector('#user-form').action.match(/\/users\/(\d+)\//) || [])[1]);
-    if (!id || id === '0') { if (sanctionNote) sanctionNote.textContent = '请先从用户列表点一个用户'; return; }
-    const csrf = dialog && dialog.querySelector('input[name=csrf]');
-    const body = new URLSearchParams();
-    body.set('csrf', csrf ? csrf.value : '');
-    body.set('kind', kind);
-    body.set('section', section || '');
-    body.set('until', until || '');
-    const res = await fetch('/admin/users/' + id + '/sanction', {
-      method: 'POST',
-      headers: { 'content-type': 'application/x-www-form-urlencoded' },
-      body,
-    });
-    if (sanctionNote) sanctionNote.textContent = res.ok ? '已提交（刷新页面后可在列表看到）' : '失败 ' + res.status;
-  };
-  const applySanction = document.querySelector('[data-sanction-apply]');
-  if (applySanction) {
-    applySanction.addEventListener('click', () => {
-      const kind = document.querySelector('[data-sanction-kind]').value;
-      const scope = document.querySelector('[data-sanction-scope]').value;
-      const until = document.querySelector('[data-sanction-until]').value;
-      sendSanction(kind, scope, until);
-    });
-  }
-  new MutationObserver(renderSanctions).observe(document.body, { subtree: true, attributes: true, attributeFilter: ['open'] });
 
   // 用户组：点「编辑」展开就地改名/说明
   document.querySelectorAll('[data-group-edit]').forEach((btn) => {
@@ -631,17 +301,6 @@
       if (form) form.hidden = !form.hidden;
     });
   });
-
-  // 允许的用户组：点一下切换选中（选中变绿）。设计稿阶段只改外观，保存接口待接。
-  document.querySelectorAll('[data-group-chip]').forEach((chip) => {
-    chip.disabled = false;
-    chip.addEventListener('click', () => {
-      const on = chip.classList.toggle('is-on');
-      chip.setAttribute('aria-pressed', on ? 'true' : 'false');
-    });
-  });
-  // 启用用户组检查的开关在设计稿阶段可拨动（保存待接）
-  document.querySelectorAll('[data-group-check] input, input[data-group-check]').forEach((box) => { box.disabled = false; });
 
   // 分区调序：fetch 提交 → 按返回的新顺序就地重排封面格（不刷新页面）
   const orderRoot = document.querySelector('.cover-grid');

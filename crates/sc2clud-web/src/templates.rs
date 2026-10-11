@@ -893,6 +893,12 @@ pub struct AdminTemplate<'a> {
     pub acl_variant: u8,
     /// 分区发言权限矩阵的初值（JSON）：交给 React 控件
     pub acl_json: String,
+    /// 用户列表 + 编辑弹窗的初值（JSON）：交给 React 控件
+    pub users_json: String,
+    /// 待审核列表的初值（JSON）：交给 React 控件
+    pub pending_json: String,
+    /// 社区开关的初值（JSON）：交给 React 控件
+    pub community_json: String,
     /// 用户组列表（含人数与规则）。
     pub groups: Vec<AdminGroupView>,
     /// 禁言时长选项（值, 显示名）。

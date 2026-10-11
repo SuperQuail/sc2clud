@@ -18,7 +18,7 @@ use crate::error::{AppError, AppResult};
 use crate::routes::{feed_view, require_user};
 use crate::session;
 use crate::templates::{
-    AdminTemplate, AdminUserView, format_date, format_relative, human_bytes, render,
+    AdminTemplate, AdminUserView, FeedView, format_date, format_relative, human_bytes, render,
 };
 
 // 分区发言权限（矩阵初值 + 保存端点）已拆到 admin_acl.rs；这里 re-export，路由表不变
@@ -123,7 +123,7 @@ async fn build_panel<'a>(
             member_groups.entry(member.0).or_default().push(group.id);
         }
     }
-    let users = rows
+    let users: Vec<AdminUserView> = rows
         .into_iter()
         .map(|row| AdminUserView {
             id: row.id,
@@ -226,14 +226,110 @@ async fn build_panel<'a>(
         .collect();
     // 分区发言权限矩阵的全部初值（含每个分区当前的角色门槛与生效的用户组）
     let acl_json = acl_json(&acl_sections, &groups);
+    // 三个面板的初值走 JSON 交给 React 控件（模板只留挂载点，见 AGENTS §6.6）：
+    // 行数据在 Rust 侧只序列化一次，模板里不再有第二份渲染逻辑
+    let roles: Vec<(String, String)> = Role::ALL
+        .iter()
+        .map(|r| (r.as_str().to_string(), r.label().to_string()))
+        .collect();
+    let ban_options: Vec<(String, String)> = BAN_HOUR_OPTIONS
+        .iter()
+        .map(|(hours, label)| (hours.to_string(), label.to_string()))
+        .collect();
+    let block_reply_enforced =
+        repo::site_text(state.db.pool(), "block_reply_enforced", "0").await? == "1";
+    let sections: Vec<crate::templates::SectionOption> = {
+        let covers: std::collections::HashMap<String, String> =
+            repo::list_section_covers(state.db.pool())
+                .await?
+                .into_iter()
+                .map(|(section, hash, _mime)| (section, hash))
+                .collect();
+        sc2clud_core::resource::PostSection::ALL
+            .iter()
+            .map(|s| crate::templates::SectionOption {
+                value: s.as_str().to_string(),
+                label: s.label().to_string(),
+                checked: false,
+                cover: covers.get(s.as_str()).cloned(),
+                mode: section_modes.get(s.as_str()).copied().unwrap_or(0),
+            })
+            .collect()
+    };
+    let pending: Vec<FeedView> = pending_rows
+        .iter()
+        .map(|row| feed_view(row, Some(user.id)))
+        .collect();
+    let users_json = serde_json::json!({
+        "users": users
+            .iter()
+            .map(|u| serde_json::json!({
+                "id": u.id,
+                "handle": u.handle,
+                "displayName": u.display_name,
+                "initial": u.initial,
+                "colorIndex": u.color_index,
+                "avatar": u.avatar,
+                "activated": u.activated,
+                "online": u.online,
+                "trusted": u.trusted,
+                "banLabel": u.ban_label,
+                "isSelf": u.is_self,
+                "role": u.role,
+                "roleLabel": u.role_label,
+                "email": u.email,
+                "quotaGb": u.quota_gb,
+                "lastSeen": u.last_seen,
+                "createdAt": u.created_at,
+                "sanctions": u.sanctions,
+                "groups": u.groups,
+            }))
+            .collect::<Vec<_>>(),
+        "roles": roles
+            .iter()
+            .map(|(value, label)| serde_json::json!({ "value": value, "label": label }))
+            .collect::<Vec<_>>(),
+        "groups": groups
+            .iter()
+            .map(|g| serde_json::json!({ "id": g.id, "name": g.name }))
+            .collect::<Vec<_>>(),
+        "sections": sections
+            .iter()
+            .map(|s| serde_json::json!({ "value": s.value, "label": s.label }))
+            .collect::<Vec<_>>(),
+        "banOptions": ban_options
+            .iter()
+            .map(|(value, label)| serde_json::json!({ "value": value, "label": label }))
+            .collect::<Vec<_>>(),
+    })
+    .to_string();
+    let pending_json = serde_json::json!(
+        pending
+            .iter()
+            .map(|post| serde_json::json!({
+                "id": post.id,
+                "title": post.title,
+                "sectionLabel": post.section_label,
+                "kindLabel": post.kind_label,
+                "preview": post.preview,
+                "author": post.author,
+                "timeAgo": post.time_ago,
+            }))
+            .collect::<Vec<_>>()
+    )
+    .to_string();
+    let community_json =
+        serde_json::json!({ "blockReplyEnforced": block_reply_enforced }).to_string();
     Ok(AdminTemplate {
         default_avatars,
         pool_variant,
         acl_variant,
         acl_json,
+        users_json,
+        pending_json,
+        community_json,
         groups,
-        block_reply_enforced: repo::site_text(state.db.pool(), "block_reply_enforced", "0").await?
-            == "1",
+        block_reply_enforced,
         ai_review_posts: ai_config.review_posts,
         ai_endpoint: ai_config.endpoint.clone(),
         ai_model: ai_config.model.clone(),
@@ -243,10 +339,7 @@ async fn build_panel<'a>(
         ai_reasoning_effort: ai_config.reasoning_effort.clone(),
         ai_review_comments: ai_config.review_comments,
         ai_review_on_report: ai_config.review_on_report,
-        ban_options: BAN_HOUR_OPTIONS
-            .iter()
-            .map(|(hours, label)| (hours.to_string(), label.to_string()))
-            .collect(),
+        ban_options,
         server_free_human: human_bytes(free_bytes),
         quota_allocated_human: human_bytes(allocated.max(0) as u64),
         quota_used_human: human_bytes(used.max(0) as u64),
@@ -261,33 +354,10 @@ async fn build_panel<'a>(
         csrf: user.csrf_token.clone(),
         is_super: user.role == Role::Super,
         require_activation: repo::registration_requires_activation(state.db.pool()).await?,
-        roles: Role::ALL
-            .iter()
-            .map(|r| (r.as_str().to_string(), r.label().to_string()))
-            .collect(),
+        roles,
         users,
-        sections: {
-            let covers: std::collections::HashMap<String, String> =
-                repo::list_section_covers(state.db.pool())
-                    .await?
-                    .into_iter()
-                    .map(|(section, hash, _mime)| (section, hash))
-                    .collect();
-            sc2clud_core::resource::PostSection::ALL
-                .iter()
-                .map(|s| crate::templates::SectionOption {
-                    value: s.as_str().to_string(),
-                    label: s.label().to_string(),
-                    checked: false,
-                    cover: covers.get(s.as_str()).cloned(),
-                    mode: section_modes.get(s.as_str()).copied().unwrap_or(0),
-                })
-                .collect()
-        },
-        pending: pending_rows
-            .iter()
-            .map(|row| feed_view(row, Some(user.id)))
-            .collect(),
+        sections,
+        pending,
     })
 }
 

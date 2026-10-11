@@ -228,6 +228,14 @@ server {
         proxy_send_timeout 300s;
     }
 
+    # ACME HTTP-01：certbot --webroot 把质询文件写在这里（/srv/sc2clud 是上面 server 级 root）
+    # 没有这段，/.well-known/... 会落到 location / 被反代给应用，CA 拿到 404 → 续期失败
+    location ^~ /.well-known/acme-challenge/ {
+        root /srv/sc2clud;
+        default_type text/plain;
+        access_log off;
+    }
+
     # 点文件一律拒绝（ACME 校验除外）
     location ~ /\.(?!well-known) { deny all; }
 }

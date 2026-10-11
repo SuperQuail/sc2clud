@@ -167,7 +167,7 @@
 .tbi-1 textarea:focus,.tbi-1 input:focus{outline:0;border-color:#2563eb;box-shadow:0 0 0 3px color-mix(in srgb, #2563eb 22%, transparent)}
 .tbi-1 textarea::placeholder,.tbi-1 input::placeholder{color:color-mix(in srgb, currentColor 45%, transparent)}
 
-/* ---- 帖子「⋯」菜单（post_actions.html；规则原先留在只有作者主页会加载的 donate.html 里） ---- */
+/* ---- 帖子「⋯」菜单（web/src/ui/PostActions.tsx；规则原先留在只有作者主页会加载的 donate.html 里） ---- */
 .post-menu{position:relative;display:inline-block}
 .post-menu-btn{border:1px solid var(--line,#e5e7eb);background:none;color:inherit;border-radius:8px;width:34px;height:30px;display:inline-flex;align-items:center;justify-content:center;cursor:pointer}
 .post-menu-btn:hover{background:rgba(127,127,127,.12)}
@@ -175,7 +175,7 @@
   background:var(--card,#fff);border:1px solid var(--line,#e5e7eb);border-radius:10px;padding:8px;box-shadow:0 12px 32px rgba(0,0,0,.18)}
 .post-menu-panel[hidden]{display:none}
 
-/* ---- 帖子「⋯」菜单面板内容（post_actions.html；原内联在 post.html） ---- */
+/* ---- 帖子「⋯」菜单面板内容（web/src/ui/PostActions.tsx；原内联在 post.html） ---- */
 .pa-item{display:block;width:100%;text-align:left;padding:8px 10px;border:0;border-radius:8px;background:none;color:inherit;font:inherit;cursor:pointer}
 .pa-item:hover{background:rgba(127,127,127,.12)}
 .pa-item.ok{color:#15803d}

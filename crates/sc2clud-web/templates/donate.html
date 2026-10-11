@@ -124,16 +124,8 @@
 <script>
 (() => {
   const qs = new URLSearchParams(location.search);
-  // 右上角「⋯」菜单：点外面关，点一下开
-  const menu = document.querySelector('[data-menu]');
-  if (menu) {
-    const toggle = menu.querySelector('[data-menu-toggle]');
-    const panel = menu.querySelector('[data-menu-panel]');
-    const setOpen = (open) => { panel.hidden = !open; toggle.setAttribute('aria-expanded', String(open)); };
-    toggle.addEventListener('click', (e) => { e.stopPropagation(); setOpen(panel.hidden); });
-    document.addEventListener('click', (e) => { if (!menu.contains(e.target)) setOpen(false); });
-    if (qs.get('menu') === '1') setOpen(true);
-  }
+  // 右上角「⋯」菜单的开关归前端岛（web/src/ui/PostActions.tsx）——它的 DOM 只在帖子页，
+  // 留在这里的话作者主页上永远匹配不到，帖子页上又要靠这页的 include 才跑得起来。
   const open = document.getElementById('donate-open');
   const modal = document.getElementById('donate-modal');
   if (!open || !modal) return;

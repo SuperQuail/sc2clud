@@ -71,6 +71,8 @@ async function refreshRegions() {
     }
   }
   bind()
+  // pending / users 已是 React 岛：区域被整块换掉后，新节点要重新挂载（岛模块只执行一次）
+  document.dispatchEvent(new Event('sc2clud:remount'))
 }
 
 async function submit(form: HTMLFormElement) {
