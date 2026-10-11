@@ -189,16 +189,40 @@ pub async fn serve_image(
         return Err(AppError::not_found("图片不存在"));
     }
     let viewer = session::current_user(&state, &headers).await.ok().flatten();
-    let allowed = match repo::blob_visibility(state.db.pool(), hash.as_str()).await? {
-        // 0 公开 / 1 登录可见 / 2 仅所有者与管理员
-        Some((_, 0)) | None => true,
-        Some((_, 1)) => viewer.is_some(),
-        Some((owner, _)) => viewer
-            .as_ref()
-            .is_some_and(|user| user.is_staff() || Some(user.id) == owner),
+    let level = match repo::blob_visibility(state.db.pool(), hash.as_str()).await? {
+        Some((owner, level)) => {
+            // 0 公开 / 1 登录可见 / 2 仅所有者与管理员
+            let allowed = match level {
+                0 => true,
+                1 => viewer.is_some(),
+                _ => viewer
+                    .as_ref()
+                    .is_some_and(|user| user.is_staff() || Some(user.id) == owner),
+            };
+            if allowed { 0 } else { level }
+        }
+        None => 0,
     };
-    if !allowed {
-        return Err(AppError::not_found("图片不存在"));
+    if level > 0 {
+        // 权限不足时**不**返回 404：<img> 只会画成裂图。给一张带说明的占位图，
+        // 并且 no-store —— 登录之后重新请求必须能拿到真图。
+        let message = if level == 1 {
+            "登录后可见"
+        } else {
+            "仅本人或管理员可见"
+        };
+        let svg = format!(
+            r#"<svg xmlns="http://www.w3.org/2000/svg" width="480" height="320" viewBox="0 0 480 320"><rect width="480" height="320" fill="rgba(127,127,127,0.12)"/><text x="240" y="150" text-anchor="middle" font-size="22" fill="currentColor" font-family="system-ui,sans-serif">{message}</text><text x="240" y="184" text-anchor="middle" font-size="14" fill="currentColor" opacity="0.7" font-family="system-ui,sans-serif">登录后刷新即可查看</text></svg>"#,
+        );
+        return Ok((
+            axum::http::StatusCode::OK,
+            [
+                (header::CONTENT_TYPE, "image/svg+xml; charset=utf-8"),
+                (header::CACHE_CONTROL, "no-store"),
+            ],
+            svg,
+        )
+            .into_response());
     }
     // 登记过的配图用登记表里的 mime；其余（发帖前上传、收款码等）从文件头嗅探
     let mime = match repo::find_post_image_by_hash(state.db.pool(), hash.as_str()).await? {
