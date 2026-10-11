@@ -1,3 +1,4 @@
+import { appUrl } from '../../lib/paths'
 import { useState, type FormEvent } from 'react'
 import { Button } from '../../ui/Button'
 import { Field } from '../../ui/Field'
@@ -64,7 +65,7 @@ export function IssuesApp({ postId, csrf, defaultKind }: IssuesAppProps) {
       {error ? <p className="err">{error}</p> : null}
       <div className="actions">
         <Button type="submit" disabled={busy}>{busy ? '提交中…' : '提交反馈'}</Button>
-        <a className="ui-btn" data-variant="ghost" href={`/p/${postId}/issues`}>取消</a>
+        <a className="ui-btn" data-variant="ghost" href={appUrl(`/p/${postId}/issues`)}>取消</a>
       </div>
     </form>
   )

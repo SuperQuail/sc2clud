@@ -27,7 +27,7 @@ function Avatar({ item, small }: { item: CommentItem; small?: boolean }) {
   const cls = small ? 'avatar c-avatar sm' : 'avatar c-avatar'
   const size = small ? 26 : 40
   return hash
-    ? <img className={cls} src={`/avatar/${hash}`} alt="" width={size} height={size} loading="lazy" />
+    ? <img className={cls} src={appUrl(`/avatar/${hash}`)} alt="" width={size} height={size} loading="lazy" />
     : <img className={cls} src="/static/art/miyin-chibi-80.webp" alt="" width={size} height={size} loading="lazy" />
 }
 

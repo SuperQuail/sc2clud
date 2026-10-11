@@ -142,7 +142,7 @@ export function PostActions(props: PostActionsProps) {
           <div className={`post-menu-panel variant-${props.uiVariant}`} hidden={!open}>
             {props.uiVariant === 1 && (
               <>
-                {canEdit && <a className="pa-item" href={`/p/${postId}/edit`}>编辑帖子</a>}
+                {canEdit && <a className="pa-item" href={appUrl(`/p/${postId}/edit`)}>编辑帖子</a>}
                 {isStaff && state !== 'approved' && admin('approve', 'ok', '通过审核')}
                 {isStaff && revision('pa-item')}
                 {isStaff && state !== 'approved' && admin('reject', 'danger', '拒绝')}
@@ -152,7 +152,7 @@ export function PostActions(props: PostActionsProps) {
             {props.uiVariant === 2 && (
               <>
                 {canEdit && <p className="pa-group">内容</p>}
-                {canEdit && <a className="pa-item" href={`/p/${postId}/edit`}>编辑帖子</a>}
+                {canEdit && <a className="pa-item" href={appUrl(`/p/${postId}/edit`)}>编辑帖子</a>}
                 {isStaff && (
                   <>
                     <p className="pa-group">审核</p>
@@ -167,7 +167,7 @@ export function PostActions(props: PostActionsProps) {
             )}
             {props.uiVariant === 3 && (
               <div className="pa-grid">
-                {canEdit && <a className="pa-card" href={`/p/${postId}/edit`}><b>编辑帖子</b><span>改标题、正文、下载来源</span></a>}
+                {canEdit && <a className="pa-card" href={appUrl(`/p/${postId}/edit`)}><b>编辑帖子</b><span>改标题、正文、下载来源</span></a>}
                 {isStaff && (
                   <>
                     {state !== 'approved' && adminCard('approve', 'ok', '通过审核', '立即对所有人可见')}
