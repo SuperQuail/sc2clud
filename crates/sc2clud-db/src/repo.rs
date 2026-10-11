@@ -3853,6 +3853,17 @@ pub async fn post_resource_status(pool: &SqlitePool, post_id: i64) -> Result<Opt
 }
 
 /// 加一个收款渠道（渠道名自由填，不限定支付宝/微信）。
+/// 把某个 blob 标成「仅所有者与管理员可见」。收款码这类图用它；公开图不需要调用。
+pub async fn mark_blob_private(pool: &SqlitePool, hash: &str, owner_id: i64) -> Result<()> {
+    query("UPDATE blobs SET private = 1, owner_id = ? WHERE hash = ?")
+        .bind(owner_id)
+        .bind(hash)
+        .execute(pool)
+        .await
+        .map_err(db_err)?;
+    Ok(())
+}
+
 pub async fn add_payment_channel(
     pool: &SqlitePool,
     user_id: i64,

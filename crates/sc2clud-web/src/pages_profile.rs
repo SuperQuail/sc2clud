@@ -90,6 +90,8 @@ pub async fn payment_channel_add(
     let hash = outcome.stat.hash.to_string();
     let now = sc2clud_core::now_unix();
     repo::ensure_blob(state.db.pool(), &hash, size, now).await?;
+    // 付款方式的图片属于保密内容：只允许所有者与管理员读取（见 docs/IMAGES.md）
+    repo::mark_blob_private(state.db.pool(), &hash, user.id).await?;
     let id = repo::add_payment_channel(state.db.pool(), user.id, channel, &label, &hash, mime, now)
         .await?;
     tracing::info!(user.id = user.id, channel, image.id = id, "新增收款码");
