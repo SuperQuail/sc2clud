@@ -201,7 +201,8 @@ pwsh -File scripts/smoke.ps1     # 改动触及上传/下载/存储/计数时必
 
 | 项 | 现状 | 下一步 |
 | --- | --- | --- |
-| **自定义分区（新建分区）** | **根因比缺界面更深**：分区 key 写死在 `core::resource::PostSection` **枚举**里，而 `routes::ordered_sections` 用 `PostSection::parse(&key)` 过滤 → **不认识的 key 会被静默丢弃**（2026-10-12 实测：手写 SQL 插入 `emperor`/皇帝区，DB 有行、首页左栏不显示）。管理面板也因此只能改已有分区（排序/封面/权限），没有新建入口 | 把分区从枚举改成「表驱动」：`PostSection` 退化为字符串包装 + 默认展示名/图标查表；`ordered_sections` 不再 parse 过滤；再在管理面板加「分区管理」（新建/改名/归档/删除确认）|
+| **自定义分区（新建分区）** | **根因比缺界面更深**：分区 key 写死在 `core::resource::PostSection` **枚举**里，而 `routes::ordered_sections` 用 `PostSection::parse(&key)` 过滤 → **不认识的 key 会被静默丢弃**（2026-10-12 实测：手写 SQL 插入 `emperor`/皇帝区，DB 有行、首页左栏不显示）。管理面板也因此只能改已有分区（排序/封面/权限），没有新建入口 | 把分区从枚举改成「表驱动」：`PostSection` 退化为字符串包装 + 默认展示名/图标查表；`ordered_sections` 不再 parse 过滤；再在管理面板加「分区管理」（新建/改名/归档/删除确认）。**改表驱动时必须注意两点**：① 现有 5 个 key 与帖子 `section` 列强绑定，语义不能变，否则历史帖找不到分区；② 左栏图标按 `nav-{key}.webp` 取图，自定义 key 会缺图，需要兜底图。另：生产库已插了一行沉睡的 `emperor`/皇帝区（2026-10-12，position=5），表驱动一旦落地它会自然出现 |
+| **管理页「自检面板」链接 404** | `crates/sc2clud-web/templates/admin.html:22` **无条件**渲染 `<a href="/debug">自检面板</a>`，但 `lib.rs:118` 只在 `server.debug_pages = true` 时才注册该路由（注释：关闭时路由根本不存在）→ 生产（`debug_pages=false`）点它必然 404（2026-10-12 用户实测 `https://www.xn--xpra07ba.fun/debug`） | 用同一个开关门控这个链接（AdminTemplate 加一个 `debug_pages` 字段 + `{% if %}`），或把自检面板改成常驻的只读页；顺手检查其它模板里有没有同类「链接不跟开关走」 |
 | **管理员改他人简介**的界面 | 后端 `repo::set_bio` 已支持（同一函数，带审核意见） | 在 `/admin/user/{id}` 上加一个表单 |
 | 缩略图 / 转码 | 表与队列就绪（`post_images` / `image_jobs`），**工作线程未实现** | 接 `image` crate 的异步压缩线程 + 原图保留 API |
 | 分片续传 | 建表与仓储就绪（`upload_sessions`），HTTP 分片接口未接 | 提供 `POST/PATCH` 分片接口 + 合并 |
