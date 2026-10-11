@@ -70,3 +70,6 @@
       </ul>
     </div>
   </aside>
+  {# 上面「赞助作者」按钮对应的弹窗与样式都在 donate.html 里（与作者主页共用一份实现）。
+     少了这一句：按钮是浏览器默认样式、点了也没反应——本来就是这个坑。 #}
+  {% if donation_visible %}{% include "donate.html" %}{% endif %}

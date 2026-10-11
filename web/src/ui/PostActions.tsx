@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import { appUrl } from '../lib/paths'
 import { submitAsyncForm, toggleBookmark, toggleLike } from '../lib/post'
 
 export interface PostActionsProps {

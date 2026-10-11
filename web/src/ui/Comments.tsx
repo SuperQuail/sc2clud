@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, type KeyboardEvent } from 'react'
+import { appUrl } from '../lib/paths'
 import {
   loadComments,
   postComment,
