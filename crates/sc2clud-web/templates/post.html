@@ -212,16 +212,15 @@
   </div>
   {% endif %}
 
-  {# 配图上传：作者与管理员可以随时补图（服务端按魔数认类型、最多 10 张） #}
+  {# 配图上传：统一的 Uploader 控件（原图 / 压缩可选），逻辑在 web/src/ui/Uploader.tsx #}
   {% if post.can_edit %}
-  <div class="upload-row" data-post-upload data-post-id="{{ post.id }}" data-csrf="{{ csrf }}">
-    <input type="file" accept="image/*" id="post-image-input" multiple hidden>
-    {# 配图上传：旧的 Vue 上传岛已移除，React 版 Uploader 落地前先不显示（死按钮比没按钮更糟） #}
-{% if false %}<button class="btn ghost sm" type="button" id="post-image-add">添加配图</button>{% endif %}
-    <span class="hint" data-post-image-status>最多 10 张，单张 50 MB 以内</span>
-  </div>
+  <div data-island="uploader"
+       data-endpoint="/api/v1/posts/{{ post.id }}/images"
+       data-csrf="{{ csrf }}"
+       data-max="10"
+       data-existing="{{ post.image_count }}"></div>
+  <script type="module" src="/static/islands/uploader.js"></script>
   {% endif %}
-
   <div class="post-actions">
     <form method="post" action="/p/{{ post.id }}/like" class="inline-form" data-like>
       <input type="hidden" name="csrf" value="{{ csrf }}">
