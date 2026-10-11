@@ -173,6 +173,7 @@ pwsh -File scripts/smoke.ps1     # 改动触及上传/下载/存储/计数时必
 | 启动器下载页 | `releases` 索引与转链就绪，页面与 API 未接 | 补 `/download` 与 `/api/v1/launcher/latest` |
 | 消息中心「已静音内容」列表 | 静音写入 `notification_mutes`，但**没有取消静音的入口** | 加一个「不再通知的内容」列表 + 恢复 |
 | SSE 广播范围 | 进程内 `tokio::broadcast`：单进程够用 | 多实例部署时换跨进程通知（或依赖 30 秒轮询兜底） |
+| **收款码图片读不出来（404）** | `add_payment_channel` 只写 `payment_channels`，而 `serve_image`（`/img/{hash}`）只认 `post_images` 里登记过的 hash —— 两处对不上，**上传成功但图片一律 404**（设置页与打赏弹窗都显示裂图） | 给收款码单独一条读取路径，或让 `serve_image` 也认 `payment_channels`。收款码本就是给人扫的公开图，可放心直出 |
 
 ### 头像实现（已完成，留档）
 

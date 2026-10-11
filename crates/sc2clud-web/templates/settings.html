@@ -132,6 +132,14 @@
     </section>
     <section class="card">
       <h2>打赏与支持作者</h2>
+      {# 公开开关独立成表单：任何用户都能改，不受「认证开发者才能挂收款码」限制 #}
+      <form method="post" action="/settings/donation-records" class="stack">
+        <input type="hidden" name="csrf" value="{{ csrf }}">
+        <label class="row"><input type="checkbox" name="records_public" value="1" {% if donation_records_public %}checked{% endif %}> 公开我的打赏记录（我在谁那里打赏了多少）</label>
+        <p class="hint">只影响「打赏去向」是否对他人可见。关闭后（默认），你打赏的记录也不会被计入对方的「收到打赏」统计 —— 一个开关对双方都生效。</p>
+        <button class="btn ghost sm" type="submit">保存公开设置</button>
+      </form>
+      <hr>
       {% if !can_donate %}
       <p class="hint">认证开发者及以上才能开启打赏展示。</p>
       {% else %}

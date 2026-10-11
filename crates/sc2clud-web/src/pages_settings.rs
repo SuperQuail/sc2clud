@@ -109,12 +109,14 @@ async fn build<'a>(
     let channels = repo::list_payment_channels(state.db.pool(), user.id).await?;
     let (notice_visible, notice_text) =
         repo::donation_notice_settings(state.db.pool(), user.id).await?;
+    let records_public = repo::donation_records_public(state.db.pool(), user.id).await?;
     Ok(SettingsTemplate {
         bio: bio_text,
         can_donate,
         donation_visible,
         donation_notice_visible: notice_visible,
         donation_notice_text: notice_text,
+        donation_records_public: records_public,
         donation_channels: channels
             .iter()
             .map(|c| crate::templates::DonationChannelView {
@@ -270,6 +272,32 @@ pub async fn donation_save(
     repo::set_donation_visible(state.db.pool(), user.id, visible).await?;
     repo::set_donation_notice(state.db.pool(), user.id, notice_visible, text).await?;
     tracing::info!(user.id = user.id, visible, notice_visible, "更新打赏设置");
+    Ok(Redirect::to("/settings?ok=donation").into_response())
+}
+
+#[derive(Debug, Deserialize)]
+pub struct DonationRecordsForm {
+    pub csrf: String,
+    #[serde(default)]
+    pub records_public: Option<String>,
+}
+
+/// 只改「是否公开我的打赏记录」，与收款码那块**分开**。
+///
+/// 为什么单独一条路由：上传收款码要求认证开发者及以上（`SetPaymentChannel`），
+/// 但**任何用户**打赏后都该能决定要不要公开 —— 挂在同一个表单里会让普通用户
+/// 连自己的隐私都改不了。这里用 `SubmitDonation`（member 门槛）。
+pub async fn donation_records_save(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Form(form): Form<DonationRecordsForm>,
+) -> AppResult<Response> {
+    let user = require_user(&state, &headers).await?;
+    session::guard(Some(&user), sc2clud_core::auth::Permission::SubmitDonation)?;
+    session::check_csrf(&user, &form.csrf)?;
+    let public = matches!(form.records_public.as_deref(), Some("1") | Some("on"));
+    repo::set_donation_records_public(state.db.pool(), user.id, public).await?;
+    tracing::info!(user.id = user.id, public, "更新打赏记录公开设置");
     Ok(Redirect::to("/settings?ok=donation").into_response())
 }
 

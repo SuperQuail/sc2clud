@@ -11,12 +11,12 @@ use sqlx::{SqlitePool, query, query_as};
 use crate::db_err;
 use crate::models::{
     AdminUserRow, AnnouncementRow, AuditRow, BannerRow, BlobRow, BlockRow, BookmarkRow,
-    CommentWithAuthorRow, ConversationRow, DefaultAvatarRow, ExpEventRow, FileRow,
-    FileWithOwnerRow, GroupSectionRuleRow, ImageJobRow, IssueCommentRow, MessageRow,
-    NotificationRow, PaymentChannelRow, PostImageRow, PostIssueRow, PostRevisionRow, PostRow,
-    PostSearchRow, PostSourceRow, PostWithAuthorRow, ReleaseAssetRow, ReleaseRow,
-    SectionModeratorRow, SectionRow, SessionRow, SiteDomainRow, SmtpAccountRow, TitleRow,
-    UploadSessionRow, UserGroupRow, UserHitRow, UserRow, UserSanctionRow, UserTitleRow,
+    CommentWithAuthorRow, ConversationRow, DefaultAvatarRow, DonationSummaryRow,
+    DonationWithUsersRow, ExpEventRow, FileRow, FileWithOwnerRow, GroupSectionRuleRow, ImageJobRow,
+    IssueCommentRow, MessageRow, NotificationRow, PaymentChannelRow, PostImageRow, PostIssueRow,
+    PostRevisionRow, PostRow, PostSearchRow, PostSourceRow, PostWithAuthorRow, ReleaseAssetRow,
+    ReleaseRow, SectionModeratorRow, SectionRow, SessionRow, SiteDomainRow, SmtpAccountRow,
+    TitleRow, UploadSessionRow, UserGroupRow, UserHitRow, UserRow, UserSanctionRow, UserTitleRow,
 };
 pub async fn create_user(
     pool: &SqlitePool,
@@ -4849,6 +4849,631 @@ pub async fn counter_value(pool: &SqlitePool, key: &str) -> Result<i64> {
         .await
         .map_err(db_err)?;
     Ok(row.map(|r| r.0).unwrap_or(0))
+}
+
+// ---------------------------------------------------------------- 打赏记录（0031）
+//
+// 站点**不经手资金**：访客扫的是作者自己挂的收款码，钱直接进作者口袋。
+// 所以「验证」是人工的 —— 用户自报金额与订单号，管理员核对后拍板。
+//
+// **铁律**：所有对外统计只认 `state = 'approved'`。用户自报的金额在验证前不可信
+// （同 docs/ARCHITECTURE.md §7「秒传不可信客户端」）。
+
+/// 新打赏记录的入参。
+pub struct NewDonationRecord<'a> {
+    pub donor_id: i64,
+    pub recipient_id: i64,
+    /// 金额（整数分）。
+    pub amount_cents: i64,
+    /// 订单号（可为空串）。
+    pub txn_id: &'a str,
+    pub paid_at: i64,
+    /// 打赏发生在哪篇帖子下（作者主页打赏传 None）。
+    pub post_id: Option<i64>,
+    pub now: i64,
+}
+
+/// 列表查询的公共 SELECT：一次 join 拿全双方账号，避免 N+1。
+const DONATION_SELECT: &str = "SELECT \
+    d.id AS id, \
+    d.donor_id AS donor_id, \
+    donor.handle AS donor_handle, \
+    donor.display_name AS donor_name, \
+    donor.avatar_hash AS donor_avatar, \
+    d.recipient_id AS recipient_id, \
+    r.handle AS recipient_handle, \
+    r.display_name AS recipient_name, \
+    r.avatar_hash AS recipient_avatar, \
+    d.amount_cents AS amount_cents, \
+    d.txn_id AS txn_id, \
+    d.paid_at AS paid_at, \
+    d.state AS state, \
+    d.review_note AS review_note, \
+    d.settled_at AS settled_at, \
+    d.created_at AS created_at, \
+    d.post_id AS post_id, \
+    p.title AS post_title \
+    FROM donation_records d \
+    JOIN users donor ON donor.id = d.donor_id \
+    JOIN users r ON r.id = d.recipient_id \
+    LEFT JOIN posts p ON p.id = d.post_id";
+
+/// 提交一条打赏记录（初始 pending，等管理员验证）。
+pub async fn create_donation_record(pool: &SqlitePool, rec: NewDonationRecord<'_>) -> Result<i64> {
+    let res = query(
+        "INSERT INTO donation_records \
+         (donor_id, recipient_id, amount_cents, txn_id, paid_at, post_id, state, created_at, updated_at) \
+         VALUES (?, ?, ?, ?, ?, ?, 'pending', ?, ?)",
+    )
+    .bind(rec.donor_id)
+    .bind(rec.recipient_id)
+    .bind(rec.amount_cents)
+    .bind(rec.txn_id)
+    .bind(rec.paid_at)
+    .bind(rec.post_id)
+    .bind(rec.now)
+    .bind(rec.now)
+    .execute(pool)
+    .await
+    .map_err(db_err)?;
+    Ok(res.last_insert_rowid())
+}
+
+/// 我提交的记录：本人可见**全部状态**（含待验证与被拒）。
+pub async fn list_donations_by_donor(
+    pool: &SqlitePool,
+    donor_id: i64,
+    limit: i64,
+    offset: i64,
+) -> Result<Vec<DonationWithUsersRow>> {
+    let sql = format!(
+        "{DONATION_SELECT} WHERE d.donor_id = ? AND d.deleted_at IS NULL \
+         ORDER BY d.paid_at DESC, d.id DESC LIMIT ? OFFSET ?"
+    );
+    query_as::<_, DonationWithUsersRow>(&sql)
+        .bind(donor_id)
+        .bind(limit)
+        .bind(offset)
+        .fetch_all(pool)
+        .await
+        .map_err(db_err)
+}
+
+/// 我提交的总数（分页用）。
+pub async fn count_donations_by_donor(pool: &SqlitePool, donor_id: i64) -> Result<i64> {
+    let row: Option<(i64,)> =
+        query_as("SELECT COUNT(*) FROM donation_records WHERE donor_id = ? AND deleted_at IS NULL")
+            .bind(donor_id)
+            .fetch_optional(pool)
+            .await
+            .map_err(db_err)?;
+    Ok(row.map(|r| r.0).unwrap_or(0))
+}
+
+/// 撤回：只有**本人**的**待验证**记录能撤（软删除）。返回是否真的撤掉了。
+pub async fn delete_own_pending_donation(
+    pool: &SqlitePool,
+    id: i64,
+    donor_id: i64,
+    now: i64,
+) -> Result<bool> {
+    let res = query(
+        "UPDATE donation_records SET deleted_at = ?, updated_at = ? \
+         WHERE id = ? AND donor_id = ? AND state = 'pending' AND deleted_at IS NULL",
+    )
+    .bind(now)
+    .bind(now)
+    .bind(id)
+    .bind(donor_id)
+    .execute(pool)
+    .await
+    .map_err(db_err)?;
+    Ok(res.rows_affected() > 0)
+}
+
+/// 管理端队列（先来先审）。
+pub async fn list_donations_for_review(
+    pool: &SqlitePool,
+    state: &str,
+    limit: i64,
+    offset: i64,
+) -> Result<Vec<DonationWithUsersRow>> {
+    let sql = format!(
+        "{DONATION_SELECT} WHERE d.state = ? AND d.deleted_at IS NULL \
+         ORDER BY d.created_at ASC, d.id ASC LIMIT ? OFFSET ?"
+    );
+    query_as::<_, DonationWithUsersRow>(&sql)
+        .bind(state)
+        .bind(limit)
+        .bind(offset)
+        .fetch_all(pool)
+        .await
+        .map_err(db_err)
+}
+
+/// 某个状态的记录数（队列徽章 + 分页）。
+pub async fn count_donations_by_state(pool: &SqlitePool, state: &str) -> Result<i64> {
+    let row: Option<(i64,)> =
+        query_as("SELECT COUNT(*) FROM donation_records WHERE state = ? AND deleted_at IS NULL")
+            .bind(state)
+            .fetch_optional(pool)
+            .await
+            .map_err(db_err)?;
+    Ok(row.map(|r| r.0).unwrap_or(0))
+}
+
+/// 人工改判：**只有 pending 能流转**，因此重复审核天然幂等。
+/// 返回是否真的改动了（false = 不存在 / 已被审过 / 已删除）。
+pub async fn review_donation(
+    pool: &SqlitePool,
+    id: i64,
+    state: &str,
+    note: Option<&str>,
+    actor_id: i64,
+    now: i64,
+) -> Result<bool> {
+    let res = query(
+        "UPDATE donation_records \
+         SET state = ?, review_note = ?, reviewed_by = ?, reviewed_at = ?, updated_at = ? \
+         WHERE id = ? AND state = 'pending' AND deleted_at IS NULL",
+    )
+    .bind(state)
+    .bind(note)
+    .bind(actor_id)
+    .bind(now)
+    .bind(now)
+    .bind(id)
+    .execute(pool)
+    .await
+    .map_err(db_err)?;
+    Ok(res.rows_affected() > 0)
+}
+
+/// 批量标记结算：只对**已验证且尚未结算**的记录生效，重复调用不重复计数。
+pub async fn mark_donations_settled(
+    pool: &SqlitePool,
+    ids: &[i64],
+    batch_ref: &str,
+    now: i64,
+) -> Result<u64> {
+    if ids.is_empty() {
+        return Ok(0);
+    }
+    let placeholders = ids.iter().map(|_| "?").collect::<Vec<_>>().join(",");
+    let sql = format!(
+        "UPDATE donation_records SET settled_at = ?, settlement_ref = ?, updated_at = ? \
+         WHERE id IN ({placeholders}) AND state = 'approved' \
+           AND settled_at IS NULL AND deleted_at IS NULL"
+    );
+    let mut q = query(&sql).bind(now).bind(batch_ref).bind(now);
+    for id in ids {
+        q = q.bind(id);
+    }
+    Ok(q.execute(pool).await.map_err(db_err)?.rows_affected())
+}
+
+/// 某作者**待结算**的已验证记录合计（结算页展示用）。
+pub async fn unsettled_total_of_recipient(
+    pool: &SqlitePool,
+    recipient_id: i64,
+) -> Result<(i64, i64)> {
+    let row: Option<(i64, i64)> = query_as(
+        "SELECT COALESCE(SUM(amount_cents), 0), COUNT(*) FROM donation_records \
+         WHERE recipient_id = ? AND state = 'approved' \
+           AND settled_at IS NULL AND deleted_at IS NULL",
+    )
+    .bind(recipient_id)
+    .fetch_optional(pool)
+    .await
+    .map_err(db_err)?;
+    Ok(row.unwrap_or((0, 0)))
+}
+
+/// 取某条打赏记录的提交者 id（审核后发通知用）。
+pub async fn donation_donor_id(pool: &SqlitePool, id: i64) -> Result<Option<i64>> {
+    let row: Option<(i64,)> =
+        query_as("SELECT donor_id FROM donation_records WHERE id = ? AND deleted_at IS NULL")
+            .bind(id)
+            .fetch_optional(pool)
+            .await
+            .map_err(db_err)?;
+    Ok(row.map(|r| r.0))
+}
+
+// ---------------------------------------------------------------- 隐私开关
+
+/// 是否公开「我打赏了谁、多少钱」。
+///
+/// **与 `donation_visible`（展示我的收款码）语义不同**，是两个独立的开关。
+pub async fn donation_records_public(pool: &SqlitePool, user_id: i64) -> Result<bool> {
+    let row: Option<(i64,)> = query_as("SELECT donation_records_public FROM users WHERE id = ?")
+        .bind(user_id)
+        .fetch_optional(pool)
+        .await
+        .map_err(db_err)?;
+    Ok(row.map(|r| r.0 != 0).unwrap_or(false))
+}
+
+pub async fn set_donation_records_public(
+    pool: &SqlitePool,
+    user_id: i64,
+    public: bool,
+) -> Result<bool> {
+    let flag = i64::from(public);
+    let res = query(
+        "UPDATE users SET donation_records_public = ? \
+         WHERE id = ? AND donation_records_public <> ?",
+    )
+    .bind(flag)
+    .bind(user_id)
+    .bind(flag)
+    .execute(pool)
+    .await
+    .map_err(db_err)?;
+    Ok(res.rows_affected() > 0)
+}
+
+// ---------------------------------------------------------------- 统计（只认 approved）
+
+/// **支出侧**：某人给每位作者的打赏合计。
+///
+/// 只统计 `approved`；调用方负责判断该用户的隐私开关是否允许展示。
+pub async fn donation_summary_of_donor(
+    pool: &SqlitePool,
+    donor_id: i64,
+) -> Result<Vec<DonationSummaryRow>> {
+    query_as::<_, DonationSummaryRow>(
+        "SELECT r.id AS user_id, r.handle AS handle, r.display_name AS display_name, \
+                r.avatar_hash AS avatar_hash, \
+                SUM(d.amount_cents) AS total_cents, COUNT(*) AS count \
+         FROM donation_records d JOIN users r ON r.id = d.recipient_id \
+         WHERE d.donor_id = ? AND d.state = 'approved' AND d.deleted_at IS NULL \
+         GROUP BY r.id ORDER BY total_cents DESC, r.id",
+    )
+    .bind(donor_id)
+    .fetch_all(pool)
+    .await
+    .map_err(db_err)
+}
+
+/// **收入侧**：某作者收到的打赏合计。
+///
+/// 隐私规则（关键）：**只累加捐赠方已同意公开的记录**。否则 A 关掉隐私后，
+/// 仍然能从 B 的主页反推出「A 给了多少」—— 一个人的开关必须对双方都生效。
+pub async fn donation_total_of_recipient(pool: &SqlitePool, recipient_id: i64) -> Result<i64> {
+    let row: Option<(i64,)> = query_as(
+        "SELECT COALESCE(SUM(d.amount_cents), 0) \
+         FROM donation_records d JOIN users donor ON donor.id = d.donor_id \
+         WHERE d.recipient_id = ? AND d.state = 'approved' AND d.deleted_at IS NULL \
+           AND donor.donation_records_public = 1",
+    )
+    .bind(recipient_id)
+    .fetch_optional(pool)
+    .await
+    .map_err(db_err)?;
+    Ok(row.map(|r| r.0).unwrap_or(0))
+}
+
+/// **按帖子**统计：这篇帖子下收到的打赏合计（同样只算已验证 + 捐赠方已公开）。
+///
+/// 返回 (合计分, 笔数)。用于帖子页展示「这篇帖子收到多少打赏」。
+pub async fn donation_total_of_post(pool: &SqlitePool, post_id: i64) -> Result<(i64, i64)> {
+    let row: Option<(i64, i64)> = query_as(
+        "SELECT COALESCE(SUM(d.amount_cents), 0), COUNT(*) \
+         FROM donation_records d JOIN users donor ON donor.id = d.donor_id \
+         WHERE d.post_id = ? AND d.state = 'approved' AND d.deleted_at IS NULL \
+           AND donor.donation_records_public = 1",
+    )
+    .bind(post_id)
+    .fetch_optional(pool)
+    .await
+    .map_err(db_err)?;
+    Ok(row.unwrap_or((0, 0)))
+}
+
+/// 被打赏人排行：同样只算捐赠方已公开的记录。
+pub async fn donation_leaderboard(
+    pool: &SqlitePool,
+    limit: i64,
+) -> Result<Vec<DonationSummaryRow>> {
+    query_as::<_, DonationSummaryRow>(
+        "SELECT r.id AS user_id, r.handle AS handle, r.display_name AS display_name, \
+                r.avatar_hash AS avatar_hash, \
+                SUM(d.amount_cents) AS total_cents, COUNT(*) AS count \
+         FROM donation_records d \
+         JOIN users r ON r.id = d.recipient_id \
+         JOIN users donor ON donor.id = d.donor_id \
+         WHERE d.state = 'approved' AND d.deleted_at IS NULL \
+           AND donor.donation_records_public = 1 \
+         GROUP BY r.id ORDER BY total_cents DESC, r.id LIMIT ?",
+    )
+    .bind(limit)
+    .fetch_all(pool)
+    .await
+    .map_err(db_err)
+}
+
+#[cfg(test)]
+mod donation_tests {
+    use super::*;
+    use crate::Db;
+
+    async fn setup() -> (Db, i64, i64) {
+        let db = Db::in_memory().await.unwrap();
+        db.migrate().await.unwrap();
+        let donor = create_user(db.pool(), "donor", None, "hash", 0, 1)
+            .await
+            .unwrap();
+        let author = create_user(db.pool(), "author", None, "hash", 0, 1)
+            .await
+            .unwrap();
+        (db, donor, author)
+    }
+
+    async fn add(pool: &SqlitePool, donor: i64, author: i64, cents: i64, now: i64) -> i64 {
+        create_donation_record(
+            pool,
+            NewDonationRecord {
+                donor_id: donor,
+                recipient_id: author,
+                amount_cents: cents,
+                txn_id: "",
+                paid_at: now,
+                post_id: None,
+                now,
+            },
+        )
+        .await
+        .unwrap()
+    }
+
+    #[tokio::test]
+    async fn only_approved_count_toward_totals() {
+        let (db, donor, author) = setup().await;
+        let p = db.pool();
+        let pending = add(p, donor, author, 10_000, 100).await;
+        let approved = add(p, donor, author, 5_000, 101).await;
+        let rejected = add(p, donor, author, 99_999, 102).await;
+
+        assert_eq!(
+            donation_total_of_recipient(p, author).await.unwrap(),
+            0,
+            "未验证前一分钱都不计入"
+        );
+
+        review_donation(p, approved, "approved", None, 1, 110)
+            .await
+            .unwrap();
+        set_donation_records_public(p, donor, true).await.unwrap();
+        assert_eq!(
+            donation_total_of_recipient(p, author).await.unwrap(),
+            5_000,
+            "只有 approved 计入"
+        );
+
+        let _ = review_donation(p, pending, "rejected", None, 1, 112).await;
+        let _ = review_donation(p, rejected, "rejected", None, 1, 113).await;
+        assert_eq!(
+            donation_total_of_recipient(p, author).await.unwrap(),
+            5_000,
+            "被拒的不计入"
+        );
+    }
+
+    #[tokio::test]
+    async fn recipient_total_excludes_private_donors() {
+        let (db, donor, author) = setup().await;
+        let p = db.pool();
+        let id = add(p, donor, author, 8_800, 100).await;
+        review_donation(p, id, "approved", None, 1, 110)
+            .await
+            .unwrap();
+
+        assert!(!donation_records_public(p, donor).await.unwrap());
+        assert_eq!(
+            donation_total_of_recipient(p, author).await.unwrap(),
+            0,
+            "捐赠方未公开则不计入"
+        );
+
+        set_donation_records_public(p, donor, true).await.unwrap();
+        assert_eq!(donation_total_of_recipient(p, author).await.unwrap(), 8_800);
+
+        set_donation_records_public(p, donor, false).await.unwrap();
+        assert_eq!(
+            donation_total_of_recipient(p, author).await.unwrap(),
+            0,
+            "关回去要立刻生效"
+        );
+    }
+
+    #[tokio::test]
+    async fn review_transitions_only_from_pending() {
+        let (db, donor, author) = setup().await;
+        let p = db.pool();
+        let id = add(p, donor, author, 1_000, 100).await;
+        assert!(
+            review_donation(p, id, "approved", Some("核对无误"), 1, 110)
+                .await
+                .unwrap()
+        );
+        assert!(
+            !review_donation(p, id, "rejected", None, 1, 120)
+                .await
+                .unwrap(),
+            "重复审核必须无效，否则会覆盖结论"
+        );
+        set_donation_records_public(p, donor, true).await.unwrap();
+        assert_eq!(donation_total_of_recipient(p, author).await.unwrap(), 1_000);
+    }
+
+    #[tokio::test]
+    async fn only_owner_can_withdraw_and_only_while_pending() {
+        let (db, donor, author) = setup().await;
+        let p = db.pool();
+        let id = add(p, donor, author, 1_000, 100).await;
+
+        assert!(
+            !delete_own_pending_donation(p, id, author, 110)
+                .await
+                .unwrap(),
+            "别人撤不掉"
+        );
+        assert!(
+            delete_own_pending_donation(p, id, donor, 111)
+                .await
+                .unwrap()
+        );
+        assert!(
+            !delete_own_pending_donation(p, id, donor, 112)
+                .await
+                .unwrap(),
+            "撤不掉第二次"
+        );
+    }
+
+    #[tokio::test]
+    async fn approved_records_cannot_be_withdrawn() {
+        let (db, donor, author) = setup().await;
+        let p = db.pool();
+        let id = add(p, donor, author, 1_000, 100).await;
+        review_donation(p, id, "approved", None, 1, 110)
+            .await
+            .unwrap();
+        assert!(
+            !delete_own_pending_donation(p, id, donor, 111)
+                .await
+                .unwrap(),
+            "已过审的记录不能由用户自行撤回"
+        );
+    }
+
+    #[tokio::test]
+    async fn settlement_is_idempotent() {
+        let (db, donor, author) = setup().await;
+        let p = db.pool();
+        let id = add(p, donor, author, 6_600, 100).await;
+        review_donation(p, id, "approved", None, 1, 110)
+            .await
+            .unwrap();
+
+        assert_eq!(
+            unsettled_total_of_recipient(p, author).await.unwrap(),
+            (6_600, 1)
+        );
+        assert_eq!(
+            mark_donations_settled(p, &[id], "B2026-10", 120)
+                .await
+                .unwrap(),
+            1
+        );
+        assert_eq!(
+            mark_donations_settled(p, &[id], "B2026-10", 121)
+                .await
+                .unwrap(),
+            0,
+            "重复结算不应再次计数"
+        );
+        assert_eq!(
+            unsettled_total_of_recipient(p, author).await.unwrap(),
+            (0, 0)
+        );
+    }
+
+    #[tokio::test]
+    async fn pending_records_cannot_be_settled() {
+        let (db, donor, author) = setup().await;
+        let p = db.pool();
+        let id = add(p, donor, author, 500, 100).await;
+        assert_eq!(
+            mark_donations_settled(p, &[id], "B1", 120).await.unwrap(),
+            0,
+            "未验证的记录不得结算"
+        );
+    }
+
+    #[tokio::test]
+    async fn leaderboard_only_lists_public_donors() {
+        let (db, donor, author) = setup().await;
+        let p = db.pool();
+        let id = add(p, donor, author, 3_300, 100).await;
+        review_donation(p, id, "approved", None, 1, 110)
+            .await
+            .unwrap();
+        assert!(donation_leaderboard(p, 10).await.unwrap().is_empty());
+        set_donation_records_public(p, donor, true).await.unwrap();
+        let board = donation_leaderboard(p, 10).await.unwrap();
+        assert_eq!(board.len(), 1);
+        assert_eq!(board[0].user_id, author);
+        assert_eq!(board[0].total_cents, 3_300);
+    }
+
+    #[tokio::test]
+    async fn post_totals_only_count_that_post_and_public_donors() {
+        let (db, donor, author) = setup().await;
+        let p = db.pool();
+        let post_a = create_post(p, author, "战役 A", "正文", 100).await.unwrap();
+        let post_b = create_post(p, author, "战役 B", "正文", 100).await.unwrap();
+
+        // A 帖下 2 笔、B 帖下 1 笔、主页（无帖）1 笔
+        let mut ids = Vec::new();
+        for (cents, post) in [
+            (1_000, Some(post_a)),
+            (2_000, Some(post_a)),
+            (500, Some(post_b)),
+            (9_999, None),
+        ] {
+            let id = create_donation_record(
+                p,
+                NewDonationRecord {
+                    donor_id: donor,
+                    recipient_id: author,
+                    amount_cents: cents,
+                    txn_id: "",
+                    paid_at: 100,
+                    post_id: post,
+                    now: 100,
+                },
+            )
+            .await
+            .unwrap();
+            ids.push(id);
+        }
+        for id in &ids {
+            review_donation(p, *id, "approved", None, 1, 110)
+                .await
+                .unwrap();
+        }
+
+        // 捐赠方未公开 → 一分不计
+        assert_eq!(donation_total_of_post(p, post_a).await.unwrap(), (0, 0));
+        set_donation_records_public(p, donor, true).await.unwrap();
+
+        assert_eq!(
+            donation_total_of_post(p, post_a).await.unwrap(),
+            (3_000, 2),
+            "A 帖只算 A 帖的两笔；主页那笔不计入任何帖子"
+        );
+        assert_eq!(donation_total_of_post(p, post_b).await.unwrap(), (500, 1));
+    }
+
+    #[tokio::test]
+    async fn donor_summary_groups_by_recipient() {
+        let (db, donor, author) = setup().await;
+        let p = db.pool();
+        let other = create_user(p, "other", None, "hash", 0, 1).await.unwrap();
+        for (who, cents) in [(author, 1_000), (author, 2_500), (other, 700)] {
+            let id = add(p, donor, who, cents, 100).await;
+            review_donation(p, id, "approved", None, 1, 110)
+                .await
+                .unwrap();
+        }
+        let rows = donation_summary_of_donor(p, donor).await.unwrap();
+        assert_eq!(rows.len(), 2);
+        assert_eq!(rows[0].user_id, author, "按合计降序");
+        assert_eq!(rows[0].total_cents, 3_500);
+        assert_eq!(rows[0].count, 2);
+    }
 }
 
 #[cfg(test)]

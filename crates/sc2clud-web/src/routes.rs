@@ -308,6 +308,36 @@ pub fn pages() -> Router<AppState> {
                 .post(crate::pages_posts::new_post_submit),
         )
         .route("/f/{id}", axum::routing::get(file_page))
+        // ---- 打赏记录（0031）：用户登记 + 管理员验证 + 统计 ----
+        .route(
+            "/donations",
+            axum::routing::get(crate::pages_donations::mine)
+                .post(crate::pages_donations::submit),
+        )
+        .route(
+            "/donations/new",
+            axum::routing::get(crate::pages_donations::new_form),
+        )
+        .route(
+            "/donations/{id}/delete",
+            axum::routing::post(crate::pages_donations::withdraw),
+        )
+        .route(
+            "/admin/donations",
+            axum::routing::get(crate::pages_donations::admin_queue),
+        )
+        .route(
+            "/admin/donations/{id}/approve",
+            axum::routing::post(crate::pages_donations::admin_approve),
+        )
+        .route(
+            "/admin/donations/{id}/reject",
+            axum::routing::post(crate::pages_donations::admin_reject),
+        )
+        .route(
+            "/admin/donations/settle",
+            axum::routing::post(crate::pages_donations::admin_settle),
+        )
         .route("/healthz", axum::routing::get(healthz))
         .route("/readyz", axum::routing::get(readyz))
 }
@@ -387,6 +417,11 @@ pub fn api_upload() -> Router<AppState> {
         .route(
             "/settings/donation",
             axum::routing::post(crate::pages_settings::donation_save),
+        )
+        // 打赏记录的公开开关：**任何已激活用户**都能改（与收款码权限分开）
+        .route(
+            "/settings/donation-records",
+            axum::routing::post(crate::pages_settings::donation_records_save),
         )
         .route(
             "/api/v1/me/payment-channels",

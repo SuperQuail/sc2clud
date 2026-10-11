@@ -90,6 +90,16 @@ pub enum Permission {
     ManageUsers,
     /// 任免网站管理员，以及改站点设置。
     ManageRoles,
+    /// 登记一笔打赏记录（给作者打赏后回来报账）。
+    ///
+    /// 与 `SetPaymentChannel` **分开**：那个是「收钱」（挂收款码），
+    /// 这个是「给钱」——任何人打赏完都该能登记，不能要求认证开发者。
+    SubmitDonation,
+    /// 人工验证打赏记录（核对订单号后置为已验证 / 未通过）。
+    ///
+    /// 与 `ReviewPost` 分开：复核帖子内容与验证一笔钱款性质不同，
+    /// 合在一起就无法单独调整门槛。
+    ReviewDonation,
 }
 
 impl Permission {
@@ -109,6 +119,10 @@ impl Permission {
             Permission::SetPaymentChannel => Some(Role::Developer),
             // 人工复核：管理员及以上（原为开发者，产品要求上调）。
             Permission::ReviewPost => Some(Role::Admin),
+            // 登记打赏：任何已激活用户（打赏是用户行为，不设门槛）。
+            Permission::SubmitDonation => Some(Role::Member),
+            // 验证打赏：管理员及以上（涉及钱款，与人工复核同级）。
+            Permission::ReviewDonation => Some(Role::Admin),
             Permission::ManageUsers => Some(Role::Admin),
             // 域名 / 横幅 / 系统公告：只有超级管理员能动（产品要求上调）。
             Permission::ManageDomains
@@ -286,7 +300,7 @@ mod permission_tests {
     #[test]
     fn permission_tree_matches_the_documented_matrix() {
         // 这份期望值就是 docs/PERMISSIONS.md 的表格；改权限必须同时改这里与文档。
-        let expected: [(Permission, Option<Role>); 12] = [
+        let expected: [(Permission, Option<Role>); 14] = [
             (Permission::ViewContent, None),
             (Permission::CreateDiscussion, Some(Role::Member)),
             (Permission::CreateResource, Some(Role::Member)),
@@ -299,6 +313,8 @@ mod permission_tests {
             (Permission::ManageUsers, Some(Role::Admin)),
             (Permission::ManageDomains, Some(Role::Super)),
             (Permission::PublishBanner, Some(Role::Super)),
+            (Permission::SubmitDonation, Some(Role::Member)),
+            (Permission::ReviewDonation, Some(Role::Admin)),
         ];
         for (permission, want) in expected {
             assert_eq!(permission.min_role(), want, "{permission:?} 的门槛变了");

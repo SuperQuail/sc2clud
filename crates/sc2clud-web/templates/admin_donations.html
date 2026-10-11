@@ -1,0 +1,95 @@
+{% extends "base.html" %}
+{% block body_class %}site-page page-admin-donations{% endblock %}
+{% block page_label %}打赏审核{% endblock %}
+
+{% block title %}打赏审核 · {{ site_name }}{% endblock %}
+
+{% block content %}
+<section class="card">
+  <h2>打赏记录审核 <span class="count">{{ total }}</span></h2>
+  <nav class="dn-tabs">
+    {% for t in tabs %}<a href="{{ t.href }}" class="{% if t.active %}selected{% endif %}">{{ t.label }} <em>{{ t.count }}</em></a>{% endfor %}
+  </nav>
+
+  {% if tab == "approved" %}
+  <form id="settle-form" method="post" action="/admin/donations/settle" class="dn-settle">
+    <input type="hidden" name="csrf" value="{{ csrf }}">
+    <label>结算批次号<input type="text" name="batch_ref" maxlength="64" placeholder="如 B2026-10"></label>
+    <button class="btn" type="submit">把勾选的标记为已结算</button>
+    <span class="hint">只对「已验证且未结算」生效，重复提交不会重复计数。</span>
+  </form>
+  {% endif %}
+
+  {% if records.is_empty() %}
+  <p class="empty">这个状态下没有记录。</p>
+  {% else %}
+  <div class="dn-scroll">
+  <table class="dn-table">
+    <thead><tr>
+      {% if tab == "approved" %}<th class="pick"></th>{% endif %}
+      <th>打赏人</th><th>被打赏人</th><th>金额</th><th>订单号</th><th>打赏日期</th><th>状态</th><th>操作</th>
+    </tr></thead>
+    <tbody>
+    {% for row in records %}
+    <tr>
+      {% if tab == "approved" %}<td class="pick">{% if row.can_settle %}<input type="checkbox" name="pick_{{ row.id }}" value="1" form="settle-form" aria-label="选中记录 {{ row.id }}">{% endif %}</td>{% endif %}
+      <td><a href="/u/{{ row.donor_handle }}">{{ row.donor_name }}</a></td>
+      <td><a href="/u/{{ row.recipient_handle }}">{{ row.recipient_name }}</a>{% if let Some(title) = row.post_title %}<br><small class="dn-post">{{ title }}</small>{% endif %}</td>
+      <td class="amount">{{ row.amount }}</td>
+      <td>{% if row.txn_id.is_empty() %}<span class="hint">未填</span>{% else %}<code>{{ row.txn_id }}</code>{% endif %}</td>
+      <td>{{ row.paid_at }}</td>
+      <td><span class="chip st-{{ row.state }}">{{ row.state_label }}</span>{% if row.settled %}<span class="chip">已结算</span>{% endif %}</td>
+      <td class="act">
+        {% if row.can_review %}
+        <form method="post" action="/admin/donations/{{ row.id }}/approve" class="dn-act">
+          <input type="hidden" name="csrf" value="{{ csrf }}">
+          <input type="text" name="note" maxlength="200" placeholder="审核意见（可选）">
+          <button class="btn sm" type="submit">通过</button>
+        </form>
+        <form method="post" action="/admin/donations/{{ row.id }}/reject" class="dn-act">
+          <input type="hidden" name="csrf" value="{{ csrf }}">
+          <input type="text" name="note" maxlength="200" placeholder="拒绝理由">
+          <button class="btn ghost sm" type="submit">拒绝</button>
+        </form>
+        {% else %}
+        <span class="hint">{{ row.review_note }}</span>
+        {% endif %}
+      </td>
+    </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  </div>
+  {% if previous_page.is_some() || next_page.is_some() %}
+  <nav class="home-pagination" aria-label="分页">
+    {% if let Some(href) = previous_page %}<a href="{{ href }}">← 上一页</a>{% endif %}
+    <span>第 {{ page }} 页</span>
+    {% if let Some(href) = next_page %}<a href="{{ href }}">下一页 →</a>{% endif %}
+  </nav>
+  {% endif %}
+  {% endif %}
+</section>
+
+<style>
+.page-admin-donations .count{font-size:13px;color:#6b7280;font-weight:400}
+.page-admin-donations .dn-tabs{display:flex;gap:8px;margin:10px 0 16px;flex-wrap:wrap}
+.page-admin-donations .dn-tabs a{padding:6px 14px;border:1px solid #e5e7eb;border-radius:8px;font-size:13px;color:#374151}
+.page-admin-donations .dn-tabs a.selected{border-color:#dc2626;color:#dc2626;font-weight:600}
+.page-admin-donations .dn-tabs em{font-style:normal;color:#9ca3af;margin-left:4px}
+.page-admin-donations .dn-settle{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:14px;padding:12px;background:#f9fafb;border-radius:10px}
+.page-admin-donations .dn-settle label{display:flex;align-items:center;gap:8px;font-size:13px}
+.page-admin-donations .dn-scroll{overflow-x:auto}
+.page-admin-donations .dn-table{width:100%;border-collapse:collapse;font-size:13px}
+.page-admin-donations .dn-table th{text-align:left;padding:8px 10px;border-bottom:1px solid #e5e7eb;color:#6b7280;font-weight:500;white-space:nowrap}
+.page-admin-donations .dn-table td{padding:10px;border-bottom:1px solid #f3f4f6;vertical-align:top}
+.page-admin-donations .dn-table td.amount{font-weight:700;color:#dc2626;white-space:nowrap}
+.page-admin-donations .dn-table td.pick{width:28px}
+.page-admin-donations .dn-table code{font-size:12px;background:#f3f4f6;padding:1px 5px;border-radius:4px}
+.page-admin-donations .dn-post{color:#6b7280;font-size:12px}
+.page-admin-donations .st-pending{background:rgba(217,119,6,.12);color:#b45309}
+.page-admin-donations .st-approved{background:rgba(22,163,74,.12);color:#15803d}
+.page-admin-donations .st-rejected{background:rgba(220,38,38,.12);color:#b91c1c}
+.page-admin-donations .dn-act{display:flex;gap:6px;margin-bottom:6px}
+.page-admin-donations .dn-act input{width:150px;font-size:12px;padding:4px 8px;border:1px solid #e5e7eb;border-radius:6px}
+</style>
+{% endblock %}

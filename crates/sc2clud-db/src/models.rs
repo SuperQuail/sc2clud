@@ -584,3 +584,65 @@ pub struct UploadSessionRow {
     pub created_at: i64,
     pub expires_at: i64,
 }
+// ---------------------------------------------------------------- 打赏记录（0031）
+
+/// 打赏记录原始行。
+#[derive(Debug, Clone, FromRow)]
+pub struct DonationRecordRow {
+    pub id: i64,
+    pub donor_id: i64,
+    pub recipient_id: i64,
+    /// 金额（**整数分**，绝不用浮点）。
+    pub amount_cents: i64,
+    /// 订单号（空串 = 未填）。
+    pub txn_id: String,
+    pub paid_at: i64,
+    /// pending | approved | rejected
+    pub state: String,
+    pub review_note: Option<String>,
+    pub reviewed_by: Option<i64>,
+    pub reviewed_at: Option<i64>,
+    /// NULL = 尚未结算（只对 approved 有意义）。
+    pub settled_at: Option<i64>,
+    pub settlement_ref: String,
+    pub created_at: i64,
+    pub updated_at: i64,
+    pub deleted_at: Option<i64>,
+}
+
+/// 打赏记录 + 双方账号信息（列表一次 join 拿全，避免 N+1）。
+#[derive(Debug, Clone, FromRow)]
+pub struct DonationWithUsersRow {
+    pub id: i64,
+    pub donor_id: i64,
+    pub donor_handle: String,
+    pub donor_name: String,
+    pub donor_avatar: Option<String>,
+    pub recipient_id: i64,
+    pub recipient_handle: String,
+    pub recipient_name: String,
+    pub recipient_avatar: Option<String>,
+    pub amount_cents: i64,
+    pub txn_id: String,
+    pub paid_at: i64,
+    pub state: String,
+    pub review_note: Option<String>,
+    pub settled_at: Option<i64>,
+    pub created_at: i64,
+    /// 打赏发生在哪篇帖子下（作者主页打赏为 None）。
+    pub post_id: Option<i64>,
+    /// 那篇帖子的标题（帖子被删则回落到 None，记录仍在）。
+    pub post_title: Option<String>,
+}
+
+/// 聚合行：某人给某作者的打赏合计（支出侧列表与排行榜共用）。
+#[derive(Debug, Clone, FromRow)]
+pub struct DonationSummaryRow {
+    /// 对方（支出侧是收款作者；排行榜里是被打赏人）。
+    pub user_id: i64,
+    pub handle: String,
+    pub display_name: String,
+    pub avatar_hash: Option<String>,
+    pub total_cents: i64,
+    pub count: i64,
+}

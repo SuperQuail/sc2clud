@@ -25,6 +25,20 @@
     </button>
     {% endif %}
 
+    {# 打赏记录：这笔打赏**归属到本篇帖子**，所以带上 post id。
+       与上面的「赞助作者」是两件事：那个是去付钱，这个是付完回来登记。 #}
+    {% if post_donation_count > 0 %}
+    <p class="post-donation-total">这篇帖子收到 <strong>{{ post_donation_total }}</strong> 打赏（{{ post_donation_count }} 笔）</p>
+    {% endif %}
+    {% if can_register_donation %}
+    <a class="btn ghost sm post-donation-register" href="/donations/new?to={{ post.author_handle }}&amp;post={{ post.id }}">我已打赏，去登记</a>
+    {% endif %}
+    <style>
+    .post-donation-total{margin:10px 0 6px;font-size:13px;color:#374151}
+    .post-donation-total strong{color:#dc2626}
+    .post-donation-register{display:inline-block;margin-top:2px}
+    </style>
+
     {% if show_sources %}
     <div class="side-card">
       <h3>资源下载</h3>

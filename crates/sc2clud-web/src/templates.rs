@@ -280,6 +280,11 @@ pub struct PostPageTemplate<'a> {
     pub donation_channels: Vec<DonationChannelView>,
     /// 打赏前必须点「确定」的那段醒目提示（作者/渠道默认都没配则为 None）。
     pub donation_notice: Option<String>,
+    /// 这篇帖子下收到的打赏（只算已验证 + 捐赠方已公开）。
+    pub post_donation_total: String,
+    pub post_donation_count: i64,
+    /// 查看者能否给这位作者登记打赏（作者本人不显示入口）。
+    pub can_register_donation: bool,
 }
 
 /// 头衔切换列表里的一项。
@@ -758,6 +763,8 @@ pub struct SettingsTemplate<'a> {
     pub donation_notice_visible: bool,
     pub donation_notice_text: String,
     pub donation_channels: Vec<DonationChannelView>,
+    /// 是否公开「我打赏了谁、多少钱」。**与 donation_visible 是两个独立开关**。
+    pub donation_records_public: bool,
 }
 
 /// 用户主页。
@@ -803,6 +810,18 @@ pub struct ProfileTemplate<'a> {
     pub donation_visible: bool,
     pub donation_channels: Vec<DonationChannelView>,
     pub donation_notice: Option<String>,
+    /// 是否展示「打赏记录」区块（TA 收过打赏，或有公开的支出记录）。
+    pub show_donation_records: bool,
+    /// 支出侧：TA 给每位作者的打赏合计。
+    ///
+    /// 只有「TA 本人 / 管理员 / TA 已公开」才能看到实际内容，否则为空。
+    pub outgoing_donations: Vec<DonationSummaryView>,
+    /// 支出侧是否对当前查看者可见（决定是否渲染「未公开」提示）。
+    pub outgoing_visible: bool,
+    /// 收入侧：TA 收到的打赏合计（**只累计捐赠方已公开的部分**）。
+    pub incoming_donation_total: String,
+    /// 查看者能否给这位作者登记打赏（本人主页不显示入口）。
+    pub can_register_donation: bool,
 }
 
 /// 调试页（开发自检；生产实例不注册该路由）。
@@ -989,6 +1008,147 @@ pub struct RegisterTemplate<'a> {
     pub handle: &'a str,
     pub display_name: &'a str,
     pub email: &'a str,
+}
+
+// ---------------------------------------------------------------- 打赏记录（0031）
+
+/// 一笔打赏记录的展示行（"我的记录"用；对方 = 被打赏的作者）。
+pub struct MyDonationRow {
+    pub id: i64,
+    /// 对方（收款作者）显示名。
+    pub to_name: String,
+    pub to_handle: String,
+    pub to_avatar: Option<String>,
+    /// 已格式化金额（¥12.34）。
+    pub amount: String,
+    pub txn_id: String,
+    /// 打赏发生日期。
+    pub paid_at: String,
+    pub state: String,
+    pub state_label: String,
+    pub review_note: String,
+    pub settled: bool,
+    /// 打赏发生在哪篇帖子下（作者主页打赏为 None）。
+    pub post_id: Option<i64>,
+    pub post_title: Option<String>,
+    /// 只有待验证的记录能撤回。
+    pub can_withdraw: bool,
+}
+
+/// 打赏汇总行（支出侧列表 / 排行榜共用）。
+pub struct DonationSummaryView {
+    pub handle: String,
+    pub display_name: String,
+    pub avatar: Option<String>,
+    /// 已格式化合计。
+    pub total: String,
+    pub count: i64,
+}
+
+/// 管理端队列的一个状态页签。
+///
+/// active 与 href 都在 Rust 侧算好：模板里就不必拿两个 String 互相比较。
+pub struct DonationTab {
+    pub state: String,
+    pub label: String,
+    pub count: i64,
+    pub active: bool,
+    pub href: String,
+}
+
+/// 一笔打赏记录（管理端审核队列用；双方都要显示）。
+pub struct AdminDonationRow {
+    pub id: i64,
+    pub donor_handle: String,
+    pub donor_name: String,
+    pub donor_avatar: Option<String>,
+    pub recipient_handle: String,
+    pub recipient_name: String,
+    pub recipient_avatar: Option<String>,
+    pub amount: String,
+    pub txn_id: String,
+    pub paid_at: String,
+    pub created_at: String,
+    pub state: String,
+    pub state_label: String,
+    pub review_note: String,
+    pub settled: bool,
+    pub post_id: Option<i64>,
+    pub post_title: Option<String>,
+    /// 只有待验证的能改判。
+    pub can_review: bool,
+    /// 只有已验证且未结算的能标记结算。
+    pub can_settle: bool,
+}
+
+/// 「我的打赏记录」页：提交入口 + 记录列表 + 我的统计。
+#[derive(Template)]
+#[template(path = "donations.html")]
+pub struct DonationsTemplate<'a> {
+    pub site_name: &'a str,
+    pub user_label: Option<String>,
+    pub is_staff: bool,
+    pub csrf: String,
+    pub notice: Option<String>,
+    pub error: Option<String>,
+    /// 我的记录（含待验证与被拒）。
+    pub records: Vec<MyDonationRow>,
+    pub total_count: i64,
+    pub page: i64,
+    pub previous_page: Option<String>,
+    pub next_page: Option<String>,
+    /// 隐私开关当前值。
+    pub records_public: bool,
+    /// 支出侧：我给每位作者的合计（**只在开关打开时展示给他人**，本人始终可见）。
+    pub outgoing: Vec<DonationSummaryView>,
+    /// 收入侧：我收到的合计（已格式化）。
+    pub incoming_total: String,
+    /// 收入侧：我还未结算的金额（已格式化）。
+    pub unsettled_total: String,
+    /// 全站统计：按被打赏人排行。
+    pub leaderboard: Vec<DonationSummaryView>,
+}
+
+/// 提交打赏记录的表单页。
+#[derive(Template)]
+#[template(path = "donation_new.html")]
+pub struct DonationNewTemplate<'a> {
+    pub site_name: &'a str,
+    pub user_label: Option<String>,
+    pub is_staff: bool,
+    pub csrf: String,
+    /// 被打赏人的 handle（来自 ?to=）。
+    pub to_handle: String,
+    pub to_name: String,
+    pub to_avatar: Option<String>,
+    /// 被打赏人是否开了收款码展示（没开也允许登记，只是体验上给个提示）。
+    pub to_accepts_donation: bool,
+    /// 从帖子页进来时带上帖子上下文（打赏归属到具体帖子）。
+    pub post_id: Option<i64>,
+    pub post_title: Option<String>,
+    pub error: Option<String>,
+    /// 今天的日期（回填 date 输入框）。
+    pub today: String,
+    /// 单笔上限（元），用于提示文案。
+    pub max_yuan: i64,
+}
+
+/// 管理端：打赏记录审核队列。
+#[derive(Template)]
+#[template(path = "admin_donations.html")]
+pub struct AdminDonationsTemplate<'a> {
+    pub site_name: &'a str,
+    pub user_label: Option<String>,
+    pub is_staff: bool,
+    pub csrf: String,
+    /// 当前页签：pending / approved / rejected。
+    pub tab: String,
+    pub tabs: Vec<DonationTab>,
+    pub records: Vec<AdminDonationRow>,
+    pub total: i64,
+    pub page: i64,
+    pub previous_page: Option<String>,
+    pub next_page: Option<String>,
 }
 
 /// 统一的模板渲染出口：渲染失败只记日志、回 500。
