@@ -1,4 +1,5 @@
 // issue 数据层：只有这里允许出现 fetch（见 AGENTS §6.6）
+import { appUrl } from './base'
 
 export type IssueKind = 'bug' | 'feature' | 'difficulty' | 'other'
 export type IssueState = 'open' | 'closed'
@@ -41,13 +42,13 @@ async function request<T>(res: Response): Promise<T> {
 const post = (postId: number) => `/p/${postId}/issues`
 
 export const listIssues = (postId: number) =>
-  fetch(`/api/v1/posts/${postId}/issues`).then(request<IssueItem[]>)
+  fetch(appUrl(`/api/v1/posts/${postId}/issues`)).then(request<IssueItem[]>)
 
 export const getIssue = (postId: number, issueId: number) =>
-  fetch(`/api/v1/posts/${postId}/issues/${issueId}`).then(request<IssueDetail>)
+  fetch(appUrl(`/api/v1/posts/${postId}/issues/${issueId}`)).then(request<IssueDetail>)
 
 async function submit(url: string, data: Record<string, string>): Promise<void> {
-  const res = await fetch(url, {
+  const res = await fetch(appUrl(url), {
     method: 'POST',
     headers: { 'content-type': 'application/x-www-form-urlencoded' },
     body: new URLSearchParams(data),
