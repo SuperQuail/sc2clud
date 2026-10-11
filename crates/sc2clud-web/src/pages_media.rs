@@ -190,10 +190,12 @@ pub async fn serve_image(
     }
     let viewer = session::current_user(&state, &headers).await.ok().flatten();
     let allowed = match repo::blob_visibility(state.db.pool(), hash.as_str()).await? {
-        Some((owner, true)) => viewer
+        // 0 公开 / 1 登录可见 / 2 仅所有者与管理员
+        Some((_, 0)) | None => true,
+        Some((_, 1)) => viewer.is_some(),
+        Some((owner, _)) => viewer
             .as_ref()
             .is_some_and(|user| user.is_staff() || Some(user.id) == owner),
-        _ => true,
     };
     if !allowed {
         return Err(AppError::not_found("图片不存在"));

@@ -3853,9 +3853,16 @@ pub async fn post_resource_status(pool: &SqlitePool, post_id: i64) -> Result<Opt
 }
 
 /// 加一个收款渠道（渠道名自由填，不限定支付宝/微信）。
-/// 把某个 blob 标成「仅所有者与管理员可见」。收款码这类图用它；公开图不需要调用。
-pub async fn mark_blob_private(pool: &SqlitePool, hash: &str, owner_id: i64) -> Result<()> {
-    query("UPDATE blobs SET private = 1, owner_id = ? WHERE hash = ?")
+/// 设置 blob 的可见性档位（0 公开 / 1 登录可见 / 2 仅所有者与管理员）。
+/// 公开图不需要调用；收款码用 1。
+pub async fn set_blob_visibility(
+    pool: &SqlitePool,
+    hash: &str,
+    owner_id: i64,
+    level: i64,
+) -> Result<()> {
+    query("UPDATE blobs SET visibility = ?, owner_id = ? WHERE hash = ?")
+        .bind(level)
         .bind(owner_id)
         .bind(hash)
         .execute(pool)
@@ -4743,15 +4750,16 @@ pub async fn issue_comment_issue_id(pool: &SqlitePool, comment_id: i64) -> Resul
     Ok(row.map(|r| r.0))
 }
 
-/// blob 的可见性：返回 (owner_id, private)。未登记时返回 None（按公开处理）。
-pub async fn blob_visibility(pool: &SqlitePool, hash: &str) -> Result<Option<(Option<i64>, bool)>> {
+/// blob 的可见性：返回 (owner_id, 档位)。档位：0 公开 / 1 登录可见 / 2 仅所有者与管理员。
+/// 未登记时返回 None（按公开处理）。
+pub async fn blob_visibility(pool: &SqlitePool, hash: &str) -> Result<Option<(Option<i64>, i64)>> {
     let row: Option<(Option<i64>, i64)> =
-        query_as("SELECT owner_id, private FROM blobs WHERE hash = ?")
+        query_as("SELECT owner_id, visibility FROM blobs WHERE hash = ?")
             .bind(hash)
             .fetch_optional(pool)
             .await
             .map_err(db_err)?;
-    Ok(row.map(|(owner, private)| (owner, private != 0)))
+    Ok(row)
 }
 
 // ---------------- 横幅定向 ----------------
