@@ -893,10 +893,8 @@ async fn save_edit(
                     &user.display_name,
                     &[],
                 );
-                match crate::pages_admin::run_review(
-                    state, &config, "post", id, &text, "edit", false,
-                )
-                .await
+                match crate::admin_ai::run_review(state, &config, "post", id, &text, "edit", false)
+                    .await
                 {
                     Ok((verdict, _)) if verdict == "approve" => {
                         if let Ok(true) =
@@ -1813,11 +1811,9 @@ async fn handle_report(
     let config = crate::ai::AiConfig::load(state.db.pool(), &state.config.paths.db_path()).await;
     let mut reviewed = serde_json::Value::Null;
     if config.review_on_report && config.reviews(kind) {
-        if let Ok(text) = crate::pages_admin::ai_target_text(state, kind, form.id).await {
-            match crate::pages_admin::run_review(
-                state, &config, kind, form.id, &text, "report", true,
-            )
-            .await
+        if let Ok(text) = crate::admin_ai::ai_target_text(state, kind, form.id).await {
+            match crate::admin_ai::run_review(state, &config, kind, form.id, &text, "report", true)
+                .await
             {
                 Ok((verdict, reason)) => {
                     reviewed = serde_json::json!({ "verdict": verdict, "reason": reason })
@@ -2151,7 +2147,7 @@ pub async fn new_post_submit(
                 &source_lines,
             );
             if let Err(error) =
-                crate::pages_admin::run_review(&state, &config, "post", id, &text, "new_post", true)
+                crate::admin_ai::run_review(&state, &config, "post", id, &text, "new_post", true)
                     .await
             {
                 tracing::warn!(post.id = id, error, "AI 审核新帖失败，已转人工");

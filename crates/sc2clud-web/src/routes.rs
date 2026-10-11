@@ -190,16 +190,16 @@ pub fn pages() -> Router<AppState> {
         )
         .route(
             "/admin/ai/settings",
-            axum::routing::post(crate::pages_admin::save_ai_settings),
+            axum::routing::post(crate::admin_ai::save_ai_settings),
         )
-        .route("/admin/ai/test", axum::routing::post(crate::pages_admin::test_ai))
+        .route("/admin/ai/test", axum::routing::post(crate::admin_ai::test_ai))
         .route(
             "/admin/ai/review",
-            axum::routing::post(crate::pages_admin::run_ai_review),
+            axum::routing::post(crate::admin_ai::run_ai_review),
         )
         .route(
             "/admin/ai/preview",
-            axum::routing::post(crate::pages_admin::preview_ai_text),
+            axum::routing::post(crate::admin_ai::preview_ai_text),
         )
         .route(
             "/api/v1/reports",

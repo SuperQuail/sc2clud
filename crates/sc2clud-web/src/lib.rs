@@ -6,6 +6,7 @@
 //! - 页面默认服务端渲染，前端只做局部增强。
 
 pub mod admin_acl;
+pub mod admin_ai;
 pub mod ai;
 pub mod error;
 pub mod pages_admin;
