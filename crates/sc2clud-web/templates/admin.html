@@ -278,32 +278,9 @@
 
 <section class="panel" id="acl">
   <h2>分区发言权限 <span class="count">{{ sections.len() }}</span></h2>
-  <p class="hint">角色门槛＝「至少哪个等级能在该分区发言 / 评论」；用户组规则是额外的白名单（禁止项优先于一切）。
-    改完点该行右侧的「保存」立即生效（不刷新页面）；管理员及以上始终无视用户组。</p>
-  <table class="acl-matrix">
-    <thead><tr><th>分区</th><th>可发言</th><th>可评论</th><th>用户组检查</th><th>允许的用户组</th><th></th></tr></thead>
-    <tbody>
-    {% for section in sections %}
-    <tr data-acl-row="{{ section.value }}">
-      <th scope="row">{{ section.label }}</th>
-      <td><select data-acl-post><option value="member">普通用户</option><option value="developer">认证开发者</option><option value="admin">管理员</option><option value="super">超级管理员</option></select></td>
-      <td><select data-acl-reply><option value="member">普通用户</option><option value="developer">认证开发者</option><option value="admin">管理员</option><option value="super">超级管理员</option></select></td>
-      {# 三档：不启用＝完全跳过组逻辑；白名单＝组命中才放行；黑名单＝只认禁止项。管理员及以上始终无视用户组 #}
-      <td><select data-acl-mode class="ui-select">
-        <option value="0"{% if section.mode == 0 %} selected{% endif %}>不启用</option>
-        <option value="1"{% if section.mode == 1 %} selected{% endif %}>白名单</option>
-        <option value="2"{% if section.mode == 2 %} selected{% endif %}>黑名单</option>
-      </select></td>
-      <td class="acl-chips">
-        {% for group in groups %}<button class="acl-chip" type="button" data-acl-chip data-group-id="{{ group.id }}" aria-pressed="false">{{ group.name }}</button>{% endfor %}
-        {% if groups.is_empty() %}<span class="hint">还没有用户组</span>{% endif %}
-      </td>
-      <td><button class="btn sm" type="button" data-acl-save="{{ section.value }}">保存</button></td>
-    </tr>
-    {% endfor %}
-    </tbody>
-  </table>
-
+  {# 矩阵是控件库里的 React 控件（web/src/ui/SectionAcl.tsx）：角色门槛 + 组档位 + 允许的组 #}
+  <div data-island="admin-acl" data-csrf="{{ csrf }}" data-json="{{ acl_json }}"></div>
+  <script type="module" src="/static/islands/admin-acl.js"></script>
 </section>
 
 <section class="panel" id="groups">

@@ -891,6 +891,8 @@ pub struct AdminTemplate<'a> {
     pub pool_variant: u8,
     /// 权限/用户组界面版式：1 权限矩阵 / 2 每分区一卡 / 3 主从两栏（预览用，生产恒 1）。
     pub acl_variant: u8,
+    /// 分区发言权限矩阵的初值（JSON）：交给 React 控件
+    pub acl_json: String,
     /// 用户组列表（含人数与规则）。
     pub groups: Vec<AdminGroupView>,
     /// 禁言时长选项（值, 显示名）。

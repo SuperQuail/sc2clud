@@ -23,7 +23,11 @@ use crate::templates::{
     render,
 };
 
+// 分区发言权限（矩阵初值 + 保存端点）已拆到 admin_acl.rs；这里 re-export，路由表不变
+pub use crate::admin_acl::{acl_json, save_section_acl};
+
 #[derive(Debug, Deserialize)]
+
 pub struct CsrfForm {
     pub csrf: String,
 }
@@ -110,12 +114,11 @@ async fn build_panel<'a>(
     let quota_over_committed =
         allocated.max(0) as u64 > free_bytes.saturating_add(used.max(0) as u64);
     // 分区档位（0 不启用 / 1 白名单 / 2 黑名单）——矩阵里的下拉要回显当前值
-    let section_modes: std::collections::HashMap<String, i64> =
-        repo::list_sections(state.db.pool(), true)
-            .await?
-            .into_iter()
-            .map(|section| (section.key, section.group_mode))
-            .collect();
+    let acl_sections = repo::list_sections(state.db.pool(), true).await?;
+    let section_modes: std::collections::HashMap<String, i64> = acl_sections
+        .iter()
+        .map(|section| (section.key.clone(), section.group_mode))
+        .collect();
     // 生效中的处罚（kind:section:until；同样逐个查，量小）
     let mut member_sanctions: std::collections::HashMap<i64, String> =
         std::collections::HashMap::new();
@@ -240,10 +243,13 @@ async fn build_panel<'a>(
             date: crate::templates::format_date(row.created_at),
         })
         .collect();
+    // 分区发言权限矩阵的全部初值（含每个分区当前的角色门槛与生效的用户组）
+    let acl_json = acl_json(&acl_sections, &groups);
     Ok(AdminTemplate {
         default_avatars,
         pool_variant,
         acl_variant,
+        acl_json,
         groups,
         block_reply_enforced: repo::site_text(state.db.pool(), "block_reply_enforced", "0").await?
             == "1",
@@ -1064,72 +1070,6 @@ pub struct SectionAclForm {
     /// 允许的用户组 id，逗号分隔（绿标签集合）。
     #[serde(default)]
     pub groups: String,
-}
-
-/// 保存一个分区的发言权限：角色门槛 + 是否启用用户组检查 + 允许的组白名单。
-/// 组白名单的语义是「允许发帖且允许评论」；不在名单里的组会被删掉规则（不留残余）。
-pub async fn save_section_acl(
-    State(state): State<AppState>,
-    Path(section): Path<String>,
-    headers: HeaderMap,
-    axum::Json(form): axum::Json<SectionAclForm>,
-) -> AppResult<Response> {
-    let actor = require_user(&state, &headers).await?;
-    session::guard(Some(&actor), Permission::ManageUsers)?;
-    session::check_csrf(&actor, &form.csrf)?;
-    let current = repo::get_section(state.db.pool(), &section)
-        .await?
-        .ok_or_else(|| AppError::not_found("分区不存在"))?;
-    let now = now_unix();
-    // 角色门槛：复用 update_section（名称与说明原样传回，不改它们）
-    repo::update_section(
-        state.db.pool(),
-        &current.key,
-        &current.label,
-        &current.description,
-        &form.post_min_role,
-        &form.reply_min_role,
-        now,
-    )
-    .await?;
-    // 档位：0 不启用 / 1 白名单 / 2 黑名单（前端目前是复选/下拉，值直接给数字）
-    let group_mode = form
-        .group_mode
-        .as_deref()
-        .and_then(|value| value.parse::<i64>().ok())
-        .unwrap_or(0)
-        .clamp(0, 2);
-    repo::set_section_group_check(state.db.pool(), &section, group_mode, now).await?;
-    let allowed: Vec<i64> = form
-        .groups
-        .split(',')
-        .filter_map(|value| value.trim().parse::<i64>().ok())
-        .collect();
-    for group in repo::list_user_groups(state.db.pool(), true).await? {
-        if allowed.contains(&group.id) {
-            repo::set_group_section_rule_full(
-                state.db.pool(),
-                group.id,
-                &section,
-                true,
-                true,
-                false,
-                false,
-            )
-            .await?;
-        } else {
-            repo::remove_group_section_rule(state.db.pool(), group.id, &section).await?;
-        }
-    }
-    tracing::info!(
-        section,
-        post = form.post_min_role,
-        reply = form.reply_min_role,
-        groups = ?allowed,
-        actor.id = actor.id,
-        "保存分区发言权限"
-    );
-    Ok(axum::Json(serde_json::json!({ "ok": true })).into_response())
 }
 
 #[derive(Debug, Deserialize)]
