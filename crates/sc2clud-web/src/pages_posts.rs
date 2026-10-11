@@ -480,6 +480,19 @@ async fn build_post_page<'a>(
         }),
         None => None,
     };
+    let issue_comments = match issue_id {
+        Some(want) => repo::list_issue_comments(state.db.pool(), want)
+            .await
+            .unwrap_or_default()
+            .into_iter()
+            .map(|row| crate::templates::IssueCommentView {
+                author: row.author_display_name,
+                body: row.body,
+                created: crate::templates::format_date(row.created_at),
+            })
+            .collect(),
+        None => Vec::new(),
+    };
     // 与其它预览开关一样只在开发实例生效
     let ivi = if state.config.server.debug_pages {
         ivi_raw.unwrap_or(1).clamp(1, 3)
@@ -505,6 +518,7 @@ async fn build_post_page<'a>(
         ui_variant,
         tabs,
         issue_detail,
+        issue_comments,
         issue_open,
         issue_total,
         issues,
