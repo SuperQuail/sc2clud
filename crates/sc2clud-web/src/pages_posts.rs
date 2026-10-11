@@ -1556,6 +1556,11 @@ pub async fn issue_json(
                 "body": c.body,
                 "author": c.author_display_name,
                 "author_handle": c.author_handle,
+                "parent_id": c.parent_id,
+                "likes": c.likes,
+                "dislikes": c.dislikes,
+                "my_vote": c.my_vote,
+                "avatar": c.author_avatar,
                 "created_at": c.created_at,
             })
         })
