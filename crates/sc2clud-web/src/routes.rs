@@ -136,11 +136,11 @@ pub fn pages() -> Router<AppState> {
         )
         .route(
             "/admin/posts/{id}/approve",
-            axum::routing::post(crate::pages_admin::approve),
+            axum::routing::post(crate::admin_posts::approve),
         )
         .route(
             "/admin/posts/{id}/reject",
-            axum::routing::post(crate::pages_admin::reject),
+            axum::routing::post(crate::admin_posts::reject),
         )
         .route("/settings", axum::routing::get(crate::pages_settings::page))
         .route(
@@ -170,23 +170,23 @@ pub fn pages() -> Router<AppState> {
         )
         .route(
             "/admin/users/{id}/update",
-            axum::routing::post(crate::pages_admin::update_user),
+            axum::routing::post(crate::admin_users::update_user),
         )
         .route(
             "/admin/users/{id}",
-            axum::routing::get(crate::pages_admin::user_edit),
+            axum::routing::get(crate::admin_users::user_edit),
         )
         .route(
             "/admin/users/{id}/quota",
-            axum::routing::post(crate::pages_admin::set_quota),
+            axum::routing::post(crate::admin_users::set_quota),
         )
         .route(
             "/admin/users",
-            axum::routing::post(crate::pages_admin::create_user),
+            axum::routing::post(crate::admin_users::create_user),
         )
         .route(
             "/admin/users/{id}/trusted",
-            axum::routing::post(crate::pages_admin::set_trusted),
+            axum::routing::post(crate::admin_users::set_trusted),
         )
         .route(
             "/admin/ai/settings",
@@ -211,59 +211,59 @@ pub fn pages() -> Router<AppState> {
         )
         .route(
             "/admin/settings/block-reply",
-            axum::routing::post(crate::pages_admin::set_block_reply),
+            axum::routing::post(crate::admin_sanctions::set_block_reply),
         )
         .route(
             "/admin/groups",
-            axum::routing::post(crate::pages_admin::create_group),
+            axum::routing::post(crate::admin_groups::create_group),
         )
         .route(
             "/admin/groups/update",
-            axum::routing::post(crate::pages_admin::update_group),
+            axum::routing::post(crate::admin_groups::update_group),
         )
         .route(
             "/admin/groups/archive",
-            axum::routing::post(crate::pages_admin::archive_group),
+            axum::routing::post(crate::admin_groups::archive_group),
         )
         .route(
             "/admin/users/{id}/sanction",
-            axum::routing::post(crate::pages_admin::set_sanction),
+            axum::routing::post(crate::admin_sanctions::set_sanction),
         )
         .route(
             "/admin/users/{id}/ban",
-            axum::routing::post(crate::pages_admin::ban_user),
+            axum::routing::post(crate::admin_sanctions::ban_user),
         )
         .route(
             "/admin/users/{id}/groups",
-            axum::routing::post(crate::pages_admin::set_user_groups),
+            axum::routing::post(crate::admin_groups::set_user_groups),
         )
         .route(
             "/admin/sections/{section}/move",
-            axum::routing::post(crate::pages_admin::move_section),
+            axum::routing::post(crate::admin_content::move_section),
         )
         .route(
             "/admin/sections/{section}/cover",
-            axum::routing::post(crate::pages_admin::set_section_cover),
+            axum::routing::post(crate::admin_content::set_section_cover),
         )
         .route(
             "/admin/users/{id}/activate",
-            axum::routing::post(crate::pages_admin::activate),
+            axum::routing::post(crate::admin_users::activate),
         )
         .route(
             "/admin/users/{id}/deactivate",
-            axum::routing::post(crate::pages_admin::deactivate),
+            axum::routing::post(crate::admin_users::deactivate),
         )
         .route(
             "/admin/users/{id}/role",
-            axum::routing::post(crate::pages_admin::set_role),
+            axum::routing::post(crate::admin_users::set_role),
         )
         .route(
             "/admin/users/{id}/rename",
-            axum::routing::post(crate::pages_admin::rename),
+            axum::routing::post(crate::admin_users::rename),
         )
         .route(
             "/admin/settings/require-activation",
-            axum::routing::post(crate::pages_admin::toggle_activation_policy),
+            axum::routing::post(crate::admin_users::toggle_activation_policy),
         )
         .route("/p/{id}", axum::routing::get(crate::pages_posts::post_page))
         .route(
@@ -280,11 +280,11 @@ pub fn pages() -> Router<AppState> {
         )
         .route(
             "/admin/posts/{id}/archive",
-            axum::routing::post(crate::pages_admin::archive),
+            axum::routing::post(crate::admin_posts::archive),
         )
         .route(
             "/admin/posts/{id}/unarchive",
-            axum::routing::post(crate::pages_admin::unarchive),
+            axum::routing::post(crate::admin_posts::unarchive),
         )
         .route(
             "/admin/posts/{id}/revision",
@@ -450,33 +450,33 @@ pub fn api_upload() -> Router<AppState> {
         // ---- 横幅管理（管理员及以上）----
         .route(
             "/admin/banners",
-            axum::routing::post(crate::pages_admin::create_banner),
+            axum::routing::post(crate::admin_content::create_banner),
         )
         .route(
             "/admin/banners/{id}/active",
-            axum::routing::post(crate::pages_admin::set_banner_active),
+            axum::routing::post(crate::admin_content::set_banner_active),
         )
         .route(
             "/admin/site-texts",
-            axum::routing::post(crate::pages_admin::site_texts_save),
+            axum::routing::post(crate::admin_content::site_texts_save),
         )
         .route(
             "/admin/default-avatars",
-            axum::routing::post(crate::pages_admin::default_avatar_add),
+            axum::routing::post(crate::admin_content::default_avatar_add),
         )
         .route(
             "/admin/default-avatars/remove",
-            axum::routing::post(crate::pages_admin::default_avatar_remove),
+            axum::routing::post(crate::admin_content::default_avatar_remove),
         )
         // ---- 统一域名管理（管理员及以上）----
         .route(
             "/admin/domains",
-            axum::routing::get(crate::pages_admin::list_domains)
-                .post(crate::pages_admin::add_domain),
+            axum::routing::get(crate::admin_content::list_domains)
+                .post(crate::admin_content::add_domain),
         )
         .route(
             "/admin/domains/{domain}/delete",
-            axum::routing::post(crate::pages_admin::remove_domain),
+            axum::routing::post(crate::admin_content::remove_domain),
         )
         // ---- 资源帖 issue（读公开，写要登录）----
         .route(

@@ -25,7 +25,6 @@ const PENDING = {
   'crates/sc2clud-db/src/community_tests.rs': { limit: 670, reason: '社区域测试', goal: '按领域拆测试文件' },
   // —— Web 层：页面处理器与模板结构 ——
   'crates/sc2clud-web/src/pages_posts.rs': { limit: 2200, reason: '帖子/审核/评论/issue/编辑的处理器集合', goal: '拆 pages_post_edit / pages_issues / pages_comments' },
-  'crates/sc2clud-web/src/pages_admin.rs': { limit: 2200, reason: '管理面板处理器集合（含 AI 审核与用户组）', goal: '按面板分区拆分' },
   'crates/sc2clud-web/src/pages_donations.rs': { limit: 700, reason: '打赏记录与人工验证（新模块，先观察）', goal: '拆页面与仓储调用' },
   'crates/sc2clud-web/src/pages_messages.rs': { limit: 520, reason: '私信与 SSE', goal: '拆出 SSE 部分' },
   'crates/sc2clud-web/src/routes.rs': { limit: 1400, reason: '路由表 + 跨模块辅助（图片已拆出）', goal: '拆出 pages_files，routes.rs 只留路由表' },

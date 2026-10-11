@@ -7,6 +7,11 @@
 
 pub mod admin_acl;
 pub mod admin_ai;
+pub mod admin_content;
+pub mod admin_groups;
+pub mod admin_posts;
+pub mod admin_sanctions;
+pub mod admin_users;
 pub mod ai;
 pub mod error;
 pub mod pages_admin;
