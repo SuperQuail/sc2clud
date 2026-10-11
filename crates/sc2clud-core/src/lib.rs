@@ -11,6 +11,7 @@ pub mod capacity;
 pub mod community;
 pub mod config;
 pub mod counter;
+pub mod donation;
 pub mod error;
 pub mod hash;
 pub mod message;

@@ -1,0 +1,44 @@
+{% extends "base.html" %}
+{% block body_class %}site-page page-donation-new{% endblock %}
+{% block page_label %}登记打赏{% endblock %}
+
+{% block title %}登记打赏 · {{ site_name }}{% endblock %}
+
+{% block content %}
+<section class="card">
+  <h2>登记一笔打赏</h2>
+  <div class="dn-target">
+    <img src="{% if let Some(hash) = to_avatar %}/avatar/{{ hash }}{% else %}/static/art/miyin-chibi-80.webp{% endif %}" width="44" height="44" alt="">
+    <div><strong>{{ to_name }}</strong><small>@{{ to_handle }}</small></div>
+  </div>
+
+  {% if let Some(title) = post_title %}
+  <p class="dn-post">这笔打赏会登记到帖子 <strong>{{ title }}</strong> 下。</p>
+  {% endif %}
+
+  {% if !to_accepts_donation %}
+  <p class="hint">这位作者当前没有开启收款码展示。如果你是通过别的方式（线下转账等）打赏的，仍然可以登记。</p>
+  {% endif %}
+  {% if let Some(text) = error %}<p class="alert">{{ text }}</p>{% endif %}
+
+  <form method="post" action="/donations" class="stack">
+    <input type="hidden" name="csrf" value="{{ csrf }}">
+    <input type="hidden" name="to" value="{{ to_handle }}">
+    <input type="hidden" name="post" value="{% if let Some(pid) = post_id %}{{ pid }}{% endif %}">
+    <label>打赏金额（元）<input type="text" name="amount" inputmode="decimal" required autocomplete="off" placeholder="12.34"></label>
+    <label>订单号（可选）<input type="text" name="txn_id" maxlength="64" autocomplete="off" placeholder="支付宝 / 微信账单里的交易单号"></label>
+    <label>打赏日期<input type="date" name="paid_at" value="{{ today }}"></label>
+    <button class="btn" type="submit">提交，等管理员验证</button>
+  </form>
+
+  <p class="hint">单笔上限 {{ max_yuan }} 元。提交后状态为「待验证」，<strong>管理员核对订单号通过后才会计入统计</strong>；待验证期间你可以自行撤回。</p>
+</section>
+
+<style>
+.page-donation-new .dn-target{display:flex;align-items:center;gap:12px;margin:4px 0 16px}
+.page-donation-new .dn-target img{width:44px;height:44px;border-radius:50%;object-fit:cover;background:#eef2ff}
+.page-donation-new .dn-target div{display:flex;flex-direction:column;line-height:1.35}
+.page-donation-new .dn-target small{color:#6b7280}
+.page-donation-new .dn-post{font-size:13px;color:#374151;background:#f9fafb;border-radius:8px;padding:8px 12px;margin:0 0 12px}
+</style>
+{% endblock %}

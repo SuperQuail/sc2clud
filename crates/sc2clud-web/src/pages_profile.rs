@@ -298,6 +298,39 @@ async fn build_profile<'a>(
     } else {
         Vec::new()
     };
+    // 打赏记录：支出侧（TA 给谁打赏过）+ 收入侧（TA 收到多少）。
+    //
+    // 支出侧默认只有本人与管理员看得到；打开了隐私开关才对他人可见。
+    // 收入侧只累加「捐赠方已同意公开」的记录 —— 一个人的开关对双方都生效。
+    let outgoing_public = repo::donation_records_public(state.db.pool(), owner.id).await?;
+    let outgoing_visible = outgoing_public || is_self || is_staff;
+    let outgoing_donations = if outgoing_visible {
+        repo::donation_summary_of_donor(state.db.pool(), owner.id)
+            .await?
+            .into_iter()
+            .map(|row| crate::templates::DonationSummaryView {
+                display_name: if row.display_name.trim().is_empty() {
+                    row.handle.clone()
+                } else {
+                    row.display_name.clone()
+                },
+                handle: row.handle,
+                avatar: row.avatar_hash,
+                total: sc2clud_core::donation::format_amount(row.total_cents),
+                count: row.count,
+            })
+            .collect::<Vec<_>>()
+    } else {
+        Vec::new()
+    };
+    let incoming_donation_cents =
+        repo::donation_total_of_recipient(state.db.pool(), owner.id).await?;
+    let show_donation_records = !outgoing_donations.is_empty() || incoming_donation_cents > 0;
+    let can_register_donation = viewer.as_ref().is_some_and(|v| {
+        v.id != owner.id
+            && session::allows_for(Some(v), sc2clud_core::auth::Permission::SubmitDonation)
+    });
+
     Ok(ProfileTemplate {
         my_titles,
         title,
@@ -325,6 +358,11 @@ async fn build_profile<'a>(
             })
             .collect(),
         donation_notice,
+        show_donation_records,
+        outgoing_donations,
+        outgoing_visible,
+        incoming_donation_total: sc2clud_core::donation::format_amount(incoming_donation_cents),
+        can_register_donation,
         site_name: &state.config.server.site_name,
         user_label: viewer.as_ref().map(|v| v.display_name.clone()),
         is_staff,

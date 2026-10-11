@@ -501,6 +501,14 @@ async fn build_post_page<'a>(
             badge: (issue_open > 0).then_some(issue_open),
         },
     ];
+
+    // 这篇帖子收到的打赏：只算已验证 + 捐赠方已公开的记录。
+    let (post_donation_cents, post_donation_count) =
+        repo::donation_total_of_post(state.db.pool(), row.id).await?;
+    let can_register_donation = user.as_ref().is_some_and(|u| {
+        u.id != row.author_id
+            && crate::session::allows_for(Some(u), sc2clud_core::auth::Permission::SubmitDonation)
+    });
     Ok(PostPageTemplate {
         ui_variant,
         tabs,
@@ -528,6 +536,9 @@ async fn build_post_page<'a>(
         donation_visible: showcase.donation_visible && !donation_channels.is_empty(),
         donation_channels,
         donation_notice,
+        post_donation_total: sc2clud_core::donation::format_amount(post_donation_cents),
+        post_donation_count,
+        can_register_donation,
         user_label: user.as_ref().map(|u| u.display_name.clone()),
         csrf: user
             .as_ref()
