@@ -61,75 +61,6 @@
 
 {% if tab == "new" %}
 
-  <style>
-/* 分区 / 类型做成页签：上半圆润、下半直线，像文件夹标签 */
-.post-main .card > .head{gap:0;margin-bottom:14px;border-bottom:1px solid var(--line,#e5e7eb)}
-.post-main .card > .head > .tag,
-.post-main .card > .head > .kind{
-  font-size:15px;font-weight:600;padding:12px 26px;border:1px solid var(--line,#e5e7eb);
-  border-bottom:0;border-radius:12px 12px 0 0;background:rgba(37,99,235,.05);margin-bottom:-1px;
-}
-.post-main .card > .head > .kind{background:#fff;border-bottom:0}
-.post-main .card > .head > .tag{background:rgba(37,99,235,.12);color:#1d4ed8}
-.post-tabs{display:flex;align-items:stretch;gap:2px;width:100%;border-bottom:1px solid var(--line,#e5e7eb);margin:12px 0 16px}
-.ptab{display:flex;align-items:center;justify-content:center;padding:14px 26px;font-size:15px;font-weight:500;text-decoration:none;color:inherit;opacity:.7;border-bottom:3px solid transparent}
-.ptab:hover{opacity:1;background:rgba(37,99,235,.05)}
-.ptab.active{opacity:1;font-weight:600;border-bottom-color:#2563eb}
-.ptab b{color:#dc2626}
-.ptab-spacer{flex:1}
-.ptab-cta{font-size:13px;padding:5px 12px;border-radius:999px;text-decoration:none;margin-left:6px}
-.ptab-cta.bug{border:1px solid #dc2626;color:#b91c1c;background:#fef2f2}
-.ptab-cta.idea{border:1px solid #2563eb;color:#1d4ed8;background:#eff6ff}
-.ptab-cta.difficulty{border:1px solid #7c3aed;color:#6d28d9;background:#f5f3ff}
-.ib-btn.difficulty{border:1px solid #7c3aed;background:#f5f3ff;color:#6d28d9}
-.issue-filters{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin:0 0 14px}
-.state-tabs{display:flex;border:1px solid var(--line,#e5e7eb);border-radius:10px;overflow:hidden}
-.state-tabs .st{padding:8px 16px;font-size:14px;text-decoration:none;color:inherit;opacity:.75;border-right:1px solid var(--line,#e5e7eb)}
-.state-tabs .st:last-child{border-right:0}
-.state-tabs .st.on{background:rgba(37,99,235,.12);color:#2563eb;font-weight:600;opacity:1}
-.state-tabs .st b{font-weight:600}
-.kind-menu{position:relative}
-.kind-menu summary{cursor:pointer;list-style:none;font-size:14px;padding:8px 14px;border:1px solid var(--line,#e5e7eb);border-radius:10px}
-.kind-menu summary::-webkit-details-marker{display:none}
-.kind-menu[open] summary{border-color:#2563eb;color:#2563eb}
-.km-panel{position:absolute;z-index:20;top:calc(100% + 4px);left:0;min-width:160px;background:var(--bg,#fff);border:1px solid var(--line,#e5e7eb);border-radius:10px;box-shadow:0 8px 24px rgba(0,0,0,.12);padding:4px}
-.km-panel a{display:block;padding:8px 10px;font-size:14px;text-decoration:none;color:inherit;border-radius:6px}
-.km-panel a:hover{background:rgba(37,99,235,.08);color:#2563eb}
-.issue-search{margin-left:auto;display:flex;gap:6px}
-.issue-search input[type=search]{padding:7px 12px;border:1px solid var(--line,#e5e7eb);border-radius:10px;background:none;color:inherit;font:inherit;font-size:14px;min-width:180px}
-.issue-filters .chips{display:flex;gap:6px}
-.chip{font-size:13px;padding:4px 12px;border-radius:999px;border:1px solid var(--line,#e5e7eb);text-decoration:none;color:inherit}
-.chip.on{border-color:#2563eb;background:rgba(37,99,235,.12);color:#2563eb;font-weight:600}
-.issue-view .kind{font-size:12px;padding:2px 9px;border-radius:999px;white-space:nowrap}
-.issue-view .kind-bug{border:1px solid #dc2626;background:#fee2e2;color:#991b1b}
-.issue-view .kind-feature{border:1px solid #2563eb;background:#dbeafe;color:#1d4ed8}
-.issue-view .kind-difficulty{border:1px solid #7c3aed;background:#f5f3ff;color:#6d28d9}
-.issue-view .kind-other{border:1px solid #9ca3af;background:#f3f4f6;color:#4b5563}
-.issue-list{list-style:none;margin:0;padding:0;border:1px solid var(--line,#e5e7eb);border-radius:12px;overflow:hidden}
-.issue-row{display:flex;align-items:center;gap:10px;padding:12px 14px;border-bottom:1px solid var(--line,#e5e7eb);font-size:14px}
-.issue-row:last-child{border-bottom:0}
-/* 已关闭：灰底叠一点原色，别用整行 opacity（对比度太低看不清） */
-.issue-row.closed{background:rgba(107,114,128,.07)}
-.issue-row.closed .issue-title{color:inherit;opacity:.85}
-.issue-row.closed .kind{filter:grayscale(.45)}
-.issue-row.closed .state-dot{background:#9ca3af}
-.state-dot{width:9px;height:9px;border-radius:50%;background:#16a34a;flex:0 0 auto}
-.issue-row.closed .state-dot{background:#9ca3af}
-.issue-title{font-weight:600;color:inherit;text-decoration:none}
-.issue-title .num{opacity:.5;font-weight:400}
-.issue-title:hover{color:#2563eb}
-.issue-row .meta{margin-left:auto;font-size:12px;opacity:.65;white-space:nowrap}
-.issue-row .comments{font-size:12px;opacity:.75;white-space:nowrap}
-.issue-count{font-size:13px;opacity:.7;margin:10px 2px}
-.issue-new form{display:flex;flex-direction:column;gap:14px}
-.issue-new label{display:block;font-size:14px}
-.kind-pick .kp.difficulty:has(input:checked){border-color:#7c3aed;background:#f5f3ff}
-.kind-pick .kp.other:has(input:checked){border-color:#6b7280;background:#f9fafb}
-.kind-pick .kp input{position:absolute;opacity:0;width:0;height:0}
-.issue-empty{border:1px dashed var(--line,#e5e7eb);border-radius:12px;padding:26px;text-align:center}
-.issue-empty p{margin:8px 0 0;font-size:13px;opacity:.7}
-</style>
-
   {# 交互归前端岛（AGENTS.md §6.6）：模板只给挂载点与初始数据 #}
   <div data-island="issues"
        data-post-id="{{ post.id }}"
@@ -200,6 +131,8 @@
   </div>
   {% endif %}
   {# 配图上传改到编辑页（帖子页只展示） #}
+  <div class="post-actions">
+    <form method="post" action="/p/{{ post.id }}/like" class="inline-form" data-like>
       <input type="hidden" name="csrf" value="{{ csrf }}">
       <button class="btn {% if post.liked %}liked{% else %}ghost{% endif %}" type="submit">
         <svg viewBox="0 0 20 20" width="16" height="16" aria-hidden="true"><path d="M6 9.4l3.6-6.2c.6-1 2.2-.6 2.2.6v4h3.1c1.1 0 1.9 1 1.7 2.1l-1 5c-.2.9-.9 1.5-1.7 1.5H6z" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/><path d="M6 9.4H3v8h3z" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/></svg>
@@ -220,7 +153,6 @@
   <div class="actions-inline" style="margin-top:18px">
     <a class="btn ghost sm" href="/">返回首页</a>
   </div>
-</section>
 
 {# 评论控件：控件库里的 React 组件（web/src/ui/Comments.tsx），模板只给挂载点与初值 #}
 <div data-island="comments"
@@ -233,19 +165,6 @@
 <script type="module" src="/static/islands/comments.js"></script>
 {% include "post_aside.html" %}
 {% endif %}
-<style>
-.pa-item{display:block;width:100%;text-align:left;padding:8px 10px;border:0;border-radius:8px;background:none;color:inherit;font:inherit;cursor:pointer}
-.pa-item:hover{background:rgba(127,127,127,.12)}
-.pa-item.ok{color:#15803d}.pa-item.danger{color:#b91c1c}
-.pa-input{margin:4px 0 6px;width:100%;padding:6px 8px;border:1px solid var(--line,#e5e7eb);border-radius:8px;background:none;color:inherit}
-.pa-group{margin:8px 10px 4px;font-size:12px;opacity:.65;border-top:1px solid var(--line,#e5e7eb);padding-top:8px}
-.pa-group:first-child{border-top:0;margin-top:2px}
-.pa-status{margin:2px 10px 6px;font-size:12px;opacity:.8}
-/* 样式 3：双列说明卡 */
-.pa-grid{display:grid;grid-template-columns:1fr 1fr;gap:6px;min-width:380px}
-.pa-card{display:flex;flex-direction:column;gap:2px;padding:10px;border:1px solid var(--line,#e5e7eb);border-radius:8px;background:none;color:inherit;font:inherit;text-align:left;cursor:pointer}
-.pa-card:hover{background:rgba(127,127,127,.1)}
-</style>
 
 <script>
   // 点赞 / 收藏：就地切换，不刷新页面

@@ -33,11 +33,6 @@
     {% if can_register_donation %}
     <a class="btn ghost sm post-donation-register" href="/donations/new?to={{ post.author_handle }}&amp;post={{ post.id }}">我已打赏，去登记</a>
     {% endif %}
-    <style>
-    .post-donation-total{margin:10px 0 6px;font-size:13px;color:#374151}
-    .post-donation-total strong{color:#dc2626}
-    .post-donation-register{display:inline-block;margin-top:2px}
-    </style>
 
     {% if show_sources %}
     <div class="side-card">

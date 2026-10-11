@@ -167,3 +167,30 @@
 .tbi-1 textarea:focus,.tbi-1 input:focus{outline:0;border-color:#2563eb;box-shadow:0 0 0 3px color-mix(in srgb, #2563eb 22%, transparent)}
 .tbi-1 textarea::placeholder,.tbi-1 input::placeholder{color:color-mix(in srgb, currentColor 45%, transparent)}
 
+/* ---- 帖子「⋯」菜单（post_actions.html；规则原先留在只有作者主页会加载的 donate.html 里） ---- */
+.post-menu{position:relative;display:inline-block}
+.post-menu-btn{border:1px solid var(--line,#e5e7eb);background:none;color:inherit;border-radius:8px;width:34px;height:30px;display:inline-flex;align-items:center;justify-content:center;cursor:pointer}
+.post-menu-btn:hover{background:rgba(127,127,127,.12)}
+.post-menu-panel{position:absolute;right:0;bottom:36px;z-index:50;min-width:210px;max-height:70vh;overflow:auto;
+  background:var(--card,#fff);border:1px solid var(--line,#e5e7eb);border-radius:10px;padding:8px;box-shadow:0 12px 32px rgba(0,0,0,.18)}
+.post-menu-panel[hidden]{display:none}
+
+/* ---- 帖子「⋯」菜单面板内容（post_actions.html；原内联在 post.html） ---- */
+.pa-item{display:block;width:100%;text-align:left;padding:8px 10px;border:0;border-radius:8px;background:none;color:inherit;font:inherit;cursor:pointer}
+.pa-item:hover{background:rgba(127,127,127,.12)}
+.pa-item.ok{color:#15803d}
+.pa-item.danger{color:#b91c1c}
+.pa-input{margin:4px 0 6px;width:100%;padding:6px 8px;border:1px solid var(--line,#e5e7eb);border-radius:8px;background:none;color:inherit}
+.pa-group{margin:8px 10px 4px;font-size:12px;opacity:.65;border-top:1px solid var(--line,#e5e7eb);padding-top:8px}
+.pa-group:first-child{border-top:0;margin-top:2px}
+.pa-status{margin:2px 10px 6px;font-size:12px;opacity:.8}
+/* 样式 3：双列说明卡 */
+.pa-grid{display:grid;grid-template-columns:1fr 1fr;gap:6px;min-width:380px}
+.pa-card{display:flex;flex-direction:column;gap:2px;padding:10px;border:1px solid var(--line,#e5e7eb);border-radius:8px;background:none;color:inherit;font:inherit;text-align:left;cursor:pointer}
+.pa-card:hover{background:rgba(127,127,127,.1)}
+
+/* ---- 帖子右栏：打赏提示（post_aside.html；原内联在模板里） ---- */
+.post-donation-total{margin:10px 0 6px;font-size:13px;color:#374151}
+.post-donation-total strong{color:#dc2626}
+.post-donation-register{display:inline-block;margin-top:2px}
+
