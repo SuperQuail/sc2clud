@@ -13,10 +13,11 @@ use crate::models::{
     AdminUserRow, AnnouncementRow, AuditRow, BannerRow, BlobRow, BlockRow, BookmarkRow,
     CommentWithAuthorRow, ConversationRow, DefaultAvatarRow, DonationSummaryRow,
     DonationWithUsersRow, ExpEventRow, FileRow, FileWithOwnerRow, GroupSectionRuleRow, ImageJobRow,
-    IssueCommentRow, MessageRow, NotificationRow, PaymentChannelRow, PostImageRow, PostIssueRow,
-    PostRevisionRow, PostRow, PostSearchRow, PostSourceRow, PostWithAuthorRow, ReleaseAssetRow,
-    ReleaseRow, SectionModeratorRow, SectionRow, SessionRow, SiteDomainRow, SmtpAccountRow,
-    TitleRow, UploadSessionRow, UserGroupRow, UserHitRow, UserRow, UserSanctionRow, UserTitleRow,
+    IssueCommentRow, MailAccountDraft, MailAccountRow, MessageRow, NotificationRow,
+    PaymentChannelRow, PostImageRow, PostIssueRow, PostRevisionRow, PostRow, PostSearchRow,
+    PostSourceRow, PostWithAuthorRow, ReleaseAssetRow, ReleaseRow, SectionModeratorRow, SectionRow,
+    SessionRow, SiteDomainRow, TitleRow, UploadSessionRow, UserGroupRow, UserHitRow, UserRow,
+    UserSanctionRow, UserTitleRow,
 };
 
 // blob 仓储已拆到 repo_blobs.rs；这里 re-export，调用点保持 repo::xxx 不变
@@ -1163,83 +1164,126 @@ pub async fn create_comment(
 
 use crate::{open_secret, seal_secret};
 
-// ---------------------------------------------------------------- SMTP 验证码
+// ---------------------------------------------------------------- 发信账号（多 provider / 多 key）
 
-/// 发信账号：按优先级排序（主用在前，风控了往下走）。
-pub async fn list_smtp_accounts(
+/// 发信账号列表：按 priority 排序（主用在前；额度用完或风控了往下走）。
+///
+/// 刻意不查 secret_cipher/secret_nonce —— 列表页不需要密文，也不该把它读进内存。
+pub async fn list_mail_accounts(
     pool: &SqlitePool,
     include_archived: bool,
-) -> Result<Vec<SmtpAccountRow>> {
+) -> Result<Vec<MailAccountRow>> {
     let sql = if include_archived {
-        "SELECT * FROM smtp_accounts ORDER BY priority, id"
+        "SELECT id, provider, label, priority, from_address, from_name, reply_to, options_json, \
+                daily_quota, sent_today, quota_day, enabled, cooldown_until, last_ok_at, \
+                last_error, last_error_at, archived_at, created_at, updated_at, updated_by \
+         FROM mail_accounts ORDER BY priority, id"
     } else {
-        "SELECT * FROM smtp_accounts WHERE archived_at IS NULL ORDER BY priority, id"
+        "SELECT id, provider, label, priority, from_address, from_name, reply_to, options_json, \
+                daily_quota, sent_today, quota_day, enabled, cooldown_until, last_ok_at, \
+                last_error, last_error_at, archived_at, created_at, updated_at, updated_by \
+         FROM mail_accounts WHERE archived_at IS NULL ORDER BY priority, id"
     };
-    query_as::<_, SmtpAccountRow>(sql)
+    query_as::<_, MailAccountRow>(sql)
         .fetch_all(pool)
         .await
         .map_err(db_err)
 }
 
-#[allow(clippy::too_many_arguments)]
-pub async fn add_smtp_account(
+/// 新建一个发信账号（凭据另外存：见 [`set_mail_secret`]）。
+pub async fn add_mail_account(
     pool: &SqlitePool,
-    label: &str,
-    host: &str,
-    port: i64,
-    username: &str,
-    from_address: &str,
-    from_name: &str,
-    tls: &str,
-    priority: i64,
+    draft: &MailAccountDraft,
     now: i64,
 ) -> Result<i64> {
     let res = query(
-        "INSERT INTO smtp_accounts (label, host, port, username, from_address, from_name, tls, priority, created_at) \
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        "INSERT INTO mail_accounts (provider, label, priority, from_address, from_name, reply_to, \
+                                    options_json, daily_quota, enabled, created_at, updated_at, updated_by) \
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
     )
-    .bind(label)
-    .bind(host)
-    .bind(port)
-    .bind(username)
-    .bind(from_address)
-    .bind(from_name)
-    .bind(tls)
-    .bind(priority)
+    .bind(&draft.provider)
+    .bind(&draft.label)
+    .bind(draft.priority)
+    .bind(&draft.from_address)
+    .bind(&draft.from_name)
+    .bind(&draft.reply_to)
+    .bind(&draft.options_json)
+    .bind(draft.daily_quota)
+    .bind(draft.enabled)
     .bind(now)
+    .bind(now)
+    .bind(draft.actor_id)
     .execute(pool)
     .await
     .map_err(db_err)?;
     Ok(res.last_insert_rowid())
 }
 
-/// 存 SMTP 密码（加密；单独表？不——就地加密存在本行，和 AI 密钥同一套 AEAD）。
-pub async fn set_smtp_password(
+/// 改一个发信账号的非凭据字段。改 provider 时必须同时重设凭据（形状跟着 provider 变）。
+pub async fn update_mail_account(
+    pool: &SqlitePool,
+    id: i64,
+    draft: &MailAccountDraft,
+    now: i64,
+) -> Result<bool> {
+    let affected = query(
+        "UPDATE mail_accounts SET provider = ?, label = ?, priority = ?, from_address = ?, \
+                from_name = ?, reply_to = ?, options_json = ?, daily_quota = ?, enabled = ?, \
+                updated_at = ?, updated_by = ? \
+         WHERE id = ?",
+    )
+    .bind(&draft.provider)
+    .bind(&draft.label)
+    .bind(draft.priority)
+    .bind(&draft.from_address)
+    .bind(&draft.from_name)
+    .bind(&draft.reply_to)
+    .bind(&draft.options_json)
+    .bind(draft.daily_quota)
+    .bind(draft.enabled)
+    .bind(now)
+    .bind(draft.actor_id)
+    .bind(id)
+    .execute(pool)
+    .await
+    .map_err(db_err)?
+    .rows_affected();
+    Ok(affected == 1)
+}
+
+/// 存凭据：整份加密成一列密文，明文是 JSON，形状由 provider 决定
+/// （smtp → {"password":"..."}；resend → {"api_key":"re_..."}）。
+/// 与 AI 密钥同一套 AEAD（ChaCha20-Poly1305，密钥来自 SC2CLUD_SECRET 或 data/secret.key）。
+pub async fn set_mail_secret(
     pool: &SqlitePool,
     db_path: &std::path::Path,
     id: i64,
-    password: &str,
+    secret_json: &str,
+    actor_id: Option<i64>,
+    now: i64,
 ) -> Result<()> {
-    let (cipher, nonce) = seal_secret(db_path, password)?;
-    query("UPDATE smtp_accounts SET pass_cipher = ?, pass_nonce = ? WHERE id = ?")
-        .bind(cipher)
-        .bind(nonce)
-        .bind(id)
-        .execute(pool)
-        .await
-        .map_err(db_err)?;
+    let (cipher, nonce) = seal_secret(db_path, secret_json)?;
+    query(
+        "UPDATE mail_accounts SET secret_cipher = ?, secret_nonce = ?, updated_at = ?, updated_by = ? \
+         WHERE id = ?",
+    )
+    .bind(cipher)
+    .bind(nonce)
+    .bind(now)
+    .bind(actor_id)
+    .bind(id)
+    .execute(pool)
+    .await
+    .map_err(db_err)?;
     Ok(())
 }
 
-pub async fn smtp_password(
-    pool: &SqlitePool,
-    db_path: &std::path::Path,
-    id: i64,
-) -> Option<String> {
+/// 取凭据明文。只在真正发信时调用；没配过返回 None。
+pub async fn mail_secret(pool: &SqlitePool, db_path: &std::path::Path, id: i64) -> Option<String> {
     // 密文与 nonce 两列（类型写一次就够，别让 clippy 数括号）
     type CipherPair = (Option<Vec<u8>>, Option<Vec<u8>>);
     let row: Option<CipherPair> =
-        query_as("SELECT pass_cipher, pass_nonce FROM smtp_accounts WHERE id = ?")
+        query_as("SELECT secret_cipher, secret_nonce FROM mail_accounts WHERE id = ?")
             .bind(id)
             .fetch_optional(pool)
             .await
@@ -1248,16 +1292,32 @@ pub async fn smtp_password(
     open_secret(db_path, cipher.as_deref()?, nonce.as_deref()?)
 }
 
-pub async fn archive_smtp_account(
+/// 配过密钥没有。只看有没有密文，**不解密** —— 后台列表页不该把明文读进内存。
+pub async fn mail_secret_set(pool: &SqlitePool, id: i64) -> Result<bool> {
+    let row: Option<(i64,)> = query_as(
+        "SELECT (secret_cipher IS NOT NULL AND secret_nonce IS NOT NULL) \
+         FROM mail_accounts WHERE id = ?",
+    )
+    .bind(id)
+    .fetch_optional(pool)
+    .await
+    .map_err(db_err)?;
+    Ok(row.is_some_and(|(set,)| set != 0))
+}
+
+/// 软删除 / 恢复。归档是「移除」，与 [`set_mail_enabled`] 的临时停用分开。
+pub async fn archive_mail_account(
     pool: &SqlitePool,
     id: i64,
     archived: bool,
     now: i64,
 ) -> Result<bool> {
     let affected = query(
-        "UPDATE smtp_accounts SET archived_at = ? WHERE id = ? AND ((archived_at IS NULL) = ?)",
+        "UPDATE mail_accounts SET archived_at = ?, updated_at = ? \
+         WHERE id = ? AND ((archived_at IS NULL) = ?)",
     )
     .bind(if archived { Some(now) } else { None })
+    .bind(now)
     .bind(id)
     .bind(archived)
     .execute(pool)
@@ -1267,18 +1327,35 @@ pub async fn archive_smtp_account(
     Ok(affected == 1)
 }
 
-/// 记一次发信结果（成功清错误、失败留原因，后台能看到是被谁风控了）。
-pub async fn record_smtp_result(
+/// 手动启用 / 停用（不动 archived_at）。
+pub async fn set_mail_enabled(pool: &SqlitePool, id: i64, enabled: bool, now: i64) -> Result<bool> {
+    let affected = query("UPDATE mail_accounts SET enabled = ?, updated_at = ? WHERE id = ?")
+        .bind(enabled)
+        .bind(now)
+        .bind(id)
+        .execute(pool)
+        .await
+        .map_err(db_err)?
+        .rows_affected();
+    Ok(affected == 1)
+}
+
+/// 记一次发信结果：成功清错误并解除冷却，失败留原因 + 冷却截止。
+///
+/// 发信是低频路径（验证码量级），这里直接 UPDATE 不违反「写热点禁止每请求 UPDATE」。
+pub async fn record_mail_result(
     pool: &SqlitePool,
     id: i64,
     ok: bool,
     error: &str,
+    cooldown_until: Option<i64>,
     now: i64,
 ) -> Result<()> {
     query(
-        "UPDATE smtp_accounts SET last_ok_at = CASE WHEN ? THEN ? ELSE last_ok_at END, \
+        "UPDATE mail_accounts SET last_ok_at = CASE WHEN ? THEN ? ELSE last_ok_at END, \
                                    last_error = CASE WHEN ? THEN '' ELSE ? END, \
-                                   last_error_at = CASE WHEN ? THEN last_error_at ELSE ? END \
+                                   last_error_at = CASE WHEN ? THEN last_error_at ELSE ? END, \
+                                   cooldown_until = ? \
          WHERE id = ?",
     )
     .bind(ok)
@@ -1287,6 +1364,7 @@ pub async fn record_smtp_result(
     .bind(error)
     .bind(ok)
     .bind(now)
+    .bind(if ok { None } else { cooldown_until })
     .bind(id)
     .execute(pool)
     .await
@@ -1294,7 +1372,24 @@ pub async fn record_smtp_result(
     Ok(())
 }
 
-/// 写一条验证码（只存哈希与盐）。
+/// 记一封已发出；跨日自动归零。`day` 是 UTC 日起点（`now / 86_400 * 86_400`）。
+pub async fn mark_mail_sent(pool: &SqlitePool, id: i64, day: i64, now: i64) -> Result<()> {
+    query(
+        "UPDATE mail_accounts SET sent_today = CASE WHEN quota_day = ? THEN sent_today + 1 ELSE 1 END, \
+                                   quota_day = ?, updated_at = ? \
+         WHERE id = ?",
+    )
+    .bind(day)
+    .bind(day)
+    .bind(now)
+    .bind(id)
+    .execute(pool)
+    .await
+    .map_err(db_err)?;
+    Ok(())
+}
+
+/// 写一条验证码（只存哈希与盐）；`request_ip` 只用于防刷取证。
 #[allow(clippy::too_many_arguments)]
 pub async fn create_email_code(
     pool: &SqlitePool,
@@ -1304,11 +1399,12 @@ pub async fn create_email_code(
     purpose: &str,
     expires_at: i64,
     account_id: Option<i64>,
+    request_ip: &str,
     now: i64,
 ) -> Result<i64> {
     let res = query(
-        "INSERT INTO email_codes (email, code_hash, salt, purpose, expires_at, account_id, created_at) \
-         VALUES (?, ?, ?, ?, ?, ?, ?)",
+        "INSERT INTO email_codes (email, code_hash, salt, purpose, expires_at, account_id, request_ip, created_at) \
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
     )
     .bind(email)
     .bind(code_hash)
@@ -1316,6 +1412,7 @@ pub async fn create_email_code(
     .bind(purpose)
     .bind(expires_at)
     .bind(account_id)
+    .bind(request_ip)
     .bind(now)
     .execute(pool)
     .await

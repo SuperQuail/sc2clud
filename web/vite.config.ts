@@ -14,11 +14,14 @@ export default defineConfig({
     cssCodeSplit: false,
     rollupOptions: {
       // 头像岛是纯 TS（不引 Vue），单独入口，互不牵连
-      input: { avatar: 'src/avatar.ts', admin: 'src/admin.ts', home: 'src/home.ts', issues: 'src/islands/issues/main.tsx', comments: 'src/islands/comments/main.tsx', postactions: 'src/islands/postactions/main.tsx', postaside: 'src/islands/postaside/main.ts', postform: 'src/islands/postform/main.tsx', 'admin-acl': 'src/islands/admin-acl/main.tsx', 'admin-users': 'src/islands/admin-users/main.tsx', 'admin-pending': 'src/islands/admin-pending/main.tsx', 'admin-community': 'src/islands/admin-community/main.tsx', auth: 'src/auth.ts', 'post-images': 'src/post-images.ts', account: 'src/account.ts', theme: 'src/theme.ts' },
+      input: { avatar: 'src/avatar.ts', admin: 'src/admin.ts', home: 'src/home.ts', issues: 'src/islands/issues/main.tsx', comments: 'src/islands/comments/main.tsx', postactions: 'src/islands/postactions/main.tsx', postaside: 'src/islands/postaside/main.ts', postform: 'src/islands/postform/main.tsx', 'admin-acl': 'src/islands/admin-acl/main.tsx', 'admin-users': 'src/islands/admin-users/main.tsx', 'admin-pending': 'src/islands/admin-pending/main.tsx', 'admin-community': 'src/islands/admin-community/main.tsx', 'admin-mail': 'src/islands/admin-mail/main.tsx', auth: 'src/auth.ts', 'post-images': 'src/post-images.ts', account: 'src/account.ts', theme: 'src/theme.ts' },
       output: {
         format: 'es',
         entryFileNames: '[name].js',
-        chunkFileNames: '[name].js',
+        // 共享 chunk 用小写名：chunk 名默认取模块文件名，而 ui/ 下是 PascalCase（Select.tsx），
+        // 会产出 Select.js。scripts/check-budgets.mjs 解析 import 用的正则只认小写
+        // （[a-z0-9-]+），匹配不到就把它判成「死产物」。全站产物本来就都是小写，这里对齐。
+        chunkFileNames: (chunk) => (chunk.name || 'chunk').toLowerCase() + '.js',
         assetFileNames: '[name][extname]',
       },
     },

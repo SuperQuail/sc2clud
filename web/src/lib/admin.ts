@@ -206,3 +206,129 @@ export interface AdminCommunityData {
 export function setBlockReply(csrf: string, enabled: boolean): Promise<string> {
   return postForm('/admin/settings/block-reply', csrf, [['enabled', enabled ? '1' : '0']])
 }
+
+// ------------------------------------------------------------ 发信配置（多账号 / 多 key）
+
+export interface MailProviderOption {
+  value: string
+  label: string
+  secretLabel: string
+  secretHint: string
+}
+
+export interface MailSettings {
+  enabled: boolean
+  perMinute: number
+  cooldownSeconds: number
+  codeTtlSeconds: number
+}
+
+/** 一个发信账号。密钥永不回传，只给 secretSet（有没有配过）。 */
+export interface MailAccount {
+  id: number
+  provider: string
+  label: string
+  priority: number
+  fromAddress: string
+  fromName: string
+  replyTo: string
+  /** provider 专属的非敏感参数（resend 目前只有 base_url）。 */
+  options: Record<string, string | number>
+  dailyQuota: number
+  sentToday: number
+  quotaDay: number
+  enabled: boolean
+  cooldownUntil: number
+  lastOkAt: number
+  lastError: string
+  lastErrorAt: number
+  archived: boolean
+  updatedAt: number
+  secretSet: boolean
+}
+
+export interface AdminMailData {
+  now: number
+  settings: MailSettings
+  accounts: MailAccount[]
+  providers: MailProviderOption[]
+}
+
+export interface MailAccountInput {
+  provider: string
+  label: string
+  priority: number
+  fromAddress: string
+  fromName: string
+  replyTo: string
+  /** provider 专属参数的 JSON 字符串。 */
+  optionsJson: string
+  dailyQuota: number
+  enabled: boolean
+  /** 明文密钥；留空 = 不改。 */
+  secret: string
+}
+
+function mailFields(input: MailAccountInput): [string, string][] {
+  const fields: [string, string][] = [
+    ['provider', input.provider],
+    ['label', input.label],
+    ['priority', String(input.priority)],
+    ['from_address', input.fromAddress],
+    ['from_name', input.fromName],
+    ['reply_to', input.replyTo],
+    ['options_json', input.optionsJson],
+    ['daily_quota', String(input.dailyQuota)],
+    ['secret', input.secret],
+  ]
+  if (input.enabled) fields.push(['enabled', '1'])
+  return fields
+}
+
+export function saveMailSettings(csrf: string, settings: MailSettings): Promise<string> {
+  const fields: [string, string][] = [
+    ['per_minute', String(settings.perMinute)],
+    ['cooldown_seconds', String(settings.cooldownSeconds)],
+    ['code_ttl_seconds', String(settings.codeTtlSeconds)],
+  ]
+  if (settings.enabled) fields.push(['enabled', '1'])
+  return postForm('/admin/mail/settings', csrf, fields)
+}
+
+export function createMailAccount(csrf: string, input: MailAccountInput): Promise<string> {
+  return postForm('/admin/mail/accounts', csrf, mailFields(input))
+}
+
+export function updateMailAccount(csrf: string, id: number, input: MailAccountInput): Promise<string> {
+  return postForm('/admin/mail/accounts/' + id, csrf, mailFields(input))
+}
+
+export function setMailAccountEnabled(csrf: string, id: number, enabled: boolean): Promise<string> {
+  return postForm('/admin/mail/accounts/' + id + '/enabled', csrf, enabled ? [['value', '1']] : [])
+}
+
+export function archiveMailAccount(csrf: string, id: number, archived: boolean): Promise<string> {
+  return postForm('/admin/mail/accounts/' + id + '/archive', csrf, archived ? [['value', '1']] : [])
+}
+
+/**
+ * 测试发信：真发一封，所以比别的接口慢（要等一次完整的 HTTP 往返）。
+ * 与 postForm 的差别：{ok:false} 也当失败抛出 —— 发送失败的原因必须显示给人看。
+ */
+export async function testMailAccount(csrf: string, id: number, to: string): Promise<string> {
+  const res = await fetch(adminUrl('/admin/mail/accounts/' + id + '/test'), {
+    method: 'POST',
+    headers: {
+      'content-type': 'application/x-www-form-urlencoded;charset=UTF-8',
+      'x-requested-with': 'fetch',
+    },
+    body: new URLSearchParams([
+      ['csrf', csrf],
+      ['to', to],
+    ]),
+  })
+  const data = (await res.json().catch(() => null)) as { ok?: boolean; message?: string } | null
+  if (!res.ok) throw new Error(data?.message || '请求失败（' + res.status + '）')
+  if (!data?.ok) throw new Error(data?.message || '发送失败')
+  return data.message ?? '已发出'
+}

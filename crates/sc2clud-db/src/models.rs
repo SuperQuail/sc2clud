@@ -119,23 +119,51 @@ pub struct GroupSectionRuleRow {
     pub deny_reply: i64,
 }
 
-/// 一个 SMTP 发信账号（主 + 备选，按 priority 排序做故障转移）。
+/// 一个发信账号：provider + 凭据（密文）+ 发件人 + 额度账 + 健康。
+///
+/// 多账号按 `priority` 排序做主备故障转移；provider 专属参数在 `options_json`
+/// （明文 JSON，db 层不解析，由发信模块自己反序列化）。
 #[derive(Debug, Clone, FromRow)]
-pub struct SmtpAccountRow {
+pub struct MailAccountRow {
     pub id: i64,
+    /// 'resend' / 'smtp' / ...
+    pub provider: String,
     pub label: String,
-    pub host: String,
-    pub port: i64,
-    pub username: String,
+    pub priority: i64,
     pub from_address: String,
     pub from_name: String,
-    pub tls: String,
-    pub priority: i64,
-    pub archived_at: Option<i64>,
+    pub reply_to: String,
+    pub options_json: String,
+    /// 0 = 不限。
+    pub daily_quota: i64,
+    pub sent_today: i64,
+    /// 计数所属的 UTC 日起点；≠ 今天即视为新的一天。
+    pub quota_day: i64,
+    pub enabled: i64,
+    pub cooldown_until: Option<i64>,
     pub last_ok_at: Option<i64>,
     pub last_error: String,
     pub last_error_at: Option<i64>,
+    pub archived_at: Option<i64>,
     pub created_at: i64,
+    pub updated_at: i64,
+    pub updated_by: Option<i64>,
+}
+
+/// 新建 / 修改发信账号时要写的字段（不含凭据；凭据由 `repo::set_mail_secret` 单独加密存）。
+#[derive(Debug, Clone)]
+pub struct MailAccountDraft {
+    pub provider: String,
+    pub label: String,
+    pub priority: i64,
+    pub from_address: String,
+    pub from_name: String,
+    pub reply_to: String,
+    /// provider 专属的非敏感参数（JSON 字面量）。
+    pub options_json: String,
+    pub daily_quota: i64,
+    pub enabled: bool,
+    pub actor_id: Option<i64>,
 }
 
 /// 一条处罚（禁止发帖 / 禁止评论，可限定分区）。

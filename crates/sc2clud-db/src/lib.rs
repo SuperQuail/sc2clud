@@ -131,6 +131,9 @@ mod backend_tests;
 mod community_tests;
 
 #[cfg(test)]
+mod mail_tests;
+
+#[cfg(test)]
 mod tests {
     use super::*;
     use crate::repo;
@@ -154,7 +157,9 @@ mod tests {
             "blobs",
             "comments",
             "counters",
+            "email_codes",
             "files",
+            "mail_accounts",
             "notifications",
             "posts",
             "sessions",

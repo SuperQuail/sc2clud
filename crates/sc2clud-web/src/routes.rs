@@ -201,6 +201,31 @@ pub fn pages() -> Router<AppState> {
             "/admin/ai/preview",
             axum::routing::post(crate::admin_ai::preview_ai_text),
         )
+        .route("/admin/mail", axum::routing::get(crate::admin_mail::page))
+        .route(
+            "/admin/mail/settings",
+            axum::routing::post(crate::admin_mail::save_settings),
+        )
+        .route(
+            "/admin/mail/accounts",
+            axum::routing::post(crate::admin_mail::create_account),
+        )
+        .route(
+            "/admin/mail/accounts/{id}",
+            axum::routing::post(crate::admin_mail::update_account),
+        )
+        .route(
+            "/admin/mail/accounts/{id}/enabled",
+            axum::routing::post(crate::admin_mail::set_enabled),
+        )
+        .route(
+            "/admin/mail/accounts/{id}/archive",
+            axum::routing::post(crate::admin_mail::archive_account),
+        )
+        .route(
+            "/admin/mail/accounts/{id}/test",
+            axum::routing::post(crate::admin_mail::test_send),
+        )
         .route(
             "/api/v1/reports",
             axum::routing::post(crate::pages_posts::submit_report),
