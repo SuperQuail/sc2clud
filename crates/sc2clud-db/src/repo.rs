@@ -4732,6 +4732,17 @@ pub async fn issue_comment_issue_id(pool: &SqlitePool, comment_id: i64) -> Resul
     Ok(row.map(|r| r.0))
 }
 
+/// blob 的可见性：返回 (owner_id, private)。未登记时返回 None（按公开处理）。
+pub async fn blob_visibility(pool: &SqlitePool, hash: &str) -> Result<Option<(Option<i64>, bool)>> {
+    let row: Option<(Option<i64>, i64)> =
+        query_as("SELECT owner_id, private FROM blobs WHERE hash = ?")
+            .bind(hash)
+            .fetch_optional(pool)
+            .await
+            .map_err(db_err)?;
+    Ok(row.map(|(owner, private)| (owner, private != 0)))
+}
+
 // ---------------- 横幅定向 ----------------
 
 /// 设置横幅的定向用户组；空列表 = 所有人可见。
