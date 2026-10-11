@@ -88,3 +88,11 @@
 /* 发布表单的类型下拉 */
 .issue-new select{width:100%;margin-top:6px}
 
+/* ---- issue 详情（tab=issue）---- */
+.issue-detail-head .kind{font-size:12px;padding:2px 9px;border-radius:999px}
+.issue-detail-head h2{margin:8px 0 4px;font-size:20px}
+.issue-detail-head h2 .num{opacity:.5;font-weight:400}
+.issue-detail-head .meta{margin:0 0 14px;font-size:13px;opacity:.7}
+.issue-detail-body{border:1px solid var(--line,#e5e7eb);border-radius:12px;padding:14px;white-space:pre-wrap;line-height:1.8}
+.issue-detail-actions{display:flex;gap:10px;align-items:center;margin-top:16px}
+

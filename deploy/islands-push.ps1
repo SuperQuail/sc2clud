@@ -1,4 +1,4 @@
-# 在开发者机器上：构建前端岛并上传到 dev 的收件目录（不碰生产）
+﻿# 在开发者机器上：构建前端岛并上传到 dev 的收件目录（不碰生产）
 #   pwsh -File deploy/islands-push.ps1
 param(
   [string]$Server = 'root@191.40.41.97',

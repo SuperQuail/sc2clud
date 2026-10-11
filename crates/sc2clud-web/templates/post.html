@@ -138,6 +138,31 @@
   <script type="module" src="/static/islands/issues.js"></script>
 {% else if tab == "issues" %}
 {% include "post_issues_list.html" %}
+{% else if tab == "issue" %}
+<section class="issue-view">
+  {% if let Some(issue) = issue_detail %}
+  <div class="issue-detail">
+    <div class="issue-detail-head">
+      <span class="kind kind-{{ issue.kind }}">{{ issue.kind_label }}</span>
+      <h2>{{ issue.title }} <span class="num">#{{ issue.id }}</span></h2>
+      <p class="meta">{{ issue.author }} · {{ issue.created }}{% if !issue.open %} · <span class="tag">已关闭</span>{% endif %}</p>
+    </div>
+    <div class="issue-detail-body">{{ issue.body }}</div>
+    <div class="issue-detail-actions">
+      <a class="btn ghost sm" href="/p/{{ post.id }}/issues">← 返回问题与建议</a>
+      {% if issue.can_edit %}
+      <form method="post" action="/p/{{ post.id }}/issues/{{ issue.id }}/state">
+        <input type="hidden" name="csrf" value="{{ csrf }}">
+        <input type="hidden" name="state" value="{% if issue.open %}closed{% else %}open{% endif %}">
+        <button class="btn sm" type="submit">{% if issue.open %}关闭这条反馈{% else %}重新打开{% endif %}</button>
+      </form>
+      {% endif %}
+    </div>
+  </div>
+  {% else %}
+  <div class="issue-empty"><b>这条反馈不存在</b><p>可能已被删除，或者链接有误。</p></div>
+  {% endif %}
+</section>
 {% else %}
   <div class="meta byline">
     {% if let Some(avatar) = post.avatar %}
