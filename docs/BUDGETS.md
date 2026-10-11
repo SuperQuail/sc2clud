@@ -30,9 +30,14 @@
 | 列表页 HTML | ≤ 30 KB | 首页为极简 SSR 模板，实测 < 5 KB |
 | 详情页 HTML | ≤ 50 KB | 同上 |
 | 首屏 CSS | ≤ 20 KB | `static/app.css`，brotli 后 ≈ 1 KB |
-| 首屏 JS | ≤ 60 KB | 上传岛（Vue 3 运行时 + 组件），brotli 后 ≈ 20 KB |
+| 首屏 JS（每页共享外壳） | ≤ 60 KB | `base.html` 挂的岛：`theme` + `post-images` + （`account` / `auth` 二选一，取较大者），brotli 后 ≈ 3.5 KB |
+| 单个前端岛 | ≤ 120 KB | 与 `web/vite.config.ts` 的注释一致；当前最大 `issues.js` ≈ 66.5 KB（React 18 + ReactDOM + Radix Select，§6.6 强制） |
 | 列表页缩略图合计 | ≤ 150 KB | 缩略图功能尚未实现（必须异步化） |
 | 单页首屏总计 | ≤ 250 KB ≈ 2 秒传输 | 由上述各项相加约束 |
+
+**「首屏 JS」量的是每个页面真正会下载的那一份**，不是 `islands/` 下所有产物的总和 ——
+没有任何页面会同时加载全部岛，那个总和既不是首屏、也不是任何一个单页的体积。
+页面自己的岛（如帖子页的 `issues.js`）由「单个前端岛」这一行单独设限。
 
 ## 4. 检查方式
 
@@ -48,4 +53,5 @@ cat /sys/fs/cgroup/system.slice/sc2clud.service/memory.current
 vnstat -h
 ```
 
-`scripts/check-budgets.mjs` 在 CI 与本地都会跑：超预算直接失败，避免「先合进去再说」。
+`scripts/check-budgets.mjs` 在 CI 与本地都会跑：三条断言（首屏 CSS / 首屏 JS / 单岛上限）任一超限即失败，
+并额外校验「模板引用的岛确实存在」。改模板里的 island `<script>` 时，同步脚本顶部的 `SHARED` / `SHELL_ALTERNATIVES`。
