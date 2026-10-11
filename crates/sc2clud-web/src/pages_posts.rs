@@ -723,6 +723,31 @@ async fn build_edit<'a>(
     let kind = PostKind::parse(&row.kind).unwrap_or(PostKind::Discussion);
     let section = PostSection::parse(&row.section).unwrap_or(PostSection::default_section());
     let state_ = ReviewState::parse(&row.review_state).unwrap_or(ReviewState::Pending);
+    // 表单初值一次性算好：一份给 React 表单岛（edit_data_json），一份给无脚本兜底以外的其它字段
+    let sources: Vec<SourceSlot> = repo::list_post_sources(state.db.pool(), id)
+        .await?
+        .into_iter()
+        .enumerate()
+        .map(|(i, row)| SourceSlot {
+            index: i + 1,
+            url: row.url,
+            code: row.extract_code.unwrap_or_default(),
+            provider: row.provider,
+            label: row.label.unwrap_or_default(),
+        })
+        .collect();
+    let kinds = kind_options(kind.as_str());
+    let sections = section_options(section.as_str(), Some(&user));
+    let providers = provider_options();
+    let edit_data_json = serde_json::json!({
+        "title": row.title.clone(),
+        "body": row.body.clone(),
+        "kinds": kinds.iter().map(|o| serde_json::json!({"value": o.value, "label": o.label, "checked": o.checked})).collect::<Vec<_>>(),
+        "sections": sections.iter().map(|o| serde_json::json!({"value": o.value, "label": o.label, "checked": o.checked})).collect::<Vec<_>>(),
+        "providers": providers.iter().map(|o| serde_json::json!({"value": o.value, "label": o.label})).collect::<Vec<_>>(),
+        "sources": sources.iter().map(|s| serde_json::json!({"provider": s.provider, "label": s.label, "code": s.code, "url": s.url})).collect::<Vec<_>>(),
+    })
+    .to_string();
     Ok(EditPostTemplate {
         site_name: &state.config.server.site_name,
         user_label: Some(user.display_name.clone()),
@@ -732,9 +757,9 @@ async fn build_edit<'a>(
         error: None,
         state_label: state_.label().to_string(),
         review_note: row.review_note.clone(),
-        kinds: kind_options(kind.as_str()),
-        sections: section_options(section.as_str(), Some(&user)),
-        providers: provider_options(),
+        kinds,
+        sections,
+        providers,
         images: {
             let rows = repo::list_post_images(state.db.pool(), id).await?;
             let total = rows.len();
@@ -750,18 +775,8 @@ async fn build_edit<'a>(
                 .collect()
         },
         image_count: row.image_count,
-        sources: repo::list_post_sources(state.db.pool(), id)
-            .await?
-            .into_iter()
-            .enumerate()
-            .map(|(i, row)| SourceSlot {
-                index: i + 1,
-                url: row.url,
-                code: row.extract_code.unwrap_or_default(),
-                provider: row.provider,
-                label: row.label.unwrap_or_default(),
-            })
-            .collect(),
+        sources,
+        edit_data_json,
         title: row.title.clone(),
         body: row.body.clone(),
     })

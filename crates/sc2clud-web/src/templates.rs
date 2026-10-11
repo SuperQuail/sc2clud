@@ -642,6 +642,8 @@ pub struct EditPostTemplate<'a> {
     pub providers: Vec<ProviderOption>,
     /// 已有的配图（编辑页展示、可排序、可删除）。
     pub images: Vec<EditImageView>,
+    /// 编辑表单的全部初值（JSON）：交给 React 表单岛，服务端不再渲染重复结构
+    pub edit_data_json: String,
     pub image_count: i64,
     /// 已有的下载来源（**必须回填**：编辑保存会整体重写来源，漏了就全丢了）。
     pub sources: Vec<SourceSlot>,

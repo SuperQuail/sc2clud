@@ -14,60 +14,14 @@
   <p class="alert">{{ message }}</p>
   {% endif %}
   <p class="hint">保存后会**重新过一遍审核机**（内容变了，审核结论要重算）；管理员编辑则直接发布。</p>
-  <form method="post" action="/p/{{ id }}/edit" class="stack">
-    <input type="hidden" name="csrf" value="{{ csrf }}">
-    <label>标题<input type="text" name="title" value="{{ title }}" required minlength="2" maxlength="120"></label>
-    <fieldset style="border:0;padding:0;margin:0">
-      <legend style="font-size:14px;font-weight:600;margin-bottom:8px">类型</legend>
-      <div class="kind-picker">
-        {% for kind in kinds %}
-        <label><input type="radio" name="kind" value="{{ kind.value }}"{% if kind.checked %} checked{% endif %}> {{ kind.label }}<span class="hint">{{ kind.hint }}</span></label>
-        {% endfor %}
-      </div>
-    </fieldset>
-    <fieldset style="border:0;padding:0;margin:0">
-      <legend style="font-size:14px;font-weight:600;margin-bottom:8px">分区</legend>
-      <select name="section">
-        {% for section in sections %}
-        <option value="{{ section.value }}"{% if section.checked %} selected{% endif %}>{{ section.label }}</option>
-        {% endfor %}
-      </select>
-    </fieldset>
-    {# 下载来源：控件库里的 React 控件 web/src/ui/Sources.tsx（服务端先渲染初值，岛读取后接管） #}
-    <div data-island="sources">
-    <fieldset style="border:0;padding:0;margin:0">
-      <legend style="font-size:14px;font-weight:600;margin-bottom:8px">下载来源（数量不限，名称可自定义）</legend>
-      <div class="source-rows" id="source-rows">
-        {% for slot in sources %}
-        <div class="source-row">
-          <select name="provider">
-            {% for provider in providers %}
-            <option value="{{ provider.value }}"{% if provider.value == slot.provider %} selected{% endif %}>{{ provider.label }}</option>
-            {% endfor %}
-          </select>
-          <input type="text" name="label" value="{{ slot.label }}" placeholder="显示名（可留空）" maxlength="24">
-          <input type="text" name="code" value="{{ slot.code }}" placeholder="提取码" maxlength="8">
-          <input type="url" name="url" value="{{ slot.url }}" placeholder="https:// 下载地址">
-          <button class="icon-btn" type="button" title="删除这一行">✕</button>
-        </div>
-        {% endfor %}
-      </div>
-    </fieldset>
-    </div>
-    <script type="module" src="/static/islands/sources.js"></script>
-      {# 正文富文本：控件库里的可复用组件 web/src/ui/RichText.tsx（图片直接嵌在正文里） #}
-      <div data-island="editor"
-           data-target="post-body"
-           data-upload="/api/v1/posts/{{ id }}/images"
-           data-csrf="{{ csrf }}"></div>
-      <script type="module" src="/static/islands/editor.js"></script>
-      <label>正文<textarea name="body" id="post-body" required minlength="2" maxlength="20000">{{ body }}</textarea></label>
-    </div>
-    <div class="actions-inline">
-      <button class="btn" type="submit">保存</button>
-      <a class="btn ghost" href="/p/{{ id }}">取消</a>
-    </div>
-  </form>
+  {# 发帖/编辑表单：整张由控件库的 React 控件渲染（AGENTS §6.6） #}
+  <div data-island="post-form"
+       data-action="/p/{{ id }}/edit"
+       data-upload="/api/v1/posts/{{ id }}/images"
+       data-csrf="{{ csrf }}"
+       data-back="/p/{{ id }}"
+       data-json="{{ edit_data_json }}"></div>
+  <script type="module" src="/static/islands/postform.js"></script>
 </section>
 {% endblock %}
 

@@ -8,8 +8,8 @@ import TurndownService from 'turndown'
 import { compressImage, uploadImage } from '../lib/image'
 
 export interface RichTextProps {
-  /** 提交用的隐藏字段（模板里的 textarea id）：内容始终以 markdown 写回，存储格式不变 */
-  targetId: string
+  /** 提交字段名（表单里的 name），内容始终以 markdown 写回，存储格式不变 */
+  bodyName: string
   /** 初始 markdown（未提供就从 target 的当前值读） */
   initial?: string
   /** 图片上传端点（省略则隐藏插图按钮） */
@@ -31,11 +31,11 @@ turndown.addRule('keepImage', {
  * 可复用富文本编辑器（控件库）：TipTap 负责编辑体验，**存储仍然是 markdown**。
  * 载入时 markdown → HTML，编辑时 HTML → markdown 写回隐藏字段，因此服务端、老帖都不用改。
  */
-export function RichText({ targetId, initial, uploadEndpoint, csrf }: RichTextProps) {
+export function RichText({ bodyName, initial, uploadEndpoint, csrf }: RichTextProps) {
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
   const file = useRef<HTMLInputElement>(null)
-  const markdown = useRef(initial ?? '')
+  const [markdown, setMarkdown] = useState(initial ?? '')
 
   const editor = useEditor({
     extensions: [
@@ -43,26 +43,14 @@ export function RichText({ targetId, initial, uploadEndpoint, csrf }: RichTextPr
       Image.configure({ inline: false, allowBase64: false }),
       Link.configure({ openOnClick: false }),
     ],
-    content: turndownToHtml(markdown.current),
+    content: turndownToHtml(initial ?? ''),
     onUpdate: ({ editor: instance }) => {
     
         const html = instance.getHTML()
-        markdown.current = turndown.turndown(html)
-        const target = document.getElementById(targetId) as HTMLTextAreaElement | null
-        if (target) target.value = markdown.current
+        setMarkdown(turndown.turndown(html))
     },
   })
 
-  // 编辑器起来了才隐藏原始 textarea：它是表单字段（提交用），无 JS 时必须仍然可见可用
-  useEffect(() => {
-    const target = document.getElementById(targetId) as HTMLTextAreaElement | null
-    if (!target) return
-    if (target.value) markdown.current = target.value
-    target.hidden = true
-    return () => {
-      target.hidden = false
-    }
-  }, [targetId])
 
   async function onPick(event: ChangeEvent<HTMLInputElement>) {
     const picked = event.target.files?.[0]
@@ -106,6 +94,7 @@ export function RichText({ targetId, initial, uploadEndpoint, csrf }: RichTextPr
         )}
       </div>
       <EditorContent className="rte-body" editor={editor} />
+      <input type="hidden" name={bodyName} value={markdown} />
       {error && <p className="rte-error">{error}</p>}
     </div>
   )

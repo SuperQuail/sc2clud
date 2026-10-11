@@ -34,7 +34,7 @@ const SHELL_ALTERNATIVES = [['account', 'auth']]
 const ISLAND_LIMIT = 120 * KB
 // 具名豁免：富文本编辑器天生重（TipTap/ProseMirror + markdown 往返 ≈ 164 KB brotli），
 // 且只在登录后的编辑页加载、不进任何页面的首屏（首屏 3.5/60）。理由见 docs/BUDGETS.md。
-const ISLAND_LIMIT_OVERRIDES = { editor: 200 * KB }
+const ISLAND_LIMIT_OVERRIDES = { postform: 200 * KB }
 const islandLimitFor = (entry) => ISLAND_LIMIT_OVERRIDES[entry] ?? ISLAND_LIMIT
 
 const brotliSize = (path) =>
