@@ -4,11 +4,11 @@
 
 use std::sync::Arc;
 
+use axum::Json;
 use axum::body::Body;
 use axum::extract::{Path, State};
 use axum::http::{HeaderMap, header};
 use axum::response::{IntoResponse, Response};
-use axum::{Json, Router};
 use bytes::Bytes;
 use futures_util::StreamExt;
 use sc2clud_core::auth::Permission;
@@ -27,17 +27,6 @@ use crate::error::{AppError, AppResult};
 use crate::routes::{client_subject, invalid};
 use crate::session;
 use crate::upload::{DEFAULT_QUEUE_DEPTH, pump_body};
-
-/// 图片路由。
-pub fn router() -> Router<AppState> {
-    Router::new()
-        .route("/api/v1/images", axum::routing::post(upload_image))
-        .route(
-            "/api/v1/posts/{post_id}/images",
-            axum::routing::post(upload_post_image),
-        )
-        .route("/img/{hash}", axum::routing::get(serve_image))
-}
 
 /// 按文件头识别图片类型（只认四种我们接受的格式）。
 pub(crate) fn sniff_image_mime(head: &[u8]) -> Option<&'static str> {

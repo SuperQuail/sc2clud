@@ -389,6 +389,11 @@ pub fn api_upload() -> Router<AppState> {
                 .get(crate::pages_profile::avatar_info)
                 .delete(crate::pages_profile::avatar_clear),
         )
+        // 通用插图：不依赖帖子（发帖前上传、将来其它用途）
+        .route(
+            "/api/v1/images",
+            axum::routing::post(crate::pages_media::upload_image),
+        )
         .route(
             "/api/v1/posts/{post_id}/images",
             axum::routing::post(crate::pages_media::upload_post_image),
