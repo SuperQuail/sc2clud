@@ -18,6 +18,9 @@ use crate::models::{
     ReleaseRow, SectionModeratorRow, SectionRow, SessionRow, SiteDomainRow, SmtpAccountRow,
     TitleRow, UploadSessionRow, UserGroupRow, UserHitRow, UserRow, UserSanctionRow, UserTitleRow,
 };
+
+// blob 仓储已拆到 repo_blobs.rs；这里 re-export，调用点保持 repo::xxx 不变
+pub use crate::repo_blobs::{blob_visibility, ensure_blob, set_blob_visibility};
 pub async fn create_user(
     pool: &SqlitePool,
     handle: &str,
@@ -154,27 +157,6 @@ pub async fn find_user_by_handle(pool: &SqlitePool, handle: &str) -> Result<Opti
 /// 登记一份内容（幂等，秒传与普通上传共用）。
 ///
 /// 返回 `true` 表示这是**首次**登记该内容——调用方据此判断是否真的写了盘。
-pub async fn ensure_blob(pool: &SqlitePool, hash: &str, size: i64, now: i64) -> Result<bool> {
-    let mut tx = pool.begin().await.map_err(db_err)?;
-    let inserted =
-        query("INSERT OR IGNORE INTO blobs (hash, size, refcount, created_at) VALUES (?, ?, 0, ?)")
-            .bind(hash)
-            .bind(size)
-            .bind(now)
-            .execute(&mut *tx)
-            .await
-            .map_err(db_err)?
-            .rows_affected()
-            == 1;
-    query("UPDATE blobs SET refcount = refcount + 1 WHERE hash = ?")
-        .bind(hash)
-        .execute(&mut *tx)
-        .await
-        .map_err(db_err)?;
-    tx.commit().await.map_err(db_err)?;
-    Ok(inserted)
-}
-
 pub async fn find_blob(pool: &SqlitePool, hash: &str) -> Result<Option<BlobRow>> {
     query_as::<_, BlobRow>("SELECT * FROM blobs WHERE hash = ?")
         .bind(hash)
@@ -3855,22 +3837,6 @@ pub async fn post_resource_status(pool: &SqlitePool, post_id: i64) -> Result<Opt
 /// 加一个收款渠道（渠道名自由填，不限定支付宝/微信）。
 /// 设置 blob 的可见性档位（0 公开 / 1 登录可见 / 2 仅所有者与管理员）。
 /// 公开图不需要调用；收款码用 1。
-pub async fn set_blob_visibility(
-    pool: &SqlitePool,
-    hash: &str,
-    owner_id: i64,
-    level: i64,
-) -> Result<()> {
-    query("UPDATE blobs SET visibility = ?, owner_id = ? WHERE hash = ?")
-        .bind(level)
-        .bind(owner_id)
-        .bind(hash)
-        .execute(pool)
-        .await
-        .map_err(db_err)?;
-    Ok(())
-}
-
 pub async fn add_payment_channel(
     pool: &SqlitePool,
     user_id: i64,
@@ -4748,18 +4714,6 @@ pub async fn issue_comment_issue_id(pool: &SqlitePool, comment_id: i64) -> Resul
             .await
             .map_err(db_err)?;
     Ok(row.map(|r| r.0))
-}
-
-/// blob 的可见性：返回 (owner_id, 档位)。档位：0 公开 / 1 登录可见 / 2 仅所有者与管理员。
-/// 未登记时返回 None（按公开处理）。
-pub async fn blob_visibility(pool: &SqlitePool, hash: &str) -> Result<Option<(Option<i64>, i64)>> {
-    let row: Option<(Option<i64>, i64)> =
-        query_as("SELECT owner_id, visibility FROM blobs WHERE hash = ?")
-            .bind(hash)
-            .fetch_optional(pool)
-            .await
-            .map_err(db_err)?;
-    Ok(row)
 }
 
 // ---------------- 横幅定向 ----------------

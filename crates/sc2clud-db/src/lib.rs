@@ -18,6 +18,7 @@ use sqlx::sqlite::{SqliteConnectOptions, SqliteJournalMode, SqlitePoolOptions, S
 
 pub mod models;
 pub mod repo;
+pub mod repo_blobs;
 
 pub use models::{
     AdminUserRow, AnnouncementRow, AuditRow, BlobRow, BlockRow, BookmarkRow, CommentRow,
