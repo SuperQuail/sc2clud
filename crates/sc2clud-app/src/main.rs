@@ -38,6 +38,7 @@ async fn main() -> Result<()> {
         "check" => check().await,
         "set-password" => set_password().await,
         "create-admin" => create_admin().await,
+        "set-mail-key" => set_mail_key().await,
         "version" | "-V" | "--version" => {
             println!("sc2clud {}", env!("CARGO_PKG_VERSION"));
             Ok(())
@@ -163,6 +164,79 @@ async fn create_admin() -> Result<()> {
 }
 
 /// 这是**运维工具**：忘记管理员密码时用，需要在服务器上（有数据目录权限）执行。
+/// 应急入口：直接往库里写发信账号的密钥（后台面板出问题时的备用手段）。
+/// 密钥走环境变量，不放命令行参数 —— `ps` 能看到参数，看不到环境变量。
+/// 用法：`SC2CLUD_MAIL_KEY=re_xxx sc2clud set-mail-key [账号id] [发件地址]`
+async fn set_mail_key() -> Result<()> {
+    let key = std::env::var("SC2CLUD_MAIL_KEY")
+        .context("缺少环境变量 SC2CLUD_MAIL_KEY（密钥不要放命令行参数）")?;
+    let key = key.trim().to_string();
+    if key.is_empty() {
+        anyhow::bail!("SC2CLUD_MAIL_KEY 为空");
+    }
+    let mut args = std::env::args().skip(2);
+    let wanted: i64 = args.next().map(|v| v.parse().unwrap_or(1)).unwrap_or(1);
+    let from = args
+        .next()
+        .unwrap_or_else(|| "noreply@sc2clud.icu".to_string());
+
+    let config = Config::load().context("装载配置失败")?;
+    config.paths.ensure_dirs().context("创建数据目录失败")?;
+    let db_path = config.paths.db_path();
+    let db = Db::connect(&db_path).await.context("打开数据库失败")?;
+    db.migrate().await.context("执行迁移失败")?;
+    let now = sc2clud_core::now_unix();
+
+    // 没有账号就建一个 resend 账号，最后把总开关也打开
+    let accounts = repo::list_mail_accounts(db.pool(), true)
+        .await
+        .context("查询发信账号失败")?;
+    let id = match accounts
+        .iter()
+        .find(|a| a.id == wanted)
+        .or_else(|| accounts.first())
+    {
+        Some(account) => account.id,
+        None => {
+            let draft = sc2clud_db::models::MailAccountDraft {
+                provider: "resend".into(),
+                label: "主力".into(),
+                priority: 0,
+                from_address: from.clone(),
+                from_name: "SC2clud".into(),
+                reply_to: String::new(),
+                options_json: "{}".into(),
+                daily_quota: 100,
+                enabled: true,
+                actor_id: None,
+            };
+            repo::add_mail_account(db.pool(), &draft, now)
+                .await
+                .context("创建发信账号失败")?
+        }
+    };
+
+    let payload =
+        sc2clud_web::mail::secret_payload("resend", &key).map_err(|e| anyhow::anyhow!("{e}"))?;
+    repo::set_mail_secret(db.pool(), &db_path, id, &payload, None, now)
+        .await
+        .context("写入密钥失败")?;
+    repo::set_site_text(db.pool(), "mail_enabled", "1", None, now)
+        .await
+        .context("打开邮件开关失败")?;
+    let _ = repo::record_audit(
+        db.pool(),
+        None,
+        "mail.set_key",
+        Some(&format!("mail_account:{id}")),
+        Some("命令行写入密钥"),
+        now,
+    )
+    .await;
+    println!("已写入发信账号 #{id} 的密钥；mail_enabled 已置为 1");
+    Ok(())
+}
+
 async fn set_password() -> Result<()> {
     let mut args = std::env::args().skip(2);
     let usage = "用法：sc2clud set-password <用户名> <新密码>";
