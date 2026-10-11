@@ -22,6 +22,15 @@ cd "$REPO"
 git fetch --quiet origin "$BRANCH"
 git reset --hard --quiet "origin/$BRANCH"
 
+# 前端岛是**编译期嵌入**二进制的（static/ 被 include 进二进制），所以必须在构建之前
+# 把开发者上传的产物放进仓库的 static/islands/；否则上传的岛只在运行目录、运行期 404。
+# （2026-10 踩过：新面板的岛全 404，排查到应用其实不读运行目录那一份。）
+DEV_UPLOAD="$DEV_PREFIX/islands-upload"
+if [ -d "$DEV_UPLOAD" ]; then
+  install -d -m 0755 "$REPO/crates/sc2clud-web/static/islands"
+  cp -a "$DEV_UPLOAD/." "$REPO/crates/sc2clud-web/static/islands/"
+fi
+
 log "构建（nice 一下，别和线上抢 CPU）"
 # sqlx::migrate! 是编译期展开的：增量编译下新增迁移文件可能不触发重编，
 # 结果就是「二进制装上了、迁移却没跑」（踩过一次，排查了很久）。
