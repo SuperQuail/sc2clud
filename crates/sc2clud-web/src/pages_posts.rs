@@ -487,6 +487,7 @@ async fn build_post_page<'a>(
             .into_iter()
             .map(|row| crate::templates::IssueCommentView {
                 author: row.author_display_name,
+                avatar: row.author_avatar,
                 body: row.body,
                 created: crate::templates::format_date(row.created_at),
             })

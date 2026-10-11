@@ -165,13 +165,13 @@
     {% if issue_comments.is_empty() %}
     <p class="c-empty">还没有人回复。</p>
     {% else %}
-    {% for c in issue_comments %}
     <div class="c-item">
-      <div class="c-body">
-        <div class="c-head"><b>{{ c.author }}</b><span class="c-time">{{ c.created }}</span></div>
-        <div class="c-text">{{ c.body }}</div>
-      </div>
+      {# 与帖子评论共用同一条目模板 —— 头像/名字/时间/正文的结构与样式完全一致 #}
+      {% include "comment_item.html" %}
     </div>
+    {% endfor %}
+    {% endif %}
+    <form method="post" action="/p/{{ post.id }}/issues/{{ issue.id }}/comments" class="stack c-form">
     {% endfor %}
     {% endif %}
     <form method="post" action="/p/{{ post.id }}/issues/{{ issue.id }}/comments" class="stack c-form">

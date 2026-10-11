@@ -575,6 +575,7 @@ pub struct PostTabView {
 #[derive(Debug, Clone)]
 pub struct IssueCommentView {
     pub author: String,
+    pub avatar: Option<String>,
     pub body: String,
     pub created: String,
 }

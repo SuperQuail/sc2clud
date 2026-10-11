@@ -4660,7 +4660,8 @@ pub async fn add_issue_comment(
 pub async fn list_issue_comments(pool: &SqlitePool, issue_id: i64) -> Result<Vec<IssueCommentRow>> {
     query_as::<_, IssueCommentRow>(
         "SELECT c.id, c.issue_id, c.author_id, c.body, c.created_at, u.handle AS author_handle, \
-                COALESCE(NULLIF(u.display_name, ''), u.handle) AS author_display_name \
+                COALESCE(NULLIF(u.display_name, ''), u.handle) AS author_display_name, \
+                u.avatar_hash AS author_avatar \
          FROM issue_comments c JOIN users u ON u.id = c.author_id \
          WHERE c.issue_id = ? AND c.deleted_at IS NULL ORDER BY c.id",
     )
