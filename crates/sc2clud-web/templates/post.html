@@ -158,10 +158,15 @@
       </form>
       {% endif %}
     </div>
-  </div>
-  {# 详情页评论区：与帖子评论同一个控件（同一份模板、同一套样式） #}
-  {% include "comment_feed.html" %}
-  </section>
+  {# 同一个评论控件，只是列表来自 issue 详情 JSON、且暂无点赞端点 #}
+  <div data-island="comments"
+       data-list="/api/v1/posts/{{ post.id }}/issues/{{ issue.id }}"
+       data-action="{{ comment_action }}"
+       data-csrf="{{ csrf }}"
+       data-can-reply="{{ can_reply }}"
+       data-show-actions="false"
+       data-logged-in="{{ user_label.is_some() }}"></div>
+  <script type="module" src="/static/islands/comments.js"></script>
   {% else %}
   <div class="issue-empty"><b>这条反馈不存在</b><p>可能已被删除，或者链接有误。</p></div>
   {% endif %}
@@ -227,7 +232,15 @@
   </div>
 </section>
 
-{% include "comment_feed.html" %}
+{# 评论控件：控件库里的 React 组件（web/src/ui/Comments.tsx），模板只给挂载点与初值 #}
+<div data-island="comments"
+     data-list="/api/v1/posts/{{ post.id }}/comments"
+     data-action="{{ comment_action }}"
+     data-csrf="{{ csrf }}"
+     data-can-reply="{{ can_reply }}"
+     data-show-actions="{{ show_comment_actions }}"
+     data-logged-in="{{ user_label.is_some() }}"></div>
+<script type="module" src="/static/islands/comments.js"></script>
 {% include "post_aside.html" %}
 {% endif %}
 <style>
@@ -244,264 +257,6 @@
 .pa-card:hover{background:rgba(127,127,127,.1)}
 </style>
 
-<script>
-  const form = document.querySelector('[data-comment-form]');
-  const postId = {{ post.id }};
-  const area = document.getElementById('reply-body');
-  const pop = document.getElementById('mention-pop');
-  if (!form || !area || !pop) return;
-
-  // 点「回复」：在该根楼层所有子回复之下展开就地输入框（不遮挡别的楼层）
-  document.querySelectorAll('[data-reply-id]').forEach((btn) => {
-    btn.addEventListener('click', () => {
-      const box = document.querySelector('[data-reply-box="' + btn.dataset.replyId + '"]');
-      if (!box) return;
-      document.querySelectorAll('[data-reply-box]').forEach((other) => { if (other !== box) other.hidden = true; });
-      box.hidden = false;
-      const input = box.querySelector('.c-reply-input');
-      const token = '@' + btn.dataset.replyName + '#' + btn.dataset.replyUser + ' ';
-      if (input && !input.value.includes(token)) input.value = token;
-      if (input) {
-        input.focus();
-        input.setSelectionRange(input.value.length, input.value.length);
-      }
-    });
-  });
-  document.querySelectorAll('[data-reply-cancel]').forEach((btn) => {
-    btn.addEventListener('click', () => {
-      const box = document.querySelector('[data-reply-box="' + btn.dataset.replyCancel + '"]');
-      if (box) box.hidden = true;
-    });
-  });
-
-  let timer = null;
-  let active = -1;
-  // 预览用：?mention=1 直接展开候选，方便看弹出位置
-  if (new URLSearchParams(location.search).get('mention') === '1') {
-    setTimeout(() => {
-      // 关键词要有内容才会查（空 @ 不弹）
-      area.value = '@t';
-      area.dispatchEvent(new Event('input'));
-      area.focus();
-    }, 300);
-  }
-  const hide = () => { pop.hidden = true; pop.innerHTML = ''; active = -1; };
-  const currentQuery = () => {
-    const upto = area.value.slice(0, area.selectionStart);
-    const at = upto.lastIndexOf('@');
-    if (at < 0) return null;
-    const word = upto.slice(at + 1);
-    if (word.includes(' ') || word.includes('#')) return null;
-    return { at, word };
-  };
-  const render = (users) => {
-    if (!users.length) return hide();
-    pop.innerHTML = '';
-    users.forEach((u, index) => {
-      const item = document.createElement('div');
-      item.className = 'mention-item' + (index === 0 ? ' active' : '');
-      item.innerHTML = '<b></b><span class="mi-id"></span><span class="mi-handle"></span>';
-      item.querySelector('b').textContent = u.name;
-      // 只有重名用户才显示 id（其他同名账号一眼分得开）
-      item.querySelector('.mi-id').textContent = u.dup ? '#' + u.id : '';
-      item.querySelector('.mi-handle').textContent = '@' + u.handle;
-      item.addEventListener('mousedown', (event) => {
-        event.preventDefault();
-        const spot = currentQuery();
-        if (spot) {
-          const token = '@' + u.name + '#' + u.id + ' ';
-          area.value = area.value.slice(0, spot.at) + token + area.value.slice(spot.at + spot.word.length + 1);
-          area.setSelectionRange(spot.at + token.length, spot.at + token.length);
-        }
-        hide();
-        area.focus();
-      });
-      pop.appendChild(item);
-    });
-    pop.hidden = false;
-    active = 0;
-  };
-  const search = async () => {
-    const spot = currentQuery();
-    if (!spot || !spot.word) return hide();
-    try {
-      const res = await fetch('/api/v1/users/search?q=' + encodeURIComponent(spot.word));
-      if (!res.ok) return hide();
-      const data = await res.json();
-      render(data.users || []);
-    } catch (_) { hide(); }
-  };
-  area.addEventListener('input', () => { clearTimeout(timer); timer = setTimeout(search, 180); });
-  area.addEventListener('blur', () => setTimeout(hide, 120));
-
-  // 点赞（点踩接口已就绪，界面按需求暂不接）
-  const csrfInput = form.querySelector('input[name=csrf]');
-  document.querySelectorAll('[data-vote]').forEach((btn) => {
-    btn.addEventListener('click', async () => {
-      const next = btn.classList.contains('on') ? 0 : 1;
-      const res = await fetch('/api/v1/comments/' + btn.dataset.vote + '/vote', {
-        method: 'POST',
-        headers: { 'content-type': 'application/json', 'x-csrf-token': csrfInput ? csrfInput.value : '' },
-        body: JSON.stringify({ value: next }),
-      });
-      if (!res.ok) return;
-      const data = await res.json();
-      btn.classList.toggle('on', data.mine === 1);
-      const count = btn.querySelector('.c-like-count');
-      if (count) count.textContent = data.likes;
-    });
-  });
-
-  // 楼层「⋯」：照 B 站收成下拉，只放我们真有的两项（复制评论链接 / 加入黑名单）
-  // 走事件委托：发完评论评论区会整块换 innerHTML，挂在按钮上的监听会跟着一起没
-  const setMenu = (menu, open) => {
-    menu.querySelector('[data-cmenu-panel]').hidden = !open;
-    menu.querySelector('[data-cmenu-toggle]').setAttribute('aria-expanded', String(open));
-  };
-  const closeMenus = () => document.querySelectorAll('[data-cmenu]').forEach((menu) => setMenu(menu, false));
-  document.addEventListener('click', (event) => {
-    const target = event.target;
-    if (!(target instanceof Element)) { closeMenus(); return; }
-    const toggle = target.closest('[data-cmenu-toggle]');
-    if (toggle) {
-      const menu = toggle.closest('[data-cmenu]');
-      const open = menu.querySelector('[data-cmenu-panel]').hidden;
-      closeMenus();
-      setMenu(menu, open);
-      return;
-    }
-    const copy = target.closest('[data-copy-comment]');
-    if (copy) {
-      const link = location.href.split('#')[0] + '#' + copy.dataset.copyComment;
-      window.copyText(link).then(() => {
-        copy.textContent = '已复制 ✓';
-        window.setTimeout(() => { copy.textContent = '复制评论链接'; closeMenus(); }, 1200);
-      }).catch(() => { window.prompt('自动复制不可用，请按 Ctrl+C 复制：', link); });
-      return;
-    }
-    const block = target.closest('[data-block-handle]');
-    if (block) {
-      if (!window.confirm('把 ' + block.dataset.blockName + ' 加入黑名单？之后你不再看到 TA 的评论与私信。')) return;
-      block.disabled = true;
-      fetch('/u/' + encodeURIComponent(block.dataset.blockHandle) + '/block', {
-        method: 'POST',
-        headers: { 'x-requested-with': 'fetch', 'content-type': 'application/x-www-form-urlencoded;charset=UTF-8' },
-        body: new URLSearchParams({ csrf: csrfInput ? csrfInput.value : '' }),
-      })
-        .then((res) => res.json().catch(() => ({})).then((data) => { if (!res.ok) throw new Error(data.message || '操作失败'); }))
-        .then(refreshComments)
-        .catch((error) => { block.disabled = false; window.alert('加入黑名单失败：' + error.message); })
-        .finally(closeMenus);
-      return;
-    }
-    closeMenus();
-  });
-
-  // 发评论无感：POST JSON，成功后只重取评论区（不整页刷新、不丢滚动位置）
-  const commentsSection = document.getElementById('comments');
-  const refreshComments = async () => {
-    const res = await fetch(location.pathname + location.search);
-    if (!res.ok) return;
-    const doc = new DOMParser().parseFromString(await res.text(), 'text/html');
-    const next = doc.getElementById('comments');
-    if (next && commentsSection) commentsSection.innerHTML = next.innerHTML;
-  };
-  document.querySelectorAll('[data-comment-form], .c-reply-box').forEach((form) => {
-    form.addEventListener('submit', async (event) => {
-      event.preventDefault();
-      const textarea = form.querySelector('textarea[name=body]');
-      const body = textarea ? textarea.value.trim() : '';
-      if (body.length < 2) { if (textarea) textarea.focus(); return; }
-      const parent = form.querySelector('input[name=parent_id]');
-      const submit = form.querySelector('button[type=submit]');
-      if (submit) submit.disabled = true;
-      let res;
-      try {
-        res = await fetch('/api/v1/posts/' + postId + '/comments', {
-          method: 'POST',
-          headers: { 'content-type': 'application/json', 'x-csrf-token': csrfInput ? csrfInput.value : '' },
-          body: JSON.stringify({
-            body,
-            parent_id: parent && parent.value ? Number(parent.value) : null,
-          }),
-        });
-      } catch (_) {
-        res = null;
-      }
-      if (submit) submit.disabled = false;
-      if (!res || !res.ok) {
-        // 兜底：接口不通或校验失败就退回普通提交（至少消息不丢）
-        form.submit();
-        return;
-      }
-      if (textarea) textarea.value = '';
-      await refreshComments();
-      // 新楼层在最后一页：这种情况才把用户带过去看自己的评论（不是表单刷新）
-      const pager = document.querySelector('.c-pager-total');
-      const total = pager ? Number((pager.textContent.match(/\d+/) || [0])[0]) : 1;
-      const current = Number((location.search.match(/page=(\d+)/) || [0, 1])[1]) || 1;
-      if (total > current) location.assign('?page=' + total + '#comments');
-    });
-  });
-
-  // 吸底「写评论」：顶部输入框滚出视野后出现（B 站那样）
-  const float = document.getElementById('c-float');
-  if (float && 'IntersectionObserver' in window) {
-    new IntersectionObserver((entries) => {
-      float.hidden = entries[0].isIntersecting;
-    }, { rootMargin: '-80px 0px 0px 0px' }).observe(form);
-    float.addEventListener('click', () => {
-      area.scrollIntoView({ block: 'center', behavior: 'smooth' });
-      area.focus();
-    });
-  }
-  area.addEventListener('keydown', (event) => {
-    if (pop.hidden) return;
-    const items = Array.from(pop.querySelectorAll('.mention-item'));
-    if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
-      event.preventDefault();
-      active = (active + (event.key === 'ArrowDown' ? 1 : items.length - 1)) % items.length;
-      items.forEach((item, index) => item.classList.toggle('active', index === active));
-    } else if (event.key === 'Enter' || event.key === 'Tab') {
-      if (items[active]) { event.preventDefault(); items[active].dispatchEvent(new MouseEvent('mousedown')); }
-    } else if (event.key === 'Escape') {
-      hide();
-    }
-  });
-})();
-    var box = document.querySelector('[data-post-upload]');
-    if (!box) return;
-    var input = document.getElementById('post-image-input');
-    var button = document.getElementById('post-image-add');
-    var status = box.querySelector('[data-post-image-status]');
-    if (!input || !button) return;
-    var csrf = box.dataset.csrf;
-    var id = box.dataset.postId;
-    button.addEventListener('click', function () { input.click(); });
-    input.addEventListener('change', function () {
-      var files = Array.prototype.slice.call(input.files || []);
-      if (!files.length) return;
-      var send = function (index) {
-        if (index >= files.length) {
-          if (status) status.textContent = '已上传，刷新中…';
-          location.reload();
-          return;
-        }
-        if (status) status.textContent = '上传中 ' + (index + 1) + '/' + files.length + '…';
-        fetch('/api/v1/posts/' + id + '/images', {
-          method: 'POST',
-          headers: { 'x-csrf-token': csrf },
-          body: files[index],
-          credentials: 'same-origin',
-        })
-          .then(function (r) { return r.ok ? r.json() : r.json().then(function (d) { return Promise.reject(d.message || r.status); }); })
-          .then(function () { send(index + 1); })
-          .catch(function (message) { if (status) status.textContent = '上传失败：' + message; });
-      };
-      send(0);
-    });
-  })();
-</script>
 <script>
   // 点赞 / 收藏：就地切换，不刷新页面
   (function () {
