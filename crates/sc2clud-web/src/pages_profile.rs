@@ -73,7 +73,7 @@ pub async fn payment_channel_add(
                 "收款码读取失败或超过 512 KB：{e}"
             )))
         })?;
-    let mime = crate::routes::sniff_image_mime(&bytes).ok_or_else(|| {
+    let mime = crate::pages_media::sniff_image_mime(&bytes).ok_or_else(|| {
         AppError::Domain(sc2clud_core::Error::InvalidInput(
             "收款码只接受 PNG / JPEG / GIF / WebP".to_string(),
         ))

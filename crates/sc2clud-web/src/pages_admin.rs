@@ -609,7 +609,7 @@ pub async fn default_avatar_add(
     let bytes = axum::body::to_bytes(body, 512 * 1024)
         .await
         .map_err(|_| AppError::Domain(DomainError::InvalidInput("图片太大".to_string())))?;
-    let mime = crate::routes::sniff_image_mime(&bytes).ok_or_else(|| {
+    let mime = crate::pages_media::sniff_image_mime(&bytes).ok_or_else(|| {
         AppError::Domain(DomainError::InvalidInput(
             "只支持 PNG/JPEG/WebP".to_string(),
         ))
@@ -1805,7 +1805,7 @@ pub async fn set_section_cover(
                 "封面读取失败或超过 2 MB：{e}"
             )))
         })?;
-    let mime = crate::routes::sniff_image_mime(&bytes).ok_or_else(|| {
+    let mime = crate::pages_media::sniff_image_mime(&bytes).ok_or_else(|| {
         AppError::Domain(DomainError::InvalidInput(
             "封面只接受 PNG / JPEG / GIF / WebP".to_string(),
         ))
