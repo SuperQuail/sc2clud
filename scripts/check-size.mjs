@@ -18,7 +18,7 @@ const SKIP_DIRS = new Set(['node_modules', 'target', 'islands', 'dist'])
 // 规则：登记=「已知的耦合债务 + 重构目标」，不是免死金牌；行数只能减不能增。
 const PENDING = {
   // —— 数据层：表结构集中在 models，CRUD 集中在 repo ——
-  'crates/sc2clud-db/src/repo.rs': { limit: 5700, reason: '全部表的 CRUD 集中一处（按表拆要动 300+ 调用点）', goal: '拆 repo/{posts,issues,users,admin}.rs' },
+  'crates/sc2clud-db/src/repo.rs': { limit: 5575, reason: '全部表的 CRUD 集中一处（按表拆要动 300+ 调用点）', goal: '拆 repo/{posts,issues,users,admin}.rs' },
   'crates/sc2clud-db/src/models.rs': { limit: 660, reason: '全部表对应的行结构', goal: '按领域拆 models/' },
   'crates/sc2clud-db/src/lib.rs': { limit: 850, reason: '连接/迁移/密钥与迁移内嵌', goal: '拆 db/{conn,migrate,secret}.rs' },
   'crates/sc2clud-db/src/backend_tests.rs': { limit: 790, reason: '仓储的端到端测试（测试文件按功能堆叠是常态）', goal: '按领域拆测试文件' },

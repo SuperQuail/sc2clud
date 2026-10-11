@@ -16,7 +16,7 @@ use crate::models::{
     IssueCommentRow, MessageRow, NotificationRow, PaymentChannelRow, PostImageRow, PostIssueRow,
     PostRevisionRow, PostRow, PostSearchRow, PostSourceRow, PostWithAuthorRow, ReleaseAssetRow,
     ReleaseRow, SectionModeratorRow, SectionRow, SessionRow, SiteDomainRow, SmtpAccountRow,
-    TitleRow, UploadSessionRow, UserGroupRow, UserHitRow, UserRow, UserSanctionRow, UserTitleRow,
+    TitleRow, UploadSessionRow, UserGroupRow, UserHitRow, UserRow, UserSanctionRow,
 };
 
 // blob 仓储已拆到 repo_blobs.rs；这里 re-export，调用点保持 repo::xxx 不变
@@ -374,6 +374,12 @@ pub async fn flush_counters(pool: &SqlitePool, drained: &[(String, i64)]) -> Res
 }
 
 /// 文件统计（首页展示用）。
+// 头衔仓储已拆到 repo_titles.rs；re-export 保证 repo::xxx 调用点不变
+pub use crate::repo_titles::{
+    create_title, grant_title, held_title_ids_for, list_titles, list_user_titles, revoke_title,
+    set_title_archived,
+};
+
 #[derive(Debug, Clone, Default)]
 pub struct FileStats {
     pub files: i64,
@@ -3369,119 +3375,6 @@ pub async fn group_rules_for_user_section(
 }
 
 // ---------------------------------------------------------------- 头衔
-
-pub async fn list_titles(pool: &SqlitePool, include_archived: bool) -> Result<Vec<TitleRow>> {
-    let sql = if include_archived {
-        "SELECT * FROM titles ORDER BY id"
-    } else {
-        "SELECT * FROM titles WHERE archived_at IS NULL ORDER BY id"
-    };
-    query_as::<_, TitleRow>(sql)
-        .fetch_all(pool)
-        .await
-        .map_err(db_err)
-}
-
-pub async fn create_title(
-    pool: &SqlitePool,
-    key: &str,
-    name: &str,
-    color: &str,
-    description: &str,
-    now: i64,
-) -> Result<i64> {
-    query("INSERT OR IGNORE INTO titles (key, name, color, description, created_at) VALUES (?, ?, ?, ?, ?)")
-        .bind(key)
-        .bind(name)
-        .bind(color)
-        .bind(description)
-        .bind(now)
-        .execute(pool)
-        .await
-        .map_err(db_err)?;
-    let row: (i64,) = query_as("SELECT id FROM titles WHERE key = ?")
-        .bind(key)
-        .fetch_one(pool)
-        .await
-        .map_err(db_err)?;
-    Ok(row.0)
-}
-
-pub async fn set_title_archived(
-    pool: &SqlitePool,
-    id: i64,
-    archived: bool,
-    now: i64,
-) -> Result<bool> {
-    let affected =
-        query("UPDATE titles SET archived_at = ? WHERE id = ? AND ((archived_at IS NULL) = ?)")
-            .bind(if archived { Some(now) } else { None })
-            .bind(id)
-            .bind(archived)
-            .execute(pool)
-            .await
-            .map_err(db_err)?
-            .rows_affected();
-    Ok(affected == 1)
-}
-
-/// 授予头衔（同一个头衔重复授予是幂等的）。
-pub async fn grant_title(
-    pool: &SqlitePool,
-    user_id: i64,
-    title_id: i64,
-    by: Option<i64>,
-    now: i64,
-) -> Result<bool> {
-    let affected = query(
-        "INSERT OR IGNORE INTO user_titles (user_id, title_id, granted_at, granted_by) \
-         VALUES (?, ?, ?, ?)",
-    )
-    .bind(user_id)
-    .bind(title_id)
-    .bind(now)
-    .bind(by)
-    .execute(pool)
-    .await
-    .map_err(db_err)?
-    .rows_affected();
-    Ok(affected == 1)
-}
-
-/// 收回头衔；如果正戴着它，顺带摘掉。
-pub async fn revoke_title(pool: &SqlitePool, user_id: i64, title_id: i64) -> Result<bool> {
-    let mut tx = pool.begin().await.map_err(db_err)?;
-    query("DELETE FROM user_titles WHERE user_id = ? AND title_id = ?")
-        .bind(user_id)
-        .bind(title_id)
-        .execute(&mut *tx)
-        .await
-        .map_err(db_err)?;
-    query("UPDATE users SET equipped_title_id = NULL WHERE id = ? AND equipped_title_id = ?")
-        .bind(user_id)
-        .bind(title_id)
-        .execute(&mut *tx)
-        .await
-        .map_err(db_err)?;
-    tx.commit().await.map_err(db_err)?;
-    Ok(true)
-}
-
-/// 某人持有的全部头衔（带「是否正在佩戴」标记）。
-pub async fn list_user_titles(pool: &SqlitePool, user_id: i64) -> Result<Vec<UserTitleRow>> {
-    query_as::<_, UserTitleRow>(
-        "SELECT t.id AS title_id, t.key, t.name, t.color, ut.granted_at, \
-                CASE WHEN u.equipped_title_id = t.id THEN 1 ELSE 0 END AS equipped \
-         FROM user_titles ut \
-         JOIN titles t ON t.id = ut.title_id \
-         JOIN users u ON u.id = ut.user_id \
-         WHERE ut.user_id = ? ORDER BY ut.granted_at DESC, t.id",
-    )
-    .bind(user_id)
-    .fetch_all(pool)
-    .await
-    .map_err(db_err)
-}
 
 /// 佩戴某个头衔；传 `None` 表示都不戴。**必须持有该头衔**，否则返回 `false`。
 pub async fn set_equipped_title(

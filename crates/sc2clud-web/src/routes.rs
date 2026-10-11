@@ -262,6 +262,11 @@ pub fn pages() -> Router<AppState> {
             axum::routing::post(crate::admin_users::rename),
         )
         .route(
+            "/admin/users/{id}/titles",
+            axum::routing::get(crate::admin_titles::user_titles)
+                .post(crate::admin_titles::set_user_title),
+        )
+        .route(
             "/admin/settings/require-activation",
             axum::routing::post(crate::admin_users::toggle_activation_policy),
         )

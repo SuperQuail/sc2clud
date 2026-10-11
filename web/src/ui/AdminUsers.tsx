@@ -10,9 +10,11 @@ import {
   updateUser,
   type AclGroup,
   type AclRole,
+  type AdminTitle,
   type AdminUserRow,
   type AdminUsersData,
 } from '../lib/admin'
+import { TitleBadge, UserTitles } from './UserTitles'
 
 export interface AdminUsersProps {
   csrf: string
@@ -74,6 +76,10 @@ export function AdminUsers({ csrf, data }: AdminUsersProps) {
   const [error, setError] = useState('')
   const [notice, setNotice] = useState('')
 
+  // 预览脚本读它做断言（只读、无副作用；见 scripts/preview.mjs 的 --title-test）
+  ;(window as unknown as { __adminUsersProbe?: () => string }).__adminUsersProbe = () =>
+    JSON.stringify({ titleIds: users.find((u) => u.id === editing?.id)?.titleIds ?? [] })
+
   const patch = (id: number, next: Partial<AdminUserRow>) =>
     setUsers((prev) => prev.map((row) => (row.id === id ? { ...row, ...next } : row)))
 
@@ -130,6 +136,10 @@ export function AdminUsers({ csrf, data }: AdminUsersProps) {
                       {user.trusted && <span className="tag ok" title="发帖只走自动审核">信任</span>}
                       {user.banLabel && <span className="tag ban">{user.banLabel}</span>}
                       {user.isSelf && <span className="tag">我</span>}
+                      {user.titleIds.map((id) => {
+                        const title = data.titles.find((item) => item.id === id)
+                        return title ? <TitleBadge key={id} title={title} held /> : null
+                      })}
                     </span>
                   </td>
                   <td className="role-cell">
@@ -196,6 +206,7 @@ export function AdminUsers({ csrf, data }: AdminUsersProps) {
           key={editing.id}
           csrf={csrf}
           user={editing}
+          titles={data.titles}
           roles={data.roles}
           groups={data.groups}
           sections={data.sections}
@@ -216,6 +227,7 @@ export function AdminUsers({ csrf, data }: AdminUsersProps) {
 interface UserDialogProps {
   csrf: string
   user: AdminUserRow
+  titles: AdminTitle[]
   roles: AclRole[]
   groups: AclGroup[]
   sections: { value: string; label: string }[]
@@ -226,7 +238,7 @@ interface UserDialogProps {
 }
 
 /** 编辑用户弹窗（原生 <dialog>：焦点陷阱/ESC 由浏览器负责）。 */
-function UserDialog({ csrf, user, roles, groups, sections, banOptions, onClose, onSaved }: UserDialogProps) {
+function UserDialog({ csrf, user, titles, roles, groups, sections, banOptions, onClose, onSaved }: UserDialogProps) {
   const ref = useRef<HTMLDialogElement>(null)
   const [role, setRole] = useState(user.role)
   const [displayName, setDisplayName] = useState(user.displayName)
@@ -237,6 +249,7 @@ function UserDialog({ csrf, user, roles, groups, sections, banOptions, onClose, 
   const [hours, setHours] = useState('0')
   const [picked, setPicked] = useState(user.groups)
   const [sanctions, setSanctions] = useState(() => parseSanctions(user.sanctions))
+  const [titleIds, setTitleIds] = useState(user.titleIds)
   const [kind, setKind] = useState('post')
   const [section, setSection] = useState('')
   const [until, setUntil] = useState('')
@@ -278,6 +291,7 @@ function UserDialog({ csrf, user, roles, groups, sections, banOptions, onClose, 
           displayName,
           trusted,
           activated: user.isSelf || activated,
+          titleIds,
         },
         failed?.status === 'rejected' ? `资料已保存，但${errText(failed.reason)}` : '',
       )
@@ -362,6 +376,17 @@ function UserDialog({ csrf, user, roles, groups, sections, banOptions, onClose, 
             {banOptions.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}
           </select>
         </label>
+        <fieldset className="modal-titles">
+          <legend>头衔（发放 / 收回，改完立即生效）</legend>
+          <UserTitles
+            userId={user.id}
+            csrf={csrf}
+            initialHeld={titleIds}
+            catalog={titles}
+            titleIds={titleIds}
+            onChanged={setTitleIds}
+          />
+        </fieldset>
         <fieldset className="modal-groups">
           <legend>用户组（可多选）</legend>
           {groups.length === 0 && <p className="hint">还没有用户组</p>}

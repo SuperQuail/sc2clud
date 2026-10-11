@@ -105,6 +105,8 @@ export interface AdminUserRow {
   sanctions: string
   /** 所属用户组 id。 */
   groups: number[]
+  /** 已持有的头衔 id（列表徽章 + 弹窗初值）。 */
+  titleIds: number[]
 }
 
 export interface AdminUsersData {
@@ -113,6 +115,50 @@ export interface AdminUsersData {
   groups: AclGroup[]
   sections: { value: string; label: string }[]
   banOptions: AclRole[]
+  /** 头衔目录（量小，随面板一次下发；发放/收回失败时前端也能提示）。 */
+  titles: AdminTitle[]
+}
+
+/** 可发放的头衔（来自 titles 表）。 */
+export interface AdminTitle {
+  id: number
+  name: string
+  /** 展示色：CSS 颜色，徽章用 --tc 承接。 */
+  color: string
+  description: string
+  /** 已归档：不能再发，但已持有的仍可收回（界面置灰）。 */
+  archived: boolean
+}
+
+/** 某人持有的头衔 + 最新目录（弹窗打开时取一次，避免列表里 200 个用户各带一份）。 */
+export interface UserTitlesData {
+  titles: AdminTitle[]
+  held: number[]
+}
+
+export async function fetchUserTitles(id: number): Promise<UserTitlesData> {
+  const res = await fetch(adminUrl(`/admin/users/${id}/titles`), {
+    headers: { 'x-requested-with': 'fetch' },
+  })
+  const data = (await res.json().catch(() => null)) as (UserTitlesData & { message?: string }) | null
+  if (!res.ok) throw new Error(data?.message || `加载头衔失败（${res.status}）`)
+  return { titles: data?.titles ?? [], held: data?.held ?? [] }
+}
+
+/** 发放 / 收回头衔；回最新的持有集合，界面就地更新。 */
+export async function setUserTitle(
+  id: number,
+  csrf: string,
+  titleId: number,
+  action: 'grant' | 'revoke',
+): Promise<UserTitlesData & { message: string }> {
+  const message = await postForm(`/admin/users/${id}/titles`, csrf, [
+    ['title_id', String(titleId)],
+    ['action', action],
+  ])
+  // POST 已经回了最新持有集合；再拉一次是多余的，这里只补目录（改名/归档后保持最新）
+  const data = await fetchUserTitles(id)
+  return { ...data, message }
 }
 
 export interface UpdateUserInput {

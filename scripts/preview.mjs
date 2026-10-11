@@ -52,6 +52,10 @@ const donateTest = args.includes('--donate-test')
 const dmTo = arg('dm', '')
 // --send-test：在消息中心里真的发一条（走页面上的无感发送），用来验证「不刷新就地出气泡」
 const sendTest = args.includes('--send-test')
+// --seed-titles：往**本地快照副本**塞几个头衔（dev/生产一个字节都不碰），用于渲染头衔区
+const seedTitles = args.includes('--seed-titles')
+// --title-test：打开用户编辑弹窗，走真实接口发放 → 核对徽章/计数/DB 行数 → 收回（只动本地副本）
+const titleTest = args.includes('--title-test')
 // shortcut: --comment-test 的无感发布验证这次没做通（脚本流程问题），先撤掉，等要自动化时再补
 const outDir = arg('out', join(repo, '..', 'shots', 'preview'))
 const pagesArg = arg('pages', '')
@@ -148,6 +152,29 @@ if (server) {
   console.log('==> 没有 --server 也没有 preview-seed.sqlite3：用空库（页面会很空，仅供布局自检）')
 }
 
+// 头衔样张：只写本地副本（内容寻址的库是快照，dev 不受影响）
+if (seedTitles && existsSync(dbPath)) {
+  const { DatabaseSync } = await import('node:sqlite')
+  const db = new DatabaseSync(dbPath)
+  // 先清掉可能残留的样张（早期版本删过 titles 行，user_titles 会留下孤儿）
+  const sampleKeys = ['veteran', 'translator_sample', 'founder_sample']
+  for (const key of sampleKeys) {
+    db.prepare('DELETE FROM user_titles WHERE title_id IN (SELECT id FROM titles WHERE key = ?)').run(key)
+    db.prepare('DELETE FROM titles WHERE key = ?').run(key)
+  }
+  const rows = [
+    ['veteran', '老兵', '#f97316', '2024 年前就在的老账号'],
+    ['translator_sample', '汉化组', '#2563eb', '参与过汉化与校对'],
+    ['founder_sample', '元老', '#7c3aed', '建站成员（已归档，只可收回）', 1],
+  ]
+  for (const [key, name, color, description, archived] of rows) {
+    db.prepare('INSERT OR IGNORE INTO titles (key, name, color, description, created_at, archived_at) VALUES (?, ?, ?, ?, ?, ?)')
+      .run(key, name, color, description, 1_700_000_000, archived ? 1_700_000_000 : null)
+  }
+  db.close()
+  console.log('==> 已往本地快照塞入 3 个头衔样张（veteran / translator_sample / founder_sample）')
+}
+
 // ---------- 2. 起本地实例（独立端口 / 数据目录 / Cookie 名） ----------
 const env = {
   ...process.env,
@@ -196,6 +223,10 @@ class Cdp {
     ws.onmessage = (event) => {
       try {
         const msg = JSON.parse(event.data)
+        if (msg.id === undefined) {
+          cdp.onEvent?.(msg)
+          return
+        }
         const slot = cdp.pending.get(msg.id)
         if (!slot) return
         cdp.pending.delete(msg.id)
@@ -313,7 +344,17 @@ const main = async () => {
     try { cdp = await Cdp.open(chromePort) } catch { await new Promise((r) => setTimeout(r, 250)) }
   }
   if (!cdp) throw new Error('连不上 Chrome 调试端口')
+  await cdp.send('Runtime.enable')
   await cdp.send('Network.enable')
+  cdp.onEvent = (msg) => {
+    if (msg.method === 'Runtime.consoleAPICalled') {
+      const parts = (msg.params.args || []).map((a) => a.value ?? a.description ?? a.type)
+      console.log('  [page:' + msg.params.type + '] ' + parts.join(' '))
+    }
+    if (msg.method === 'Runtime.exceptionThrown') {
+      console.log('  [page:exception] ' + (msg.params.exceptionDetails?.exception?.description || msg.params.exceptionDetails?.text))
+    }
+  }
   await cdp.send('Page.enable')
   // 不设视口的话 headless 默认 ~800 宽，截出来就是窄长条
   await cdp.send('Emulation.setDeviceMetricsOverride', {
@@ -374,8 +415,148 @@ const main = async () => {
     const after = await cdp.send('Runtime.evaluate', { expression: "location.pathname + location.search" })
     console.log('==> 地址是否未变：' + (before.result?.value === after.result?.value ? '是（没有跳页）✓' : '否 ✗ ' + before.result?.value + ' → ' + after.result?.value))
 
-  // （--comment-test 的自动化验证这次没做通，已撤；见 preview.mjs 顶部注释）
   }
+
+  // （--comment-test 的自动化验证这次没做通，已撤；见 preview.mjs 顶部注释）
+  if (titleTest && cookie) {
+    await cdp.send('Page.navigate', { url: base + '/admin/users/overview' })
+    await new Promise((r) => setTimeout(r, 1800))
+    const before = await cdp.send('Runtime.evaluate', { expression: 'location.pathname + location.search' })
+    const openDialog = `(async () => {
+      const sleep = (ms) => new Promise((r) => setTimeout(r, ms))
+      const waitFor = async (fn, ms = 5000) => {
+        const t0 = Date.now()
+        while (Date.now() - t0 < ms) { const v = fn(); if (v) return v; await sleep(120) }
+        return null
+      }
+      const edit = await waitFor(() => document.querySelector('[data-island=\"admin-users\"] tbody button[title=\"编辑用户\"]'))
+      if (!edit) return 'no-edit-button'
+      edit.click()
+      const dialog = await waitFor(() => document.querySelector('dialog[open] .modal-titles'))
+      if (!dialog) return 'no-titles-section'
+      const chip = await waitFor(() => dialog.querySelector('.title-chip-name'))
+      if (!chip) return 'no-chips'
+      dialog.scrollIntoView({ block: 'center' })
+      await sleep(250)
+      return 'ready'
+    })()`
+    const opened = await cdp.send('Runtime.evaluate', { expression: openDialog, awaitPromise: true, returnByValue: true, timeout: 20000 })
+    console.log('==> 打开编辑弹窗：' + (opened.result?.value ?? '(无返回)'))
+    const box = await cdp.send('Runtime.evaluate', {
+      expression: `(() => { const el = document.querySelector('.modal-titles'); if (!el) return 'none'; const r = el.getBoundingClientRect(); return JSON.stringify({ top: Math.round(r.top), bottom: Math.round(r.bottom), height: Math.round(r.height) }) })()`,
+      returnByValue: true,
+    })
+    console.log('==> 头衔区在视口里的位置：' + (box.result?.value ?? '?'))
+    const probe = await cdp.send('Runtime.evaluate', { expression: 'typeof window.__adminUsersProbe === "function" ? window.__adminUsersProbe() : "no-probe"' })
+    console.log('==> 组件内状态：' + (probe.result?.value ?? '?'))
+    const dialogShot = await cdp.send('Page.captureScreenshot', { format: 'png', captureBeyondViewport: false })
+    writeFileSync(join(outDir, 'admin-titles-dialog-' + theme + '.png'), Buffer.from(dialogShot.data, 'base64'))
+    console.log('==> 截图：admin-titles-dialog-' + theme + '.png（弹窗·头衔区）')
+    const result = await cdp.send('Runtime.evaluate', {
+      expression: `(async () => {
+        const out = {}
+        const sleep = (ms) => new Promise((r) => setTimeout(r, ms))
+        const waitFor = async (fn, ms = 5000) => {
+          const t0 = Date.now()
+          while (Date.now() - t0 < ms) { const v = fn(); if (v) return v; await sleep(120) }
+          return null
+        }
+        const dialog = document.querySelector('dialog[open] .modal-titles')
+        if (!dialog) return JSON.stringify({ error: '弹窗关掉了？' })
+        const rows = [...dialog.querySelectorAll('.title-row')]
+        const nameOf = (row) => row.querySelector('.title-chip-name').textContent.trim()
+        const heldCount = () => dialog.querySelectorAll('.title-row.is-held').length
+        const top = dialog.querySelector('.title-count')
+        out.total = rows.length
+        out.filters = [...dialog.querySelectorAll('.title-filter')].map((b) => b.textContent.trim())
+        out.names = rows.map(nameOf)
+        out.heldBefore = heldCount()
+        out.counterBefore = top ? top.textContent.trim() : ''
+        // 挑一个「未持有且未归档」的：发放 → 核对 → 收回，回到原状
+        const free = rows.find((r) => !r.classList.contains('is-held') && !r.querySelector('.title-chip-flag') && r.querySelector('button'))
+        if (!free) return JSON.stringify({ error: '没有可发放的头衔样张', names: out.names })
+        out.picked = nameOf(free)
+        const button = (row, text) => [...row.querySelectorAll('button')].find((b) => b.textContent.includes(text))
+        // 请求在飞的时候按钮是禁用的：等它落地再点下一步（免得被并发覆盖）
+        const settled = () => waitFor(() => [...dialog.querySelectorAll('.title-row button')].every((b) => !b.disabled))
+        button(free, '发放').click()
+        const granted = await waitFor(() => free.classList.contains('is-held') && button(free, '收回'))
+        out.afterGrant = { isHeld: free.classList.contains('is-held'), button: granted ? '收回' : '发放' }
+        out.heldAfterGrant = heldCount()
+        out.counterAfterGrant = top ? top.textContent.trim() : ''
+        out.notice = (dialog.querySelector('[role=status]') || {}).textContent || ''
+        const settledOk = await settled()
+        const revQuery = () => button(free, '收回')
+        out.beforeRevoke = { settled: !!settledOk, hasRevokeBtn: !!revQuery(), disabled: revQuery()?.disabled ?? 'n/a' }
+        revQuery()?.click()
+        await sleep(300)
+        out.afterClick = { isHeld: free.classList.contains('is-held'), text: revQuery()?.textContent.trim() ?? 'gone', disabled: revQuery()?.disabled ?? 'n/a', counter: top ? top.textContent.trim() : '' }
+        const revoked = await waitFor(() => !free.classList.contains('is-held'))
+        out.afterRevoke = { isHeld: free.classList.contains('is-held'), back: revoked }
+        out.counterAfterRevoke = top ? top.textContent.trim() : ''
+        // 归档头衔只能收回，不能发放
+        const archived = rows.find((r) => r.querySelector('.title-chip-flag'))
+        const archivedBtn = archived ? button(archived, '发放') : null
+        out.archived = archived ? { name: nameOf(archived), grantDisabled: archivedBtn ? archivedBtn.disabled : 'no-button' } : 'none'
+        return JSON.stringify(out)
+      })()`,
+      awaitPromise: true,
+      returnByValue: true,
+      timeout: 30000,
+    })
+    // 端点级验证：直接打 HTTP（比点 DOM 硬），并把每一步的 DB 行数打出来
+    if (existsSync(dbPath)) {
+      const { DatabaseSync } = await import('node:sqlite')
+      const db = new DatabaseSync(dbPath)
+      const count = (titleName, userId) =>
+        db.prepare('SELECT COUNT(*) AS n FROM user_titles ut JOIN titles t ON t.id = ut.title_id WHERE t.name = ? AND ut.user_id = ?').get(titleName, userId).n
+      const page = await (await fetch(base + '/admin/users/overview', { headers: { cookie } })).text()
+      const csrf = (page.match(/name="csrf" value="([^"]+)"/) ?? [])[1]
+      // 面板把行数据放在 data-json 里（比从 HTML 里猜路径稳）：取第一个用户 id
+      const islandJson = (page.match(/data-island="admin-users"[^>]*data-json="([^"]*)"/) ?? [])[1] ?? "{}"
+      // askama 会转义 " 为 &quot; 或 &#34;，两种都还原
+      const decoded = islandJson.replace(/&quot;|&#34;/g, '"').replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>')
+      const userId = ((JSON.parse(decoded).users ?? [])[0] ?? {}).id
+      if (!userId) throw new Error('拿不到用户 id（面板 data-json 里没有 users）')
+      const heroRes = await fetch(base + '/admin/users/' + userId + '/titles', { headers: { cookie, 'x-requested-with': 'fetch' } })
+      const heroText = await heroRes.text()
+      if (!heroRes.ok) throw new Error('GET /titles 失败：' + heroRes.status + ' ' + heroText.slice(0, 120))
+      const hero = JSON.parse(heroText)
+      const target = hero.titles.find((t) => !t.archived && !hero.held.includes(t.id))
+      const post = (titleId, action) =>
+        fetch(base + '/admin/users/' + userId + '/titles', {
+          method: 'POST',
+          headers: { cookie, 'content-type': 'application/x-www-form-urlencoded;charset=UTF-8', 'x-requested-with': 'fetch' },
+          body: new URLSearchParams({ csrf, title_id: String(titleId), action }),
+        })
+      console.log('==> 端点级：被编辑的用户 id=' + userId + '，目标头衔=「' + target.name + '」，起点行数=' + count(target.name, userId))
+      const granted = await post(target.id, 'grant')
+      const grantedBody = await granted.json()
+      console.log('    发放 → HTTP ' + granted.status + '，' + grantedBody.message + '，DB 行数=' + count(target.name, userId))
+      const revoked = await post(target.id, 'revoke')
+      const revokedBody = await revoked.json()
+      console.log('    收回 → HTTP ' + revoked.status + '，' + revokedBody.message + '，DB 行数=' + count(target.name, userId))
+      const again = await post(target.id, 'revoke')
+      console.log('    再收回一次（幂等）→ HTTP ' + again.status + '，DB 行数=' + count(target.name, userId))
+      console.log('    收回后接口回的 held=' + JSON.stringify(revokedBody.held))
+      db.close()
+    }
+
+    console.log('==> 头衔实测（DOM 观测）：' + (result.result?.value ?? '(无返回)'))
+    const probeAfter = await cdp.send('Runtime.evaluate', { expression: 'typeof window.__adminUsersProbe === "function" ? window.__adminUsersProbe() : "no-probe"' })
+    console.log('==> 发放后组件内 titleIds（DOM 之外的事实来源）：' + (probeAfter.result?.value ?? '?'))
+    const after = await cdp.send('Runtime.evaluate', { expression: 'location.pathname + location.search' })
+    console.log('==> 地址是否未变：' + (before.result?.value === after.result?.value ? '是（就地更新，没有整页刷新）✓' : '否 ✗ ' + before.result?.value + ' → ' + after.result?.value))
+    if (existsSync(dbPath)) {
+      const { DatabaseSync } = await import('node:sqlite')
+      const db = new DatabaseSync(dbPath)
+      const total = db.prepare('SELECT COUNT(*) AS n FROM user_titles').get()
+      const rows = db.prepare('SELECT ut.user_id, t.name FROM user_titles ut JOIN titles t ON t.id = ut.title_id ORDER BY t.name').all()
+      db.close()
+      console.log('==> 本地库 user_titles 行数 = ' + total.n + '；明细 = ' + JSON.stringify(rows))
+    }
+  }
+
 
   mkdirSync(outDir, { recursive: true })
   const themes = theme === 'both' ? ['light', 'dark'] : [theme]

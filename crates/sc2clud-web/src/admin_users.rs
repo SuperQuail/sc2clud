@@ -418,7 +418,7 @@ const GIB: f64 = 1_073_741_824.0;
 const MAX_QUOTA_GB: f64 = 10_240.0;
 
 /// 当前管理员；ManageUsers 是本域所有端点的共同门槛。
-async fn guard(state: &AppState, headers: &HeaderMap) -> AppResult<CurrentUser> {
+pub(crate) async fn guard(state: &AppState, headers: &HeaderMap) -> AppResult<CurrentUser> {
     let actor = require_user(state, headers).await?;
     session::guard(Some(&actor), Permission::ManageUsers)?;
     Ok(actor)

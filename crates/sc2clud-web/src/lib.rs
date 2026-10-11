@@ -11,6 +11,7 @@ pub mod admin_content;
 pub mod admin_groups;
 pub mod admin_posts;
 pub mod admin_sanctions;
+pub mod admin_titles;
 pub mod admin_users;
 pub mod ai;
 pub mod error;

@@ -260,49 +260,22 @@ async fn build_panel<'a>(
         .iter()
         .map(|row| feed_view(row, Some(user.id)))
         .collect();
-    let users_json = serde_json::json!({
-        "users": users
-            .iter()
-            .map(|u| serde_json::json!({
-                "id": u.id,
-                "handle": u.handle,
-                "displayName": u.display_name,
-                "initial": u.initial,
-                "colorIndex": u.color_index,
-                "avatar": u.avatar,
-                "activated": u.activated,
-                "online": u.online,
-                "trusted": u.trusted,
-                "banLabel": u.ban_label,
-                "isSelf": u.is_self,
-                "role": u.role,
-                "roleLabel": u.role_label,
-                "email": u.email,
-                "quotaGb": u.quota_gb,
-                "lastSeen": u.last_seen,
-                "createdAt": u.created_at,
-                "sanctions": u.sanctions,
-                "groups": u.groups,
-            }))
-            .collect::<Vec<_>>(),
-        "roles": roles
-            .iter()
-            .map(|(value, label)| serde_json::json!({ "value": value, "label": label }))
-            .collect::<Vec<_>>(),
-        "groups": groups
-            .iter()
-            .map(|g| serde_json::json!({ "id": g.id, "name": g.name }))
-            .collect::<Vec<_>>(),
-        "sections": sections
-            .iter()
-            .map(|s| serde_json::json!({ "value": s.value, "label": s.label }))
-            .collect::<Vec<_>>(),
-        "banOptions": ban_options
-            .iter()
-            .map(|(value, label)| serde_json::json!({ "value": value, "label": label }))
-            .collect::<Vec<_>>(),
-    })
-    .to_string();
+    let held_titles: Vec<(i64, Vec<i64>)> = repo::held_title_ids_for(
+        state.db.pool(),
+        &users.iter().map(|u| u.id).collect::<Vec<_>>(),
+    )
+    .await?
+    .into_iter()
+    .collect();
+    let users_json = crate::admin_titles::users_json(
+        &users,
+        &roles,
+        &groups,
+        &sections,
+        &ban_options,
+        &held_titles,
+        &repo::list_titles(state.db.pool(), true).await?,
+    );
     let pending_json = serde_json::json!(
         pending
             .iter()

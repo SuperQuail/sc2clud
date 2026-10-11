@@ -1,0 +1,20 @@
+/* 管理弹窗「头衔」区（web/src/ui/UserTitles.tsx）：颜色走 --tc，与个人主页/帖子上的头衔同一套视觉语言 */
+.title-panel{display:flex;flex-direction:column;gap:10px}
+.title-grid{display:flex;flex-direction:column;gap:6px;max-height:280px;overflow:auto;padding:2px}
+.title-row{display:flex;align-items:center;gap:10px;padding:6px 8px;border:1px solid var(--line,#e5e7eb);border-radius:10px}
+.title-row.is-held{border-color:color-mix(in srgb,var(--tc,#2563eb) 45%,transparent);background:color-mix(in srgb,var(--tc,#2563eb) 6%,transparent)}
+.title-desc{flex:1 1 auto;min-width:0;font-size:12px;opacity:.7;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.title-actions{display:flex;justify-content:flex-end;margin-left:auto;flex:0 0 auto}
+.title-chip{display:inline-flex;align-items:center;gap:6px;padding:3px 10px;border-radius:999px;font-size:12px;font-weight:600;letter-spacing:.2px;
+  color:var(--tc,#2563eb);border:1px solid color-mix(in srgb,var(--tc,#2563eb) 45%,transparent);background:color-mix(in srgb,var(--tc,#2563eb) 12%,transparent)}
+.title-chip.is-held{background:color-mix(in srgb,var(--tc,#2563eb) 22%,transparent)}
+.title-chip-dot{width:7px;height:7px;border-radius:50%;background:var(--tc,#2563eb);flex:0 0 auto}
+.title-chip-flag{font-size:10.5px;font-weight:500;opacity:.75;border-left:1px solid color-mix(in srgb,var(--tc,#2563eb) 40%,transparent);padding-left:6px}
+.name-cell .title-chip{margin-left:4px;vertical-align:middle}
+
+/* 筛选行：与徽章同一套配色（--tc 缺省走主题色） */
+.title-filters{display:flex;align-items:center;gap:6px}
+.title-filter{padding:4px 12px;border:1px solid var(--line,#e5e7eb);border-radius:999px;background:none;color:inherit;font:inherit;font-size:12.5px;cursor:pointer}
+.title-filter:hover{border-color:#93c5fd}
+.title-filter.is-on{border-color:#2563eb;background:rgba(37,99,235,.1);color:#1d4ed8;font-weight:600}
+.title-count{margin-left:auto;font-size:12px;opacity:.65}

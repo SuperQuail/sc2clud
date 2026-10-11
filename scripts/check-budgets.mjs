@@ -62,7 +62,7 @@ function measure(dir, files, label) {
 const localImports = (name) => {
   const path = join(ISLANDS, name + '.js')
   if (!existsSync(path)) return []
-  return [...readFileSync(path, 'utf8').matchAll(/from"\.\/([a-z0-9-]+)\.js"/g)].map((m) => m[1])
+  return [...readFileSync(path, 'utf8').matchAll(/from"\.\/([A-Za-z0-9-]+)\.js"/g)].map((m) => m[1])
 }
 
 /** 入口 + 它递归 import 的本地 chunk（去重）。 */
