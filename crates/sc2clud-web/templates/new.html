@@ -16,7 +16,7 @@
 {# 发帖表单：与编辑页同一个控件（ui/PostForm），服务端只给初值 #}
 <div data-island="post-form"
      data-action="/new"
-     data-upload=""
+     data-upload="/api/v1/images"
      data-csrf="{{ csrf }}"
      data-back="/"
      data-json="{{ edit_data_json }}"></div>

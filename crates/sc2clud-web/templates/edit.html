@@ -17,7 +17,7 @@
   {# 发帖/编辑表单：整张由控件库的 React 控件渲染（AGENTS §6.6） #}
   <div data-island="post-form"
        data-action="/p/{{ id }}/edit"
-       data-upload="/api/v1/posts/{{ id }}/images"
+       data-upload="/api/v1/images"
        data-csrf="{{ csrf }}"
        data-back="/p/{{ id }}"
        data-json="{{ edit_data_json }}"></div>
