@@ -40,6 +40,7 @@ export function IssuesApp({ postId, csrf, defaultKind }: IssuesAppProps) {
     value: item.value,
     label: item.label,
     hint: item.hint,
+    tone: item.value,
   }))
 
   return (

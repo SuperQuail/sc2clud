@@ -38,3 +38,29 @@
 .ui-btn-spin{width:12px;height:12px;border:2px solid currentColor;border-right-color:transparent;border-radius:50%;animation:ui-spin .7s linear infinite}
 @keyframes ui-spin{to{transform:rotate(360deg)}}
 
+/* 下拉选项的语义色（issue 类型）：触发器左侧色条 + 选中项底色 */
+.ui-select-trigger{border-left:3px solid var(--line,#e5e7eb)}
+.ui-select-trigger[data-tone=bug]{border-left-color:#dc2626}
+.ui-select-trigger[data-tone=feature]{border-left-color:#2563eb}
+.ui-select-trigger[data-tone=difficulty]{border-left-color:#7c3aed}
+.ui-select-trigger[data-tone=other]{border-left-color:#9ca3af}
+.ui-select-item{border-left:3px solid transparent}
+.ui-select-item[data-tone=bug]{color:#b91c1c;border-left-color:#dc2626}
+.ui-select-item[data-tone=feature]{color:#1d4ed8;border-left-color:#2563eb}
+.ui-select-item[data-tone=difficulty]{color:#6d28d9;border-left-color:#7c3aed}
+.ui-select-item[data-tone=other]{color:#4b5563;border-left-color:#9ca3af}
+.ui-select-item[data-tone][data-highlighted]{background:rgba(37,99,235,.08)}
+/* 统一上传控件 */
+.uploader-ui{display:flex;flex-direction:column;gap:10px}
+.uploader-modes{display:flex;gap:10px;flex-wrap:wrap}
+.uploader-modes label{display:flex;flex-direction:column;gap:2px;padding:10px 14px;border:1px solid var(--line,#e5e7eb);border-radius:10px;font-size:14px;cursor:pointer}
+.uploader-modes label span{font-size:12px;opacity:.7}
+.uploader-modes label.on{border-color:#2563eb;background:rgba(37,99,235,.08);color:#1d4ed8}
+.uploader-modes input{position:absolute;opacity:0;width:0;height:0}
+.uploader-actions{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+.uploader-count{font-size:13px;opacity:.7}
+.uploader-list{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:8px}
+.uploader-list li{display:flex;align-items:center;gap:10px;padding:8px;border:1px solid var(--line,#e5e7eb);border-radius:10px}
+.uploader-list img{width:56px;height:56px;object-fit:cover;border-radius:8px}
+.uploader-meta{font-size:13px;opacity:.8}
+.uploader-msg{margin:0;font-size:13px;color:#1d4ed8}

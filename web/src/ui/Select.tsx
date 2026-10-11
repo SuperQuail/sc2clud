@@ -4,6 +4,8 @@ export interface SelectOption {
   value: string
   label: string
   hint?: string
+  /** 语义色调：决定该项配色（见 ui.css 的 [data-tone]） */
+  tone?: string
 }
 
 export interface SelectProps {
@@ -21,7 +23,7 @@ export function SelectBox({ value, onChange, options, ...rest }: SelectProps) {
   const current = options.find((item) => item.value === value) ?? options[0]
   return (
     <Select.Root value={value} onValueChange={onChange}>
-      <Select.Trigger className="ui-select-trigger" aria-label={rest['aria-label']}>
+      <Select.Trigger className="ui-select-trigger" data-tone={current?.tone} aria-label={rest['aria-label']}>
         <span>{current ? current.label : ''}</span>
         <Select.Icon className="ui-select-caret" />
       </Select.Trigger>
@@ -29,7 +31,7 @@ export function SelectBox({ value, onChange, options, ...rest }: SelectProps) {
         <Select.Content className="ui-select-content" position="popper" sideOffset={6}>
           <Select.Viewport className="ui-select-viewport">
             {options.map((item) => (
-              <Select.Item key={item.value} value={item.value} className="ui-select-item">
+              <Select.Item key={item.value} value={item.value} className="ui-select-item" data-tone={item.tone}>
                 <Select.ItemText>{item.hint ? `${item.label} —— ${item.hint}` : item.label}</Select.ItemText>
                 <Select.ItemIndicator className="ui-select-tick">✓</Select.ItemIndicator>
               </Select.Item>

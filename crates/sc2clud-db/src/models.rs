@@ -254,6 +254,8 @@ pub struct IssueCommentRow {
     pub created_at: i64,
     pub author_handle: String,
     pub author_display_name: String,
+    /// 评论者头像（与帖子评论同一套展示需要的字段）
+    pub author_avatar: Option<String>,
 }
 /// 横幅。
 #[derive(Debug, Clone, FromRow)]

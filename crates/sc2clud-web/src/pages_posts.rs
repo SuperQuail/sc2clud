@@ -480,6 +480,34 @@ async fn build_post_page<'a>(
         }),
         None => None,
     };
+    // 详情页的评论：直接构成与帖子评论相同的 CommentView，交给同一个评论控件渲染
+    let issue_feed: Option<Vec<crate::templates::CommentView>> = match issue_id {
+        Some(want) => Some(
+            repo::list_issue_comments(state.db.pool(), want)
+                .await
+                .unwrap_or_default()
+                .into_iter()
+                .map(|row| crate::templates::CommentView {
+                    id: row.id,
+                    author: row.author_display_name,
+                    avatar_small: None,
+                    author_id: row.author_id,
+                    handle: row.author_handle,
+                    avatar: row.author_avatar,
+                    title: None,
+                    title_color: String::new(),
+                    body_html: sc2clud_core::community::render_body(&row.body),
+                    created_at: crate::templates::format_date(row.created_at),
+                    likes: 0,
+                    dislikes: 0,
+                    my_vote: 0,
+                    can_block: false,
+                    replies: Vec::new(),
+                })
+                .collect(),
+        ),
+        None => None,
+    };
     // 与其它预览开关一样只在开发实例生效
     let ivi = if state.config.server.debug_pages {
         ivi_raw.unwrap_or(1).clamp(1, 3)
@@ -509,16 +537,27 @@ async fn build_post_page<'a>(
         u.id != row.author_id
             && crate::session::allows_for(Some(u), sc2clud_core::auth::Permission::SubmitDonation)
     });
+
+    // 评论控件统一：帖子与 issue 用同一个 feed，只是提交地址不同、动作按钮有别
+    let comment_action = match issue_id {
+        Some(iid) => format!("/p/{id}/issues/{iid}/comments"),
+        None => format!("/p/{id}/comments"),
+    };
+    let show_comment_actions = issue_id.is_none();
+
     Ok(PostPageTemplate {
         ui_variant,
-        tabs,
-        issue_detail,
-        issue_open,
-        issue_total,
-        issues,
-        ivi,
+        comments: issue_feed.unwrap_or(comments_view),
         tab: tab.to_string(),
         issue_state: issue_state.to_string(),
+        issue_open,
+        issue_total,
+        tabs,
+        issue_detail,
+        comment_action,
+        show_comment_actions,
+        issues,
+        ivi,
         issue_kind: issue_kind.to_string(),
         issue_q: issue_q.to_string(),
         issue_closed,
@@ -599,7 +638,6 @@ async fn build_post_page<'a>(
             like_count: like_count as i64,
             bookmark_count: bookmark_count as i64,
         },
-        comments: comments_view,
     })
 }
 
