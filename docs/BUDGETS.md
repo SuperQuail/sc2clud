@@ -31,7 +31,7 @@
 | 详情页 HTML | ≤ 50 KB | 同上 |
 | 首屏 CSS | ≤ 20 KB | `static/app.css`，brotli 后 ≈ 1 KB |
 | 首屏 JS（每页共享外壳） | ≤ 60 KB | `base.html` 挂的岛：`theme` + `post-images` + （`account` / `auth` 二选一，取较大者），brotli 后 ≈ 3.5 KB |
-| 单个前端岛 | ≤ 120 KB | 与 `web/vite.config.ts` 的注释一致；当前最大 `issues.js` ≈ 66.5 KB（React 18 + ReactDOM + Radix Select，§6.6 强制） |
+| 单个前端岛（含其 chunk） | ≤ 120 KB | 与 `web/vite.config.ts` 的注释一致。React 岛共享一个 `ui.js` chunk，只量入口会低估，因此按 import 闭包求和；当前最大 `issues.js` + chunk ≈ 66.6 KB（React 18 + Radix，§6.6 强制） |
 | 列表页缩略图合计 | ≤ 150 KB | 缩略图功能尚未实现（必须异步化） |
 | 单页首屏总计 | ≤ 250 KB ≈ 2 秒传输 | 由上述各项相加约束 |
 
