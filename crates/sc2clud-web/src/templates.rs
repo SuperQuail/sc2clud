@@ -532,6 +532,8 @@ pub struct NewPostTemplate<'a> {
     pub body: &'a str,
     /// 三个下载来源槽位（资源帖用；留空即忽略）。
     pub source_slots: Vec<SourceSlot>,
+    /// 表单初值（JSON）：交给 React 表单岛，服务端不再渲染一份重复结构
+    pub edit_data_json: String,
 }
 
 /// 发帖页的分区选项。

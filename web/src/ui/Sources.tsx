@@ -1,41 +1,30 @@
-import { useState } from 'react'
-
-export interface SourceProvider {
-  value: string
-  label: string
-}
-
-export interface SourceSlot {
-  provider: string
-  label: string
-  code: string
-  url: string
-}
+import { emptySource, type SourceProvider, type SourceSlot } from '../lib/sources'
 
 export interface SourcesProps {
   providers: SourceProvider[]
-  initial: SourceSlot[]
+  /** 受控值：父组件持有状态（表单岛 / 独立岛都能用） */
+  value: SourceSlot[]
+  onChange: (rows: SourceSlot[]) => void
+  legend?: string
 }
 
-const empty = (provider: string): SourceSlot => ({ provider, label: '', code: '', url: '' })
-
 /**
- * 下载来源：数量不限、可增删。字段名与旧模板保持一致（provider/label/code/url），
- * 因此服务端的表单解析与保存逻辑一行都不用改；无 JS 时服务端渲染的行照常提交。
+ * 下载来源控件（控件库）：字段名 provider/label/code/url 与服务端解析一致，
+ * 直接随表单提交；样式在 ui.css（.src-*），与页面模板解耦。
  */
-export function Sources({ providers, initial }: SourcesProps) {
+export function Sources({ providers, value, onChange, legend = '下载来源（数量不限，名称可自定义）' }: SourcesProps) {
   const first = providers[0]?.value ?? ''
-  const [rows, setRows] = useState<SourceSlot[]>(initial.length > 0 ? initial : [empty(first)])
+  const rows = value.length > 0 ? value : [emptySource(first)]
 
-  const patch = (index: number, key: keyof SourceSlot, value: string) =>
-    setRows((prev) => prev.map((row, i) => (i === index ? { ...row, [key]: value } : row)))
+  const patch = (index: number, key: keyof SourceSlot, next: string) =>
+    onChange(rows.map((row, i) => (i === index ? { ...row, [key]: next } : row)))
 
   return (
-    <fieldset style={{ border: 0, padding: 0, margin: 0 }}>
-      <legend style={{ fontSize: 14, fontWeight: 600, marginBottom: 8 }}>下载来源（数量不限，名称可自定义）</legend>
-      <div className="source-rows">
+    <fieldset className="src-field">
+      <legend>{legend}</legend>
+      <div className="src-rows">
         {rows.map((row, index) => (
-          <div className="source-row" key={index}>
+          <div className="src-row" key={index}>
             <select name="provider" value={row.provider} onChange={(e) => patch(index, 'provider', e.target.value)}>
               {providers.map((provider) => (
                 <option key={provider.value} value={provider.value}>{provider.label}</option>
@@ -44,15 +33,21 @@ export function Sources({ providers, initial }: SourcesProps) {
             <input type="text" name="label" value={row.label} maxLength={24} placeholder="显示名（可留空）" onChange={(e) => patch(index, 'label', e.target.value)} />
             <input type="text" name="code" value={row.code} maxLength={8} placeholder="提取码" onChange={(e) => patch(index, 'code', e.target.value)} />
             <input type="url" name="url" value={row.url} placeholder="https:// 下载地址" onChange={(e) => patch(index, 'url', e.target.value)} />
-            <button className="icon-btn" type="button" title="删除这一行" onClick={() => setRows((prev) => (prev.length > 1 ? prev.filter((_, i) => i !== index) : prev))}>
+            <button
+              className="ui-btn ui-btn-sm"
+              type="button"
+              title="删除这一行"
+              disabled={rows.length <= 1}
+              onClick={() => onChange(rows.filter((_, i) => i !== index))}
+            >
               ✕
             </button>
           </div>
         ))}
       </div>
-      <div className="actions-inline" style={{ marginTop: 10 }}>
-        <button className="btn ghost sm" type="button" onClick={() => setRows((prev) => [...prev, empty(first)])}>＋ 添加一个来源</button>
-        <span className="hint">留空的整行会被忽略；保存后按这里的顺序重写</span>
+      <div className="src-actions">
+        <button className="ui-btn ui-btn-sm" type="button" onClick={() => onChange([...rows, emptySource(first)])}>＋ 添加一个来源</button>
+        <span className="ui-hint">留空的整行会被忽略；保存后按这里的顺序重写</span>
       </div>
     </fieldset>
   )

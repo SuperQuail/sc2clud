@@ -1,5 +1,6 @@
 import { useState } from 'react'
-import { Sources, type SourceProvider, type SourceSlot } from './Sources'
+import { Sources } from './Sources'
+import type { SourceProvider, SourceSlot } from '../lib/sources'
 import { RichText } from './RichText'
 
 export interface PostFormOption {
@@ -36,6 +37,7 @@ export interface PostFormProps {
 export function PostForm({ action, uploadEndpoint, csrf, back, data }: PostFormProps) {
   const [kind, setKind] = useState(data.kinds.find((k) => k.checked)?.value ?? data.kinds[0]?.value ?? '')
   const [section, setSection] = useState(data.sections.find((s) => s.checked)?.value ?? data.sections[0]?.value ?? '')
+  const [sources, setSources] = useState<SourceSlot[]>(data.sources)
 
   return (
     <form method="post" action={action} className="stack">
@@ -69,7 +71,7 @@ export function PostForm({ action, uploadEndpoint, csrf, back, data }: PostFormP
         </select>
       </label>
 
-      <Sources providers={data.providers} initial={data.sources} />
+      <Sources providers={data.providers} value={sources} onChange={setSources} />
 
       {/* 正文：富文本组件（存储仍是 markdown，写回隐藏字段，表单原样提交） */}
       <div className="field">

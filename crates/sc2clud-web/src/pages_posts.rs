@@ -156,6 +156,26 @@ fn provider_options() -> Vec<ProviderOption> {
         .collect()
 }
 
+/// 发帖/编辑表单岛的初值（JSON）：首屏与失败回显路径共用，避免多处复制。
+fn form_json(
+    title: &str,
+    body: &str,
+    kinds: &[KindOption],
+    sections: &[SectionOption],
+    providers: &[ProviderOption],
+    sources: &[SourceSlot],
+) -> String {
+    serde_json::json!({
+        "title": title,
+        "body": body,
+        "kinds": kinds.iter().map(|o| serde_json::json!({"value": o.value, "label": o.label, "checked": o.checked})).collect::<Vec<_>>(),
+        "sections": sections.iter().map(|o| serde_json::json!({"value": o.value, "label": o.label, "checked": o.checked})).collect::<Vec<_>>(),
+        "providers": providers.iter().map(|o| serde_json::json!({"value": o.value, "label": o.label})).collect::<Vec<_>>(),
+        "sources": sources.iter().map(|s| serde_json::json!({"provider": s.provider, "label": s.label, "code": s.code, "url": s.url})).collect::<Vec<_>>(),
+    })
+    .to_string()
+}
+
 fn empty_slots() -> Vec<SourceSlot> {
     (1..=3)
         .map(|index| SourceSlot {
@@ -1932,16 +1952,30 @@ pub async fn new_post_form(State(state): State<AppState>, headers: HeaderMap) ->
     } else {
         Some("账号尚未激活，暂时不能发帖".to_string())
     };
+    let kinds = kind_options("discussion");
+    let sections = section_options(PostSection::default_section().as_str(), Some(&user));
+    let providers = provider_options();
+    let source_slots = empty_slots();
+    let edit_data_json = serde_json::json!({
+        "title": "",
+        "body": "",
+        "kinds": kinds.iter().map(|o| serde_json::json!({"value": o.value, "label": o.label, "checked": o.checked})).collect::<Vec<_>>(),
+        "sections": sections.iter().map(|o| serde_json::json!({"value": o.value, "label": o.label, "checked": o.checked})).collect::<Vec<_>>(),
+        "providers": providers.iter().map(|o| serde_json::json!({"value": o.value, "label": o.label})).collect::<Vec<_>>(),
+        "sources": source_slots.iter().map(|s| serde_json::json!({"provider": s.provider, "label": s.label, "code": s.code, "url": s.url})).collect::<Vec<_>>(),
+    })
+    .to_string();
     render(NewPostTemplate {
         site_name: &state.config.server.site_name,
         user_label: Some(user.display_name.clone()),
         is_staff: user.is_staff(),
         csrf: user.csrf_token.clone(),
         error,
-        kinds: kind_options("discussion"),
-        sections: section_options(PostSection::default_section().as_str(), Some(&user)),
-        providers: provider_options(),
-        source_slots: empty_slots(),
+        kinds,
+        sections,
+        providers,
+        source_slots,
+        edit_data_json,
         title: "",
         body: "",
     })
@@ -2008,6 +2042,14 @@ pub async fn new_post_submit(
                 source_slots: empty_slots(),
                 title: &title,
                 body: &body,
+                edit_data_json: form_json(
+                    &title,
+                    &body,
+                    &kind_options(kind.as_str()),
+                    &section_options(section.as_str(), Some(&user)),
+                    &provider_options(),
+                    &empty_slots(),
+                ),
             });
         }
     };
@@ -2025,6 +2067,14 @@ pub async fn new_post_submit(
             sections: section_options(section.as_str(), Some(&user)),
             providers: provider_options(),
             source_slots: empty_slots(),
+            edit_data_json: form_json(
+                &title,
+                &body,
+                &kind_options(kind.as_str()),
+                &section_options(section.as_str(), Some(&user)),
+                &provider_options(),
+                &empty_slots(),
+            ),
             title: &title,
             body: &body,
         });
@@ -2128,6 +2178,14 @@ pub async fn new_post_submit(
                     sections: section_options(section.as_str(), Some(&user)),
                     providers: provider_options(),
                     source_slots: empty_slots(),
+                    edit_data_json: form_json(
+                        &title,
+                        &body,
+                        &kind_options(kind.as_str()),
+                        &section_options(section.as_str(), Some(&user)),
+                        &provider_options(),
+                        &empty_slots(),
+                    ),
                     title: &title,
                     body: &body,
                 });
