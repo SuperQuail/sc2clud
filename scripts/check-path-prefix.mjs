@@ -8,6 +8,12 @@ import { join, relative } from 'node:path'
 const ROOT = new URL('..', import.meta.url).pathname.replace(/^\//, '')
 const SRC = join(ROOT, 'web/src')
 
+// 裸路径的写法（出现即算，除非同一行有 appUrl/adminUrl/PREFIX）
+const BAD = ['src={`/', 'href={`/', 'fetch(`/', "src={'/", "href={'/"]
+const OK = ['appUrl(', 'adminUrl(', 'PREFIX']
+// lib/paths.ts 是实现本身
+const ALLOW = new Set(['web/src/lib/paths.ts'])
+
 function walk(dir, out = []) {
   for (const name of readdirSync(dir)) {
     const full = join(dir, name)
@@ -17,26 +23,16 @@ function walk(dir, out = []) {
   return out
 }
 
-// 例外：lib/paths.ts 自己就是实现；admin.ts 用 PREFIX 手工拼（历史写法）
-const ALLOW = new Set(['web/src/lib/paths.ts', 'web/src/lib/admin.ts', 'web/src/admin.ts'])
-const BAD = [
-  /src=\{`\/(?!\/)/,          // src={`/xxx
-  /href=\{`\/(?!\/)/,         // href={`/xxx
-  /fetch\(`\/(?!\/)/,         // fetch(`/xxx
-  /src=\{\s*'\/(?!/),        // src={'/xxx
-  /href=\{\s*'\/(?!/),       // href={'/xxx
-]
-
 let failed = false
 for (const file of walk(SRC)) {
   const key = relative(ROOT, file).replace(/\\/g, '/')
   if (ALLOW.has(key)) continue
   readFileSync(file, 'utf8').split('\n').forEach((line, i) => {
-    if (BAD.some((re) => re.test(line))) {
-      console.log(`  FAIL ${key}:${i + 1}: 站内绝对路径必须用 appUrl()/adminUrl() 包裹`)
-      console.log(`       ${line.trim().slice(0, 100)}`)
-      failed = true
-    }
+    if (!BAD.some((needle) => line.includes(needle))) return
+    if (OK.some((needle) => line.includes(needle))) return
+    console.log('  FAIL ' + key + ':' + (i + 1) + ': 站内绝对路径必须用 appUrl()/adminUrl() 包裹')
+    console.log('       ' + line.trim().slice(0, 100))
+    failed = true
   })
 }
 

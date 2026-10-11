@@ -26,9 +26,17 @@ function Avatar({ item, small }: { item: CommentItem; small?: boolean }) {
   const hash = small ? item.avatar_small ?? item.avatar : item.avatar ?? item.avatar_small
   const cls = small ? 'avatar c-avatar sm' : 'avatar c-avatar'
   const size = small ? 26 : 40
-  return hash
-    ? <img className={cls} src={appUrl(`/avatar/${hash}`)} alt="" width={size} height={size} loading="lazy" />
-    : <img className={cls} src="/static/art/miyin-chibi-80.webp" alt="" width={size} height={size} loading="lazy" />
+  // 没上传头像就用首字母（与 AdminUsers 一致的房子写法）；不要再指向某个静态图，
+  // 那是「一张图缺失就整站裂图」的写法。
+  if (!hash) {
+    const initial = (item.author || '?').trim().slice(0, 1)
+    return (
+      <span className={`avatar-initial c${item.author_id % 3}`} aria-hidden="true" title={item.author}>
+        {initial}
+      </span>
+    )
+  }
+  return <img className={cls} src={appUrl(`/avatar/${hash}`)} alt="" width={size} height={size} loading="lazy" />
 }
 
 /** 回复输入：带 @ 补全（输入 @ 后弹出候选，插入 `@昵称#id` 与服务端约定一致）。 */
