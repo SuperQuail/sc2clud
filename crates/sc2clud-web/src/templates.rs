@@ -903,6 +903,8 @@ pub struct AdminTemplate<'a> {
     pub pending_json: String,
     /// 社区开关的初值（JSON）：交给 React 控件
     pub community_json: String,
+    /// 分区封面与顺序的初值（JSON）：每格 value/label/封面哈希 + 是否首末位
+    pub covers_json: String,
     /// 用户组列表（含人数与规则）。
     pub groups: Vec<AdminGroupView>,
     /// 禁言时长选项（值, 显示名）。

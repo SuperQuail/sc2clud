@@ -305,3 +305,58 @@ export interface AdminCommunityData {
 export function setBlockReply(csrf: string, enabled: boolean): Promise<string> {
   return postForm('/admin/settings/block-reply', csrf, [['enabled', enabled ? '1' : '0']])
 }
+
+// ------------------------------------------------------------ 分区封面与顺序（SectionCovers）
+
+/** 一个分区的封面卡片初值（数组顺序＝当前分区顺序）。 */
+export interface CoverRow {
+  value: string
+  label: string
+  /** 已有封面的内容哈希（没有则 null） */
+  cover: string | null
+  /** 是否首位 / 末位：用来禁用对应的 ↑ / ↓ */
+  first: boolean
+  last: boolean
+}
+
+export interface CoversData {
+  sections: CoverRow[]
+}
+
+/** ↑↓ 调序：后端回最新的分区 key 顺序，界面按它就地重排（不刷新）。 */
+export async function moveSection(
+  section: string,
+  csrf: string,
+  dir: 'up' | 'down',
+): Promise<string[]> {
+  const res = await fetch(adminUrl(`/admin/sections/${encodeURIComponent(section)}/move`), {
+    method: 'POST',
+    headers: {
+      'content-type': 'application/x-www-form-urlencoded;charset=UTF-8',
+      'x-requested-with': 'fetch',
+    },
+    body: new URLSearchParams([['csrf', csrf], ['dir', dir]]),
+  })
+  const data = (await res.json().catch(() => null)) as { order?: string[]; message?: string } | null
+  if (!res.ok) throw new Error(data?.message || `调序失败（${res.status}）`)
+  if (!Array.isArray(data?.order)) throw new Error('调序失败：后端没有回新的顺序')
+  return data.order
+}
+
+/** 上传分区封面：原始图片字节 + header 里的 CSRF（与后端 set_section_cover 对齐）。 */
+export async function uploadSectionCover(
+  section: string,
+  csrf: string,
+  file: File,
+): Promise<string> {
+  const res = await fetch(adminUrl(`/admin/sections/${encodeURIComponent(section)}/cover`), {
+    method: 'POST',
+    headers: { 'x-csrf-token': csrf, 'x-requested-with': 'fetch', accept: 'application/json' },
+    body: file,
+  })
+  const data = (await res.json().catch(() => null)) as { message?: string } | null
+  if (!res.ok || res.redirected) {
+    throw new Error(data?.message || `上传失败（${res.status}），请检查图片或稍后重试。`)
+  }
+  return data?.message ?? '封面已更新'
+}

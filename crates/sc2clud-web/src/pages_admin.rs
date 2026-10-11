@@ -297,6 +297,21 @@ async fn build_panel<'a>(
     .to_string();
     let community_json =
         serde_json::json!({ "blockReplyEnforced": block_reply_enforced }).to_string();
+    // 封面面板的初值：顺序就是当前分区顺序，首末位决定 ↑↓ 的禁用（改序后由控件自己重算）
+    let covers_json = serde_json::json!({
+        "sections": sections
+            .iter()
+            .enumerate()
+            .map(|(index, section)| serde_json::json!({
+                "value": section.value,
+                "label": section.label,
+                "cover": section.cover,
+                "first": index == 0,
+                "last": index + 1 == sections.len(),
+            }))
+            .collect::<Vec<_>>()
+    })
+    .to_string();
     Ok(AdminTemplate {
         default_avatars,
         pool_variant,
@@ -306,6 +321,7 @@ async fn build_panel<'a>(
         titles_json,
         pending_json,
         community_json,
+        covers_json,
         groups,
         block_reply_enforced,
         ai_review_posts: ai_config.review_posts,

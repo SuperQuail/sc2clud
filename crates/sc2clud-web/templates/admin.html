@@ -152,37 +152,9 @@
     <section class="panel cover-manager" id="covers" aria-labelledby="covers-title">
       <header class="covers-heading"><h2 id="covers-title">分区封面与顺序</h2>
         <p class="hint">用每格的 ↑ ↓ 调整顺序：它决定社区左栏导航、首页标签页与发帖分区下拉的排列。</p></header>
-      <div class="cover-grid" data-cover-csrf="{{ csrf }}">
-        {% for section in sections %}
-        <article class="cover-cell" data-cover-card data-state="idle" data-has-cover="{% if section.cover.is_some() %}true{% else %}false{% endif %}" aria-label="{{ section.label }}封面管理">
-          <button class="cover-preview" type="button" data-cover-pick aria-label="为{{ section.label }}选择封面" aria-describedby="cover-note-{{ section.value }}">
-            {% if let Some(cover) = section.cover %}<img data-cover-image src="/img/{{ cover }}" alt="{{ section.label }}当前封面">{% else %}<img data-cover-image alt="{{ section.label }}待选封面" hidden>{% endif %}
-            <span class="cover-placeholder"><img src="/static/art/starcraft/nav-{{ section.value }}.webp" alt=""><span>暂无封面</span></span>
-            <span class="cover-hover" aria-hidden="true">选择新封面 ↗</span>
-          </button>
-          <div class="cover-body">
-            <div class="cover-title"><h3>{{ section.label }}</h3><button class="cover-select" type="button" data-cover-pick>更换</button></div>
-            <span class="cover-badge" data-cover-badge hidden></span>
-            <p class="cover-note" id="cover-note-{{ section.value }}" data-cover-note role="status" aria-live="polite" hidden></p>
-            <input class="cover-file" id="cover-file-{{ section.value }}" type="file" accept="image/png,image/jpeg,image/gif,image/webp" data-cover-input data-cover-action="/admin/sections/{{ section.value }}/cover" aria-label="{{ section.label }}封面图片">
-            <div class="cover-order">
-              <form method="post" action="/admin/sections/{{ section.value }}/move">
-                <input type="hidden" name="csrf" value="{{ csrf }}">
-                <input type="hidden" name="dir" value="up">
-                <button class="cover-order-btn" type="submit" title="上移" aria-label="把{{ section.label }}上移">↑</button>
-              </form>
-              <form method="post" action="/admin/sections/{{ section.value }}/move">
-                <input type="hidden" name="csrf" value="{{ csrf }}">
-                <input type="hidden" name="dir" value="down">
-                <button class="cover-order-btn" type="submit" title="下移" aria-label="把{{ section.label }}下移">↓</button>
-              </form>
-            </div>
-            <div class="cover-actions"><button class="btn" type="button" data-cover-save hidden>确认更换</button><button class="cover-cancel" type="button" data-cover-cancel hidden>取消</button></div>
-          </div>
-        </article>
-        {% endfor %}
-      </div>
-      <noscript><p class="hint">请启用 JavaScript 以预览和上传分区封面。</p></noscript>
+      {# 封面卡片是控件库里的 React 控件（web/src/ui/SectionCovers.tsx）：模板只留挂载点 #}
+      <div data-island="admin-covers" data-csrf="{{ csrf }}" data-json="{{ covers_json }}"></div>
+      <script type="module" src="/static/islands/admin-covers.js"></script>
     </section>
 
     <section class="panel" id="avatar-pool">
@@ -248,34 +220,6 @@
     });
   });
 
-  // 分区调序：fetch 提交 → 按返回的新顺序就地重排封面格（不刷新页面）
-  const orderRoot = document.querySelector('.cover-grid');
-  if (orderRoot) {
-    orderRoot.addEventListener('submit', async (event) => {
-      const form = event.target.closest('form[action*="/move"]');
-      if (!form) return;
-      event.preventDefault();
-      const body = new FormData(form);
-      const res = await fetch(form.action, {
-        method: 'POST',
-        headers: { 'x-requested-with': 'fetch' },
-        body,
-      });
-      if (!res.ok) return;
-      const data = await res.json().catch(() => null);
-      if (!data || !Array.isArray(data.order)) return;
-      // 按新顺序把已有的格子重排（不重新渲染、不丢上传状态）
-      const cells = new Map();
-      orderRoot.querySelectorAll('[data-cover-card]').forEach((cell) => {
-        const key = (cell.querySelector('form[action*="/move"]')?.action.match(/\/sections\/([^/]+)\//) || [])[1];
-        if (key) cells.set(key, cell);
-      });
-      data.order.forEach((key) => {
-        const cell = cells.get(key);
-        if (cell) orderRoot.appendChild(cell);
-      });
-    });
-  }
       (() => {
         const file = document.getElementById('pool-file');
         const pick = document.getElementById('pool-pick');

@@ -465,6 +465,8 @@ const main = async () => {
     console.log('    收回（清理）→ 该头衔持有行数=' + heldFor(newId))
     db.close()
   }
+  // 这一段是头衔目录的「控件级」验证：原先掉在 if (titleAdmin) 之外，任何一次预览都会跑并写图。
+  if (titleAdmin && cookie) {
     await cdp.send('Page.navigate', { url: base + '/admin/users/overview' })
     await new Promise((r) => setTimeout(r, 1600))
     const before = await cdp.send('Runtime.evaluate', {
@@ -519,6 +521,7 @@ const main = async () => {
     const left = db2.prepare('SELECT COUNT(*) AS n FROM titles').get().n
     db2.close()
     console.log('    清理样张 ' + leftovers.length + ' 条；目录剩 ' + left + ' 条')
+  }
 
   // （--comment-test 的自动化验证这次没做通，已撤；见 preview.mjs 顶部注释）
   if (titleTest && cookie) {

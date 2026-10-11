@@ -35,9 +35,6 @@
 .group-create{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
 .group-create input{padding:8px 10px;border:1px solid var(--line,#e5e7eb);border-radius:8px;background:none;color:inherit;font:inherit}
       .cover-order{display:flex;gap:6px;margin:8px 0 2px}
-      .cover-order form{display:inline}
-      .cover-order-btn{width:28px;height:26px;border:1px solid var(--line,#e5e7eb);border-radius:6px;background:none;color:inherit;font:inherit;cursor:pointer}
-      .cover-order-btn:hover{border-color:#2563eb;color:#2563eb}
       .pool-upload{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin:10px 0 14px}
       .pool-upload input[type=text]{padding:8px 10px;border:1px solid var(--line,#e5e7eb);border-radius:8px;background:none;color:inherit;font:inherit}
       .pool-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:12px}
