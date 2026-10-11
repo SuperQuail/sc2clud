@@ -278,7 +278,7 @@ pub struct InboxParams {
 }
 
 /// 消息中心（照 B 站私信页做：左分类 / 中列表 / 右内容 + 底部输入）。
-/// 只做我们真有的东西：私信、收到的赞、系统通知；B 站的「回复我的 / @我的」我们没有，不放。
+/// 分类：我的消息 / 回复与 @ / 收到的赞 / 系统通知。
 pub async fn center(
     State(state): State<AppState>,
     headers: HeaderMap,
@@ -316,12 +316,25 @@ pub async fn center(
             })
             .collect();
 
-    // 通知按 kind 分到「收到的赞」和「系统通知」两栏
+    // 进这个分类就算读过了（系统通知 = 除赞与回复之外的兜底集合）；kind 列表与下面的分栏 match 一起改
+    let now = now_unix();
+    let (kinds, exclude): (&[&str], bool) = match tab.as_str() {
+        "likes" => (&["like"][..], false),
+        "replies" => (&["reply", "issue_reply"][..], false),
+        "system" => (&["like", "reply", "issue_reply"][..], true),
+        // dm 与未知 tab：私信的已读走 mark_thread_read（会话级），通知不动
+        _ => (&[][..], false),
+    };
+    repo::mark_notifications_read_kinds(state.db.pool(), user.id, kinds, exclude, now).await?;
+
+    // 通知按 kind 分到「回复与 @」「收到的赞」「系统通知」三栏
     let selected_nid: Option<i64> = params.nid.as_deref().and_then(|v| v.parse().ok());
     let mut likes = Vec::new();
+    let mut replies = Vec::new();
     let mut system = Vec::new();
     let mut selected_notice = None;
     let mut like_unread = 0i64;
+    let mut reply_unread = 0i64;
     let mut system_unread = 0i64;
     for row in repo::list_notifications(state.db.pool(), user.id, 100).await? {
         let actor = row.actor_display_name.clone().unwrap_or_default();
@@ -347,18 +360,15 @@ pub async fn center(
         if selected_nid == Some(view.id) {
             selected_notice = Some(view.clone());
         }
-        let unread = view.unread;
-        if row.kind == "like" {
-            if unread {
-                like_unread += 1;
-            }
-            likes.push(view);
-        } else {
-            if unread {
-                system_unread += 1;
-            }
-            system.push(view);
+        let (bucket, bucket_unread) = match kind.as_str() {
+            "like" => (&mut likes, &mut like_unread),
+            "reply" | "issue_reply" => (&mut replies, &mut reply_unread),
+            _ => (&mut system, &mut system_unread),
+        };
+        if view.unread {
+            *bucket_unread += 1;
         }
+        bucket.push(view);
     }
 
     // 右栏：私信线程（选中会话时）；顺带标记已读
@@ -399,9 +409,7 @@ pub async fn center(
                 show_date,
             });
         }
-        let _ =
-            repo::mark_thread_read(state.db.pool(), user.id, other.id, sc2clud_core::now_unix())
-                .await;
+        let _ = repo::mark_thread_read(state.db.pool(), user.id, other.id, now).await;
     }
 
     // 收到的赞按「同一条内容」聚合（B 站那种「A、B 等总计 N 人赞了…」）
@@ -424,12 +432,11 @@ pub async fn center(
     let likes = grouped;
 
     // 中栏展示哪一类列表
-    let notices = if tab == "likes" {
-        likes
-    } else if tab == "system" {
-        system
-    } else {
-        Vec::new()
+    let notices = match tab.as_str() {
+        "likes" => likes,
+        "replies" => replies,
+        "system" => system,
+        _ => Vec::new(),
     };
 
     Ok(crate::templates::render(InboxTemplate {
@@ -446,6 +453,7 @@ pub async fn center(
         my_avatar,
         thread,
         like_unread,
+        reply_unread,
         system_unread,
         dm_unread: 0,
         notices,

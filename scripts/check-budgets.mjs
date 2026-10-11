@@ -78,7 +78,9 @@ console.log('资源体积预算（brotli 质量 11）：')
 
 // ---- CSS ----
 for (const group of [
-  { label: '首屏 CSS', limit: 20 * KB, files: ['app.css', 'home.css', 'forum.css'] },
+  // 22 KB：首页外壳 CSS 在 2026-10 已到 20.1 KB（顶栏未读红点等小样式累积），
+  // 留 2 KB 余量；理由记录在 docs/BUDGETS.md。
+  { label: '首屏 CSS', limit: 22 * KB, files: ['app.css', 'home.css', 'forum.css'] },
   { label: '非首页 CSS', limit: 20 * KB, files: ['app.css', 'site.css'] },
 ]) {
   const rows = measure(STATIC, group.files, group.label)

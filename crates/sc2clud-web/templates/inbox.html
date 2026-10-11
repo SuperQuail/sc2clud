@@ -10,6 +10,7 @@
     <h2 class="inbox-rail-title">消息中心</h2>
     <nav class="inbox-nav">
       <a href="/inbox?tab=dm" class="{% if tab == "dm" %}active{% endif %}">我的消息{% if dm_unread > 0 %}<span class="badge">{{ dm_unread }}</span>{% endif %}</a>
+      <a href="/inbox?tab=replies" class="{% if tab == "replies" %}active{% endif %}">回复与 @{% if reply_unread > 0 %}<span class="badge">{{ reply_unread }}</span>{% endif %}</a>
       <a href="/inbox?tab=likes" class="{% if tab == "likes" %}active{% endif %}">收到的赞{% if like_unread > 0 %}<span class="badge">{{ like_unread }}</span>{% endif %}</a>
       <a href="/inbox?tab=system" class="{% if tab == "system" %}active{% endif %}">系统通知{% if system_unread > 0 %}<span class="badge">{{ system_unread }}</span>{% endif %}</a>
     </nav>
@@ -77,7 +78,7 @@
   {% else %}
   {# 收到的赞 / 系统通知：B 站是整列信息流 #}
   <section class="card inbox-feed">
-    <div class="inbox-list-head">{% if tab == "likes" %}收到的赞{% else %}系统通知{% endif %}</div>
+    <div class="inbox-list-head">{% if tab == "likes" %}收到的赞{% else if tab == "replies" %}回复与 @{% else %}系统通知{% endif %}</div>
     <div class="inbox-feed-body">
       {% if notices.is_empty() %}
       <p class="empty">这里还没有消息。</p>
@@ -129,7 +130,7 @@
             {# 删除确认：1 二次点击 / 2 行内气泡 / 3 系统 confirm #}
             <form method="post" action="/notifications/{{ n.id }}/delete" data-del-form class="feed-action-form"{% if delete_variant == 3 %} onsubmit="return confirm('删除这条通知？')"{% endif %}>
               <input type="hidden" name="csrf" value="{{ csrf }}">
-              <input type="hidden" name="tab" value="system">
+              <input type="hidden" name="tab" value="{{ tab }}">
               {% if delete_variant == 2 %}
               <button class="feed-action" type="button" data-del-modal>删除该通知</button>
               {% else %}
@@ -137,7 +138,7 @@
               <span class="del-bubble" data-del-bubble hidden>确认删除？<button class="feed-action danger" type="submit">确认</button><button class="feed-action" type="button" data-del-cancel>取消</button></span>
               {% endif %}
             </form>
-          <form method="post" action="/notifications/mute"><input type="hidden" name="csrf" value="{{ csrf }}"><input type="hidden" name="tab" value="system"><input type="hidden" name="kind" value="{{ n.kind }}"><input type="hidden" name="link" value="{{ n.link }}"><button class="feed-action" type="submit">不再通知</button></form>
+          <form method="post" action="/notifications/mute"><input type="hidden" name="csrf" value="{{ csrf }}"><input type="hidden" name="tab" value="{{ tab }}"><input type="hidden" name="kind" value="{{ n.kind }}"><input type="hidden" name="link" value="{{ n.link }}"><button class="feed-action" type="submit">不再通知</button></form>
         </div>
       </article>
       {% endfor %}
@@ -157,37 +158,38 @@
 </div>
 <script>
 (() => {
+  // 三个来源（就地发送 / SSE 推送 / 轮询兜底）共用同一套追加逻辑
+  const appendMessage = (m) => {
+    const thread = document.querySelector('.inbox-thread');
+    if (!thread || !m) return;
+    if (m.id && thread.querySelector('[data-msg-id="' + m.id + '"]')) return; // 已有就不重复
+    const empty = thread.querySelector('.empty');
+    if (empty) empty.remove();
+    const stick = thread.scrollHeight - thread.scrollTop - thread.clientHeight < 120;
+    const wrap = document.createElement('div');
+    wrap.className = 'inbox-msg' + (m.mine ? ' mine' : '');
+    if (m.id) wrap.dataset.msgId = m.id;
+    const bubble = document.createElement('div');
+    bubble.className = 'bubble';
+    bubble.textContent = m.body;
+    const tpl = document.querySelector(m.mine ? '[data-mine] .msg-avatar' : '.inbox-msg:not([data-mine]) .msg-avatar');
+    if (m.mine) {
+      wrap.appendChild(bubble);
+      if (tpl) wrap.appendChild(tpl.cloneNode(true));
+    } else {
+      if (tpl) wrap.appendChild(tpl.cloneNode(true));
+      wrap.appendChild(bubble);
+      const preview = document.querySelector('.inbox-item.active .inbox-item-preview');
+      if (preview) preview.textContent = m.body;
+    }
+    thread.appendChild(wrap);
+    if (stick) thread.scrollTop = thread.scrollHeight;
+  };
+
   document.querySelectorAll('[data-del-form]').forEach((form) => {
     const ask = form.querySelector('[data-del-ask]');
     const bubble = form.querySelector('[data-del-bubble]');
     if (!ask || !bubble) return;
-// 三个来源（就地发送 / SSE 推送 / 轮询兜底）共用同一套追加逻辑
-const appendMessage = (m) => {
-  const thread = document.querySelector('.inbox-thread');
-  if (!thread || !m) return;
-  if (m.id && thread.querySelector('[data-msg-id="' + m.id + '"]')) return; // 已有就不重复
-  const empty = thread.querySelector('.empty');
-  if (empty) empty.remove();
-  const stick = thread.scrollHeight - thread.scrollTop - thread.clientHeight < 120;
-  const wrap = document.createElement('div');
-  wrap.className = 'inbox-msg' + (m.mine ? ' mine' : '');
-  if (m.id) wrap.dataset.msgId = m.id;
-  const bubble = document.createElement('div');
-  bubble.className = 'bubble';
-  bubble.textContent = m.body;
-  const tpl = document.querySelector(m.mine ? '[data-mine] .msg-avatar' : '.inbox-msg:not([data-mine]) .msg-avatar');
-  if (m.mine) {
-    wrap.appendChild(bubble);
-    if (tpl) wrap.appendChild(tpl.cloneNode(true));
-  } else {
-    if (tpl) wrap.appendChild(tpl.cloneNode(true));
-    wrap.appendChild(bubble);
-    const preview = document.querySelector('.inbox-item.active .inbox-item-preview');
-    if (preview) preview.textContent = m.body;
-  }
-  thread.appendChild(wrap);
-  if (stick) thread.scrollTop = thread.scrollHeight;
-};
     ask.addEventListener('click', () => { bubble.hidden = false; ask.hidden = true; });
     form.querySelector('[data-del-cancel]').addEventListener('click', () => { bubble.hidden = true; ask.hidden = false; });
   });
@@ -271,8 +273,6 @@ const appendMessage = (m) => {
     }
     // 兜底：不论 SSE 是否可用，都定期核对一次（间隔拉长，省带宽）
     setInterval(pull, 30000);
-  })();
-    setInterval(poll, 5000);
   })();
 
   const ok2 = document.getElementById('del-modal-ok');

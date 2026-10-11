@@ -304,7 +304,7 @@ pub struct InboxTemplate<'a> {
     pub user_label: Option<String>,
     pub is_staff: bool,
     pub csrf: String,
-    /// 分类：dm / likes / system。
+    /// 分类：dm / replies / likes / system。
     pub tab: String,
     pub conversations: Vec<InboxConversationView>,
     /// 当前选中会话对方 handle（私信用）。
@@ -318,15 +318,17 @@ pub struct InboxTemplate<'a> {
     pub delete_variant: u8,
     /// 未读数（左栏徽标）。
     pub like_unread: i64,
+    /// 回复与 @（kind = reply / issue_reply）的未读数。
+    pub reply_unread: i64,
     pub system_unread: i64,
     pub dm_unread: i64,
-    /// 收到的赞 / 系统通知列表（按 tab 取其一）。
+    /// 当前分类的通知列表（按 tab 取其一：回复与 @ / 收到的赞 / 系统通知）。
     pub notices: Vec<InboxNoticeView>,
     /// 当前选中的通知。
     pub selected_notice: Option<InboxNoticeView>,
 }
 
-/// 消息中心的一条通知（收到的赞 / 系统通知）。
+/// 消息中心的一条通知（回复与 @ / 收到的赞 / 系统通知）。
 #[derive(Debug, Clone)]
 pub struct InboxNoticeView {
     pub id: i64,

@@ -2699,16 +2699,30 @@ pub async fn unread_notification_count(pool: &SqlitePool, user_id: i64) -> Resul
     Ok(row.0)
 }
 
-pub async fn mark_notifications_read(pool: &SqlitePool, user_id: i64, now: i64) -> Result<u64> {
-    let affected =
-        query("UPDATE notifications SET read_at = ? WHERE user_id = ? AND read_at IS NULL")
-            .bind(now)
-            .bind(user_id)
-            .execute(pool)
-            .await
-            .map_err(db_err)?
-            .rows_affected();
-    Ok(affected)
+/// 按 kind 标记通知已读（消息中心进入某个分类时用）。`exclude = true` 表示
+/// 标记「除这些 kind 之外」的——「系统通知」是其余类别的兜底，这样以后新增
+/// 的 kind 也自动算进去，不会出现某个分类的红点永远清不掉。
+/// 全量标记（清空所有分类）不要在这里做：那会把别的分类的未读一起抹掉。
+pub async fn mark_notifications_read_kinds(
+    pool: &SqlitePool,
+    user_id: i64,
+    kinds: &[&str],
+    exclude: bool,
+    now: i64,
+) -> Result<u64> {
+    if kinds.is_empty() {
+        return Ok(0);
+    }
+    let placeholders = kinds.iter().map(|_| "?").collect::<Vec<_>>().join(",");
+    let op = if exclude { "NOT IN" } else { "IN" };
+    let sql = format!(
+        "UPDATE notifications SET read_at = ? WHERE user_id = ? AND read_at IS NULL AND kind {op} ({placeholders})"
+    );
+    let mut q = query(&sql).bind(now).bind(user_id);
+    for kind in kinds {
+        q = q.bind(*kind);
+    }
+    Ok(q.execute(pool).await.map_err(db_err)?.rows_affected())
 }
 
 // ---------------- 系统公告 ----------------
