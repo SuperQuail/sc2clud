@@ -70,6 +70,8 @@ cargo fmt --all -- --check                        # CI 校验
 cargo clippy --workspace --all-targets --all-features -- -D warnings
 cargo test --workspace                            # 单元测试
 pnpm -C web build                                 # 前端岛（先前端，后后端）
+node scripts/check-size.mjs        # 文件体量（> 500 行必须登记豁免并给出重构目标）
+node scripts/check-budgets.mjs     # 前端体积与死产物
 pwsh -File scripts/smoke.ps1                      # 端到端冒烟（自动起停服务）
 cargo run -p sc2clud -- check                     # 配置与依赖自检
 ```
@@ -120,9 +122,17 @@ cargo run -p sc2clud -- check                     # 配置与依赖自检
 反例（都发生过，别再犯）：模板里塞 `<style>` 又被 `{% if %}` 夹住导致样式失效；
 把 `<select>` 写进 `<style>` 块导致浏览器忽略；用行号范围猜模板块边界导致删错内容。
 改模板一律「整块读出来 → 整块替换 → 立刻编译」；改前端一律走岛。
-### 不要防御性兜底（强制，2026-10 起）
+### 文件体量门禁（强制）
 
-**代码应当保证「预期情况下正常工作」，而不是用兜底代码把异常伪装成正常。**
+**超过 500 行的源码文件一律视为「有过耦合风险」**，必须检查并重构。
+确实必要（数据模型、迁移、集中式仓储等）可以**登记豁免**，但：
+
+1. 豁免写在 `scripts/check-size.mjs` 的 `ALLOWED` 表里，**必须写明理由与重构目标**；
+2. 豁免上限**钉在登记时的行数**——不允许继续变长（涨了就 FAIL，先重构或先说明）；
+3. 文件缩到 500 行以内、或被删除，对应豁免**必须删掉**（否则 FAIL）；
+4. 门禁随其它门禁一起跑：`node scripts/check-size.mjs`。
+
+### 不要防御性兜底
 兜底会掩盖真实故障、拖慢定位、并让后续开发以为环境是好的 —— 这是负收益。
 
 | 不要写 | 为什么 |
