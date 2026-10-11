@@ -624,23 +624,82 @@ pub fn mentions(body: &str) -> Vec<i64> {
 /// 渲染回复正文：先转义，再把 `@显示名#id` 变成指向 `/u/id/{id}` 的链接，
 /// 显示时丢掉 `#id`（链接本身唯一，重名也不会指错）。
 pub fn render_body(body: &str) -> String {
-    let mut out = String::with_capacity(body.len() + 32);
-    let mut cursor = 0usize;
+    // 一段正文里可能既有 @提及 也有 ![alt](/img/hash) 配图：两类 span 按位置合并成一趟输出
+    let mut spans: Vec<(usize, usize, String)> = Vec::new();
     for (start, id) in mention_spans(body) {
         let end = body[start..]
             .find(' ')
             .map(|offset| start + offset)
             .unwrap_or(body.len());
-        out.push_str(&escape_html(&body[cursor..start]));
         let name = body[start + 1..end].split('#').next().unwrap_or_default();
-        out.push_str(&format!(
-            r#"<a class="mention" href="/u/id/{id}">@{}</a>"#,
-            escape_html(name)
+        spans.push((
+            start,
+            end,
+            format!(
+                r#"<a class="mention" href="/u/id/{id}">@{}</a>"#,
+                escape_html(name)
+            ),
         ));
+    }
+    for (start, end, hash, alt) in image_spans(body) {
+        spans.push((
+            start,
+            end,
+            format!(
+                r#"<img class="body-image" src="/img/{hash}" alt="{}" loading="lazy">"#,
+                escape_html(&alt)
+            ),
+        ));
+    }
+    spans.sort_by_key(|(start, ..)| *start);
+    let mut out = String::with_capacity(body.len() + 64);
+    let mut cursor = 0usize;
+    for (start, end, html) in spans {
+        if start < cursor {
+            continue; // 重叠的忽略（@提及优先）
+        }
+        out.push_str(&escape_html(&body[cursor..start]));
+        out.push_str(&html);
         cursor = end;
     }
     out.push_str(&escape_html(&body[cursor..]));
     out
+}
+
+/// 找出所有 `![alt](/img/hash)`（hash 只允许 16 进制，避免注入任意 URL）。
+fn image_spans(body: &str) -> Vec<(usize, usize, String, String)> {
+    let mut spans = Vec::new();
+    let bytes = body.as_bytes();
+    let mut index = 0usize;
+    while index + 1 < bytes.len() {
+        if bytes[index] != b'!' || bytes[index + 1] != b'[' {
+            index += 1;
+            continue;
+        }
+        let Some(close) = body[index + 2..].find("](") else {
+            break;
+        };
+        let alt_end = index + 2 + close;
+        let Some(paren) = body[alt_end + 2..].find(')') else {
+            break;
+        };
+        let url_end = alt_end + 2 + paren;
+        let url = &body[alt_end + 2..url_end];
+        if let Some(hash) = url.strip_prefix("/img/") {
+            if !hash.is_empty() && hash.bytes().all(|b| b.is_ascii_hexdigit()) {
+                spans.push((
+                    index,
+                    url_end + 1,
+                    hash.to_string(),
+                    body[index + 2..alt_end].to_string(),
+                ));
+                index = url_end + 1;
+                continue;
+            }
+        }
+        index += 1;
+    }
+    spans
 }
 
 /// 找出所有 `@名字#数字` 的位置与 id（名字里除空格外都可以有）。
@@ -735,6 +794,15 @@ mod mention_tests {
     #[test]
     fn plain_text_passes_through_escaped() {
         assert_eq!(render_body("a < b & c"), "a &lt; b &amp; c");
+        // 配图：只认 /img/{十六进制}，其余按文本
+        assert_eq!(
+            render_body("看看 ![截图](/img/ab12cd) 这张"),
+            "看看 <img class=\"body-image\" src=\"/img/ab12cd\" alt=\"截图\" loading=\"lazy\"> 这张"
+        );
+        assert_eq!(
+            render_body("![x](javascript:alert(1))"),
+            "![x](javascript:alert(1))"
+        );
         assert!(mentions("没有提及").is_empty());
     }
 

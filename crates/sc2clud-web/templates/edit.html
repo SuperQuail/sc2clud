@@ -82,6 +82,12 @@
              data-images="[{% for image in images %}{&quot;id&quot;:{{ image.id }},&quot;number&quot;:{{ image.number }},&quot;href&quot;:&quot;{{ image.href }}&quot;,&quot;is_first&quot;:{{ image.is_first }},&quot;is_last&quot;:{{ image.is_last }}}{% if !loop.last %},{% endif %}{% endfor %}]"></div>
         <script type="module" src="/static/islands/postimages.js"></script>
       </fieldset>
+      {# 正文工具栏：渐进增强（无 JS 时 textarea 照常提交；插入的是 markdown，服务端 render_body 渲染） #}
+      <div data-island="editor-toolbar"
+           data-target="post-body"
+           data-images="[{% for image in images %}{&quot;href&quot;:&quot;{{ image.href }}&quot;}{% if !loop.last %},{% endif %}{% endfor %}]"></div>
+      <script type="module" src="/static/islands/editor.js"></script>
+      <label>正文<textarea name="body" id="post-body" required minlength="2" maxlength="20000">{{ body }}</textarea></label>
     </div>
     <div class="actions-inline">
       <button class="btn" type="submit">保存</button>

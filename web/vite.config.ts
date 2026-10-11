@@ -13,7 +13,7 @@ export default defineConfig({
     cssCodeSplit: false,
     rollupOptions: {
       // 头像岛是纯 TS（不引 Vue），单独入口，互不牵连
-      input: { avatar: 'src/avatar.ts', admin: 'src/admin.ts', home: 'src/home.ts', issues: 'src/islands/issues/main.tsx', comments: 'src/islands/comments/main.tsx', postimages: 'src/islands/postimages/main.tsx', auth: 'src/auth.ts', 'post-images': 'src/post-images.ts', account: 'src/account.ts', theme: 'src/theme.ts' },
+      input: { avatar: 'src/avatar.ts', admin: 'src/admin.ts', home: 'src/home.ts', issues: 'src/islands/issues/main.tsx', comments: 'src/islands/comments/main.tsx', postimages: 'src/islands/postimages/main.tsx', editor: 'src/islands/editor/main.tsx', auth: 'src/auth.ts', 'post-images': 'src/post-images.ts', account: 'src/account.ts', theme: 'src/theme.ts' },
       output: {
         format: 'es',
         entryFileNames: '[name].js',
