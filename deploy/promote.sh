@@ -16,13 +16,11 @@ ls -l --time-style=+%m-%d_%H:%M "$DEV_PREFIX/sc2clud" "$PREFIX/sc2clud" 2>/dev/n
 install -m 0755 "$DEV_PREFIX/sc2clud" "$PREFIX/sc2clud"
 log "已把测试端二进制发布为生产二进制"
 
-log "同步静态资源（含 islands：岛现在是编译期嵌进二进制的，但目录也要齐，否则排查时会误导）"
+log "同步静态资源（保留 islands：那份由本地 push-islands 维护）"
 REPO="${SC2CLUD_REPO:-/opt/sc2clud}"
 if [ -d "$REPO/crates/sc2clud-web/static" ]; then
   command -v rsync >/dev/null 2>&1 \
     && rsync -a --delete --exclude "islands/" "$REPO/crates/sc2clud-web/static/" "$PREFIX/static/" \
-    && install -d -m 0755 "$PREFIX/static/islands" \
-    && cp -a "$DEV_PREFIX/static/islands/." "$PREFIX/static/islands/" \
     || find "$REPO/crates/sc2clud-web/static" -maxdepth 1 -type f -exec cp -f {} "$PREFIX/static/" \;
 fi
 
