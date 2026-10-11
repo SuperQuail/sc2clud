@@ -56,6 +56,10 @@ const sendTest = args.includes('--send-test')
 const seedTitles = args.includes('--seed-titles')
 // --title-test：打开用户编辑弹窗，走真实接口发放 → 核对徽章/计数/DB 行数 → 收回（只动本地副本）
 const titleTest = args.includes('--title-test')
+// --title-admin：头衔目录面板（新建 / 改名·配色 / 归档）的端点级 + 控件级验证（只写本地快照）
+const titleAdmin = args.includes('--title-admin')
+// --title-badcolor：额外验一次非法配色被服务端挡下
+const titleBadColor = args.includes('--title-badcolor')
 // shortcut: --comment-test 的无感发布验证这次没做通（脚本流程问题），先撤掉，等要自动化时再补
 const outDir = arg('out', join(repo, '..', 'shots', 'preview'))
 const pagesArg = arg('pages', '')
@@ -416,6 +420,105 @@ const main = async () => {
     console.log('==> 地址是否未变：' + (before.result?.value === after.result?.value ? '是（没有跳页）✓' : '否 ✗ ' + before.result?.value + ' → ' + after.result?.value))
 
   }
+
+  // 头衔目录管理：端点级 + 控件级（只写本地快照副本）
+  if (titleAdmin && cookie && existsSync(dbPath)) {
+    const { DatabaseSync } = await import('node:sqlite')
+    const db = new DatabaseSync(dbPath)
+    const readTitle = (k) => db.prepare('SELECT id, name, color, archived_at FROM titles WHERE key = ?').get(k)
+    const countTitles = () => db.prepare('SELECT COUNT(*) AS n FROM titles').get().n
+    const heldFor = (id) => db.prepare('SELECT COUNT(*) AS n FROM user_titles WHERE title_id = ?').get(id).n
+    const page = await (await fetch(base + '/admin/users/overview', { headers: { cookie } })).text()
+    const csrf = (page.match(/name="csrf" value="([^"]+)"/) ?? [])[1]
+    // 用户 id 从面板的 data-json 里取（模板改成控件后，HTML 里已经没有 /admin/users/{id}/update 这种路径了）
+    const island = (page.match(/data-island="admin-users"[\s\S]*?data-json="([^"]*)"/) ?? [])[1] ?? '{}'
+    const decoded = island.replace(/&quot;|&#34;/g, '"').replace(/&amp;/g, '&')
+    const userId = (((JSON.parse(decoded).users ?? [])[0]) ?? {}).id || 0
+    const post = (path, fields) =>
+      fetch(base + path, {
+        method: 'POST',
+        headers: { cookie, 'content-type': 'application/x-www-form-urlencoded;charset=UTF-8', 'x-requested-with': 'fetch' },
+        body: new URLSearchParams(fields),
+      })
+    const key = 'gate_probe_' + Date.now().toString().slice(-6)
+    console.log('==> 头衔目录：起始 ' + countTitles() + ' 条')
+    const created = await post('/admin/titles', { csrf, key, name: '闸门样张', color: '#0ea5e9', description: '端点验证用' })
+    const createdBody = await created.json()
+    console.log('    新建 → HTTP ' + created.status + '，' + createdBody.message + '；DB 行=' + JSON.stringify(readTitle(key)))
+    const newId = (readTitle(key) || {}).id || 0
+    const updated = await post('/admin/titles/' + newId, { csrf, name: '闸门样张·改', color: '#f97316', description: '改过的描述' })
+    console.log('    修改 → HTTP ' + updated.status + '，' + (await updated.json()).message + '；DB 行=' + JSON.stringify(readTitle(key)))
+    if (titleBadColor) {
+      const bad = await post('/admin/titles/' + newId, { csrf, name: '样式注入', color: 'red;background:url(x)', description: '' })
+      console.log('    非法配色 → HTTP ' + bad.status + '，' + (await bad.text()).slice(0, 90))
+    }
+    const archived = await post('/admin/titles/' + newId + '/archive', { csrf, archived: '1' })
+    console.log('    归档 → HTTP ' + archived.status + '，' + (await archived.json()).message + '；archived_at=' + JSON.stringify(readTitle(key).archived_at))
+    const blocked = await post('/admin/users/' + userId + '/titles', { csrf, title_id: String(newId), action: 'grant' })
+    console.log('    归档后发放 → HTTP ' + blocked.status + '，' + (await blocked.text()).slice(0, 90))
+    console.log('    归档后该头衔持有行数（应为 0）=' + heldFor(newId))
+    const un = await post('/admin/titles/' + newId + '/archive', { csrf, archived: '0' })
+    console.log('    取消归档 → HTTP ' + un.status + '，' + (await un.json()).message + '；archived_at=' + JSON.stringify(readTitle(key).archived_at))
+    const grantOk = await post('/admin/users/' + userId + '/titles', { csrf, title_id: String(newId), action: 'grant' })
+    console.log('    取消归档后再发放 → HTTP ' + grantOk.status)
+    await post('/admin/users/' + userId + '/titles', { csrf, title_id: String(newId), action: 'revoke' })
+    console.log('    收回（清理）→ 该头衔持有行数=' + heldFor(newId))
+    db.close()
+  }
+    await cdp.send('Page.navigate', { url: base + '/admin/users/overview' })
+    await new Promise((r) => setTimeout(r, 1600))
+    const before = await cdp.send('Runtime.evaluate', {
+      expression: `(async () => { const sleep = (ms) => new Promise((r) => setTimeout(r, ms)); for (let i = 0; i < 60 && !document.querySelector('#titles table tbody tr'); i++) await sleep(150); const rows = [...document.querySelectorAll('#titles table tbody tr')]; return JSON.stringify({ rows: rows.length, archivedLast: rows.length ? rows[rows.length - 1].className.includes('is-archived') : null }) })()`,
+      awaitPromise: true, returnByValue: true, timeout: 20000,
+    })
+    console.log('==> 控件级：面板渲染 ' + (before.result?.value ?? '?'))
+    const ui = await cdp.send('Runtime.evaluate', {
+      expression: `(async () => {
+      const sleep = (ms) => new Promise((r) => setTimeout(r, ms))
+      const setValue = (el, value) => {
+        const desc = Object.getOwnPropertyDescriptor(Object.getPrototypeOf(el), 'value')
+        desc.set.call(el, value)
+        el.dispatchEvent(new Event('input', { bubbles: true }))
+      }
+      const rows = () => [...document.querySelectorAll('#titles table tbody tr')]
+      const findRow = (k) => rows().find((r) => ((r.querySelector('code') || {}).textContent || '') === k)
+      const box = document.querySelector('#titles .title-create')
+      const fields = [...box.querySelectorAll('.ui-input')]
+      setValue(fields[0], 'ui_probe_' + Date.now().toString().slice(-6))
+      setValue(fields[1], '控件新建')
+      setValue(fields[2], '#22c55e')
+      const key = fields[0].value
+      box.querySelector('button[type=submit]').click()
+      let row = null
+      for (let i = 0; i < 80 && !row; i++) { row = findRow(key); if (!row) await sleep(150) }
+      if (!row) return JSON.stringify({ ok: false, key, notice: (document.querySelector('#titles [role=status]') || {}).textContent, error: (document.querySelector('#titles .alert') || {}).textContent })
+      const name = (row.querySelector('.title-chip-name') || {}).textContent
+      const swatch = (row.querySelector('.title-chip') || {}).getAttribute ? row.querySelector('.title-chip').getAttribute('style') : ''
+      const holders = row.children[3].textContent
+      const arch = [...row.querySelectorAll('button')].find((b) => b.textContent.includes('归档'))
+      if (arch) arch.click()
+      let archivedRow = null
+      for (let i = 0; i < 80 && !archivedRow; i++) { const r2 = findRow(key); archivedRow = r2 && r2.className.includes('is-archived') ? r2 : null; if (!archivedRow) await sleep(150) }
+      const all = rows()
+      return JSON.stringify({ ok: true, key, name, style: swatch, holders, archived: !!archivedRow, archivedIsLast: all.length ? all[all.length - 1].className.includes('is-archived') : null, archivedTag: archivedRow ? archivedRow.children[4].textContent : '', notice: (document.querySelector('#titles [role=status]') || {}).textContent })
+    })()`,
+      awaitPromise: true, returnByValue: true, timeout: 40000,
+    })
+    console.log('==> 控件级：新建 + 归档 ' + (ui.result?.value ?? '?'))
+    const shot = await cdp.send('Page.captureScreenshot', { format: 'png', captureBeyondViewport: true })
+    writeFileSync(join(outDir, 'admin-titles-panel-' + theme + '.png'), Buffer.from(shot.data, 'base64'))
+    console.log('==> 截图：admin-titles-panel-' + theme + '.png（头衔管理面板）')
+    // 收尾：清掉本轮样张（只动本地副本；前面的句柄已关，这里重新开一个）
+    const { DatabaseSync: DbAgain } = await import('node:sqlite')
+    const db2 = new DbAgain(dbPath)
+    const leftovers = db2.prepare("SELECT id FROM titles WHERE key LIKE 'ui_probe_%' OR key LIKE 'gate_probe_%'").all()
+    for (const row of leftovers) {
+      db2.prepare('DELETE FROM user_titles WHERE title_id = ?').run(row.id)
+      db2.prepare('DELETE FROM titles WHERE id = ?').run(row.id)
+    }
+    const left = db2.prepare('SELECT COUNT(*) AS n FROM titles').get().n
+    db2.close()
+    console.log('    清理样张 ' + leftovers.length + ' 条；目录剩 ' + left + ' 条')
 
   // （--comment-test 的自动化验证这次没做通，已撤；见 preview.mjs 顶部注释）
   if (titleTest && cookie) {

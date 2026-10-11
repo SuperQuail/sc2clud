@@ -218,6 +218,59 @@ export function setSanction(
   ])
 }
 
+// ------------------------------------------------------------ 头衔目录管理
+
+/** 目录里的一条头衔（管理面板用，比弹窗那份多 key 与持有者数）。 */
+export interface AdminTitleRow extends AdminTitle {
+  /** 英文标识：代码引用它，建成后不可改。 */
+  key: string
+  /** 持有这个头衔的用户数。 */
+  holders: number
+}
+
+export interface TitleCatalogData {
+  titles: AdminTitleRow[]
+  message?: string
+}
+
+/** 目录 + 每个头衔的持有者数（面板挂载时取一次）。 */
+export async function fetchTitleCatalog(): Promise<TitleCatalogData> {
+  const res = await fetch(adminUrl('/admin/titles'), { headers: { 'x-requested-with': 'fetch' } })
+  const data = (await res.json().catch(() => null)) as (TitleCatalogData & { message?: string }) | null
+  if (!res.ok) throw new Error(data?.message || `加载头衔目录失败（${res.status}）`)
+  return { titles: data?.titles ?? [] }
+}
+
+/** 新建头衔；key 重复时后端按「复用已有那条」处理。 */
+export function createTitle(
+  csrf: string,
+  input: { key: string; name: string; color: string; description: string },
+): Promise<string> {
+  return postForm('/admin/titles', csrf, [
+    ['key', input.key],
+    ['name', input.name],
+    ['color', input.color],
+    ['description', input.description],
+  ])
+}
+
+/** 改名 / 换配色 / 改描述（key 不可改）。 */
+export function updateTitle(
+  id: number,
+  csrf: string,
+  input: { name: string; color: string; description: string },
+): Promise<string> {
+  return postForm(`/admin/titles/${id}`, csrf, [
+    ['name', input.name],
+    ['color', input.color],
+    ['description', input.description],
+  ])
+}
+
+export function setTitleArchived(id: number, csrf: string, archived: boolean): Promise<string> {
+  return postForm(`/admin/titles/${id}/archive`, csrf, [['archived', archived ? '1' : '0']])
+}
+
 // ------------------------------------------------------------ 待审核面板
 
 export interface AdminPendingItem {

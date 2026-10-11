@@ -14,7 +14,7 @@ export default defineConfig({
     cssCodeSplit: false,
     rollupOptions: {
       // 头像岛是纯 TS（不引 Vue），单独入口，互不牵连
-      input: { avatar: 'src/avatar.ts', admin: 'src/admin.ts', home: 'src/home.ts', issues: 'src/islands/issues/main.tsx', comments: 'src/islands/comments/main.tsx', postactions: 'src/islands/postactions/main.tsx', postaside: 'src/islands/postaside/main.ts', postform: 'src/islands/postform/main.tsx', 'admin-acl': 'src/islands/admin-acl/main.tsx', 'admin-users': 'src/islands/admin-users/main.tsx', 'admin-pending': 'src/islands/admin-pending/main.tsx', 'admin-community': 'src/islands/admin-community/main.tsx', auth: 'src/auth.ts', 'post-images': 'src/post-images.ts', account: 'src/account.ts', theme: 'src/theme.ts' },
+      input: { avatar: 'src/avatar.ts', admin: 'src/admin.ts', home: 'src/home.ts', issues: 'src/islands/issues/main.tsx', comments: 'src/islands/comments/main.tsx', postactions: 'src/islands/postactions/main.tsx', postaside: 'src/islands/postaside/main.ts', postform: 'src/islands/postform/main.tsx', 'admin-acl': 'src/islands/admin-acl/main.tsx', 'admin-users': 'src/islands/admin-users/main.tsx', 'admin-pending': 'src/islands/admin-pending/main.tsx', 'admin-community': 'src/islands/admin-community/main.tsx', 'admin-titles': 'src/islands/admin-titles/main.tsx', auth: 'src/auth.ts', 'post-images': 'src/post-images.ts', account: 'src/account.ts', theme: 'src/theme.ts' },
       output: {
         format: 'es',
         entryFileNames: '[name].js',

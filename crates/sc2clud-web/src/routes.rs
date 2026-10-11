@@ -262,6 +262,19 @@ pub fn pages() -> Router<AppState> {
             axum::routing::post(crate::admin_users::rename),
         )
         .route(
+            "/admin/titles",
+            axum::routing::get(crate::admin_title_catalog::list_title_catalog)
+                .post(crate::admin_title_catalog::create_title),
+        )
+        .route(
+            "/admin/titles/{id}",
+            axum::routing::post(crate::admin_title_catalog::update_title),
+        )
+        .route(
+            "/admin/titles/{id}/archive",
+            axum::routing::post(crate::admin_title_catalog::archive_title),
+        )
+        .route(
             "/admin/users/{id}/titles",
             axum::routing::get(crate::admin_titles::user_titles)
                 .post(crate::admin_titles::set_user_title),

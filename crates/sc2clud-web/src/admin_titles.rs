@@ -100,6 +100,19 @@ async fn titles_view(state: &AppState, id: i64) -> AppResult<serde_json::Value> 
     Ok(serde_json::json!({ "titles": titles_json(&titles), "held": held }))
 }
 
+/// 一行头衔 → JSON（面板要 key，弹窗不需要）。
+pub(crate) fn title_json(t: &TitleRow) -> serde_json::Value {
+    serde_json::json!({
+        "id": t.id,
+        "key": t.key,
+        "name": t.name,
+        "color": t.color,
+        "description": t.description,
+        "archived": t.archived_at.is_some(),
+    })
+}
+
+/// 弹窗里的头衔列表：不带 key（界面用不到）。
 fn titles_json(titles: &[TitleRow]) -> Vec<serde_json::Value> {
     titles
         .iter()

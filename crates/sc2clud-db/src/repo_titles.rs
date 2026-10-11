@@ -64,6 +64,35 @@ pub async fn set_title_archived(
     Ok(affected == 1)
 }
 
+/// 改名 / 改配色 / 改描述（key 是代码引用，建好不改）。
+pub async fn update_title(
+    pool: &SqlitePool,
+    id: i64,
+    name: &str,
+    color: &str,
+    description: &str,
+) -> Result<bool> {
+    let affected = query("UPDATE titles SET name = ?, color = ?, description = ? WHERE id = ?")
+        .bind(name)
+        .bind(color)
+        .bind(description)
+        .bind(id)
+        .execute(pool)
+        .await
+        .map_err(db_err)?
+        .rows_affected();
+    Ok(affected == 1)
+}
+
+/// 每个头衔的持有者数量（一次聚合，别按头衔逐个 COUNT）。
+pub async fn title_holder_counts(pool: &SqlitePool) -> Result<std::collections::HashMap<i64, i64>> {
+    let rows: Vec<(i64, i64)> =
+        query_as("SELECT title_id, COUNT(*) FROM user_titles GROUP BY title_id")
+            .fetch_all(pool)
+            .await
+            .map_err(db_err)?;
+    Ok(rows.into_iter().collect())
+}
 /// 授予头衔（同一个头衔重复授予是幂等的）。
 pub async fn grant_title(
     pool: &SqlitePool,

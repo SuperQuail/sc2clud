@@ -267,6 +267,10 @@ async fn build_panel<'a>(
     .await?
     .into_iter()
     .collect();
+    let titles_json = crate::admin_title_catalog::titles_catalog_json(
+        &repo::list_titles(state.db.pool(), true).await?,
+        &repo::title_holder_counts(state.db.pool()).await?,
+    );
     let users_json = crate::admin_titles::users_json(
         &users,
         &roles,
@@ -299,6 +303,7 @@ async fn build_panel<'a>(
         acl_variant,
         acl_json,
         users_json,
+        titles_json,
         pending_json,
         community_json,
         groups,

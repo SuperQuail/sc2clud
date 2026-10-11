@@ -1,0 +1,68 @@
+/* 管理面板样式（原 admin.html 里的四个内联 <style> 抽出来）：
+   顶栏/容器仍走 app.css + site.css，这里只放管理页专属的矩阵、用户组、封面、头像池、AI 面板。 */
+.acl-matrix{width:100%;border-collapse:collapse;font-size:13px}
+.acl-matrix th,.acl-matrix td{padding:8px 10px;border-bottom:1px solid var(--line,#e5e7eb);text-align:left}
+.acl-chips{display:flex;gap:6px;flex-wrap:wrap}
+.acl-chip{padding:3px 10px;border-radius:999px;border:1px solid var(--line,#e5e7eb);background:none;color:inherit;font:inherit;font-size:12px}
+/* 选中＝绿色实心（用户要求：点了变绿） */
+.acl-chip.is-on{border-color:#16a34a;background:#16a34a;color:#fff}
+.acl-chip.is-on::before{content:'✓ ';font-size:11px}
+.acl-switch{display:inline-flex;align-items:center;gap:6px;font-size:13px}
+.acl-switch input{accent-color:#16a34a}
+.acl-cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:12px}
+.acl-card{border:1px solid var(--line,#e5e7eb);border-radius:12px;padding:14px}
+.acl-card h3{margin:0 0 10px;font-size:15px}
+.acl-row{display:flex;align-items:center;gap:8px;margin:6px 0;font-size:13px}
+.acl-group-row{display:flex;justify-content:space-between;gap:8px;font-size:13px;padding:4px 0}
+.acl-flags{display:flex;gap:8px;opacity:.85}
+.acl-split{display:grid;grid-template-columns:200px 1fr;gap:14px;align-items:start}
+.acl-list{display:flex;flex-direction:column;gap:2px}
+.acl-list button{text-align:left;padding:8px 10px;border:0;border-radius:8px;background:none;color:inherit;font:inherit;font-size:13px}
+.acl-list button.active{background:rgba(37,99,235,.12);color:#2563eb;font-weight:600}
+.acl-detail h3{margin:0 0 10px;font-size:15px}
+.acl-groups-table{width:100%;border-collapse:collapse;font-size:13px;margin-top:10px}
+.acl-groups-table th,.acl-groups-table td{padding:6px 8px;border-bottom:1px solid var(--line,#e5e7eb);text-align:left}
+.group-list{display:flex;flex-direction:column;gap:10px;margin-bottom:12px}
+.group-card{border:1px solid var(--line,#e5e7eb);border-radius:10px;padding:10px 12px}
+.group-card.archived{opacity:.6}
+.group-head{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.group-actions{margin-left:auto;display:flex;gap:6px;align-items:center}
+.group-actions form{display:inline}
+.group-edit{display:flex;gap:8px;flex-wrap:wrap;margin-top:8px}
+.group-edit input{padding:6px 10px;border:1px solid var(--line,#e5e7eb);border-radius:8px;background:none;color:inherit;font:inherit;font-size:13px}
+.group-rules{display:flex;gap:6px;flex-wrap:wrap;margin-top:6px}
+.group-rule{font-size:12px;padding:2px 8px;border-radius:6px;background:rgba(37,99,235,.1)}
+.group-create{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.group-create input{padding:8px 10px;border:1px solid var(--line,#e5e7eb);border-radius:8px;background:none;color:inherit;font:inherit}
+      .cover-order{display:flex;gap:6px;margin:8px 0 2px}
+      .cover-order form{display:inline}
+      .cover-order-btn{width:28px;height:26px;border:1px solid var(--line,#e5e7eb);border-radius:6px;background:none;color:inherit;font:inherit;cursor:pointer}
+      .cover-order-btn:hover{border-color:#2563eb;color:#2563eb}
+      .pool-upload{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin:10px 0 14px}
+      .pool-upload input[type=text]{padding:8px 10px;border:1px solid var(--line,#e5e7eb);border-radius:8px;background:none;color:inherit;font:inherit}
+      .pool-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:12px}
+      .pool-grid .pool-item{flex-direction:column;align-items:center;text-align:center;border:1px solid var(--line,#e5e7eb);border-radius:12px;padding:12px}
+      .pool-rows{display:flex;flex-direction:column;gap:8px}
+      .pool-rows .pool-item{border-bottom:1px solid var(--line,#e5e7eb);padding:8px 0}
+      .pool-item{display:flex;gap:12px;align-items:center}
+      .pool-item img{width:56px;height:56px;border-radius:50%;object-fit:cover;flex:none;background:#fff}
+      .pool-meta{flex:1;min-width:0;display:flex;flex-direction:column;gap:2px}
+      .pool-side{display:grid;grid-template-columns:260px 1fr;gap:16px;align-items:start}
+      .pool-list{display:flex;flex-direction:column;gap:8px}
+      .ai-block{border:1px solid var(--line,#e5e7eb);border-radius:12px;padding:14px 16px;margin:0 0 12px}
+      .ai-block > h3{margin:0 0 4px;font-size:15px;display:flex;align-items:center;gap:8px}
+      .ai-block > .hint{margin:0 0 10px}
+      .ai-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px 14px}
+      .ai-grid .wide{grid-column:1 / -1}
+      .ai-block label{display:block;font-size:13px}
+      .ai-block input[type=text],.ai-block input[type=password],.ai-block textarea{width:100%;margin-top:4px}
+      .ai-block textarea{font:inherit;font-size:13px;resize:vertical}
+      .ai-actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}
+      .ai-tag{font-size:12px;padding:2px 8px;border-radius:999px;border:1px solid var(--line,#e5e7eb)}
+      .ai-tag.on{border-color:#16a34a;background:#16a34a;color:#fff}
+      .ai-tag.wip{border-color:#d97706;background:#fef3c7;color:#92400e}
+      .ai-wip{opacity:.75}
+      .ai-result{margin:10px 0 0;padding:10px 12px;border-radius:10px;font-size:13px;line-height:1.6;white-space:pre-wrap}
+      .ai-result[data-state=ok]{border:1px solid #16a34a;background:#dcfce7;color:#14532d}
+      .ai-result[data-state=bad]{border:1px solid #dc2626;background:#fee2e2;color:#991b1b}
+      .ai-out{white-space:pre-wrap;word-break:break-word;background:rgba(37,99,235,.05);border:1px solid var(--line,#e5e7eb);border-radius:10px;padding:10px 12px;font-size:12px;line-height:1.6;margin:10px 0 0}

@@ -377,7 +377,7 @@ pub async fn flush_counters(pool: &SqlitePool, drained: &[(String, i64)]) -> Res
 // 头衔仓储已拆到 repo_titles.rs；re-export 保证 repo::xxx 调用点不变
 pub use crate::repo_titles::{
     create_title, grant_title, held_title_ids_for, list_titles, list_user_titles, revoke_title,
-    set_title_archived,
+    set_title_archived, title_holder_counts, update_title,
 };
 
 #[derive(Debug, Clone, Default)]

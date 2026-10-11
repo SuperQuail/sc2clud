@@ -27,7 +27,7 @@ const PENDING = {
   'crates/sc2clud-web/src/pages_posts.rs': { limit: 2200, reason: '帖子/审核/评论/issue/编辑的处理器集合', goal: '拆 pages_post_edit / pages_issues / pages_comments' },
   'crates/sc2clud-web/src/pages_donations.rs': { limit: 700, reason: '打赏记录与人工验证（新模块，先观察）', goal: '拆页面与仓储调用' },
   'crates/sc2clud-web/src/pages_messages.rs': { limit: 520, reason: '私信与 SSE', goal: '拆出 SSE 部分' },
-  'crates/sc2clud-web/src/routes.rs': { limit: 1400, reason: '路由表 + 跨模块辅助（图片已拆出）', goal: '拆出 pages_files，routes.rs 只留路由表' },
+  'crates/sc2clud-web/src/routes.rs': { limit: 1430, reason: '路由表 + 跨模块辅助（图片已拆出；2026-10 新增 /admin/titles 三端点）', goal: '拆出 pages_files，routes.rs 只留路由表' },
   'crates/sc2clud-web/src/templates.rs': { limit: 1300, reason: 'askama 模板结构体集中定义', goal: '按页面拆 templates/ 子模块' },
   // —— 核心域 ——
   'crates/sc2clud-core/src/community.rs': { limit: 840, reason: '领域模型 + 渲染器 + 分区/用户组判定', goal: '拆 community/{render,groups,issues}.rs' },
@@ -35,7 +35,6 @@ const PENDING = {
   'crates/sc2clud-core/src/config.rs': { limit: 560, reason: '全部配置项与校验集中一处（配置项多）', goal: '按 section 拆 config/' },
   'crates/sc2clud-core/src/auth.rs': { limit: 510, reason: '角色 × 权限位的唯一定义处', goal: '拆 auth/{role,permission}.rs' },
   // —— 模板 ——
-  'crates/sc2clud-web/templates/admin.html': { limit: 900, reason: '管理面板模板', goal: '按面板分区拆 partial' },
 }
 
 function walk(dir, out = []) {

@@ -897,6 +897,8 @@ pub struct AdminTemplate<'a> {
     pub acl_json: String,
     /// 用户列表 + 编辑弹窗的初值（JSON）：交给 React 控件
     pub users_json: String,
+    /// 头衔目录（含归档与持有者数）：交给「头衔管理」控件
+    pub titles_json: String,
     /// 待审核列表的初值（JSON）：交给 React 控件
     pub pending_json: String,
     /// 社区开关的初值（JSON）：交给 React 控件
