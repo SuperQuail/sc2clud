@@ -127,7 +127,7 @@ async fn issues_can_be_filed_commented_and_closed() {
     );
     assert_eq!(open[0].author_handle, "issue_reporter");
 
-    repo::add_issue_comment(db.pool(), bug, author, "我看看", now + 1)
+    repo::add_issue_comment(db.pool(), bug, author, "我看看", None, now + 1)
         .await
         .expect("回复");
     let detail = repo::get_issue(db.pool(), bug)
@@ -140,7 +140,7 @@ async fn issues_can_be_filed_commented_and_closed() {
         "有回复要顶 updated_at"
     );
     assert_eq!(
-        repo::list_issue_comments(db.pool(), bug)
+        repo::list_issue_comments_for(db.pool(), bug, None)
             .await
             .expect("回复")
             .len(),

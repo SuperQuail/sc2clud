@@ -164,7 +164,8 @@
        data-action="{{ comment_action }}"
        data-csrf="{{ csrf }}"
        data-can-reply="{{ can_reply }}"
-       data-show-actions="false"
+       data-show-actions="true"
+       data-vote-base="/api/v1/issue-comments"
        data-logged-in="{{ user_label.is_some() }}"></div>
   <script type="module" src="/static/islands/comments.js"></script>
   {% else %}

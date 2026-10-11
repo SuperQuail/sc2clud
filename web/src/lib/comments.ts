@@ -58,8 +58,8 @@ export async function postComment(action: string, csrf: string, body: string, pa
 }
 
 /** 点赞：JSON 体 + x-csrf-token 头（与服务端 comment_vote 一致） */
-export async function voteComment(id: number, value: number, csrf: string) {
-  const res = await fetch(appUrl(`/api/v1/comments/${id}/vote`), {
+export async function voteComment(id: number, value: number, csrf: string, base = '/api/v1/comments') {
+  const res = await fetch(appUrl(`${base}/${id}/vote`), {
     method: 'POST'
     ,
     headers: { 'content-type': 'application/json', 'x-csrf-token': csrf },

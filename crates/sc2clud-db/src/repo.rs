@@ -4611,14 +4611,16 @@ pub async fn add_issue_comment(
     issue_id: i64,
     author_id: i64,
     body: &str,
+    parent_id: Option<i64>,
     now: i64,
 ) -> Result<i64> {
     let res = query(
-        "INSERT INTO issue_comments (issue_id, author_id, body, created_at) VALUES (?, ?, ?, ?)",
+        "INSERT INTO issue_comments (issue_id, author_id, body, parent_id, created_at) VALUES (?, ?, ?, ?, ?)",
     )
     .bind(issue_id)
     .bind(author_id)
     .bind(body)
+    .bind(parent_id)
     .bind(now)
     .execute(pool)
     .await
@@ -4657,18 +4659,77 @@ pub async fn add_issue_comment(
     Ok(res.last_insert_rowid())
 }
 
-pub async fn list_issue_comments(pool: &SqlitePool, issue_id: i64) -> Result<Vec<IssueCommentRow>> {
+/// 列表（带楼中楼与票数）：评论控件用。viewer_id 决定 my_vote。
+pub async fn list_issue_comments_for(
+    pool: &SqlitePool,
+    issue_id: i64,
+    viewer_id: Option<i64>,
+) -> Result<Vec<IssueCommentRow>> {
     query_as::<_, IssueCommentRow>(
-        "SELECT c.id, c.issue_id, c.author_id, c.body, c.created_at, u.handle AS author_handle, \
+        "SELECT c.id, c.issue_id, c.author_id, c.body, c.created_at, c.parent_id, \
+                u.handle AS author_handle, \
                 COALESCE(NULLIF(u.display_name, ''), u.handle) AS author_display_name, \
-                u.avatar_hash AS author_avatar \
+                u.avatar_hash AS author_avatar, \
+                (SELECT COUNT(*) FROM issue_comment_votes v WHERE v.comment_id = c.id AND v.value = 1) AS likes, \
+                (SELECT COUNT(*) FROM issue_comment_votes v WHERE v.comment_id = c.id AND v.value = -1) AS dislikes, \
+                COALESCE((SELECT v.value FROM issue_comment_votes v WHERE v.comment_id = c.id AND v.user_id = ?), 0) AS my_vote \
          FROM issue_comments c JOIN users u ON u.id = c.author_id \
          WHERE c.issue_id = ? AND c.deleted_at IS NULL ORDER BY c.id",
     )
+    .bind(viewer_id.unwrap_or(0))
     .bind(issue_id)
     .fetch_all(pool)
     .await
     .map_err(db_err)
+}
+
+/// issue 评论点赞（与帖子评论同一套语义：0 = 取消）。返回 (赞, 踩, 我的票)。
+pub async fn vote_issue_comment(
+    pool: &SqlitePool,
+    comment_id: i64,
+    user_id: i64,
+    value: i64,
+    now: i64,
+) -> Result<(i64, i64, i64)> {
+    if value == 0 {
+        query("DELETE FROM issue_comment_votes WHERE comment_id = ? AND user_id = ?")
+            .bind(comment_id)
+            .bind(user_id)
+            .execute(pool)
+            .await
+            .map_err(db_err)?;
+    } else {
+        query(
+            "INSERT INTO issue_comment_votes (comment_id, user_id, value, created_at) VALUES (?, ?, ?, ?) \
+             ON CONFLICT(comment_id, user_id) DO UPDATE SET value = excluded.value, created_at = excluded.created_at",
+        )
+        .bind(comment_id)
+        .bind(user_id)
+        .bind(value)
+        .bind(now)
+        .execute(pool)
+        .await
+        .map_err(db_err)?;
+    }
+    let row: (i64, i64) = query_as(
+        "SELECT COALESCE(SUM(value = 1), 0), COALESCE(SUM(value = -1), 0) FROM issue_comment_votes WHERE comment_id = ?",
+    )
+    .bind(comment_id)
+    .fetch_one(pool)
+    .await
+    .map_err(db_err)?;
+    Ok((row.0, row.1, value))
+}
+
+/// 这条 issue 评论属于哪个 issue（授权时用）。
+pub async fn issue_comment_issue_id(pool: &SqlitePool, comment_id: i64) -> Result<Option<i64>> {
+    let row: Option<(i64,)> =
+        query_as("SELECT issue_id FROM issue_comments WHERE id = ? AND deleted_at IS NULL")
+            .bind(comment_id)
+            .fetch_optional(pool)
+            .await
+            .map_err(db_err)?;
+    Ok(row.map(|r| r.0))
 }
 
 // ---------------- 横幅定向 ----------------

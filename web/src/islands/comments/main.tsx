@@ -12,6 +12,7 @@ document.querySelectorAll<HTMLElement>('[data-island="comments"]').forEach((host
       csrf={host.dataset.csrf || ''}
       canReply={flag('canReply')}
       showActions={flag('showActions')}
+      voteBase={host.dataset.voteBase || '/api/v1/comments'}
       loggedIn={flag('loggedIn', false)}
     />,
   )

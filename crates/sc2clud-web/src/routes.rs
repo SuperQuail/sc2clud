@@ -351,6 +351,10 @@ pub fn api_read() -> Router<AppState> {
                 .post(crate::pages_posts::comment_json),
         )
         .route(
+            "/api/v1/issue-comments/{id}/vote",
+            axum::routing::post(crate::pages_posts::issue_comment_vote),
+        )
+        .route(
             "/api/v1/comments/{id}/vote",
             axum::routing::post(crate::pages_posts::comment_vote),
         )

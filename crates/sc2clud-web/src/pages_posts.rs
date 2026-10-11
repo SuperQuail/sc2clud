@@ -483,7 +483,7 @@ async fn build_post_page<'a>(
     // 详情页的评论：直接构成与帖子评论相同的 CommentView，交给同一个评论控件渲染
     let issue_feed: Option<Vec<crate::templates::CommentView>> = match issue_id {
         Some(want) => Some(
-            repo::list_issue_comments(state.db.pool(), want)
+            repo::list_issue_comments_for(state.db.pool(), want, viewer_id_for_issue)
                 .await
                 .unwrap_or_default()
                 .into_iter()
@@ -498,9 +498,9 @@ async fn build_post_page<'a>(
                     title_color: String::new(),
                     body_html: sc2clud_core::community::render_body(&row.body),
                     created_at: crate::templates::format_date(row.created_at),
-                    likes: 0,
-                    dislikes: 0,
-                    my_vote: 0,
+                    likes: row.likes,
+                    dislikes: row.dislikes,
+                    my_vote: row.my_vote,
                     can_block: false,
                     replies: Vec::new(),
                 })
@@ -543,7 +543,8 @@ async fn build_post_page<'a>(
         Some(iid) => format!("/p/{id}/issues/{iid}/comments"),
         None => format!("/p/{id}/comments"),
     };
-    let show_comment_actions = issue_id.is_none();
+    // issue 评论现在也有点赞/回复端点，动作按钮与帖子评论一致
+    let show_comment_actions = true;
 
     Ok(PostPageTemplate {
         ui_variant,
@@ -1443,6 +1444,8 @@ pub async fn issue_set_state(
 
 #[derive(Debug, Deserialize)]
 pub struct IssueCommentForm {
+    #[serde(default)]
+    pub parent_id: Option<i64>,
     pub csrf: String,
     pub body: String,
 }
@@ -1473,8 +1476,15 @@ pub async fn issue_comment(
         Ok(_) => return AppError::not_found("issue 不存在").into_page_response(true),
         Err(e) => return AppError::from(e).into_response(),
     }
-    if let Err(e) =
-        repo::add_issue_comment(state.db.pool(), issue_id, user.id, body, now_unix()).await
+    if let Err(e) = repo::add_issue_comment(
+        state.db.pool(),
+        issue_id,
+        user.id,
+        body,
+        form.parent_id,
+        now_unix(),
+    )
+    .await
     {
         return AppError::from(e).into_response();
     }
@@ -1529,11 +1539,15 @@ pub async fn issues_json(
 pub async fn issue_json(
     State(state): State<AppState>,
     Path((_id, issue_id)): Path<(i64, i64)>,
+    headers: HeaderMap,
 ) -> AppResult<Response> {
+    let viewer = session::current_user(&state, &headers).await.ok().flatten();
     let issue = repo::get_issue(state.db.pool(), issue_id)
         .await?
         .ok_or_else(|| AppError::not_found("issue 不存在"))?;
-    let comments = repo::list_issue_comments(state.db.pool(), issue_id).await?;
+    let comments =
+        repo::list_issue_comments_for(state.db.pool(), issue_id, viewer.as_ref().map(|u| u.id))
+            .await?;
     let comments: Vec<serde_json::Value> = comments
         .into_iter()
         .map(|c| {
@@ -1564,6 +1578,48 @@ pub struct VoteForm {
 
 /// 回复投票（JSON）：value = 1 赞 / -1 踩 / 0 取消。
 /// 前端目前只接点赞；点踩走同一个接口，先不接界面。
+/// issue 评论点赞（与帖子评论同一套语义：0 = 取消）。
+pub async fn issue_comment_vote(
+    State(state): State<AppState>,
+    Path(comment_id): Path<i64>,
+    headers: HeaderMap,
+    axum::Json(form): axum::Json<VoteForm>,
+) -> AppResult<Response> {
+    let user = require_user(&state, &headers).await?;
+    session::guard(Some(&user), Permission::Comment)?;
+    let token = headers
+        .get("x-csrf-token")
+        .and_then(|value| value.to_str().ok())
+        .unwrap_or("");
+    session::check_csrf(&user, token)?;
+    if !matches!(form.value, -1..=1) {
+        return Err(invalid("投票只能是赞、踩或取消"));
+    }
+    let issue_id = repo::issue_comment_issue_id(state.db.pool(), comment_id)
+        .await?
+        .ok_or_else(|| AppError::not_found("这条回复不存在"))?;
+    let issue = repo::get_issue(state.db.pool(), issue_id)
+        .await?
+        .ok_or_else(|| AppError::not_found("这个反馈不存在"))?;
+    // 只能投自己看得到的帖子下的 issue 评论
+    let is_staff = user.is_staff();
+    if repo::get_post_for(state.db.pool(), issue.post_id, Some(user.id), is_staff)
+        .await?
+        .is_none()
+    {
+        return Err(AppError::not_found("这个反馈不存在"));
+    }
+    let (likes, dislikes, mine) =
+        repo::vote_issue_comment(state.db.pool(), comment_id, user.id, form.value, now_unix())
+            .await?;
+    Ok(axum::Json(serde_json::json!({
+        "likes": likes,
+        "dislikes": dislikes,
+        "my_vote": mine,
+    }))
+    .into_response())
+}
+
 pub async fn comment_vote(
     State(state): State<AppState>,
     Path(id): Path<i64>,

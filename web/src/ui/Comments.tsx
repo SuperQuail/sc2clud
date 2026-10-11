@@ -15,8 +15,10 @@ export interface CommentsProps {
   action: string
   csrf: string
   canReply: boolean
-  /** 是否显示点赞/回复等动作（issue 评论暂无端点时关掉） */
+  /** 是否显示点赞/回复等动作 */
   showActions: boolean
+  /** 投票接口前缀：帖子 /api/v1/comments，issue /api/v1/issue-comments */
+  voteBase?: string
   loggedIn: boolean
 }
 
@@ -123,7 +125,7 @@ function ReplyBox({
  * 统一评论控件：帖子评论与 issue 评论共用（控件库内的 React 组件，逻辑不再写在模板里）。
  * 样式沿用站点既有的 .comment/.c-* 类名（static/post.css），因此两边外观完全一致。
  */
-export function Comments({ list, action, csrf, canReply, showActions, loggedIn }: CommentsProps) {
+export function Comments({ list, action, csrf, canReply, showActions, loggedIn, voteBase = '/api/v1/comments' }: CommentsProps) {
   const [items, setItems] = useState<CommentItem[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
@@ -152,7 +154,7 @@ export function Comments({ list, action, csrf, canReply, showActions, loggedIn }
 
   async function vote(item: CommentItem) {
     if (!showActions) return
-    await voteComment(item.id, item.my_vote === 1 ? 0 : 1, csrf)
+    await voteComment(item.id, item.my_vote === 1 ? 0 : 1, csrf, voteBase)
     await reload()
   }
 

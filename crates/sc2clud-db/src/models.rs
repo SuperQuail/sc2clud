@@ -256,6 +256,12 @@ pub struct IssueCommentRow {
     pub author_display_name: String,
     /// 评论者头像（与帖子评论同一套展示需要的字段）
     pub author_avatar: Option<String>,
+    /// 楼中楼：挂在哪个楼层下（NULL 为主楼层）
+    pub parent_id: Option<i64>,
+    pub likes: i64,
+    pub dislikes: i64,
+    /// 当前查看者投的票：1 赞 / -1 踩 / 0 没投
+    pub my_vote: i64,
 }
 /// 横幅。
 #[derive(Debug, Clone, FromRow)]
