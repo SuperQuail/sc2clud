@@ -165,6 +165,24 @@ export function MarkdownEditor({
               <ContentEditable
                 aria-label='正文'
                 data-placeholder={placeholder}
+                onKeyDownCapture={(e) => {
+                  if (!menuOpen) return;
+                  if (e.key === 'ArrowDown') {
+                    e.preventDefault();
+                    setActive((i) => Math.min(i + 1, Math.max(matched.length - 1, 0)));
+                  } else if (e.key === 'ArrowUp') {
+                    e.preventDefault();
+                    setActive((i) => Math.max(i - 1, 0));
+                  } else if (e.key === 'Enter' || e.key === 'Tab') {
+                    if (matched[active]) {
+                      e.preventDefault();
+                      insertMention(matched[active]!);
+                    }
+                  } else if (e.key === 'Escape') {
+                    e.preventDefault();
+                    setMenuOpen(false);
+                  }
+                }}
                 className={
                   'rounded-lg border border-input bg-background px-3 py-2.5 outline-none focus-visible:ring-[3px] focus-visible:ring-ring/40 ' +
                   (compact ? 'min-h-20' : 'min-h-64')
@@ -248,6 +266,9 @@ function EditorRef({
         if (m) {
           onQuery(m[1]!, caretAnchor(m[0].length));
           onOpen(true);
+        } else {
+          // @ 被删掉（或光标移出去了）→ 面板必须自己消失，不能挂着不走
+          onOpen(false);
         }
       });
     });

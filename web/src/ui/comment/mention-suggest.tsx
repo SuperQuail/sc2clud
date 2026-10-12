@@ -23,7 +23,8 @@ export function MentionSuggest({
 }) {
   if (candidates.length === 0) return null;
 
-  const above = anchor ? anchor.top > 240 : true;
+  // 默认**永远在上方**（用户明确要求）；只有上方真的放不下时才翻到下面
+  const above = anchor ? anchor.top > 160 : true;
   const style = anchor
     ? above
       ? { left: anchor.left, bottom: window.innerHeight - anchor.top + 4 }
@@ -58,9 +59,6 @@ export function MentionSuggest({
           <UserAvatar name={c.nickname} src={c.avatar} size='sm' />
           <Username nickname={c.nickname} />
           <span className='min-w-0 truncate text-[11px] text-muted-foreground'>@{c.handle}</span>
-          {c.duplicate ? (
-            <span className='ml-auto shrink-0 rounded-[3px] bg-muted px-1 text-[10px] text-muted-foreground'>重名</span>
-          ) : null}
         </button>
       ))}
     </div>
