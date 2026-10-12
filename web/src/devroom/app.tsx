@@ -6,6 +6,8 @@ import OurComponentsPage from './pages/05-our-components';
 import UserStylesPage from './pages/06-user-styles';
 import UserRenderPage from './pages/07-user-render';
 import OverlayPage from './pages/02-overlay';
+import NavigationPage from './pages/03-navigation';
+import DisplayPage from './pages/04-display';
 import CommentsPage from './pages/08-comments';
 import RichPage from './pages/09-rich';
 import { ThemeSwitcher } from '@/ui/theme-switcher';
@@ -14,6 +16,8 @@ import { ThemeSwitcher } from '@/ui/theme-switcher';
 const PAGES: Record<string, { title: string; el: () => React.ReactNode }> = {
   '01-interactive': { title: '01 · 交互与表单', el: () => <InteractivePage /> },
   '02-overlay': { title: '02 · 浮层与反馈', el: () => <OverlayPage /> },
+  '03-navigation': { title: '03 · 导航与结构', el: () => <NavigationPage /> },
+  '04-display': { title: '04 · 展示与状态', el: () => <DisplayPage /> },
   '05-our-components': { title: '05 · 我们的组合件', el: () => <OurComponentsPage /> },
   '06-user-styles': { title: '06 · 用户向风格候选', el: () => <UserStylesPage /> },
   '07-user-render': { title: '07 · 用户身份控件', el: () => <UserRenderPage /> },
