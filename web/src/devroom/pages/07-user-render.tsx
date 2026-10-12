@@ -1,9 +1,11 @@
+import { useState } from 'react';
+import Button from '@jetbrains/ring-ui-built/components/button/button';
 import { assetUrl } from '@/lib/url';
 import { DropdownPanel } from '@/ui/dropdown-panel';
 import { UserAvatar } from '@/ui/user/avatar';
 import { RoleBadge, type RoleDesign } from '@/ui/user/role-badge';
 import { TitleBadge, type TitleDesign } from '@/ui/user/title-badge';
-import { Username } from '@/ui/user/username';
+import { Username, type UsernameBadge } from '@/ui/user/username';
 
 // DevRoom 07 · 用户身份与权限
 // 权限模型见 完全重构/RBAC权限树设计.md：基线单角色 ∪ 点对点追加（带期限与理由）。
@@ -108,8 +110,32 @@ const PAIRS: Array<{ n: number; name: string; note: string; role: RoleDesign; ti
 ];
 
 export default function UserControlsPage() {
+  const [badge, setBadge] = useState<UsernameBadge>('corner');
+  const MODES: UsernameBadge[] = ['none', 'corner', 'inline'];
   return (
     <div className='flex flex-col gap-4'>
+      <Card
+        name='权限挂在用户名上 · 三种挂法（角标 / 行内 / 只显示名字）'
+        note='权限不再是外面拼的一块，而是 Username 的部件；badge 开关决定挂法。点按钮实时切换。'
+      >
+        <Row label='开关' hint='none=只要名字；corner=角标；inline=跟在名字后'>
+          <span className='flex items-center gap-2'>
+            {MODES.map((m) => (
+              <Button key={m} active={badge === m} onClick={() => setBadge(m)}>{m}</Button>
+            ))}
+          </span>
+        </Row>
+        <Row label='列表行（密集）' hint='角标在密集处最省地方'>
+          <span className='flex items-center gap-2'><UserAvatar name='唐天' src={A('miyin-portrait-320.webp')} size='sm' /><Username nickname='唐天' role={ADMIN} badge={badge} /><span className='text-xs text-muted-foreground'>2 小时前</span></span>
+          <span className='flex items-center gap-2'><UserAvatar name='林诗' src={A('miyin-chibi-160.webp')} size='sm' /><Username nickname='林诗' role={CREATOR} badge={badge} /></span>
+          <span className='flex items-center gap-2'><UserAvatar name='新来的' size='sm' /><Username nickname='新来的' role={USER} badge={badge} /></span>
+        </Row>
+        <Row label='作者位（加粗）与超长昵称'>
+          <Username nickname='唐天' role={ADMIN} badge={badge} strong />
+          <Username nickname='一个特别特别长的昵称用来压测截断行为' role={ADMIN} badge={badge} className='max-w-56' />
+        </Row>
+      </Card>
+
       <Card
         name='权限 × 头衔 · 差异化方案（三选一）'
         note='**统一都用带颜色的半透明背景**（Ring UI Tag 的 backgroundColor / Tailwind 的 bg-*/12），差异只靠形状、边框与色条方向。每套成对给出，点徽标可展开。'
