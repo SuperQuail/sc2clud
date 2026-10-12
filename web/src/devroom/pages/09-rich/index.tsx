@@ -5,6 +5,7 @@ import { CommentBody } from '@/ui/comment/comment-body';
 import { textLength } from '@/ui/comment/comment-body';
 import { ImageUploader, type UploadedImage } from '@/ui/rich/image-uploader';
 import { MarkdownEditor } from '@/ui/rich/markdown-editor';
+import { countImageNodes } from '@/ui/rich/lexical/image-node';
 
 // DevRoom 09 · 富文本编辑器与图片上传（两个高复用控件）
 // 图片能力全部由属性控制：max（默认 10）、compress（默认开）、allowOriginal（默认关）。
@@ -32,6 +33,7 @@ export default function RichPage() {
     }, 250);
   }
   const [doc, setDoc] = useState<{ json: string; html: string }>({ json: '', html: '' });
+  const docImages = doc.json ? countImageNodes(JSON.parse(doc.json)) : 0;
   const [imgs, setImgs] = useState<UploadedImage[]>([]);
 
   return (
@@ -51,7 +53,7 @@ export default function RichPage() {
         />
         <Row label='当前内容' hint='正文存 EditorState JSON（后端 content_json），HTML 由前端生成、服务端清洗后存 content_html'>
           <span className='text-[12px] text-muted-foreground'>
-            正文 {textLength(doc.html)} 字　图片 {imgs.length} 张　（真源：EditorState JSON；HTML 是派生物）
+            正文 {textLength(doc.html)} 字　图片 {docImages} 张　（真源：EditorState JSON；HTML 是派生物）
           </span>
         </Row>
       </Card>
@@ -64,7 +66,7 @@ export default function RichPage() {
           <Button primary disabled={textLength(doc.html) === 0 || busy} onClick={save}>
             {busy ? '保存中…' : '存一次（模拟发布）'}
           </Button>
-          <span className='text-[11px] text-muted-foreground'>{textLength(doc.html)} 字 / {imgs.length} 张图</span>
+          <span className='text-[11px] text-muted-foreground'>{textLength(doc.html)} 字 / {docImages} 张图</span>
         </Row>
         {row ? (
           <>

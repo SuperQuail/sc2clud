@@ -29,7 +29,7 @@ import { ImageUploader, type UploadedImage } from './image-uploader';
 import { planImages, processImage } from './image-pipeline';
 import { theme } from './lexical/theme';
 import { $createMentionNode, MentionNode } from './lexical/mention-node';
-import { $createImageNode, ImageNode } from './lexical/image-node';
+import { $createImageNode, ImageNode, countImageNodes } from './lexical/image-node';
 
 // 富文本编辑器（所见即所得）。**存储用 Lexical 自带的 EditorState JSON**——
 // @提及用 **Lexical 官方 LexicalTypeaheadMenuPlugin**：贴合触发文字的定位、滚动跟随、
@@ -136,6 +136,7 @@ export function MarkdownEditor({
 }) {
   const [query, setQuery] = useState<string | null>(null);
   const [dragging, setDragging] = useState(false);
+  const [docImages, setDocImages] = useState(0);
   const editorRef = useRef<LexicalEditor | null>(null);
 
   const triggerFn = useBasicTypeaheadTriggerMatch('@', { minLength: 0 });
@@ -208,7 +209,7 @@ export function MarkdownEditor({
     async (files: File[]) => {
       const pics = files.filter((f) => f.type.startsWith('image/'));
       if (pics.length === 0) return;
-      const opts = { existing: (images ?? []).length, max: maxImages, compress };
+      const opts = { existing: docImages, max: maxImages, compress };
       const { room } = planImages(pics.length, opts);
       if (room === 0) return;
       const accepted: UploadedImage[] = [];
@@ -226,15 +227,18 @@ export function MarkdownEditor({
       onImagesChange?.([...(images ?? []), ...accepted]);
       insertImages(accepted);
     },
-    [compact, images, insertImages, maxImages, onImagesChange],
+    [docImages, insertImages, maxImages, onImagesChange],
   );
 
   const onEditorChange = useCallback(
     (state: EditorState) => {
       const editor = editorRef.current;
       if (!editor) return;
-      const json = JSON.stringify(state.toJSON());
+      const tree = state.toJSON();
+      const json = JSON.stringify(tree);
       const html = state.read(() => $generateHtmlFromNodes(editor, null));
+      // 图片数从**文档**里数：在正文删掉图片，计数器就跟着降
+      setDocImages(countImageNodes(tree));
       onChange(json, html);
     },
     [onChange],
@@ -320,12 +324,9 @@ export function MarkdownEditor({
       </LexicalComposer>
       {onImagesChange ? (
         <ImageUploader
-          images={images ?? []}
-          onChange={(next) => {
-            onImagesChange(next);
-            const added = next.filter((n) => !(images ?? []).some((o) => o.id === n.id));
-            insertImages(added);
-          }}
+          images={[]}
+          existingCount={docImages}
+          onChange={(added) => insertImages(added)}
           max={maxImages}
           allowOriginal={allowOriginal}
           compress={compress}

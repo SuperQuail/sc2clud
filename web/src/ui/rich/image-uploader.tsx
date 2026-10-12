@@ -31,6 +31,7 @@ export function ImageUploader({
   allowOriginal = false,
   label = '添加图片',
   showThumbnails = true,
+  existingCount,
   onError,
 }: {
   images: UploadedImage[];
@@ -42,6 +43,8 @@ export function ImageUploader({
   label?: string;
   /** list 形态是否显示缩略图网格（编辑器里图片已是正文内容，传 false） */
   showThumbnails?: boolean;
+  /** 已用掉的名额。**编辑器里图片是正文节点，余额要按正文算**（默认取 images.length） */
+  existingCount?: number;
   /** 限额丢弃等提示交给使用方（表单要显示错误行） */
   onError?: (message: string) => void;
 }) {
@@ -51,12 +54,13 @@ export function ImageUploader({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const { room } = planImages(0, { existing: images.length, max: limit });
+  const used = existingCount ?? images.length;
+  const { room } = planImages(0, { existing: used, max: limit });
 
   async function accept(files: FileList | File[] | null) {
     const list = files ? Array.from(files) : [];
     if (list.length === 0) return;
-    const opts = { existing: images.length, max: limit, compress, useOriginal };
+    const opts = { existing: used, max: limit, compress, useOriginal };
     const { room: free, dropped: over } = planImages(list.length, opts);
     const msg = over > 0 ? '最多 ' + limit + ' 张，已忽略多出的 ' + over + ' 张' : null;
     setError(msg);
@@ -138,7 +142,7 @@ export function ImageUploader({
           <Toggle checked={useOriginal} onChange={(e) => setUseOriginal(e.target.checked)}>上传原图</Toggle>
         ) : null}
         <span className='text-[11px] tabular-nums text-muted-foreground'>
-          {images.length} / {limit}{compress && !useOriginal ? '　' + COMPRESS_LABEL : ''}
+          {used} / {limit}{compress && !useOriginal ? '　' + COMPRESS_LABEL : ''}
         </span>
       </div>
       {error ? <span className='text-[12px] text-destructive'>{error}</span> : null}

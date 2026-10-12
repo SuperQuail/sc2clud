@@ -75,6 +75,20 @@ export function $createImageNode(src: string, alt = ''): ImageNode {
   return $applyNodeReplacement(new ImageNode(src, alt));
 }
 
+/** 数一份 EditorState JSON 里有多少图片节点——**限额要按正文实际内容算**，
+ *  按「历史上传过几张」算的话，用户在正文里删掉图片后计数不会降。 */
+export function countImageNodes(json: unknown): number {
+  let n = 0;
+  const walk = (node: unknown) => {
+    if (!node || typeof node !== 'object') return;
+    const rec = node as { type?: string; children?: unknown[] };
+    if (rec.type === 'image') n++;
+    if (Array.isArray(rec.children)) rec.children.forEach(walk);
+  };
+  walk((json as { root?: unknown }).root);
+  return n;
+}
+
 export function $isImageNode(node: LexicalNode | null | undefined): node is ImageNode {
   return node instanceof ImageNode;
 }
