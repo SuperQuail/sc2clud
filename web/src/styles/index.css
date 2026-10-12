@@ -18,6 +18,12 @@ body {
 
 /* 夜间模式：我们的开关是 <html data-theme="dark">，不是 Tailwind 默认的 prefers-color-scheme。
    不接这一条，业务里写 dark: 就会跟着系统走、跟我们的切换按钮脱节。 */
+[data-theme='dark'] {
+  /* 提及蓝在深色下提亮：同一个语义令牌，两套主题各一个值 */
+  --mention-color: #4cc2ff;
+  --mention-color-bg: color-mix(in srgb, var(--mention-color) 18%, transparent);
+}
+
 @custom-variant dark (&:where([data-theme='dark'], [data-theme='dark'] *));
 
 /* 用户向按钮的「提交中」：一条流动的高光扫过（与 Ring UI 的 loader 观感一致）。
@@ -42,17 +48,23 @@ body {
   .vivid-loading::after { animation: none; opacity: 0.35; }
 }
 
-/* @提及在编辑框里的样子（芯片，不可编辑）：编辑时就要看到渲染后的结果，而不是 @{123|唐天}。 */
+/* @提及：只读正文里的链接与编辑器里的芯片**共用同一个令牌**，不要各处分别写颜色。 */
+a[data-mention] {
+  color: var(--mention-color);
+  text-decoration: none;
+}
+a[data-mention]:hover {
+  text-decoration: underline;
+}
 .mention-chip {
   display: inline-block;
   padding: 0 4px;
   border-radius: 4px;
-  background: color-mix(in srgb, var(--ring-link-color) 14%, transparent);
-  color: var(--ring-link-color);
+  background: var(--mention-color-bg);
+  color: var(--mention-color);
   font-weight: 500;
   user-select: none;
 }
-
 /* contenteditable 的占位符（Ring 的 ContentEditable 没有内置 placeholder） */
 [contenteditable][data-placeholder]:empty::before {
   content: attr(data-placeholder);

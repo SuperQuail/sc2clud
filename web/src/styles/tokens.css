@@ -14,6 +14,11 @@
 
   /* 开关旋钮：**两种主题下都必须浅色**——它模拟物理开关的滑块，
      用 --background 会在夜间变成黑色（踩过）。 */
+  /* @提及的专用蓝（B 站那一档）：**只在这里定义一次**，
+   * 编辑器里的芯片与只读正文里的链接都引用它，不许各处各写一个蓝。 */
+  --mention-color: #00a1d6;
+  --mention-color-bg: color-mix(in srgb, var(--mention-color) 14%, transparent);
+
   --switch-knob: #ffffff;
   --switch-track: var(--muted);
 
