@@ -1,0 +1,72 @@
+/* 唯一颜色来源（shadcn 变量名 + 本项目取值）。组件里禁止写死颜色。 */
+:root {
+  --radius: 3px;
+  --background: #ffffff;
+  --foreground: #1f2430;
+  --card: #ffffff;
+  --card-foreground: var(--foreground);
+  --popover: #ffffff;
+  --popover-foreground: var(--foreground);
+  --primary: #2563eb;
+  --primary-foreground: #ffffff;
+  --secondary: #f7f8fa;
+  --secondary-foreground: var(--foreground);
+  --muted: #f7f8fa;
+  --muted-foreground: color-mix(in srgb, var(--foreground) 62%, transparent);
+  --accent: #f7f8fa;
+  --accent-foreground: var(--foreground);
+  --destructive: #dc2626;
+  --destructive-foreground: #ffffff;
+  --border: #e5e7eb;
+  --input: #e5e7eb;
+  --ring: #2563eb;
+}
+
+html[data-theme="dark"] {
+  --background: #161a26;
+  --foreground: #e6e8ef;
+  --card: #1d2230;
+  --card-foreground: var(--foreground);
+  --popover: #1d2230;
+  --popover-foreground: var(--foreground);
+  --primary: #8fb0ff;
+  --primary-foreground: #0b0e16;
+  --secondary: #1d2230;
+  --secondary-foreground: var(--foreground);
+  --muted: #1d2230;
+  --muted-foreground: color-mix(in srgb, var(--foreground) 62%, transparent);
+  --accent: #1d2230;
+  --accent-foreground: var(--foreground);
+  --destructive: #f87171;
+  --destructive-foreground: #0b0e16;
+  --border: rgba(255, 255, 255, 0.12);
+  --input: rgba(255, 255, 255, 0.16);
+  --ring: #8fb0ff;
+  color-scheme: dark;
+}
+
+/* inline：工具类直接引用变量，主题切换才能运行期生效 */
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --radius-sm: calc(var(--radius) - 1px);
+  --radius-md: var(--radius);
+  --radius-lg: calc(var(--radius) + 2px);
+}
