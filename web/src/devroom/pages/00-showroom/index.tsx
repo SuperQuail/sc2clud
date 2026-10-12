@@ -5,8 +5,6 @@ import Island from '@jetbrains/ring-ui-built/components/island/island';
 import ProgressBar from '@jetbrains/ring-ui-built/components/progress-bar/progress-bar';
 import Tag, { TagType } from '@jetbrains/ring-ui-built/components/tag/tag';
 import { Tab, Tabs } from '@jetbrains/ring-ui-built/components/tabs/tabs';
-import Avatar from '@jetbrains/ring-ui-built/components/avatar/avatar';
-import AvatarStack from '@jetbrains/ring-ui-built/components/avatar-stack/avatar-stack';
 import { useEffect, useState } from 'react';
 import { Flame, MessageSquare, Pin } from 'lucide-react';
 import { appPath, assetUrl } from '@/lib/url';
@@ -42,6 +40,9 @@ export default function ShowroomPage() {
 
   return (
     <div className='flex flex-col gap-4'>
+      {/* 指南：heading 要有层级。视觉上不显示，但结构上必须有 h1 */}
+      <h1 className='sr-only'>自制战役 · 主题列表</h1>
+
       {/* ── 顶栏：这是全站骨架，后续页面都照这个来 ── */}
       <Island withoutPaddings>
         <div className='flex flex-wrap items-center gap-4 px-4 py-2.5'>
@@ -53,7 +54,7 @@ export default function ShowroomPage() {
             <Tab id='rank' title='排行' />
           </Tabs>
           <div className='ml-auto flex min-w-56 max-w-72 flex-1 items-center gap-2'>
-            <Input placeholder='搜索主题、作者…' />
+            <Input aria-label='搜索主题、作者' name='q' autoComplete='off' spellCheck={false} placeholder='搜索主题、作者…' />
           </div>
           <Button>发帖</Button>
           <span className='flex items-center gap-2'>
@@ -158,11 +159,14 @@ export default function ShowroomPage() {
           <Island withoutPaddings>
             <div className='flex flex-col gap-3 p-4'>
               <span className='text-[13px] font-semibold text-foreground'>当前在线</span>
-              <AvatarStack size={28}>
-                {ACTIVE.map((n) => (
-                  <Avatar key={n} size={28} username={n} />
+              {/* 用户头像一律用 UserAvatar（Ring 的 Avatar 是给项目/组织用的色块首字，不是用户头像） */}
+              <span className='flex items-center'>
+                {ACTIVE.map((n, i) => (
+                  <span key={n} className={i === 0 ? '' : '-ml-2'} title={n}>
+                    <UserAvatar name={n} size='sm' className='ring-2 ring-background' />
+                  </span>
                 ))}
-              </AvatarStack>
+              </span>
               <span className='text-[12px] text-muted-foreground'>共 42 人在线 · 6 位作者</span>
             </div>
           </Island>
@@ -187,7 +191,7 @@ export default function ShowroomPage() {
         <Row label='骨架 / 导航 / 展示 / 输入 / 分页'>
           <span className='text-[12px] text-muted-foreground'>
             Island · Panel · Tabs · Breadcrumbs · Tag · Avatar · AvatarStack · ProgressBar · Input · Button ·
-            AppPager（中文分页）· Username / RoleBadge / TitleBadge / UserAvatar（我们的身份件）· CommentBody（含折叠）
+            AppPager（中文分页）· Username / RoleBadge / TitleBadge / **UserAvatar**（用户头像只用我们的）· CommentBody（含折叠）
             {mounted ? '' : ''}
           </span>
         </Row>
@@ -231,7 +235,7 @@ function TopicRow({
           ))}
           <a
             href={appPath('t/' + topic.id)}
-            className='min-w-0 truncate text-[15px] font-medium text-foreground hover:text-primary'
+            className='min-w-0 truncate rounded-[3px] text-[15px] font-medium text-foreground outline-none hover:text-primary focus-visible:ring-[3px] focus-visible:ring-ring/50'
           >
             {topic.title}
           </a>

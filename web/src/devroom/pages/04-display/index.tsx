@@ -22,7 +22,7 @@ export default function DisplayPage() {
         </Row>
       </Card>
 
-      <Card name='头像 Avatar / AvatarStack' note='Ring 的头像；**我们自己的 UserAvatar（按昵称取稳定色）保留**，用于没有头像的用户。'>
+      <Card name='头像 Avatar / AvatarStack' note='⚠️ **Ring 的 Avatar 是给「项目 / 组织」用的色块首字，不是用户头像**——用户头像一律用我们的 UserAvatar（按昵称取稳定色、有图用图）。这里只做对照，业务页面不要用它渲染用户。'>
         <Row label='尺寸 / 圆形 / 无图兜底 / 叠加'>
           <Avatar size={24} username='唐天' />
           <Avatar size={32} round username='林诗' />

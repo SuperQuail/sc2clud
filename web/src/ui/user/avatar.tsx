@@ -35,7 +35,7 @@ export function UserAvatar({ name, src, size = 'md', alt = '', className }: User
       }}
     >
       {src ? (
-        <img src={src} alt={alt} width={px} height={px} loading='lazy' decoding='async' className='size-full object-cover' />
+        <img src={src} alt={alt ?? name} width={px} height={px} loading='lazy' decoding='async' className='size-full object-cover' />
       ) : (
         <span aria-hidden>{[...name][0] ?? '?'}</span>
       )}
