@@ -145,11 +145,11 @@
 **roles**：`id`、`key varchar(32)` UNIQUE、`name varchar(32)`、`description varchar(200)`、`is_system boolean NOT NULL DEFAULT false`、`priority int NOT NULL DEFAULT 0`（**只用于后台展示排序，禁止用于授权判断**）。
 **permissions**：`id`、`key varchar(64)` UNIQUE、`grp varchar(32)` NOT NULL、`description varchar(200)`。权限点由**迁移**写入，与 `internal/authz/permissions.go` 的常量一一对应。
 **role_permissions**：`role_id`、`permission_id`，主键 `(role_id, permission_id)`，两侧 CASCADE。
-**users.role_id**：`bigint NOT NULL fk roles RESTRICT` —— **一个用户只有一个角色**。
+角色关系走 `user_roles`（允许一人多角色；展示取最高、授权取并集，见 `RBAC权限树设计.md` §1.1）。
 
 > **权限树的完整设计见 `RBAC权限树设计.md`（唯一真源）**。修正（2026-10-12）：原设计用 `user_roles` 关系表（抄 RBAC 的 N:N 惯性），但本产品的权限树是**层级**——
 > 超级管理员 / 管理员 / 认证创作者 / 普通用户，一个人只站在一个节点上。
-> 于是取消 `user_roles` 关系表，改为 `users.role_id` 单列外键；权限仍由 `role_permissions` 决定。
+> 于是角色关系仍在 `user_roles`，但**展示层只取最高角色**、**授权取并集**，规则见 `RBAC权限树设计.md` §1.1；权限仍由 `role_permissions` 决定。
 > 迁移也因此简化：旧站的「角色列」直接映射成一个 role_id，不需要展开成关系。
 **board_moderators**：`board_id`、`user_id`，主键 `(board_id, user_id)`，两侧 CASCADE。
 
