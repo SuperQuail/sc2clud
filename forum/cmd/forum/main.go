@@ -32,6 +32,7 @@ func main() {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("content-type", "application/json")
+		w.Header().Set("cache-control", "no-store")
 		_ = json.NewEncoder(w).Encode(map[string]string{"status": "ok", "version": version})
 	})
 
@@ -55,7 +56,34 @@ func main() {
 	}
 }
 
-// spa：命中静态文件就发文件，否则交给 index.html（前端路由自己解析路径）。否则刷新 /b/campaign 会 404。
+// assetExt：带这些扩展名的路径按「资源」处理——缺了就 404，绝不回退成 index.html。
+// 回退成 HTML 会让 <img> 拿到解不出的内容，表现为「裂图」并掩盖真正原因（踩过）。
+var assetExt = map[string]bool{
+	".js": true, ".mjs": true, ".css": true, ".map": true, ".json": true, ".txt": true, ".xml": true,
+	".png": true, ".jpg": true, ".jpeg": true, ".webp": true, ".gif": true, ".svg": true, ".ico": true,
+	".woff": true, ".woff2": true, ".ttf": true, ".mp4": true, ".webm": true,
+}
+
+func looksLikeAsset(path string) bool {
+	ext := strings.ToLower(filepath.Ext(path))
+	return ext != "" && assetExt[ext]
+}
+
+// cacheFor：带宽优化。带内容哈希的产物可以永久缓存；美术资源缓存一周；其余短缓存。
+// 不设缓存头 = 每次进页面都重下全部图片与 JS，在窄带宽上就是「图裂」和「慢」。
+func cacheFor(path string) string {
+	switch {
+	case strings.HasPrefix(path, "/assets/") || strings.HasPrefix(path, "/devroom/assets/"):
+		// Vite 产物名里带哈希，内容变了文件名就变，可以放心永久缓存
+		return "public, max-age=31536000, immutable"
+	case strings.HasPrefix(path, "/art/") || strings.Contains(path, "/art/") || strings.Contains(path, "/img/"):
+		return "public, max-age=604800"
+	default:
+		return "public, max-age=3600"
+	}
+}
+
+// spa：命中静态文件就发文件（并加缓存头）；带扩展名的缺失资源直接 404；其余交给 index.html。
 func spa(root string, files http.Handler, serveIndex http.HandlerFunc) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodGet && r.Method != http.MethodHead {
@@ -64,19 +92,18 @@ func spa(root string, files http.Handler, serveIndex http.HandlerFunc) http.Hand
 		}
 		clean := filepath.Join(root, filepath.Clean("/"+strings.TrimPrefix(r.URL.Path, "/")))
 		if info, err := os.Stat(clean); err == nil {
-			// 文件直接发；**目录要先看它有没有自己的 index.html**（/devroom/ 这种子应用），
-			// 有就交给静态服务器，没有才走前端路由。少了这一条，子应用会掉进 SPA 回退变成 404。
 			if !info.IsDir() {
+				w.Header().Set("cache-control", cacheFor(r.URL.Path))
 				files.ServeHTTP(w, r)
 				return
 			}
+			// 目录：有 index.html 就是子应用（/devroom/），交给静态服务器；否则走前端路由
 			if idx, ierr := os.Stat(filepath.Join(clean, "index.html")); ierr == nil && !idx.IsDir() {
+				w.Header().Set("cache-control", "no-store")
 				files.ServeHTTP(w, r)
 				return
 			}
 		}
-		// 只有当请求看起来像「前端路由」时才回退到 index.html。
-		// 否则缺一个图片会被回退成 200 的 HTML，<img> 解不出来 —— 表现为「裂图」，而且掩盖真正原因（踩过）。
 		if looksLikeAsset(r.URL.Path) {
 			http.NotFound(w, r)
 			return
