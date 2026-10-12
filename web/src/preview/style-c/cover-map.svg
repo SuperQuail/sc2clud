@@ -1,6 +1,0 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 180" role="img">
-  <rect width="320" height="180" fill="#14532d"/>
-  <g fill="#166534"><rect x="0" y="0" width="160" height="90"/><rect x="160" y="90" width="160" height="90"/></g>
-  <g fill="#22c55e" opacity=".5"><rect x="24" y="24" width="46" height="30"/><rect x="196" y="26" width="60" height="24"/><rect x="60" y="122" width="70" height="28"/></g>
-  <path d="M0 90 H320 M160 0 V180" stroke="#052e16" stroke-width="3"/>
-</svg>

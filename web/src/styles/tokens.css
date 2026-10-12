@@ -1,51 +1,41 @@
-/* 唯一颜色来源（shadcn 变量名 + 本项目取值）。组件里禁止写死颜色。 */
+/* 设计令牌 = Ring UI 主题的**别名**（唯一真源是库自己的变量）。
+
+   方向很重要：**我们引用库，不覆盖库**。
+   历史教训：曾经反过来（把 --ring-* 覆盖成我们的值），顺手覆盖了 --ring-unit，
+   而按钮高度是 calc(3 * var(--ring-unit)) —— 所有控件缩成一半、文字被挤出按钮。
+   现在只读不写：Ring UI 的尺寸与派生值全归它自己，我们只取颜色。
+
+   深色：Ring UI 的 .ring-ui-theme-dark 一翻，下面的别名自动跟着翻，不需要第二处开关。 */
 :root {
   --radius: 3px;
-  --background: #ffffff;
-  --foreground: #1f2430;
-  --card: #ffffff;
-  --card-foreground: var(--foreground);
-  --popover: #ffffff;
-  --popover-foreground: var(--foreground);
-  --primary: #2563eb;
+
+  /* ── 表面与文字 ── */
+  --background: var(--ring-content-background-color);
+  --foreground: var(--ring-text-color);
+  --card: var(--ring-content-background-color);
+  --card-foreground: var(--ring-text-color);
+  --popover: var(--ring-popup-background-color, var(--ring-content-background-color));
+  --popover-foreground: var(--ring-text-color);
+  --muted: var(--ring-secondary-background-color);
+  --muted-foreground: color-mix(in srgb, var(--ring-text-color) 62%, transparent);
+  --accent: var(--ring-hover-background-color);
+  --accent-foreground: var(--ring-text-color);
+
+  /* ── 线 ── */
+  --border: var(--ring-line-color);
+  --input: var(--ring-line-color);
+
+  /* ── 品牌与状态 ── */
+  --primary: var(--ring-button-primary-background-color, var(--ring-link-color));
   --primary-foreground: #ffffff;
-  --secondary: #f7f8fa;
-  --secondary-foreground: var(--foreground);
-  --muted: #f7f8fa;
-  --muted-foreground: color-mix(in srgb, var(--foreground) 62%, transparent);
-  --accent: #f7f8fa;
-  --accent-foreground: var(--foreground);
-  --destructive: #dc2626;
+  --ring: var(--ring-button-primary-background-color, var(--ring-link-color));
+  --destructive: var(--ring-error-color, #db5860);
   --destructive-foreground: #ffffff;
-  --border: #e5e7eb;
-  --input: #e5e7eb;
-  --ring: #2563eb;
+  --secondary: var(--ring-secondary-background-color);
+  --secondary-foreground: var(--ring-text-color);
 }
 
-html[data-theme="dark"] {
-  --background: #161a26;
-  --foreground: #e6e8ef;
-  --card: #1d2230;
-  --card-foreground: var(--foreground);
-  --popover: #1d2230;
-  --popover-foreground: var(--foreground);
-  --primary: #8fb0ff;
-  --primary-foreground: #0b0e16;
-  --secondary: #1d2230;
-  --secondary-foreground: var(--foreground);
-  --muted: #1d2230;
-  --muted-foreground: color-mix(in srgb, var(--foreground) 62%, transparent);
-  --accent: #1d2230;
-  --accent-foreground: var(--foreground);
-  --destructive: #f87171;
-  --destructive-foreground: #0b0e16;
-  --border: rgba(255, 255, 255, 0.12);
-  --input: rgba(255, 255, 255, 0.16);
-  --ring: #8fb0ff;
-  color-scheme: dark;
-}
-
-/* inline：工具类直接引用变量，主题切换才能运行期生效 */
+/* 给 Tailwind 生成工具类（bg-background / text-foreground / border-border …） */
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);

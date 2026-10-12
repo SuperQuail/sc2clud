@@ -6,11 +6,7 @@ import { fileURLToPath } from 'node:url';
 // 旧站这条门禁没进 CI，结果 5000 行的文件长期挂账 —— 这次它必须在 CI 里。
 const SRC: string = fileURLToPath(new URL('../src', import.meta.url));
 const LIMIT = 500;
-const PENDING: Record<string, string> = {
-  // 一次性设计变体：选定方向后按 ui/ + features/ 拆分重建；未选中的连整个 preview/ 一起删
-  'preview/style-b/v1.tsx': '设计变体，选定方向后拆分或删除',
-  'preview/style-b/v2.tsx': '设计变体，选定方向后拆分或删除',
-};
+const PENDING: Record<string, string> = {};
 
 function walk(dir: string): string[] {
   const out: string[] = [];

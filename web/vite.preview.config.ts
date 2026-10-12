@@ -15,5 +15,5 @@ export default defineConfig({
     // Chrome 锁着文件就 EBUSY，把 dev server 搞死——所以显式忽略
     watch: { ignored: ['**/.tmp-*/**', '**/node_modules/**', '**/dist/**', '**/preview-dist/**'] },
   },
-  build: { outDir: 'preview-dist', emptyOutDir: true, rollupOptions: { input: { preview: 'preview.html' } } },
+  build: { outDir: 'preview-dist', emptyOutDir: true, rollupOptions: { input: { preview: 'preview.html', devroom: 'devroom.html', isolate: 'isolate.html' } } },
 });
