@@ -1,12 +1,14 @@
-import { useState } from 'react';
+import { useEffect, useId, useRef, useState } from 'react';
 import Button from '@jetbrains/ring-ui-built/components/button/button';
-import Input from '@jetbrains/ring-ui-built/components/input/input';
-import { ControlsHeight } from '@jetbrains/ring-ui-built/components/global/controls-height';
 import { UserAvatar } from '@/ui/user/avatar';
 
-// 评论编辑器（顶层的评论框与就地回复共用）。
-// **复用 Ring UI 的 Input**：multiline + autogrow + height=L —— 之前只用 multiline，框太小写不了长评论。
-// 没有「取消」按钮：就地回复点别处即收起，顶层评论框本来就不需要取消（B 站也没有）。
+// 评论编辑器（顶层评论框与就地回复共用）。
+// **不用 Ring UI 的 Input**：它是表单小输入，评论是长文本——这里用原生 textarea 自己控制尺寸
+// （默认 7 行高、随输入自动长高）。src/ui 允许写原生表单元素，业务代码不许（gate:ui 会挡）。
+// 需求依据：后端 §9 用户提交 Markdown 由服务端渲染（所以不需要在界面上标注）；
+// 回复不带图片（图片只有头像/帖子配图/收款码三个端点），所以工具栏不放图片按钮。
+const MIN_ROWS = 7;
+
 export function ReplyBox({
   me,
   replyingTo,
@@ -18,9 +20,19 @@ export function ReplyBox({
   placeholder?: string;
   onSubmit?: (body: string) => void;
 }) {
+  const id = useId();
+  const area = useRef<HTMLTextAreaElement>(null);
   const [body, setBody] = useState('');
   const [error, setError] = useState<string | null>(null);
   const empty = body.trim().length === 0;
+
+  // 随输入长高（只增不减到最小值为止，避免删字时抖动）
+  useEffect(() => {
+    const el = area.current;
+    if (!el) return;
+    el.style.height = 'auto';
+    el.style.height = Math.max(el.scrollHeight, 0) + 'px';
+  }, [body]);
 
   function submit() {
     if (empty) {
@@ -39,17 +51,24 @@ export function ReplyBox({
         {replyingTo ? (
           <span className='text-[12px] text-muted-foreground'>回复 @{replyingTo}</span>
         ) : null}
-        <Input
-          multiline
-          autogrow
-          height={ControlsHeight.L}
+        <label htmlFor={id} className='sr-only'>
+          评论内容
+        </label>
+        <textarea
+          ref={area}
+          id={id}
+          rows={MIN_ROWS}
           value={body}
           onChange={(e) => setBody(e.target.value)}
           placeholder={placeholder}
-          error={error ?? undefined}
+          aria-invalid={error ? true : undefined}
+          aria-describedby={error ? id + '-err' : undefined}
+          className='w-full resize-y rounded-lg border border-input bg-background px-3 py-2.5 text-[15px] leading-relaxed text-foreground outline-none placeholder:text-muted-foreground focus-visible:ring-[3px] focus-visible:ring-ring/40'
         />
         <div className='flex items-center gap-3'>
-          <span className='text-[11px] text-muted-foreground'>支持 Markdown</span>
+          {error ? (
+            <span id={id + '-err'} className='text-[12px] text-destructive'>{error}</span>
+          ) : null}
           <Button primary className='ml-auto' disabled={empty} onClick={submit}>
             发布
           </Button>

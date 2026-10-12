@@ -99,18 +99,16 @@ export default function CommentsPage() {
             <CommentReplies replies={{ total: 5, items: REPLIES, previewCount: 2 }} />
           </div>
         </Row>
-        <Row label='ReplyBox（回复框）' hint='复用 Ring UI Input（multiline + autogrow + 高度 L，能写长评论）；只有一个发布按钮，空内容不可点'>
+        <Row label='ReplyBox（回复框）' hint='原生 textarea（Ring 的 Input 是表单小输入，装不下长评论）：默认 7 行、随输入长高；只有一个发布按钮，空内容不可点'>
           <div className='w-full max-w-xl'>
             <ReplyBox me={ME} replyingTo='某小X' />
           </div>
         </Row>
       </Card>
 
-      <Card name='待补' note='这些还没做，先记着。'>
+      <Card name='待补' note='只列**需求文档里确实有**的（表情/回复配图不在需求里，已删掉）。'>
         <Row label='未做' hint='不做出来不许进业务页面'>
-          <span className='rounded-sm bg-muted px-1.5 py-0.5 text-[11px] text-muted-foreground'>@ 提及选择器</span>
-          <span className='rounded-sm bg-muted px-1.5 py-0.5 text-[11px] text-muted-foreground'>表情/图片</span>
-          <span className='rounded-sm bg-muted px-1.5 py-0.5 text-[11px] text-muted-foreground'>折叠长评论（阅读更多）</span>
+          <span className='rounded-sm bg-muted px-1.5 py-0.5 text-[11px] text-muted-foreground'>@ 提及选择器（需求：GET /users/search）</span>
           <span className='rounded-sm bg-muted px-1.5 py-0.5 text-[11px] text-muted-foreground'>举报菜单</span>
           <span className='rounded-sm bg-muted px-1.5 py-0.5 text-[11px] text-muted-foreground'>分页/加载更多</span>
         </Row>
