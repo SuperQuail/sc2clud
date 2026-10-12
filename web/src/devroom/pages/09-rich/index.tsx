@@ -36,7 +36,7 @@ export default function RichPage() {
     <div className='flex flex-col gap-4'>
       <Card
         name='富文本编辑器（帖子正文用）'
-        note='**所见即所得**（Lexical 内核）。存储用它**自带的 EditorState JSON**（节点自带 type/version，无损往返），写入时同时生成 HTML 供只读展示；工具栏与输入 @ 走同一个候选面板；图片是正文节点。'
+        note='**所见即所得**（Lexical 内核）。存储用它 **EditorState JSON**（节点自带 type/version，无损往返），写入时同时生成 HTML 供只读展示；工具栏与输入 @ 走同一个候选面板；图片是正文节点。'
       >
         <MarkdownEditor
           value={doc.json}
@@ -49,7 +49,7 @@ export default function RichPage() {
         />
         <Row label='当前内容' hint='正文存 EditorState JSON（后端 content_json），HTML 由前端生成、服务端清洗后存 content_html'>
           <span className='text-[12px] text-muted-foreground'>
-            正文 {textLength(doc.html)} 字　图片 {imgs.length} 张　（底层是 Markdown，HTML 只在预览时现算）
+            正文 {textLength(doc.html)} 字　图片 {imgs.length} 张　（真源：EditorState JSON；HTML 是派生物）
           </span>
         </Row>
       </Card>
@@ -58,7 +58,7 @@ export default function RichPage() {
         name='往返测试：存一次，再读回来'
         note='存：JSON + HTML（模拟后端的 content_json / content_html）。读：直接用存下来的 HTML 渲染回来——与评论区共用同一个 CommentBody。'
       >
-        <Row label='① 存' hint='把当前 Markdown 存进模拟的那一行；@提及会以 token 形式存下去'>
+        <Row label='① 存' hint='把当前的 JSON + HTML 存进模拟的那一行'>
           <Button primary disabled={textLength(doc.html) === 0 || busy} onClick={save}>
             {busy ? '保存中…' : '存一次（模拟发布）'}
           </Button>
