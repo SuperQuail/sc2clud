@@ -1,4 +1,3 @@
-import { Sparkles } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 // 头衔控件。数据来自 titles 表：key / name / color / description；
@@ -13,7 +12,7 @@ export type TitleVariant = 'plain' | 'gradient' | 'outline' | 'glow';
 
 export function TitleBadge({
   title,
-  variant = 'gradient',
+  variant = 'outline',
   size = 'md',
   className,
 }: {
@@ -69,7 +68,6 @@ export function TitleBadge({
           backgroundColor: 'color-mix(in srgb, ' + c + ' 10%, transparent)',
         }}
       >
-        <Sparkles aria-hidden className='size-[1em] shrink-0 opacity-80' />
         {title.name}
       </span>
     );
