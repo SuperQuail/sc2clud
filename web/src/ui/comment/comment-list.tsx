@@ -16,12 +16,15 @@ export function CommentList({
   me,
   candidates,
   onSubmit,
+  onVote,
 }: {
   comments: CommentData[];
   total?: number;
   me: { nickname: string; avatar?: string | null };
   candidates?: MentionCandidate[];
   onSubmit?: (parentId: string | null, body: { json: string; html: string }) => void;
+  /** 赞 / 踩 / 取消。少了它，赞踩按钮就只是两个数字（踩过的坑）。 */
+  onVote?: (id: string, value: 1 | -1) => void;
 }) {
   const [sort, setSort] = useState<(typeof SORTS)[number]>('最热');
   const [replyingTo, setReplyingTo] = useState<string | null>(null);
@@ -52,9 +55,11 @@ export function CommentList({
             key={c.id}
             comment={c}
             onReply={() => setReplyingTo(replyingTo === c.id ? null : c.id)}
+            onLike={() => onVote?.(c.id, 1)}
+            onDislike={() => onVote?.(c.id, -1)}
           >
             {c.replies && c.replies.total > 0 ? (
-              <CommentReplies replies={c.replies} onReply={(id) => setReplyingTo(id)} />
+              <CommentReplies replies={c.replies} onReply={(id) => setReplyingTo(id)} onVote={onVote} />
             ) : null}
             {replyingTo === c.id ? (
               <div className='mt-3'>

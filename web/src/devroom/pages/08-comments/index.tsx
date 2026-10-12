@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { appPath, assetUrl } from '@/lib/url';
 import { CommentActions } from '@/ui/comment/comment-actions';
 import { CommentItem } from '@/ui/comment/comment-item';
@@ -127,13 +128,30 @@ const COMMENTS: CommentData[] = [
 ];
 
 export default function CommentsPage() {
+  // 赞踩必须有状态：**只传 comments 不传 onVote 时，按钮上只有数字、点了没反应**。
+  // 这个包装件就是那条检查——点了要看到数字变、active 态跟着翻。
+  const [comments, setComments] = useState<CommentData[]>(COMMENTS);
+  function vote(id: string, value: 1 | -1) {
+    setComments((list) =>
+      list.map((c) => {
+        const target = c.id === id ? c : c.replies?.items.find((r) => r.id === id);
+        if (!target) return c;
+        // 同向再点 = 取消（与契约的幂等 PUT / DELETE 一致）
+        const next: CommentData =
+          value === 1
+            ? { ...target, likes: target.liked ? target.likes - 1 : target.likes + 1, liked: !target.liked, disliked: false, dislikes: target.disliked ? target.dislikes - 1 : target.dislikes }
+            : { ...target, dislikes: target.disliked ? target.dislikes - 1 : target.dislikes + 1, disliked: !target.disliked, liked: false, likes: target.liked ? target.likes - 1 : target.likes };
+        return c.id === id ? next : { ...c, replies: c.replies ? { ...c.replies, items: c.replies.items.map((r) => (r.id === id ? next : r)) } : c.replies };
+      }),
+    );
+  }
   return (
     <div className='flex flex-col gap-4'>
       <Card
         name='评论区（整块 · CommentList）'
-        note='对照 B 站：表头「评论 N」+ 最热｜最新，下面常驻评论框；**主楼 15px、楼中楼 13px**（层级靠字号/头像/间距，不靠竖线）。**超长评论按渲染高度折叠**（渐隐 + 展开），第三条就是用来验这条路径的。'
+        note='对照 B 站：表头「评论 N」+ 最热｜最新，下面常驻评论框；**主楼 15px、楼中楼 13px**（层级靠字号/头像/间距，不靠竖线）。**超长评论按渲染高度折叠**（渐隐 + 展开），第三条就是用来验这条路径的。赞踩传了 onVote，**点了要有反应**（同向再点=取消）。'
       >
-        <CommentList comments={COMMENTS} total={54} me={ME} candidates={CANDIDATES} />
+        <CommentList comments={comments} total={54} me={ME} candidates={CANDIDATES} onVote={vote} />
       </Card>
 
       <Card

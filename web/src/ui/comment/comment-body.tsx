@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import Button from '@jetbrains/ring-ui-built/components/button/button';
-import DOMPurify from 'dompurify';
+import { Markdown } from '@/ui/markdown';
 
 // 评论/正文的只读渲染。真源是 **Lexical EditorState JSON**，写入时同时生成 HTML
 // （`$generateHtmlFromNodes`），这里渲染那份 HTML。渲染前再清洗一次：
@@ -36,7 +36,6 @@ export function CommentBody({
       <div
         ref={content}
         data-testid='collapse-body'
-        className={className}
         style={
           collapsed
             ? {
@@ -46,8 +45,9 @@ export function CommentBody({
               }
             : undefined
         }
-        dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(body) }}
-      />
+      >
+        <Markdown html={body} className={className} />
+      </div>
       {collapsible && overflowing ? (
         // 靠右下角（用户要求）：与楼层动作行同一条右边线
         <span className='flex w-full justify-end'>

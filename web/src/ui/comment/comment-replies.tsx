@@ -8,9 +8,12 @@ import type { CommentReplies } from './types';
 export function CommentReplies({
   replies,
   onReply,
+  onVote,
 }: {
   replies: CommentReplies;
   onReply?: (id: string) => void;
+  /** 楼中楼的赞踩同样要能回传，否则只有主楼能投票 */
+  onVote?: (id: string, value: 1 | -1) => void;
 }) {
   const preview = replies.previewCount ?? 2;
   const [expanded, setExpanded] = useState(false);
@@ -20,7 +23,14 @@ export function CommentReplies({
   return (
     <div className='mt-3 flex flex-col gap-4'>
       {shown.map((r) => (
-        <CommentItem key={r.id} comment={r} level='reply' onReply={() => onReply?.(r.id)} />
+        <CommentItem
+          key={r.id}
+          comment={r}
+          level='reply'
+          onReply={() => onReply?.(r.id)}
+          onLike={() => onVote?.(r.id, 1)}
+          onDislike={() => onVote?.(r.id, -1)}
+        />
       ))}
       {replies.total > preview ? (
         <div>
