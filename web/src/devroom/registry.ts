@@ -42,4 +42,17 @@ export const VERIFIED: VerifiedControl[] = [
       '原来的 field.tsx / label.tsx / input.tsx 已删除——重复了控件自带的能力。',
     ],
   },
+  {
+    name: 'tag',
+    path: '@jetbrains/ring-ui-built/components/tag/tag',
+    page: '07-user-render',
+    verifiedOn: '2026-10-12',
+    props: [
+      'tagType：TagType.DEFAULT | MAIN | SUCCESS | WARNING | ERROR | PURPLE（预设色，自带半透明底）',
+      'textColor / backgroundColor：直接传色值（backgroundColor 可传 color-mix 做半透明）',
+      'outline：改为描边样式；readOnly / interactive / onClick',
+      'rgTagTitle：悬停提示',
+    ],
+    notes: ['它是 Ring UI 里唯一能做「带色半透明小标签」的现成控件，权限徽标优先用它。'],
+  },
 ];

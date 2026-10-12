@@ -1,39 +1,38 @@
+import Tag, { TagType } from '@jetbrains/ring-ui-built/components/tag/tag';
 import { cn } from '@/lib/utils';
 
-// 权限徽标（独立控件）。**一个用户只有一个基线角色**（users.role_id）。
-// 差异化的三套设计（与头衔配对评估，见 DevRoom 07）：
-//   1 直角小标签   方角、中性底，像「分类」；与圆润的头衔形成形状对立
-//   2 纯文字竖线   无边框，左侧一条竖线；最轻，不抢标题
-//   3 实心深底     深底浅字的小块；最重，适合要强调身份的场合
+// 权限徽标（基线角色，一人一个）。**全部走「带颜色的半透明背景」**，三套做法：
+//   1 Ring UI Tag + tagType 预设（现成控件，预设色自带半透明底）
+//   2 Tailwind alpha：bg-primary/12（我们的令牌在 @theme 里，透明度修饰符直接生效）
+//   3 Tailwind alpha + 左侧色条（border-l-4 同色），用于「比头衔更重」的场合
 export type RoleDesign = 1 | 2 | 3;
-export type UserRole = { key: string; name: string; color?: string | null };
+export type UserRole = { key: string; name: string; color?: string | null; tagType?: TagType };
 
-export function RoleBadge({
-  role,
-  design = 1,
-  className,
-}: {
-  role: UserRole;
-  design?: RoleDesign;
-  className?: string;
-}) {
-  const c = role.color ?? null;
-  const tint = c ? 'color-mix(in srgb, ' + c + ' 14%, transparent)' : undefined;
-
-  if (design === 2) {
+export function RoleBadge({ role, design = 1, className }: { role: UserRole; design?: RoleDesign; className?: string }) {
+  if (design === 1) {
+    // 用 Ring UI 现成的 Tag：预设 tagType，或用 backgroundColor 传半透明色
     return (
-      <span className={cn('inline-flex shrink-0 items-center border-l-2 pl-1.5 text-[11px] font-medium whitespace-nowrap', !c && 'text-muted-foreground', className)}
-        style={c ? { color: c, borderColor: c } : undefined}>
+      <Tag
+        tagType={role.tagType ?? TagType.MAIN}
+        backgroundColor={role.color ? 'color-mix(in srgb, ' + role.color + ' 14%, transparent)' : undefined}
+        textColor={role.color ?? undefined}
+        className={cn('shrink-0 text-[11px]', className)}
+      >
         {role.name}
-      </span>
+      </Tag>
     );
   }
+
+  const alpha = role.color ? undefined : 'bg-primary/10 text-primary';
+  const style = role.color
+    ? { color: role.color, backgroundColor: 'color-mix(in srgb, ' + role.color + ' 12%, transparent)' }
+    : undefined;
 
   if (design === 3) {
     return (
       <span
-        className={cn('inline-flex shrink-0 items-center rounded-[3px] px-1.5 py-0.5 text-[11px] font-semibold whitespace-nowrap', !c && 'bg-foreground text-background', className)}
-        style={c ? { backgroundColor: c, color: '#fff' } : undefined}
+        className={cn('inline-flex shrink-0 items-center rounded-[3px] border-l-4 py-0.5 pl-1.5 pr-1.5 text-[11px] font-medium whitespace-nowrap', alpha, className)}
+        style={{ ...style, borderColor: role.color ?? 'var(--primary)' }}
       >
         {role.name}
       </span>
@@ -42,8 +41,8 @@ export function RoleBadge({
 
   return (
     <span
-      className={cn('inline-flex shrink-0 items-center rounded-[2px] px-1.5 py-0.5 text-[11px] font-medium whitespace-nowrap', !c && 'bg-muted text-muted-foreground', className)}
-      style={c ? { color: c, backgroundColor: tint } : undefined}
+      className={cn('inline-flex shrink-0 items-center rounded-[3px] px-1.5 py-0.5 text-[11px] font-medium whitespace-nowrap', alpha, className)}
+      style={style}
     >
       {role.name}
     </span>

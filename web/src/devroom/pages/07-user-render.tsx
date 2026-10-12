@@ -84,9 +84,27 @@ function TitlePanelBody() {
 }
 
 const PAIRS: Array<{ n: number; name: string; note: string; role: RoleDesign; title: TitleDesign }> = [
-  { n: 1, name: '形状对立', note: '权限=直角小标签（像分类）／头衔=圆润胶囊（像称号）', role: 1, title: 1 },
-  { n: 2, name: '轻重对立', note: '权限=左侧竖线的纯文字（最轻）／头衔=描边方框（有边界）', role: 2, title: 2 },
-  { n: 3, name: '明暗对立', note: '权限=实心深底浅字（最重）／头衔=彩色下划线（最轻）', role: 3, title: 3 },
+  {
+    n: 1,
+    name: 'Ring UI Tag 预设',
+    note: '权限=Ring UI Tag（tagType 预设 + 半透明 backgroundColor）／头衔=半透明底 + 同色细描边',
+    role: 1,
+    title: 1,
+  },
+  {
+    n: 2,
+    name: 'Tailwind alpha · 形状对立',
+    note: '两者都用 Tailwind 透明度修饰符（bg-*/12 直接生成半透明底）／权限方角小标签、头衔全圆胶囊',
+    role: 2,
+    title: 2,
+  },
+  {
+    n: 3,
+    name: '半透明底 + 色条',
+    note: '两者都是半透明底，靠色条方向区分：权限左侧竖条、头衔底部横条',
+    role: 3,
+    title: 3,
+  },
 ];
 
 export default function UserControlsPage() {
@@ -94,7 +112,7 @@ export default function UserControlsPage() {
     <div className='flex flex-col gap-4'>
       <Card
         name='权限 × 头衔 · 差异化方案（三选一）'
-        note='现在两者都是「小方块+浅底」，区分度不够。每套都是**成对**的：形状、轻重、明暗各走一个方向。点徽标可展开。'
+        note='**统一都用带颜色的半透明背景**（Ring UI Tag 的 backgroundColor / Tailwind 的 bg-*/12），差异只靠形状、边框与色条方向。每套成对给出，点徽标可展开。'
       >
         {PAIRS.map((p) => (
           <Row key={p.n} label={'方案 ' + p.n + ' · ' + p.name} hint={p.note}>
