@@ -1,11 +1,13 @@
 import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
+import { Check } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 // 通用下拉面板。触发元素就是传进来的东西本身（徽标 / 按钮）。
 // 它只管三件事：展开/收起、点外部与 Esc 关闭、向上/向下自适应。
 // **不画箭头**：可点标记是触发器自己的事——A 系用 Ring UI Button 自带的 dropdown 箭头，
 // B 系用 VividButton / VividSelect 自己渲染（曾经在面板里给任意触发器旁边画三角，属于画蛇添足）。
-// 面板样式：表头 + 内容区 + 圆角/阴影/最大高度滚动，条目统一用 DropdownItem。
+// **面板里不重复标题**：label 只用作 aria-label（例如「排序方式」的下拉里不该再写一遍「排序方式」）。
+// 面板样式：圆角 + 边框 + 阴影 + 最大高度滚动，条目统一用 DropdownItem（选中项打勾）。
 export type DropdownDirection = 'down' | 'up' | 'auto';
 
 export function DropdownPanel({
@@ -94,7 +96,6 @@ export function DropdownPanel({
             width,
           )}
         >
-          <span className='border-b border-border bg-muted/60 px-3 py-1.5 text-left text-[11px] font-semibold text-muted-foreground'>{label}</span>
           <span className='flex max-h-72 flex-col overflow-y-auto p-1 text-left'>{children}</span>
         </span>
       ) : null}
@@ -106,10 +107,13 @@ export function DropdownPanel({
 export function DropdownItem({
   children,
   onClick,
+  selected = false,
   className,
 }: {
   children: ReactNode;
   onClick?: () => void;
+  /** 当前选中项：右侧打勾 */
+  selected?: boolean;
   className?: string;
 }) {
   const base = cn(
@@ -117,9 +121,17 @@ export function DropdownItem({
     onClick && 'cursor-pointer hover:bg-accent focus-visible:bg-accent outline-none',
     className,
   );
+  const content = (
+    <>
+      <span className='min-w-0 truncate'>{children}</span>
+      {selected ? <Check aria-hidden className='size-4 shrink-0' /> : null}
+    </>
+  );
   return onClick ? (
-    <button type='button' onClick={onClick} className={base}>{children}</button>
+    <button type='button' onClick={onClick} className={base} aria-pressed={selected}>
+      {content}
+    </button>
   ) : (
-    <span className={base}>{children}</span>
+    <span className={base}>{content}</span>
   );
 }

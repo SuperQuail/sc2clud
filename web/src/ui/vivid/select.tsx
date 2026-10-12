@@ -73,6 +73,7 @@ export function VividSelect({
               onChange(o.key);
               setOpen(false);
             }}
+            selected={o.key === value}
             className={o.key === value ? 'bg-accent font-medium' : undefined}
           >
             {o.label}

@@ -202,7 +202,14 @@ export default function InteractivePage() {
         }
         dev={
           <>
-            <Line label='INPUT 类型（表单里用）'>
+            <Line label='展开态样本（打勾 = 当前选中）'>
+              <DropdownPanel label='排序方式' width='w-52' open onOpenChange={() => {}} trigger={<VividButton tone='soft' dropdown>排序</VividButton>}>
+                <DropdownItem selected>最新回复</DropdownItem>
+                <DropdownItem onClick={() => {}}>最新发布</DropdownItem>
+                <DropdownItem onClick={() => {}}>最多回复</DropdownItem>
+              </DropdownPanel>
+            </Line>
+            <Line label='INPUT 类型（表单里用，Ring 原生行为）'>
               <Select
                 type={SelectType.INPUT}
                 label='排序方式'
