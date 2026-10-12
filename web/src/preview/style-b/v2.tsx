@@ -228,21 +228,56 @@ function fakeTopics(cursor: string | null, limit: number, failFirst: boolean): P
    所以图内一律用 currentColor，颜色由容器上的文字色类决定。 */
 const COVER_INK = ['text-primary', 'text-foreground', 'text-muted-foreground'];
 
-/** 封面：用令牌变量画的抽象图（真实项目这里是 /img/<hash> 缩略图，≤60KB 由后端生成）。 */
-function coverImage(seed: number): string {
-  const svg =
-    '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 800">' +
-    '<defs><pattern id="p" width="64" height="64" patternUnits="userSpaceOnUse">' +
-    '<path d="M64 0H0V64" fill="none" stroke="currentColor" stroke-opacity=".18"/></pattern></defs>' +
-    '<rect width="1200" height="800" fill="currentColor" fill-opacity=".08"/>' +
-    '<rect width="1200" height="800" fill="url(#p)"/>' +
-    '<circle cx="' + String(300 + (seed % 5) * 120) + '" cy="430" r="210" fill="none" stroke="currentColor"' +
-    ' stroke-opacity=".55" stroke-width="22"/>' +
-    '<circle cx="' + String(840 - (seed % 4) * 100) + '" cy="510" r="140" fill="none" stroke="currentColor"' +
-    ' stroke-opacity=".38" stroke-width="14"/>' +
-    '<path d="M0 690L1200 540" stroke="currentColor" stroke-opacity=".3" stroke-width="10"/>' +
-    '</svg>';
-  return dataUrl(svg);
+/* 版块色带的纹理用 SVG 元素画：5 条竖线 + 一组斜线。
+   不用 SVG <pattern>——它的 id 是文档级的，一个页面上多张封面必然撞名。 */
+const GRID_LINE = <line stroke='currentColor' strokeOpacity='.22' strokeWidth='1.5' x1='0' x2='0' y1='0' y2='800' />;
+const GRID_SLASH = <line stroke='currentColor' strokeOpacity='.16' strokeWidth='1.5' x1='0' x2='0' y1='-400' y2='1200' />;
+
+/** 封面：内联 SVG 画的抽象图（真实项目这里是 /img/<hash> 缩略图，≤60KB 由后端生成）。 */
+function CoverArt({ seed, title }: { seed: number; title: string }) {
+  return (
+    <svg
+      aria-hidden
+      className='size-full'
+      focusable='false'
+      preserveAspectRatio='xMidYMid slice'
+      viewBox='0 0 1200 800'
+    >
+      <rect fill='currentColor' fillOpacity='.08' height='800' width='1200' />
+      <g>
+        {[0, 50, 150, 700, 750].map((x) => (
+          <g key={x} transform={'translate(' + x + ' 0)'}>
+            {GRID_LINE}
+          </g>
+        ))}
+        {[0, 50, 150, 700, 750].map((x) => (
+          <g key={'s' + x} transform={'translate(' + x + ' 0) rotate(18)'}>
+            {GRID_SLASH}
+          </g>
+        ))}
+      </g>
+      <circle
+        cx={300 + (seed % 5) * 120}
+        cy={430}
+        fill='none'
+        r={210}
+        stroke='currentColor'
+        strokeOpacity='.5'
+        strokeWidth={22}
+      />
+      <circle
+        cx={840 - (seed % 4) * 100}
+        cy={510}
+        fill='none'
+        r={140}
+        stroke='currentColor'
+        strokeOpacity='.35'
+        strokeWidth={14}
+      />
+      <path d='M0 690L1200 540' fill='none' stroke='currentColor' strokeOpacity='.3' strokeWidth={10} />
+      <title>{title}</title>
+    </svg>
+  );
 }
 
 
@@ -252,10 +287,6 @@ function seedOf(text: string): number {
   return n;
 }
 
-/** 数据 URL 的手工编码：encodeURIComponent 会把中文与 < > 一起码掉，体积翻三倍。 */
-function dataUrl(svg: string): string {
-  return 'data:image/svg+xml,' + svg.split('#').join('%23').split('\n').join('');
-}
 
 const compact = new Intl.NumberFormat('zh-CN', { notation: 'compact', maximumFractionDigits: 1 });
 const wall = new Intl.DateTimeFormat('zh-CN', { month: 'numeric', day: 'numeric' });
@@ -330,14 +361,14 @@ function TopicCard({ topic, now }: { topic: TopicItem; now: number }) {
     >
       {topic.cover ? (
         <div className={cn('relative aspect-video w-full bg-muted', COVER_INK[seed % COVER_INK.length])}>
-          {/* 定宽高比容器：图未到时高度已占住，CLS 为 0（前端方案 §9.1） */}
-          <img
-            alt={''}
-            className='absolute inset-0 size-full object-cover'
-            loading='lazy'
-            src={coverImage(seed)}
-          />
-          <CardMarks className='absolute top-3 left-3' topic={topic} />
+          {/* 固定宽高比容器：图未到时高度已占住，CLS 为 0（前端方案 §9.1） */}
+          <div className='absolute inset-0'>
+            <CoverArt seed={seed} title={topic.board.name + ' 封面'} />
+          </div>
+          {/* 角标压在封面图上：垫一层背景色，否则遇到同色封面就读不出来 */}
+          <div className='absolute top-0 left-0 rounded-br-lg bg-background/85 p-2.5 backdrop-blur-sm'>
+            <CardMarks topic={topic} />
+          </div>
         </div>
       ) : null}
 
@@ -761,7 +792,7 @@ export default function StyleBDenseGrid() {
             <section aria-busy={state === 'loading'} aria-label='主题列表'>
               {state === 'loading' ? (
                 <>
-                  <span className='sr-only'>正在加载主题…</span>
+                  <span className='sr-only' role='status'>正在加载主题…</span>
                   <div className='grid grid-cols-1 gap-4 sm:grid-cols-2'>
                     <CardSkeleton />
                     <CardSkeleton />

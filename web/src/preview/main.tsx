@@ -7,10 +7,12 @@ import A1 from './style-a/v1';
 import A2 from './style-a/v2';
 import B1 from './style-b/v1';
 import B2 from './style-b/v2';
+import D1 from './style-d/v1';
+import D2 from './style-d/v2';
 
-// 预览入口：?s=a|b&v=1|2&theme=light|dark
+// 预览入口：?s=a|b|d&v=1|2&theme=light|dark
 // 独立于产品入口（preview.html），不进 index 的构建产物
-const VARIANTS = { a1: A1, a2: A2, b1: B1, b2: B2 } as const;
+const VARIANTS = { a1: A1, a2: A2, b1: B1, b2: B2, d1: D1, d2: D2 } as const;
 type Key = keyof typeof VARIANTS;
 
 const p = new URLSearchParams(location.search);

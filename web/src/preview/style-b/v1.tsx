@@ -658,7 +658,7 @@ export default function StyleBContentFirst() {
           <section aria-busy={state === 'loading'} aria-label='主题列表' className='mt-4'>
             {state === 'loading' ? (
               <>
-                <span className='sr-only'>正在加载主题…</span>
+                <span className='sr-only' role='status'>正在加载主题…</span>
                 <Skeleton />
                 <Skeleton />
                 <Skeleton />

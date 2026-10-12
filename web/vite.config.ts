@@ -11,6 +11,7 @@ export default defineConfig({
   resolve: { alias: { '@': fileURLToPath(new URL('./src', import.meta.url)) } },
   server: {
     port: 5173,
+    watch: { ignored: ['**/.tmp-*/**', '**/node_modules/**', '**/dist/**'] },
     // 开发期同域：只请求 /api，转发到后端，与生产形态一致（前端方案 §10.1）
     proxy: { '/api': 'http://127.0.0.1:8080' },
   },
