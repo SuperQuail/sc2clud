@@ -12,7 +12,7 @@ const PAGES: Record<string, { title: string; el: () => React.ReactNode }> = {
   '01-interactive': { title: '01 · 交互与表单', el: () => <InteractivePage /> },
   '05-our-components': { title: '05 · 我们的组合件', el: () => <OurComponentsPage /> },
   '06-user-styles': { title: '06 · 用户向风格候选', el: () => <UserStylesPage /> },
-  '07-user-render': { title: '07 · 用户渲染候选', el: () => <UserRenderPage /> },
+  '07-user-render': { title: '07 · 用户身份控件', el: () => <UserRenderPage /> },
 };
 
 export function DevRoom({ page }: { page: string }) {

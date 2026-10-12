@@ -1,122 +1,123 @@
-import { Shield, Sparkles } from 'lucide-react';
 import { assetUrl } from '@/lib/url';
 import { UserAvatar } from '@/ui/user/avatar';
 import { RoleBadge } from '@/ui/user/role-badge';
 import { TitleBadge } from '@/ui/user/title-badge';
-import type { UserSummary } from '@/ui/user/user-badge';
+import { Username, type UsernameVariant } from '@/ui/user/username';
 
-// DevRoom 07 · 用户渲染三版候选（先定这个，再谈帖子页）
-// 同一批人的三处场景（列表行 / 楼层 / 作者卡），三套排布。挑一套作为全站基线。
+// DevRoom 07 · 用户身份控件（各自独立、可复用）
+// 这一页**不模拟帖子页**：四个控件是分开的，任何地方都能单独拿去用。
+// 用户名给三个**明显不同**的样式变体供选择；权限/头衔/头像各自独立成控件。
 const A = (p: string) => assetUrl(p);
 
-const ME: UserSummary = {
-  handle: 'tangtian',
-  nickname: '唐天',
-  avatar: A('miyin-portrait-320.webp'),
-  role: { key: 'admin', name: '管理员' },
-  title: { name: '执政官', color: '#2563eb' },
-};
-const MOD: UserSummary = { handle: 'linshi', nickname: '林诗', avatar: A('miyin-chibi-160.webp'), role: { key: 'moderator', name: '版主' } };
-const PLAIN: UserSummary = { handle: 'newbie', nickname: '新来的', role: { key: 'member', name: '会员' }, title: { name: '新手上路', color: '#059669' } };
-const ROWS = [ME, MOD, PLAIN];
+const ADMIN = { handle: 'tangtian', nickname: '唐天', role: { key: 'admin', name: '管理员' } };
+const MOD = { handle: 'linshi', nickname: '林诗', role: { key: 'moderator', name: '版主' } };
+const PLAIN = { handle: 'newbie', nickname: '新来的', role: { key: 'member', name: '会员' } };
+const LONG = { handle: 'a-very-long-handle-here', nickname: '一个特别特别长的昵称用来压测截断行为', role: { key: 'member', name: '会员' } };
+const ALL = [ADMIN, MOD, PLAIN, LONG];
 
-function Frame({ n, name, tagline, children }: { n: string; name: string; tagline: string; children: React.ReactNode }) {
+function Row({ label, hint, children }: { label: string; hint?: string; children: React.ReactNode }) {
   return (
-    <section className='overflow-hidden rounded-xl border border-border'>
-      <header className='flex flex-wrap items-baseline gap-3 bg-muted px-4 py-2.5'>
-        <h2 className='text-[13px] font-semibold text-foreground'>第 {n} 版 · {name}</h2>
-        <p className='text-[12px] text-muted-foreground'>{tagline}</p>
-      </header>
-      <div className='flex flex-col gap-3 bg-background p-4'>{children}</div>
-    </section>
-  );
-}
-
-function Ctx({ label, children }: { label: string; children: React.ReactNode }) {
-  return (
-    <div className='flex flex-col gap-2 rounded-lg border border-border p-3'>
-      <span className='text-[11px] text-muted-foreground'>{label}</span>
-      {children}
+    <div className='flex flex-col gap-1.5 border-b border-border py-2.5 last:border-0'>
+      <span className='flex items-baseline gap-2'>
+        <span className='text-[12px] font-medium text-foreground'>{label}</span>
+        {hint ? <span className='text-[11px] text-muted-foreground'>{hint}</span> : null}
+      </span>
+      <span className='flex flex-wrap items-center gap-x-6 gap-y-2'>{children}</span>
     </div>
   );
 }
 
-const TITLE = '《星海余烬》第三章发布：18 张地图，三个结局';
-
-export default function UserRenderPage() {
+function Card({ name, note, children }: { name: string; note: string; children: React.ReactNode }) {
   return (
-    <div className='flex flex-col gap-5'>
-      <Frame n='1' name='徽标紧跟名字（行内）' tagline='最省纵向空间；名字长时徽标会被挤到换行'>
-        {ROWS.map((u) => (
-          <Ctx key={u.handle} label='列表行'>
-            <span className='text-[15px] font-medium text-foreground'>{TITLE}</span>
-            <span className='flex items-center gap-2'>
-              <UserAvatar name={u.nickname} src={u.avatar} size='sm' />
-              <span className='text-sm font-medium text-foreground'>{u.nickname}</span>
-              {u.role ? <RoleBadge role={u.role} /> : null}
-              {u.title ? <TitleBadge title={u.title} /> : null}
-              <span className='text-xs text-muted-foreground'>2 小时前</span>
-            </span>
-          </Ctx>
-        ))}
-      </Frame>
+    <section className='rounded-lg border border-border bg-card p-3'>
+      <h2 className='text-sm font-semibold text-foreground'>{name}</h2>
+      <p className='mb-1 text-[12px] leading-relaxed text-muted-foreground'>{note}</p>
+      {children}
+    </section>
+  );
+}
 
-      <Frame n='2' name='名字一行、徽标一行' tagline='名字再长也不挤徽标；多占一行高度'>
-        {ROWS.map((u) => (
-          <Ctx key={u.handle} label='列表行'>
-            <span className='text-[15px] font-medium text-foreground'>{TITLE}</span>
-            <span className='flex items-start gap-2'>
-              <UserAvatar name={u.nickname} src={u.avatar} size='sm' />
-              <span className='flex min-w-0 flex-col gap-1'>
-                <span className='flex items-center gap-2'>
-                  <span className='truncate text-sm font-medium text-foreground'>{u.nickname}</span>
-                  <span className='shrink-0 text-xs text-muted-foreground'>2 小时前</span>
-                </span>
-                <span className='flex flex-wrap items-center gap-1.5'>
-                  {u.role ? <RoleBadge role={u.role} /> : null}
-                  {u.title ? <TitleBadge title={u.title} /> : null}
-                </span>
+const VARIANTS: Array<{ key: UsernameVariant; name: string; note: string }> = [
+  { key: 'weight', name: '变体 A · 只靠字重', note: '不着色，管理员加粗、版主半粗；最含蓄，适合密集列表' },
+  { key: 'color', name: '变体 B · 名字着色 + 角色图标', note: '管理员红、版主蓝，名字后跟盾牌/星标；一眼看出身份' },
+  { key: 'pill', name: '变体 C · 胶囊高亮', note: '名字带角色底色胶囊；最显眼，适合作者位与个人主页' },
+];
+
+export default function UserControlsPage() {
+  return (
+    <div className='flex flex-col gap-4'>
+      <Card name='Username（用户名）— 三个样式变体' note='独立控件：只渲染「名字」，不负责权限与头衔的排版。三版视觉差异是一眼可辨的。'>
+        {VARIANTS.map((v) => (
+          <Row key={v.key} label={v.name} hint={v.note}>
+            {ALL.map((u) => (
+              <span key={u.handle} className='flex items-center gap-2'>
+                <UserAvatar name={u.nickname} src={u.handle === 'tangtian' ? A('miyin-portrait-320.webp') : undefined} size='sm' />
+                <Username nickname={u.nickname} role={u.role} variant={v.key} />
               </span>
-            </span>
-          </Ctx>
+            ))}
+          </Row>
         ))}
-      </Frame>
+        <Row label='尺寸' hint='sm / md / lg / xl，四处场景共用同一控件'>
+          <Username nickname='唐天' role={ADMIN.role} size='sm' variant='color' />
+          <Username nickname='唐天' role={ADMIN.role} size='md' variant='color' />
+          <Username nickname='唐天' role={ADMIN.role} size='lg' variant='color' />
+          <Username nickname='唐天' role={ADMIN.role} size='xl' variant='color' />
+        </Row>
+        <Row label='带 @handle' hint='个人主页、资料卡用'>
+          <Username nickname='唐天' handle='tangtian' role={ADMIN.role} variant='color' />
+          <Username nickname='林诗' handle='linshi' role={MOD.role} variant='pill' />
+        </Row>
+        <Row label='无角色 / 超长昵称' hint='未上色、自动截断不挤压后面内容'>
+          <Username nickname='路人甲' />
+          <span className='flex min-w-0 max-w-56 items-center gap-1'><Username nickname={LONG.nickname} role={PLAIN.role} variant='color' /><span className='shrink-0 text-xs text-muted-foreground'>· 2 小时前</span></span>
+        </Row>
+      </Card>
 
-      <Frame n='3' name='头衔前缀 + 角色着色' tagline='不额外占位：头衔写在名字前，权限靠名字颜色与图标表达'>
-        {ROWS.map((u) => {
-          const tone = u.role?.key === 'admin' ? 'text-destructive' : u.role?.key === 'moderator' ? 'text-primary' : 'text-foreground';
-          return (
-            <Ctx key={u.handle} label='列表行'>
-              <span className='text-[15px] font-medium text-foreground'>{TITLE}</span>
-              <span className='flex items-center gap-2'>
-                <UserAvatar name={u.nickname} src={u.avatar} size='sm' />
-                <span className='flex min-w-0 items-center gap-1.5'>
-                  {u.title ? (
-                    <span
-                      className='shrink-0 text-[11px] font-semibold'
-                      style={{ color: u.title.color ?? 'var(--primary)' }}
-                    >
-                      {u.title.name}
-                    </span>
-                  ) : null}
-                  {u.title ? <span aria-hidden className='text-muted-foreground'>·</span> : null}
-                  <span className={'truncate text-sm font-semibold ' + tone}>{u.nickname}</span>
-                  {u.role?.key === 'admin' ? <Shield aria-hidden className='size-3.5 shrink-0 text-destructive' /> : null}
-                  {u.title ? <Sparkles aria-hidden className='size-3.5 shrink-0 text-muted-foreground' /> : null}
-                  <span className='shrink-0 text-xs text-muted-foreground'>2 小时前</span>
-                </span>
-              </span>
-            </Ctx>
-          );
-        })}
-      </Frame>
+      <Card name='RoleBadge（权限）— 独立控件' note='自己就是一个组件；放在名字前、名字后、单独一行、表格列里都行，不需要为场景改它。'>
+        <Row label='四种角色' hint='admin / moderator / member / 未知兜底'>
+          <RoleBadge role={{ key: 'admin', name: '管理员' }} />
+          <RoleBadge role={{ key: 'moderator', name: '版主' }} />
+          <RoleBadge role={{ key: 'member', name: '会员' }} />
+          <RoleBadge role={{ key: 'custom', name: '未知角色' }} />
+        </Row>
+        <Row label='与 Username 并排（由使用方决定顺序，不是控件的职责）'>
+          <span className='flex items-center gap-1.5'><RoleBadge role={ADMIN.role} /><Username nickname='唐天' role={ADMIN.role} variant='weight' /></span>
+          <span className='flex items-center gap-1.5'><Username nickname='林诗' role={MOD.role} variant='weight' /><RoleBadge role={MOD.role} /></span>
+        </Row>
+      </Card>
 
-      <section className='rounded-lg border border-dashed border-border p-3'>
-        <h2 className='text-sm font-semibold text-foreground'>三版都用同一批数据</h2>
-        <p className='text-[12px] leading-relaxed text-muted-foreground'>
-          管理员（红）+ 执政官（蓝）／版主（蓝）无头衔／普通会员（绿）+ 新手上路。选定后写进 src/ui/user，全站统一。
-        </p>
-      </section>
+      <Card name='TitleBadge（头衔）— 独立控件' note='运营/活动给的称号，可自定义颜色；与权限互不影响，也不需要跟名字绑在一起。'>
+        <Row label='常见头衔 / 无颜色兜底'>
+          <TitleBadge title={{ name: '执政官', color: '#2563eb' }} />
+          <TitleBadge title={{ name: '精华作者', color: '#7c3aed' }} />
+          <TitleBadge title={{ name: '地图作者', color: '#059669' }} />
+          <TitleBadge title={{ name: '无颜色时用主色' }} />
+        </Row>
+      </Card>
+
+      <Card name='UserAvatar（头像）— 独立控件' note='四档尺寸，有图用图、无图按昵称取稳定色。'>
+        <Row label='尺寸 / 真图 / 兜底'>
+          <UserAvatar name='唐天' src={A('miyin-portrait-320.webp')} size='sm' />
+          <UserAvatar name='唐天' src={A('miyin-portrait-320.webp')} size='md' />
+          <UserAvatar name='林诗' src={A('miyin-chibi-160.webp')} size='lg' />
+          <UserAvatar name='新来的' size='xl' />
+        </Row>
+      </Card>
+
+      <Card name='复用示例：同一批控件，四种场景' note='下面每一处都是把上面四个控件拼起来用的，**没有任何一个是“帖子页专用”**。'>
+        <Row label='① 列表行（头像 + 名字 + 权限）'>
+          <span className='flex items-center gap-2'><UserAvatar name='唐天' src={A('miyin-portrait-320.webp')} size='sm' /><Username nickname='唐天' role={ADMIN.role} variant='color' /><span className='text-xs text-muted-foreground'>2 小时前</span></span>
+        </Row>
+        <Row label='② 个人主页头部（大头像 + 大名字 + 头衔）'>
+          <span className='flex items-center gap-3'><UserAvatar name='唐天' src={A('miyin-portrait-320.webp')} size='xl' /><span className='flex flex-col gap-1'><Username nickname='唐天' handle='tangtian' role={ADMIN.role} size='lg' variant='pill' /><TitleBadge title={{ name: '执政官', color: '#2563eb' }} /></span></span>
+        </Row>
+        <Row label='③ 通知（只有名字，最省）'>
+          <span className='text-sm text-muted-foreground'><Username nickname='林诗' role={MOD.role} variant='color' /> 回复了你的主题</span>
+        </Row>
+        <Row label='④ 管理表格列（权限单独占一列）'>
+          <span className='flex w-64 items-center justify-between gap-2 rounded border border-border px-2 py-1 text-sm'><Username nickname='林诗' variant='weight' /><RoleBadge role={MOD.role} /></span>
+        </Row>
+      </Card>
     </div>
   );
 }
