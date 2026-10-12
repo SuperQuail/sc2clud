@@ -58,10 +58,11 @@ function Toolbar({ onMention }: { onMention: () => void }) {
 
   return (
     <div className='flex flex-wrap items-center gap-1 rounded-md border border-border bg-muted/40 p-1'>
-      <Button ghost icon={icon16(Bold)} aria-label='粗体' title='粗体' onClick={() => editor.dispatchCommand(FORMAT_TEXT_COMMAND, 'bold')} />
-      <Button ghost icon={icon16(Italic)} aria-label='斜体' title='斜体' onClick={() => editor.dispatchCommand(FORMAT_TEXT_COMMAND, 'italic')} />
-      <Button ghost icon={icon16(Code)} aria-label='行内代码' title='行内代码' onClick={() => editor.dispatchCommand(FORMAT_TEXT_COMMAND, 'code')} />
+      <Button data-testid='toolbar-bold' ghost icon={icon16(Bold)} aria-label='粗体' title='粗体' onClick={() => editor.dispatchCommand(FORMAT_TEXT_COMMAND, 'bold')} />
+      <Button data-testid='toolbar-italic' ghost icon={icon16(Italic)} aria-label='斜体' title='斜体' onClick={() => editor.dispatchCommand(FORMAT_TEXT_COMMAND, 'italic')} />
+      <Button data-testid='toolbar-code' ghost icon={icon16(Code)} aria-label='行内代码' title='行内代码' onClick={() => editor.dispatchCommand(FORMAT_TEXT_COMMAND, 'code')} />
       <Button
+        data-testid='toolbar-quote'
         ghost
         icon={icon16(Quote)}
         aria-label='引用'
@@ -72,13 +73,14 @@ function Toolbar({ onMention }: { onMention: () => void }) {
         })}
       />
       <Button
+        data-testid='toolbar-list'
         ghost
         icon={icon16(List)}
         aria-label='无序列表'
         title='无序列表'
         onClick={() => editor.dispatchCommand(INSERT_UNORDERED_LIST_COMMAND, undefined)}
       />
-      <Button ghost icon={icon16(Link2)} aria-label='链接' title='链接' onClick={() => editor.dispatchCommand(TOGGLE_LINK_COMMAND, 'https://')} />
+      <Button data-testid='toolbar-link' ghost icon={icon16(Link2)} aria-label='链接' title='链接' onClick={() => editor.dispatchCommand(TOGGLE_LINK_COMMAND, 'https://')} />
       <Button ghost icon={icon16(AtSign)} aria-label='提及某人' title='提及某人' onClick={onMention} />
     </div>
   );

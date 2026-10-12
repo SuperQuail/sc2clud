@@ -1,6 +1,8 @@
 import type { ReactNode } from 'react';
 import DropdownMenu from '@jetbrains/ring-ui-built/components/dropdown-menu/dropdown-menu';
-import PopupMenu from '@jetbrains/ring-ui-built/components/popup-menu/popup-menu';
+// 注意：内容是自定义节点，要用**基础 Popup**（它的 children 是正经属性）；
+// PopupMenu 是数据驱动的列表（data），塞 children 渲染不出来——踩过。
+import Popup from '@jetbrains/ring-ui-built/components/popup/popup';
 import { Directions } from '@jetbrains/ring-ui-built/components/popup/popup.consts';
 
 // 「点任意元素弹出一块自定义内容」的浮层，**实现全部交给 Ring**：
@@ -45,6 +47,7 @@ export function DropdownPanel({
         // 触发元素本身：注入的属性必须落在这里，否则点不开
         <button
           type='button'
+          data-testid='dropdown-trigger'
           {...anchorProps}
           {...ariaProps}
           className={
@@ -56,10 +59,17 @@ export function DropdownPanel({
         </button>
       )}
       children={(props) => (
-        // data 传空数组：这是内容浮层，不是菜单项列表；内容通过 children 进 List 容器
-        <PopupMenu {...props} data={[]} ariaLabel={label} directions={dirs} className={width}>
-          <span className='flex flex-col gap-2.5 p-3 text-[12px]'>{children}</span>
-        </PopupMenu>
+        <Popup
+          {...props}
+          directions={dirs}
+          className={
+            'rounded-lg border border-border bg-popover text-[12px] shadow-lg ' + width
+          }
+        >
+          <span data-testid='dropdown-content' className='flex flex-col gap-2.5 p-3'>
+            {children}
+          </span>
+        </Popup>
       )}
     />
   );

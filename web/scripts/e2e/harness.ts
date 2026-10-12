@@ -14,6 +14,8 @@ const BROWSERS = [
 export type Page = {
   eval: <T>(expression: string) => Promise<T>;
   clickSelector: (selector: string) => Promise<boolean>;
+  /** 直接聚焦（比点击稳：点击会滚动、可能抢走焦点） */
+  focus: (selector: string) => Promise<boolean>;
   clickByText: (text: string) => Promise<boolean>;
   type: (text: string) => Promise<void>;
   selectAll: () => Promise<void>;
@@ -33,7 +35,11 @@ export type Check = { name: string; url: string; run: (page: Page) => Promise<As
 let browserProc: ReturnType<typeof spawn> | null = null;
 let ws: WebSocket | null = null;
 let nextId = 0;
-const pending = new Map<number, (v: any) => void>();
+/** CDP 返回体：只声明我们真正读到的字段 */
+type CdpReply = {
+  result?: { data?: string; result?: { value?: unknown }; exceptionDetails?: unknown };
+};
+const pending = new Map<number, (v: CdpReply) => void>();
 const sleep = (ms: number): Promise<void> => new Promise<void>((r) => setTimeout(r, ms));
 
 async function startBrowser(port: number) {
@@ -51,19 +57,19 @@ async function connect(port: number, url: string) {
   ws = new WebSocket(target.webSocketDebuggerUrl);
   await new Promise((res) => ws!.addEventListener('open', res));
   ws.addEventListener('message', (ev) => {
-    const m = JSON.parse(String(ev.data));
+    const m = JSON.parse(String(ev.data)) as CdpReply & { id?: number };
     if (m.id && pending.has(m.id)) { pending.get(m.id)!(m); pending.delete(m.id); }
   });
 }
 
-const send = (method: string, params: Record<string, unknown> = {}) =>
-  new Promise<any>((res) => { const id = ++nextId; pending.set(id, res); ws!.send(JSON.stringify({ id, method, params })); });
+const send = (method: string, params: Record<string, unknown> = {}): Promise<CdpReply> =>
+  new Promise<CdpReply>((res) => { const id = ++nextId; pending.set(id, res); ws!.send(JSON.stringify({ id, method, params })); });
 
 function makePage(): Page {
   const evalIn = async <T>(expression: string): Promise<T> => {
     const r = await send('Runtime.evaluate', { returnByValue: true, expression });
     if (r.result?.exceptionDetails) throw new Error('页面里执行失败：' + JSON.stringify(r.result.exceptionDetails).slice(0, 200));
-    return r.result.result.value as T;
+    return r.result?.result?.value as T;
   };
   const clickAt = async (x: number, y: number) => {
     await send('Input.dispatchMouseEvent', { type: 'mouseMoved', x, y });
@@ -73,8 +79,9 @@ function makePage(): Page {
   return {
     eval: evalIn,
     async clickSelector(selector) {
+      // 先滚进视口：在视口外的元素有坐标但点不到（折叠按钮在页面底部，就栽在这）
       const b = await evalIn<{ x: number; y: number } | null>(
-        `(() => { const el = document.querySelector(${JSON.stringify(selector)}); if (!el) return null; const r = el.getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2 }; })()`,
+        `(() => { const el = document.querySelector(${JSON.stringify(selector)}); if (!el) return null; el.scrollIntoView({ block: 'center' }); const r = el.getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2 }; })()`,
       );
       if (!b) return false;
       await clickAt(b.x, b.y);
@@ -82,11 +89,14 @@ function makePage(): Page {
     },
     async clickByText(text) {
       const b = await evalIn<{ x: number; y: number } | null>(
-        `(() => { const el = [...document.querySelectorAll('button,a,[role=button]')].find((x) => (x.textContent ?? '').includes(${JSON.stringify(text)})); if (!el) return null; const r = el.getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2 }; })()`,
+        `(() => { const el = [...document.querySelectorAll('button,a,[role=button]')].find((x) => (x.textContent ?? '').includes(${JSON.stringify(text)})); if (!el) return null; el.scrollIntoView({ block: 'center' }); const r = el.getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2 }; })()`,
       );
       if (!b) return false;
       await clickAt(b.x, b.y);
       return true;
+    },
+    async focus(selector) {
+      return evalIn<boolean>(`(() => { const el = document.querySelector(${JSON.stringify(selector)}); if (!el) return false; el.focus(); return true; })()`);
     },
     async type(text) {
       await send('Input.insertText', { text });
@@ -108,7 +118,7 @@ function makePage(): Page {
     ),
     async shot(path) {
       const r = await send('Page.captureScreenshot', { format: 'png' });
-      writeFileSync(path, Buffer.from(r.result.data, 'base64'));
+      writeFileSync(path, Buffer.from(String(r.result?.data ?? ''), 'base64'));
     },
     wait: sleep,
   };

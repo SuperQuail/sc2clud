@@ -38,7 +38,8 @@ add('禁止手写 HTML 控件', 'gate:ui', gate('check-ui-usage.ts'));
 add('颜色只能来自令牌', 'gate:tokens', gate('check-tokens.ts'));
 add('路径只能来自 src/lib/url.ts', 'gate:urls', gate('check-urls.ts'));
 add('控件必须先在 DevRoom 验证并登记', 'gate:controls', gate('check-controls.ts'));
-add('构建产物自洽（入口/页面/资源）', 'gate:bundle', gate('check-bundle.ts'));
+// gate:bundle 检查「dist 里有 DevRoom」，那是打包环节的事：裸 pnpm build 会清空 dist 且不建 DevRoom，
+// 在这里跑必然假失败（已因此误判过一次）。它由 pack-dev.ts 在打包前执行。
 
 // ── 机器查不了、必须人确认的项 ──
 const TODO: string[] = [];

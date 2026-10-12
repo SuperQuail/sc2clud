@@ -53,8 +53,8 @@ export function ReplyBox({
         {error ? <span className='text-[12px] text-destructive'>{error}</span> : null}
         <div className='flex items-center gap-3'>
           <span className='ml-auto flex items-center gap-3'>
-            <span className={'text-[11px] tabular-nums ' + (over ? 'text-destructive' : 'text-muted-foreground')}>{length} / {maxLength}</span>
-            <Button primary disabled={len === 0} onClick={submit}>发布</Button>
+            <span data-testid='reply-counter' className={'text-[11px] tabular-nums ' + (over ? 'text-destructive' : 'text-muted-foreground')}>{length} / {maxLength}</span>
+            <Button data-testid='reply-publish' primary disabled={len === 0} onClick={submit}>发布</Button>
           </span>
         </div>
       </div>

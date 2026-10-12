@@ -1,4 +1,4 @@
-import { assetUrl } from '@/lib/url';
+import { appPath, assetUrl } from '@/lib/url';
 import { CommentActions } from '@/ui/comment/comment-actions';
 import { CommentItem } from '@/ui/comment/comment-item';
 import { CommentList } from '@/ui/comment/comment-list';
@@ -28,7 +28,7 @@ const REPLIES: CommentData[] = [
   {
     id: 'r1',
     author: LIN,
-    body: '这个思路对，但要注意前置依赖；<a href="/u/58" data-mention="58">@某小X</a> 上次直接覆盖 Maps 目录，结果旧存档读不出来。',
+    body: '这个思路对，但要注意前置依赖；<a href="' + appPath('u/58') + '" data-mention="58">@某小X</a> 上次直接覆盖 Maps 目录，结果旧存档读不出来。',
     createdAt: '2026-09-28 12:25',
     likes: 3,
     dislikes: 0,
@@ -79,7 +79,7 @@ const COMMENTS: CommentData[] = [
   {
     id: 'c1',
     author: XIAO,
-    body: '？为什么不叫我，<a href="/u/12" data-mention="12">@唐天</a> 你说说看',
+    body: '？为什么不叫我，<a href="' + appPath('u/12') + '" data-mention="12">@唐天</a> 你说说看',
     createdAt: '2026-09-28 12:25',
     likes: 12,
     dislikes: 0,

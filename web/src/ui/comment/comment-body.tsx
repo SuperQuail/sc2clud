@@ -35,6 +35,7 @@ export function CommentBody({
     <div className='flex w-full flex-col items-start gap-1'>
       <div
         ref={content}
+        data-testid='collapse-body'
         className={className}
         style={
           collapsed
@@ -45,13 +46,12 @@ export function CommentBody({
               }
             : undefined
         }
-        // eslint-disable-next-line react/no-danger -- 已经过 DOMPurify 清洗
         dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(body) }}
       />
       {collapsible && overflowing ? (
         // 靠右下角（用户要求）：与楼层动作行同一条右边线
         <span className='flex w-full justify-end'>
-          <Button ghost onClick={() => setExpanded((v) => !v)}>{expanded ? '收起' : '展开'}</Button>
+          <Button data-testid='collapse-toggle' ghost onClick={() => setExpanded((v) => !v)}>{expanded ? '收起' : '展开'}</Button>
         </span>
       ) : null}
     </div>

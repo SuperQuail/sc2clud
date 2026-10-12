@@ -1,7 +1,6 @@
 import {
   $applyNodeReplacement,
   DecoratorNode,
-  type EditorConfig,
   type LexicalNode,
   type NodeKey,
   type SerializedLexicalNode,
@@ -42,7 +41,7 @@ export class ImageNode extends DecoratorNode<JSX.Element> {
     return { ...super.exportJSON(), type: 'image', src: this.__src, alt: this.__alt, version: 1 };
   }
 
-  createDOM(_config: EditorConfig): HTMLElement {
+  createDOM(): HTMLElement {
     const span = document.createElement('span');
     span.className = 'inline-block align-middle';
     return span;

@@ -141,7 +141,7 @@ export function ImageUploader({
         {compress && allowOriginal ? (
           <Toggle checked={useOriginal} onChange={(e) => setUseOriginal(e.target.checked)}>上传原图</Toggle>
         ) : null}
-        <span className='text-[11px] tabular-nums text-muted-foreground'>
+        <span data-testid='image-counter' className='text-[11px] tabular-nums text-muted-foreground'>
           {used} / {limit}{compress && !useOriginal ? '　' + COMPRESS_LABEL : ''}
         </span>
       </div>

@@ -1,6 +1,7 @@
 import Button from '@jetbrains/ring-ui-built/components/button/button';
 import { ControlsHeight } from '@jetbrains/ring-ui-built/components/global/controls-height';
 import { Heart, Plus, Send } from 'lucide-react';
+import { appPath } from '@/lib/url';
 import { Line, Pair } from '@/devroom/kit';
 import { VividButton } from '@/ui/vivid/button';
 
@@ -49,7 +50,7 @@ export function ButtonPair() {
           <Line label='提交中 / 禁用 / 链接'>
             <Button primary loader>提交中</Button>
             <Button disabled>禁用</Button>
-            <Button href='/b/campaign'>进入分区</Button>
+            <Button href={appPath('b/campaign')}>进入分区</Button>
           </Line>
         </>
       }
