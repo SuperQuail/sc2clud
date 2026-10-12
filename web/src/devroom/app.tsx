@@ -1,6 +1,7 @@
 import Button from '@jetbrains/ring-ui-built/components/button/button';
 import { VERIFIED } from './registry';
 import { appPath } from '@/lib/url';
+import ShowroomPage from './pages/00-showroom';
 import InteractivePage from './pages/01-interactive';
 import OurComponentsPage from './pages/05-our-components';
 import UserStylesPage from './pages/06-user-styles';
@@ -14,6 +15,7 @@ import { ThemeSwitcher } from '@/ui/theme-switcher';
 
 // 开发者房间：控件在这里**逐件验证**；业务代码只允许使用登记过的控件。
 const PAGES: Record<string, { title: string; el: () => React.ReactNode }> = {
+  '00-showroom': { title: '00 · 样板间', el: () => <ShowroomPage /> },
   '01-interactive': { title: '01 · 交互与表单', el: () => <InteractivePage /> },
   '02-overlay': { title: '02 · 浮层与反馈', el: () => <OverlayPage /> },
   '03-navigation': { title: '03 · 导航与结构', el: () => <NavigationPage /> },
@@ -26,7 +28,7 @@ const PAGES: Record<string, { title: string; el: () => React.ReactNode }> = {
 };
 
 export function DevRoom({ page }: { page: string }) {
-  const current = PAGES[page] ?? PAGES['01-interactive']!;
+  const current = PAGES[page] ?? PAGES['00-showroom']!;
   return (
     <div className='min-h-screen bg-background text-foreground'>
       <header className='border-b border-border bg-background'>
