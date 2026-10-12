@@ -402,7 +402,7 @@
 规则：
 
 - **拉黑**（`blocks`）生效时不允许发送：被拉黑方不能给对方发私信（service 层判）。
-- **实时性**：v1 用**轮询**（会话内 5 秒、全局未读 30 秒）。**不引入 SSE / WebSocket**——后端只有一个进程，但实时通道会把连接与内存预算绑死在 2GB 机器上，收益不值；以后要实时再单开一章。
+- **实时性按档位**：small（2GB）用轮询（会话内 5 秒、全局未读 30 秒）；**standard（4GB）用 SSE 推送 + 30 秒轮询兜底**（端到端延迟 <1 秒）。档位见 `性能与容量.md`。实现上 SSE 只是一个 handler + 每连接几 KB，**不要**引入 WebSocket 或额外组件。
 - 私信正文**不进搜索索引**（隐私）。
 
 **titles**：`id`、`key varchar(32)` UNIQUE、`name varchar(32)`、`color varchar(16)`（如 `#2563eb`）、`description varchar(200)`、`archived_at ts NULL`（归档不删）、`created_at`。
