@@ -1,11 +1,8 @@
 import { Link, Outlet } from 'react-router';
-import Button from '@jetbrains/ring-ui-built/components/button/button';
-import { toggleTheme } from '@/lib/theme';
-import { useState } from 'react';
+import { ThemeSwitcher } from '@/ui/theme-switcher';
 
 // 布局壳：顶栏 / 内容 / 页脚。交互一律属于前端（前端方案 §1.3）
 export function Shell() {
-  const [theme, setTheme] = useState(() => document.documentElement.dataset.theme ?? 'light');
   return (
     <div className='flex min-h-screen flex-col bg-background'>
       <header className='border-b border-border'>
@@ -17,7 +14,7 @@ export function Shell() {
             <Link to='/search'>搜索</Link>
           </nav>
           <div className='ml-auto'>
-            <Button onClick={() => setTheme(toggleTheme())}>{theme === 'dark' ? '浅色' : '深色'}</Button>
+            <ThemeSwitcher compact />
           </div>
         </div>
       </header>

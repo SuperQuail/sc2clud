@@ -1,10 +1,13 @@
 import Button from '@jetbrains/ring-ui-built/components/button/button';
 import { VERIFIED } from './registry';
 import InteractivePage from './pages/01-interactive';
+import OurComponentsPage from './pages/05-our-components';
+import { ThemeSwitcher } from '@/ui/theme-switcher';
 
 // 开发者房间：控件在这里**逐件验证**；业务代码只允许使用登记过的控件。
 const PAGES: Record<string, { title: string; el: () => React.ReactNode }> = {
   '01-interactive': { title: '01 · 交互与表单', el: () => <InteractivePage /> },
+  '05-our-components': { title: '05 · 我们的组合件', el: () => <OurComponentsPage /> },
 };
 
 export function DevRoom({ page }: { page: string }) {
@@ -24,7 +27,10 @@ export function DevRoom({ page }: { page: string }) {
                 {p.title}
               </Button>
             ))}
-            <span className='text-xs text-muted-foreground'>已登记控件：{VERIFIED.length} 个</span>
+            <span className='ml-auto flex items-center gap-3'>
+              <span className='text-xs text-muted-foreground'>已登记控件：{VERIFIED.length} 个</span>
+              <ThemeSwitcher compact />
+            </span>
           </nav>
         </div>
       </header>

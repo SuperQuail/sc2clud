@@ -9,6 +9,9 @@
 :root {
   --radius: 3px;
 
+  /* 设计语言 B 的强调色（赞赏/活动这类要跳出来的动作） */
+  --vivid-accent: #f97316;
+
   /* ── 表面与文字 ── */
   --background: var(--ring-content-background-color);
   --foreground: var(--ring-text-color);

@@ -10,15 +10,15 @@
          <title>页面标题 - SC2clud</title> + description + canonical + Open Graph（前端方案 §2.4）。
          找不到锚点必须启动失败，不允许静默不替换。 -->
     <script>
-      // 全站唯一允许的内联脚本：首次绘制前定好主题，避免深色用户看到白闪（前端方案 §7.1）
       (function () {
         try {
-          var saved = localStorage.getItem('theme');
-          var theme = saved === 'light' || saved === 'dark'
-            ? saved
-            : (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
-          document.documentElement.dataset.theme = theme;
-          if (theme === 'dark') document.documentElement.classList.add('ring-ui-theme-dark');
+          var q = new URLSearchParams(location.search).get('theme');
+          var p = q === 'light' || q === 'dark' || q === 'system' ? q : localStorage.getItem('theme');
+          if (p !== 'light' && p !== 'dark') p = 'system';
+          var dark = p === 'dark' || (p === 'system' && matchMedia('(prefers-color-scheme: dark)').matches);
+          document.documentElement.dataset.theme = dark ? 'dark' : 'light';
+          document.documentElement.dataset.themePreference = p;
+          if (dark) document.documentElement.classList.add('ring-ui-theme-dark');
         } catch (e) {
           document.documentElement.dataset.theme = 'light';
         }
