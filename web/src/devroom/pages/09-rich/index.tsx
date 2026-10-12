@@ -36,7 +36,7 @@ export default function RichPage() {
     <div className='flex flex-col gap-4'>
       <Card
         name='富文本编辑器（帖子正文用）'
-        note='**底层是 Markdown**（后端 content_md 就是它）；左边写源码、右边实时预览，预览由 marked 解析 + DOMPurify 清洗；工具栏是 Ring Button，图片走上传控件。'
+        note='**所见即所得**：编辑区里显示的就是最终内容（Lexical 内核）。底层仍是 **Markdown**（后端 content_md），进出各转换一次；工具栏与输入 @ 走同一个候选面板；图片走上传控件。'
       >
         <MarkdownEditor
           value={md}

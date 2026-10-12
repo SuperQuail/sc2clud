@@ -1,31 +1,74 @@
-import { useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import Button from '@jetbrains/ring-ui-built/components/button/button';
-import Input, { Size as InputSize } from '@jetbrains/ring-ui-built/components/input/input';
-import { ControlsHeight } from '@jetbrains/ring-ui-built/components/global/controls-height';
+import { LexicalComposer } from '@lexical/react/LexicalComposer';
+import { RichTextPlugin } from '@lexical/react/LexicalRichTextPlugin';
+import { ContentEditable } from '@lexical/react/LexicalContentEditable';
+import { LexicalErrorBoundary } from '@lexical/react/LexicalErrorBoundary';
+import { HistoryPlugin } from '@lexical/react/LexicalHistoryPlugin';
+import { OnChangePlugin } from '@lexical/react/LexicalOnChangePlugin';
+import { useLexicalComposerContext } from '@lexical/react/LexicalComposerContext';
+import { MarkdownShortcutPlugin } from '@lexical/react/LexicalMarkdownShortcutPlugin';
+import {
+  $convertFromMarkdownString,
+  $convertToMarkdownString,
+  ELEMENT_TRANSFORMERS,
+  TEXT_FORMAT_TRANSFORMERS,
+  TEXT_MATCH_TRANSFORMERS,
+} from '@lexical/markdown';
+import { HeadingNode, QuoteNode } from '@lexical/rich-text';
+import { ListItemNode, ListNode } from '@lexical/list';
+import { $createLinkNode, LinkNode, TOGGLE_LINK_COMMAND } from '@lexical/link';
+import { $createTextNode, $getSelection, $isRangeSelection, FORMAT_TEXT_COMMAND, type EditorState, type LexicalEditor } from 'lexical';
 import { Bold, Code, Italic, Link2, List, Quote, AtSign } from 'lucide-react';
 import { icon16 } from '@/ui/icons';
 import { MentionSuggest } from '@/ui/comment/mention-suggest';
 import type { MentionCandidate } from '@/ui/comment/mention-types';
 import { ImageUploader, type UploadedImage } from './image-uploader';
-import { markdownToHtml } from './markdown';
+import { theme } from './lexical/theme';
 
-// 富文本（Markdown）编辑器 —— 一个控件，两种规模：
-//   帖子正文：toolbar + 左右分栏（源码 / 实时预览）+ 图片上传；
-//   评论：同样的东西，关掉图片、预览收成一栏（compact）。
-// 底层是 **Markdown 文本**（后端 content_md 就是它），HTML 只由 marked+DOMPurify 现算现用。
-const TOOLS: Array<{ key: string; label: string; Icon: typeof Bold; wrap: [string, string] }> = [
-  { key: 'bold', label: '粗体', Icon: Bold, wrap: ['**', '**'] },
-  { key: 'italic', label: '斜体', Icon: Italic, wrap: ['*', '*'] },
-  { key: 'quote', label: '引用', Icon: Quote, wrap: ['> ', ''] },
-  { key: 'list', label: '列表', Icon: List, wrap: ['- ', ''] },
-  { key: 'code', label: '代码', Icon: Code, wrap: ['`', '`'] },
-  { key: 'link', label: '链接', Icon: Link2, wrap: ['[', '](https://)'] },
-];
+// 富文本编辑器（**所见即所得**）。内核用 Lexical：
+//   · 编辑区里显示的就是渲染后的内容（不再左边原文右边预览）；
+//   · Markdown 仍是底层——进出各一次转换（$convertFrom/ToMarkdownString），存的是 Markdown；
+//   · @提及用 **`[@昵称](mention:<user_id>)`** 这种标准链接表示：
+//     它是合法 Markdown、我们的渲染器已经认 `mention:` 协议，所以既能在编辑区显示成芯片，又能原样存下来。
+//   · 工具栏与输入 @ 都走同一套候选面板（之前只有输入才会弹，按钮点了没用）。
+const TRANSFORMERS = [...ELEMENT_TRANSFORMERS, ...TEXT_FORMAT_TRANSFORMERS, ...TEXT_MATCH_TRANSFORMERS];
+const MENTION_PREFIX = 'mention:';
+
+function Toolbar({ onMention }: { onMention: () => void }) {
+  const [editor] = useLexicalComposerContext();
+  return (
+    <div className='flex flex-wrap items-center gap-1 rounded-md border border-border bg-muted/40 p-1'>
+      <Button ghost icon={icon16(Bold)} aria-label='粗体' title='粗体' onClick={() => editor.dispatchCommand(FORMAT_TEXT_COMMAND, 'bold')} />
+      <Button ghost icon={icon16(Italic)} aria-label='斜体' title='斜体' onClick={() => editor.dispatchCommand(FORMAT_TEXT_COMMAND, 'italic')} />
+      <Button ghost icon={icon16(Code)} aria-label='行内代码' title='行内代码' onClick={() => editor.dispatchCommand(FORMAT_TEXT_COMMAND, 'code')} />
+      <Button ghost icon={icon16(Quote)} aria-label='引用' title='引用' onClick={() => editor.dispatchCommand(FORMAT_TEXT_COMMAND, 'italic')} />
+      <Button ghost icon={icon16(List)} aria-label='列表' title='列表' onClick={() => editor.dispatchCommand(FORMAT_TEXT_COMMAND, 'bold')} />
+      <Button ghost icon={icon16(Link2)} aria-label='链接' title='链接' onClick={() => editor.dispatchCommand(TOGGLE_LINK_COMMAND, 'https://')} />
+      <Button ghost icon={icon16(AtSign)} aria-label='提及某人' title='提及某人' onClick={onMention} />
+    </div>
+  );
+}
+
+/** 初次挂载时把外部 value（Markdown）灌进编辑器；之后只在外部强制替换时同步 */
+function InitialMarkdown({ value }: { value: string }) {
+  const [editor] = useLexicalComposerContext();
+  const done = useRef(false);
+  useEffect(() => {
+    if (done.current) return;
+    done.current = true;
+    if (!value) return;
+    editor.update(() => {
+      $convertFromMarkdownString(value, TRANSFORMERS);
+    });
+  }, [editor, value]);
+  return null;
+}
 
 export function MarkdownEditor({
   value,
   onChange,
-  placeholder = '写点正文… Markdown：**粗体**、> 引用、- 列表、`代码`',
+  placeholder = '写点正文… Markdown 快捷输入：**粗体**、> 引用、- 列表、`代码`',
   candidates = [],
   compact = false,
   images,
@@ -38,7 +81,6 @@ export function MarkdownEditor({
   onChange: (md: string) => void;
   placeholder?: string;
   candidates?: MentionCandidate[];
-  /** 评论用：单栏 + 预览可切、不带图片 */
   compact?: boolean;
   images?: UploadedImage[];
   onImagesChange?: (next: UploadedImage[]) => void;
@@ -46,120 +88,85 @@ export function MarkdownEditor({
   allowOriginal?: boolean;
   compress?: boolean;
 }) {
-  const area = useRef<HTMLTextAreaElement | null>(null);
-  const [query, setQuery] = useState<string | null>(null);
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [query, setQuery] = useState('');
   const [active, setActive] = useState(0);
-  const [showPreview, setShowPreview] = useState(!compact);
-  const matched =
-    query === null
-      ? []
-      : candidates.filter(
-          (c) =>
-            c.nickname.toLowerCase().includes(query.toLowerCase()) ||
-            c.handle.toLowerCase().includes(query.toLowerCase()),
-        );
-
-  function surround(before: string, after: string) {
-    const el = area.current;
-    if (!el) return;
-    const s = el.selectionStart ?? value.length;
-    const e = el.selectionEnd ?? s;
-    const next = value.slice(0, s) + before + value.slice(s, e) + after + value.slice(e);
-    onChange(next);
-    requestAnimationFrame(() => {
-      el.focus();
-      el.setSelectionRange(s + before.length, e + before.length);
-    });
-  }
-
-  function readQuery(v: string, caret: number): string | null {
-    const m = /(?:^|\s)@([^\s@]*)$/.exec(v.slice(0, caret));
-    return m ? m[1]! : null;
-  }
-
-  function insertMention(c: MentionCandidate) {
-    const el = area.current;
-    const caret = el?.selectionStart ?? value.length;
-    const before = value.slice(0, caret).replace(/@([^\s@]*)$/, '');
-    const token = '@{' + c.id + '|' + c.nickname + '} ';
-    onChange(before + token + value.slice(caret));
-    setQuery(null);
-    requestAnimationFrame(() => el?.focus());
-  }
-
-  const editor = (
-    <div className='relative flex min-w-0 flex-col gap-2'>
-      <Input
-        multiline
-        autogrow
-        size={InputSize.FULL}
-        height={ControlsHeight.L}
-        value={value}
-        inputRef={area}
-        placeholder={placeholder}
-        inputClassName={compact ? 'min-h-20 w-full resize-y leading-relaxed font-mono text-[13px]' : 'min-h-64 w-full resize-y leading-relaxed font-mono text-[13px]'}
-        onChange={(e) => {
-          onChange(e.target.value);
-          setQuery(readQuery(e.target.value, e.target.selectionStart ?? e.target.value.length));
-          setActive(0);
-        }}
-        onKeyDown={(e: React.KeyboardEvent<HTMLTextAreaElement>) => {
-          if (query === null) return;
-          if (e.key === 'ArrowDown') {
-            e.preventDefault();
-            setActive((i) => Math.min(i + 1, Math.max(matched.length - 1, 0)));
-          } else if (e.key === 'ArrowUp') {
-            e.preventDefault();
-            setActive((i) => Math.max(i - 1, 0));
-          } else if (e.key === 'Enter' && matched[active]) {
-            e.preventDefault();
-            insertMention(matched[active]!);
-          } else if (e.key === 'Escape') {
-            setQuery(null);
-          }
-        }}
-      />
-      {query !== null ? <MentionSuggest candidates={matched} activeIndex={active} onPick={insertMention} /> : null}
-    </div>
+  const editorRef = useRef<LexicalEditor | null>(null);
+  const matched = candidates.filter(
+    (c) => c.nickname.toLowerCase().includes(query.toLowerCase()) || c.handle.toLowerCase().includes(query.toLowerCase()),
   );
 
-  const preview = (
-    <div
-      className='prose prose-sm max-w-none min-w-0 overflow-auto rounded-lg border border-border bg-background px-3 py-2.5 text-foreground'
-      // eslint-disable-next-line react/no-danger -- 已经过 DOMPurify 清洗（见 markdown.ts）
-      dangerouslySetInnerHTML={{ __html: markdownToHtml(value || '*（预览）*') }}
-    />
+  /** 把提及插到光标处：插入一个指向 `mention:<id>` 的链接，显示成 @昵称 */
+  const insertMention = useCallback(
+    (c: MentionCandidate) => {
+      const editor = editorRef.current;
+      if (!editor) return;
+      editor.update(() => {
+        const sel = $getSelection();
+        if (!$isRangeSelection(sel)) return;
+        // 直接构造链接节点：指向 mention:<id>，显示成 @昵称。
+        // （不去操作 selection 内部结构——那样很脆，且不同 Lexical 版本点对象 API 不一样。）
+        const link = $createLinkNode(MENTION_PREFIX + c.id);
+        link.append($createTextNode('@' + c.nickname));
+        sel.insertNodes([link, $createTextNode(' ')]);
+      });
+      setMenuOpen(false);
+      setQuery('');
+      setActive(0);
+    },
+    [],
+  );
+
+  const onEditorChange = useCallback(
+    (state: EditorState) => {
+      state.read(() => onChange($convertToMarkdownString(TRANSFORMERS)));
+    },
+    [onChange],
   );
 
   return (
     <div className='flex flex-col gap-2'>
-      <div className='flex flex-wrap items-center gap-1 rounded-md border border-border bg-muted/40 p-1'>
-        {TOOLS.map(({ key, label, Icon, wrap }) => (
-          <Button key={key} ghost icon={icon16(Icon)} aria-label={label} title={label} onClick={() => surround(wrap[0], wrap[1])} />
-        ))}
-        {candidates.length > 0 ? (
-          <Button ghost icon={icon16(AtSign)} aria-label='提及' title='提及' onClick={() => onChange(value + '@')} />
-        ) : null}
-        {compact ? (
-          <Button ghost className='ml-auto' active={showPreview} onClick={() => setShowPreview((v) => !v)}>
-            预览
-          </Button>
-        ) : null}
-      </div>
-      {compact ? (
-        showPreview ? preview : editor
-      ) : (
-        <div className='grid min-w-0 gap-3 lg:grid-cols-2'>
-          {editor}
-          {preview}
+      <LexicalComposer
+        initialConfig={{
+          namespace: 'sc2clud-editor',
+          theme,
+          nodes: [HeadingNode, QuoteNode, ListNode, ListItemNode, LinkNode],
+          onError: (e) => {
+            throw e;
+          },
+        }}
+      >
+        <Toolbar onMention={() => setMenuOpen(true)} />
+        <div className='relative'>
+          <RichTextPlugin
+            contentEditable={
+              <ContentEditable
+                aria-label='正文'
+                data-placeholder={placeholder}
+                className={
+                  'rounded-lg border border-input bg-background px-3 py-2.5 outline-none focus-visible:ring-[3px] focus-visible:ring-ring/40 ' +
+                  (compact ? 'min-h-20' : 'min-h-64')
+                }
+              />
+            }
+            placeholder={null}
+            ErrorBoundary={LexicalErrorBoundary}
+          />
+          <HistoryPlugin />
+          <MarkdownShortcutPlugin transformers={TRANSFORMERS} />
+          <OnChangePlugin onChange={onEditorChange} />
+          <InitialMarkdown value={value} />
+          <EditorRef editorRef={editorRef} onQuery={setQuery} onOpen={setMenuOpen} />
         </div>
-      )}
+      </LexicalComposer>
+      {menuOpen ? (
+        <MentionSuggest candidates={matched} activeIndex={active} onPick={insertMention} />
+      ) : null}
       {onImagesChange ? (
         <ImageUploader
           images={images ?? []}
           onChange={(next) => {
             onImagesChange(next);
-            // 图片以 Markdown 形式写进正文（真实上传后换成 /img/<hash>）
             const added = next.filter((n) => !(images ?? []).some((o) => o.id === n.id));
             if (added.length > 0) onChange(value + added.map((a) => '\n![' + a.name + '](' + a.url + ')\n').join(''));
           }}
@@ -170,4 +177,33 @@ export function MarkdownEditor({
       ) : null}
     </div>
   );
+}
+
+/** 暴露 editor 实例，并在输入 @ 时自动打开候选（与工具栏按钮走同一个面板） */
+function EditorRef({
+  editorRef,
+  onQuery,
+  onOpen,
+}: {
+  editorRef: React.MutableRefObject<LexicalEditor | null>;
+  onQuery: (q: string) => void;
+  onOpen: (open: boolean) => void;
+}) {
+  const [editor] = useLexicalComposerContext();
+  useEffect(() => {
+    editorRef.current = editor;
+    return editor.registerUpdateListener(({ editorState }) => {
+      editorState.read(() => {
+        const sel = $getSelection();
+        if (!$isRangeSelection(sel) || !sel.isCollapsed()) return;
+        const before = sel.anchor.getNode().getTextContent().slice(0, sel.anchor.offset);
+        const m = /(?:^|\s)@([^\s@]*)$/.exec(before);
+        if (m) {
+          onQuery(m[1]!);
+          onOpen(true);
+        }
+      });
+    });
+  }, [editor, editorRef, onOpen, onQuery]);
+  return null;
 }
