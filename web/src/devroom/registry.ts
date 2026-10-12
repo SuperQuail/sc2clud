@@ -1,7 +1,6 @@
 // 开发者房间的控件登记表 —— **唯一真源**。
 // 规矩：没在这里登记过的 Ring UI 控件，禁止在业务代码里 import。
-// 门禁：scripts/check-controls.ts（在 pnpm check 里）扫描 src/**（devroom 与 src/ui 除外），
-//       发现未登记控件直接失败。要新增控件 → 先在 devroom 建一页验证 → 再登记。
+// 门禁：scripts/check-controls.ts（在 pnpm check 里）扫描 src/**（devroom 与 src/ui 除外）。
 export type VerifiedControl = {
   name: string;
   path: string;
@@ -15,20 +14,32 @@ export const VERIFIED: VerifiedControl[] = [
   {
     name: 'button',
     path: '@jetbrains/ring-ui-built/components/button/button',
-    page: '01-button',
+    page: '01-interactive',
     verifiedOn: '2026-10-12',
     props: [
-      'primary / danger / success / error / ghost / transparent / inline / short / active / loader / dropdown / disabled',
-      'height: S | M | L',
-      'icon / iconRight：必须用 icon16(lucideIcon) 包装后的组件',
-      'href 渲染成链接（语义正确的导航）',
-      'aria-label（仅图标按钮必填）',
+      '变体：primary / danger / success / error / ghost / transparent / inline / short / active / loader / dropdown / disabled',
+      'height：ControlsHeight.S | M | L（没有 size prop）',
+      'icon / iconRight：官方 @jetbrains/icons 直接传；lucide 必须 icon16() 包装',
+      'href：渲染成链接（导航用它）',
+      'aria-label：仅图标按钮必填',
     ],
     notes: [
-      'height 用 ControlsHeight.S / M / L 枚举；没有 size 这个 prop。',
-      '图标：优先用官方 @jetbrains/icons（自带固有尺寸，直接传）；lucide 必须 icon16() 包装（默认 24px 会撑破按钮）。',
-      '仅图标按钮必须给 aria-label；导航用 href 而不是 onClick+location。',
-      '【不许覆盖 Ring UI 的尺寸变量】曾经覆盖 --ring-unit（8px→4px），按钮高度是 calc(3 * var(--ring-unit))，结果所有控件缩成一半、文字被挤出按钮。',
+      '不许覆盖 Ring UI 的尺寸变量：曾覆盖 --ring-unit（8→4px），按钮高度是 calc(3 * var(--ring-unit))，所有控件缩一半、文字被挤出按钮。',
+    ],
+  },
+  {
+    name: 'input',
+    path: '@jetbrains/ring-ui-built/components/input/input',
+    page: '01-interactive',
+    verifiedOn: '2026-10-12',
+    props: [
+      'label / error / help：控件自带，不要在外面拼标签与错误行',
+      'icon（官方图标）/ multiline / disabled / height（ControlsHeight）',
+      '受控用 value + onChange，非受控用 defaultValue',
+    ],
+    notes: [
+      '错误文案来自服务端 error.fields，直接喂 error prop。',
+      '原来的 field.tsx / label.tsx / input.tsx 已删除——重复了控件自带的能力。',
     ],
   },
 ];

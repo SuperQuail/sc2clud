@@ -13,6 +13,25 @@
 为什么这么严：本项目已经因为「凭记忆猜 API + 直接把 lucide 图标塞进 Ring UI」出过一次按钮与文字错位，
 而且是**编译器不会报、测试也测不出**的那类问题（见下方「图标」一节）。
 
+## 页面分类（按「交互类型」分页，不按控件一页一个）
+
+为什么按交互类型分：同一类的控件共享**高度体系、焦点行为、键盘约定**，放一页才能看出它们彼此是否协调；
+一个控件一页会让人只记住局部，拼页面时照样出错。
+
+| 页 | 名称 | 放什么 | 状态 |
+|---|---|---|---|
+| **01** | **交互与表单** | Button、ButtonSet、Input、Select、Dropdown/PopupMenu、Toggle、Checkbox、Radio | ✅ 按钮 + Input 已验证 |
+| 02 | 浮层与反馈 | Dialog、Popup、Tooltip、Alert、Confirm、Loader/LoaderInline、ErrorMessage | 待做 |
+| 03 | 导航与结构 | Tabs、Breadcrumbs、Pager、Panel、Table、List、ContentLayout | 待做 |
+| 04 | 展示与状态 | Tag、Avatar、AvatarStack、ProgressBar、Code、Markdown、骨架/空态/错误态（自建） | 待做 |
+| 05 | 我们的组合件 | UserBadge（用户名/等级/头衔/角色）、Markdown 主题、将来的 TopicRow/TopicCard | 待做 |
+| 99 | 隔离实验 | [isolate.tsx](./isolate.tsx)：只引 Ring UI、不引 Tailwind 与令牌，用来判断「是库的问题还是我们集成的问题」 | 工具页，长期保留 |
+
+**一页之内的写法**：按场景分区（如「按钮·常见场景」「输入·Input」），每区一句说明 + 密集网格（`xl:grid-cols-4`），
+每格 = 小标签 + 一句「为什么」+ 实物。不要再按控件切成一格一行。
+
+**已删除的重复件**：`src/ui/` 里原有 shadcn 版 `button/input/label/field`，与 Ring UI 的控件职责重复（两套并存必然漂移），已全部删除。
+`src/ui/` 现在只留 Ring UI **没有**的东西：`user-badge.tsx`（我们的组合件）、`icons.tsx`（lucide 尺寸包装）。
 ## 已登记的控件
 
 | 控件 | 页面 | 验证日期 | 实测可用的 props |

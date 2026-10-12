@@ -1,14 +1,14 @@
 import Button from '@jetbrains/ring-ui-built/components/button/button';
 import { VERIFIED } from './registry';
-import ButtonPage from './pages/01-button';
+import InteractivePage from './pages/01-interactive';
 
 // 开发者房间：控件在这里**逐件验证**；业务代码只允许使用登记过的控件。
 const PAGES: Record<string, { title: string; el: () => React.ReactNode }> = {
-  '01-button': { title: '01 · 按钮 Button', el: () => <ButtonPage /> },
+  '01-interactive': { title: '01 · 交互与表单', el: () => <InteractivePage /> },
 };
 
 export function DevRoom({ page }: { page: string }) {
-  const current = PAGES[page] ?? PAGES['01-button']!;
+  const current = PAGES[page] ?? PAGES['01-interactive']!;
   return (
     <div className='min-h-screen bg-background text-foreground'>
       <header className='border-b border-border bg-background'>
