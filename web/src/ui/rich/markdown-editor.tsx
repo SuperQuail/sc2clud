@@ -22,7 +22,7 @@ import {
 } from '@lexical/markdown';
 import { HeadingNode, QuoteNode } from '@lexical/rich-text';
 import { ListItemNode, ListNode } from '@lexical/list';
-import { $createLinkNode, LinkNode, TOGGLE_LINK_COMMAND } from '@lexical/link';
+import { LinkNode, TOGGLE_LINK_COMMAND } from '@lexical/link';
 import { $createTextNode, $getRoot, $getSelection, $isRangeSelection, FORMAT_TEXT_COMMAND, type EditorState, type LexicalEditor, type TextNode } from 'lexical';
 import { Bold, Code, Italic, Link2, List, Quote, AtSign } from 'lucide-react';
 import { icon16 } from '@/ui/icons';
@@ -31,13 +31,19 @@ import { MentionOption } from '@/ui/comment/mention-option';
 import type { MentionCandidate } from '@/ui/comment/mention-types';
 import { ImageUploader, type UploadedImage } from './image-uploader';
 import { theme } from './lexical/theme';
+import { $createMentionNode, MentionNode } from './lexical/mention-node';
+import { MENTION_TRANSFORMER } from './lexical/mention-transformer';
 
 // 富文本编辑器（所见即所得，Markdown 底层）。
 // @提及用 **Lexical 官方 LexicalTypeaheadMenuPlugin**：贴合触发文字的定位、滚动跟随、
 // ↑↓/Enter/Esc、查询词清空即关闭——全是库自带能力，不自己算光标坐标（手搓那版会飘）。
 // 提及是 `[@昵称](mention:<user_id>)` 标准 Markdown 链接（契约见后端方案 §9）。
-const TRANSFORMERS = [...ELEMENT_TRANSFORMERS, ...TEXT_FORMAT_TRANSFORMERS, ...TEXT_MATCH_TRANSFORMERS];
-const MENTION_URL = 'mention:';
+const TRANSFORMERS = [
+  MENTION_TRANSFORMER,
+  ...ELEMENT_TRANSFORMERS,
+  ...TEXT_FORMAT_TRANSFORMERS,
+  ...TEXT_MATCH_TRANSFORMERS,
+];
 
 function Toolbar({ onMention }: { onMention: () => void }) {
   const [editor] = useLexicalComposerContext();
@@ -133,13 +139,13 @@ export function MarkdownEditor({
   const onSelectOption = useCallback(
     (option: MentionOption, nodeToReplace: TextNode | null, closeMenu: () => void) => {
       editorRef.current?.update(() => {
-        const link = $createLinkNode(MENTION_URL + option.candidate.id);
-        link.append($createTextNode('@' + option.candidate.nickname));
+        const mention = $createMentionNode(option.candidate.nickname, option.candidate.id);
         if (nodeToReplace) {
           const text = nodeToReplace.getTextContent();
           nodeToReplace.setTextContent(text.slice(0, text.lastIndexOf('@')));
-          nodeToReplace.insertAfter(link);
-          link.insertAfter($createTextNode(' '));
+          nodeToReplace.insertAfter(mention);
+          mention.insertAfter($createTextNode(' '));
+          mention.selectEnd();
         }
       });
       closeMenu();
@@ -177,7 +183,7 @@ export function MarkdownEditor({
         initialConfig={{
           namespace: 'sc2clud-editor',
           theme,
-          nodes: [HeadingNode, QuoteNode, ListNode, ListItemNode, LinkNode],
+          nodes: [HeadingNode, QuoteNode, ListNode, ListItemNode, LinkNode, MentionNode],
           onError: (e) => {
             throw e;
           },

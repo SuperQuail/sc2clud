@@ -92,6 +92,31 @@ try {
     console.log((inEditorX ? '✓' : '✗') + ' 水平位置在编辑区内（不是页面角落）');
   }
 
+  // —— 第二阶段：选中候选，然后退格一次，验证「整块删除」 ——
+  const key = (k: string, code: string, vk: number) =>
+    send('Input.dispatchKeyEvent', { type: 'keyDown', key: k, code, windowsVirtualKeyCode: vk })
+      .then(() => send('Input.dispatchKeyEvent', { type: 'keyUp', key: k, code, windowsVirtualKeyCode: vk }));
+
+  await key('Enter', 'Enter', 13);
+  await sleep(400);
+  const afterPick = await send('Runtime.evaluate', {
+    returnByValue: true,
+    expression: "(() => { const e=document.querySelector('[contenteditable=true]'); const c=e.querySelector('.mention-chip'); return { chip: c ? c.textContent : null, userId: c ? c.dataset.mention : null, md: null }; })()",
+  });
+  const picked = afterPick.result.result.value;
+  console.log('选中后：节点=' + JSON.stringify(picked.chip) + '  user_id=' + JSON.stringify(picked.userId));
+  console.log((picked.chip?.startsWith('@') && picked.userId ? '✓' : '✗') + ' 生成的是整块提及节点（带 user_id）');
+
+  await key('Backspace', 'Backspace', 8);
+  await sleep(300);
+  const afterDel = await send('Runtime.evaluate', {
+    returnByValue: true,
+    expression: "(() => { const e=document.querySelector('[contenteditable=true]'); return { chip: e.querySelector('.mention-chip') ? e.querySelector('.mention-chip').textContent : null, text: e.textContent }; })()",
+  });
+  const del = afterDel.result.result.value;
+  console.log('退格一次后：文字=' + JSON.stringify(del.text) + '  剩余提及节点=' + JSON.stringify(del.chip));
+  console.log((del.chip === null ? '✓' : '✗') + ' 一个退格删掉整块（不是删一个字）');
+
   const shot = await send('Page.captureScreenshot', { format: 'png' });
   writeFileSync(OUT + '\\mention-cdp.png', Buffer.from(shot.result.data, 'base64'));
   console.log('截图：' + OUT + '\\mention-cdp.png');
