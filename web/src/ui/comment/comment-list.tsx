@@ -21,7 +21,7 @@ export function CommentList({
   total?: number;
   me: { nickname: string; avatar?: string | null };
   candidates?: MentionCandidate[];
-  onSubmit?: (parentId: string | null, body: string) => void;
+  onSubmit?: (parentId: string | null, body: { json: string; html: string }) => void;
 }) {
   const [sort, setSort] = useState<(typeof SORTS)[number]>('最热');
   const [replyingTo, setReplyingTo] = useState<string | null>(null);

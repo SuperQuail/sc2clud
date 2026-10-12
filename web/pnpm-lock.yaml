@@ -17,6 +17,9 @@ importers:
       '@jetbrains/ring-ui-built':
         specifier: 7.0.129
         version: 7.0.129(@types/react-dom@18.3.7(@types/react@18.3.31))(@types/react@18.3.31)(core-js@3.50.0)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
+      '@lexical/html':
+        specifier: ^0.52.0
+        version: 0.52.0(typescript@6.0.3)
       '@lexical/link':
         specifier: ^0.52.0
         version: 0.52.0(typescript@6.0.3)
@@ -71,9 +74,6 @@ importers:
       lucide-react:
         specifier: ^1.55.0
         version: 1.55.0(@types/react@18.3.31)(react@18.3.1)
-      marked:
-        specifier: ^18.1.0
-        version: 18.1.0
       react:
         specifier: 18.3.1
         version: 18.3.1
@@ -2051,11 +2051,6 @@ packages:
 
   magic-string@1.4.3:
     resolution: {integrity: sha512-z12OxmaPGE0F4xlpGdjuAUckipLpQlTAuAmyGhNoD7ODpYUzvDfvtxUbjM/jwznyP178oju/KDdyi220wNJ0RQ==}
-
-  marked@18.1.0:
-    resolution: {integrity: sha512-PamYXWWWg2nboG3oX5Ffzpy3EFZROqZJK9hSlMmUnekp7TxPs5DcT95vwd46m73/exfKCRVMtgXoPMI4FEJL6w==}
-    engines: {node: '>= 20'}
-    hasBin: true
 
   mdn-data@2.27.1:
     resolution: {integrity: sha512-9Yubnt3e8A0OKwxYSXyhLymGW4sCufcLG6VdiDdUGVkPhpqLxlvP5vl1983gQjJl3tqbrM731mjaZaP68AgosQ==}
@@ -4361,8 +4356,6 @@ snapshots:
   magic-string@1.4.3:
     dependencies:
       '@jridgewell/sourcemap-codec': 1.6.0
-
-  marked@18.1.0: {}
 
   mdn-data@2.27.1: {}
 

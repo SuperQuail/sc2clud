@@ -13,13 +13,8 @@ import {
   LexicalTypeaheadMenuPlugin,
   useBasicTypeaheadTriggerMatch,
 } from '@lexical/react/LexicalTypeaheadMenuPlugin';
-import {
-  $convertFromMarkdownString,
-  $convertToMarkdownString,
-  ELEMENT_TRANSFORMERS,
-  TEXT_FORMAT_TRANSFORMERS,
-  TEXT_MATCH_TRANSFORMERS,
-} from '@lexical/markdown';
+import { ELEMENT_TRANSFORMERS, TEXT_FORMAT_TRANSFORMERS, TEXT_MATCH_TRANSFORMERS } from '@lexical/markdown';
+import { $generateHtmlFromNodes } from '@lexical/html';
 import { HeadingNode, QuoteNode } from '@lexical/rich-text';
 import { ListItemNode, ListNode } from '@lexical/list';
 import { LinkNode, TOGGLE_LINK_COMMAND } from '@lexical/link';
@@ -33,21 +28,15 @@ import { assetUrl } from '@/lib/url';
 import { ImageUploader, type UploadedImage } from './image-uploader';
 import { theme } from './lexical/theme';
 import { $createMentionNode, MentionNode } from './lexical/mention-node';
-import { MENTION_TRANSFORMER } from './lexical/mention-transformer';
 import { $createImageNode, ImageNode } from './lexical/image-node';
-import { IMAGE_TRANSFORMER } from './lexical/image-transformer';
 
-// 富文本编辑器（所见即所得，Markdown 底层）。
+// 富文本编辑器（所见即所得）。**存储用 Lexical 自带的 EditorState JSON**——
 // @提及用 **Lexical 官方 LexicalTypeaheadMenuPlugin**：贴合触发文字的定位、滚动跟随、
 // ↑↓/Enter/Esc、查询词清空即关闭——全是库自带能力，不自己算光标坐标（手搓那版会飘）。
-// 提及是 `[@昵称](mention:<user_id>)` 标准 Markdown 链接（契约见后端方案 §9）。
-const TRANSFORMERS = [
-  MENTION_TRANSFORMER,
-  IMAGE_TRANSFORMER,
-  ...ELEMENT_TRANSFORMERS,
-  ...TEXT_FORMAT_TRANSFORMERS,
-  ...TEXT_MATCH_TRANSFORMERS,
-];
+// 这是库的原生格式：节点自带 type/version，exportJSON/importJSON 无损往返，不依赖我们自己写的转换器。
+// Markdown 只留「打字快捷方式」（**粗体**、> 引用…），**不再是存储格式**：
+// Lexical 的原生存储是 EditorState JSON（每个节点自带 type/version，exportJSON/importJSON 无损往返）。
+const SHORTCUT_TRANSFORMERS = [...ELEMENT_TRANSFORMERS, ...TEXT_FORMAT_TRANSFORMERS, ...TEXT_MATCH_TRANSFORMERS];
 
 function Toolbar({ onMention }: { onMention: () => void }) {
   const [editor] = useLexicalComposerContext();
@@ -64,14 +53,16 @@ function Toolbar({ onMention }: { onMention: () => void }) {
   );
 }
 
-function InitialMarkdown({ value }: { value: string }) {
+/** 首次挂载时把已存的内容灌进编辑器：value 是 `SerializedEditorState` 的 JSON 字符串。
+ *  空串就保持空白；解析失败直接抛出（保存的是我们自己的格式，不该出现坏数据）。 */
+function InitialState({ value }: { value: string }) {
   const [editor] = useLexicalComposerContext();
   const done = useRef(false);
   useEffect(() => {
     if (done.current) return;
     done.current = true;
     if (!value) return;
-    editor.update(() => $convertFromMarkdownString(value, TRANSFORMERS));
+    editor.setEditorState(editor.parseEditorState(value));
   }, [editor, value]);
   return null;
 }
@@ -131,7 +122,8 @@ export function MarkdownEditor({
   compress = true,
 }: {
   value: string;
-  onChange: (md: string) => void;
+  /** json = SerializedEditorState；html = 只读展示用（已由调用方决定是否再清洗） */
+  onChange: (json: string, html: string) => void;
   placeholder?: string;
   candidates?: MentionCandidate[];
   compact?: boolean;
@@ -207,8 +199,16 @@ export function MarkdownEditor({
     });
   }, []);
 
+  // 同时给出**存储格式（JSON）**与**展示格式（HTML）**：
+  //   JSON 是编辑真源（无损，含提及节点的 user_id）；HTML 给列表/搜索等只读场景用，服务端会再清洗一遍。
   const onEditorChange = useCallback(
-    (state: EditorState) => state.read(() => onChange($convertToMarkdownString(TRANSFORMERS))),
+    (state: EditorState) => {
+      const editor = editorRef.current;
+      if (!editor) return;
+      const json = JSON.stringify(state.toJSON());
+      const html = state.read(() => $generateHtmlFromNodes(editor, null));
+      onChange(json, html);
+    },
     [onChange],
   );
 
@@ -245,9 +245,9 @@ export function MarkdownEditor({
           ErrorBoundary={LexicalErrorBoundary}
         />
         <HistoryPlugin />
-        <MarkdownShortcutPlugin transformers={TRANSFORMERS} />
+        <MarkdownShortcutPlugin transformers={SHORTCUT_TRANSFORMERS} />
         <OnChangePlugin onChange={onEditorChange} />
-        <InitialMarkdown value={value} />
+        <InitialState value={value} />
         <DemoImage
           enabled={typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('demo') === 'image'}
           src={assetUrl('miyin-portrait-320.webp')}

@@ -2,7 +2,7 @@ import { useState } from 'react';
 import Button from '@jetbrains/ring-ui-built/components/button/button';
 import { Card, Row } from '@/devroom/kit';
 import { CommentBody } from '@/ui/comment/comment-body';
-import { plainLength } from '@/ui/rich/markdown';
+import { textLength } from '@/ui/comment/comment-body';
 import { ImageUploader, type UploadedImage } from '@/ui/rich/image-uploader';
 import { MarkdownEditor } from '@/ui/rich/markdown-editor';
 
@@ -18,62 +18,62 @@ const CANDIDATES = [
 export default function RichPage() {
   const [imgs10, setImgs10] = useState<UploadedImage[]>([]);
   const [imgs3, setImgs3] = useState<UploadedImage[]>([]);
-  const [row, setRow] = useState<{ id: string; body_md: string; saved_at: string } | null>(null);
+  const [row, setRow] = useState<{ id: string; content_json: string; content_html: string; saved_at: string } | null>(null);
   const [busy, setBusy] = useState(false);
 
-  /** 模拟后端：**只存 content_md**（Markdown 原文），不存 HTML —— 与后端 §9 契约一致 */
+  /** 模拟后端：存 Lexical 的 **EditorState JSON**（真源）+ 写入时生成的 HTML（只读展示用） */
   function save() {
     setBusy(true);
     window.setTimeout(() => {
-      setRow({ id: 'p_' + Math.random().toString(36).slice(2, 8), body_md: md, saved_at: new Date().toLocaleTimeString() });
+      setRow({ id: 'p_' + Math.random().toString(36).slice(2, 8), content_json: doc.json, content_html: doc.html, saved_at: new Date().toLocaleTimeString() });
       setBusy(false);
     }, 250);
   }
-  const [md, setMd] = useState('');
+  const [doc, setDoc] = useState<{ json: string; html: string }>({ json: '', html: '' });
   const [imgs, setImgs] = useState<UploadedImage[]>([]);
 
   return (
     <div className='flex flex-col gap-4'>
       <Card
         name='富文本编辑器（帖子正文用）'
-        note='**所见即所得**：编辑区里显示的就是最终内容（Lexical 内核）。底层仍是 **Markdown**（后端 content_md），进出各转换一次；工具栏与输入 @ 走同一个候选面板；图片走上传控件。'
+        note='**所见即所得**（Lexical 内核）。存储用它**自带的 EditorState JSON**（节点自带 type/version，无损往返），写入时同时生成 HTML 供只读展示；工具栏与输入 @ 走同一个候选面板；图片是正文节点。'
       >
         <MarkdownEditor
-          value={md}
+          value={doc.json}
           candidates={CANDIDATES}
-          onChange={setMd}
+          onChange={(json, html) => setDoc({ json, html })}
           images={imgs}
           onImagesChange={setImgs}
           maxImages={10}
           allowOriginal
         />
-        <Row label='当前内容' hint='正文存 Markdown（后端 content_md），HTML 由服务端 goldmark 渲染并清洗'>
+        <Row label='当前内容' hint='正文存 EditorState JSON（后端 content_json），HTML 由前端生成、服务端清洗后存 content_html'>
           <span className='text-[12px] text-muted-foreground'>
-            正文 {plainLength(md)} 字　图片 {imgs.length} 张　（底层是 Markdown，HTML 只在预览时现算）
+            正文 {textLength(doc.html)} 字　图片 {imgs.length} 张　（底层是 Markdown，HTML 只在预览时现算）
           </span>
         </Row>
       </Card>
 
       <Card
         name='往返测试：存一次，再读回来'
-        note='存：只存 Markdown 原文（模拟后端 content_md）。读：用**只读渲染器**渲染回来——与评论区共用同一个 markdown.ts，所以预览与最终展示必然一致。'
+        note='存：JSON + HTML（模拟后端的 content_json / content_html）。读：直接用存下来的 HTML 渲染回来——与评论区共用同一个 CommentBody。'
       >
         <Row label='① 存' hint='把当前 Markdown 存进模拟的那一行；@提及会以 token 形式存下去'>
-          <Button primary disabled={md.trim().length === 0 || busy} onClick={save}>
+          <Button primary disabled={textLength(doc.html) === 0 || busy} onClick={save}>
             {busy ? '保存中…' : '存一次（模拟发布）'}
           </Button>
-          <span className='text-[11px] text-muted-foreground'>{plainLength(md)} 字 / {imgs.length} 张图</span>
+          <span className='text-[11px] text-muted-foreground'>{textLength(doc.html)} 字 / {imgs.length} 张图</span>
         </Row>
         {row ? (
           <>
-            <Row label='② 存储里到底存了什么' hint='就是后端那行的 content_md，原样：'>
+            <Row label='② 存储里到底存了什么' hint='后端那两列的样子（JSON 太长，这里截断显示）：'>
               <pre className='max-h-40 w-full overflow-auto rounded-md border border-border bg-muted/40 p-2 text-[12px] whitespace-pre-wrap text-foreground'>
-                {JSON.stringify(row, null, 2)}
+                {JSON.stringify({ ...row, content_json: row.content_json.slice(0, 160) + (row.content_json.length > 160 ? '…' : '') }, null, 2)}
               </pre>
             </Row>
-            <Row label='③ 读回来' hint='和上面的 token 对照：@{12|唐天} 应该渲染成可点的 @唐天'>
+            <Row label='③ 读回来' hint='读回来的样子——提及是链接、图片是图片'>
               <div className='w-full max-w-2xl rounded-md border border-border p-3'>
-                <CommentBody body={row.body_md} className='prose prose-sm max-w-none text-foreground' />
+                <CommentBody body={row.content_html} className='prose prose-sm max-w-none text-foreground' />
               </div>
             </Row>
           </>
