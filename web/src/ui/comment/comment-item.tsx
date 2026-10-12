@@ -53,7 +53,7 @@ export function CommentItem({
         <CommentBody
           body={comment.body}
           collapsible={level === 'top'}
-          collapsedHeight={240}
+          collapsedHeight={180}
           className={cn('text-foreground', s.body)}
         />
         <div className='flex flex-wrap items-center gap-x-4 gap-y-1'>
