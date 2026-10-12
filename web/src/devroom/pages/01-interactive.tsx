@@ -224,30 +224,6 @@ export default function InteractivePage() {
         }
       />
 
-      <Pair
-        name='工具条按钮下拉（箭头由触发器自己画）'
-        note='A 系的箭头是 Ring UI Button 自带的 dropdown；B 系由 VividButton 的 dropdown 渲染。**DropdownPanel 本身不再画箭头**。'
-        user={
-          <>
-            <Line label='B 系'>
-              <DropdownPanel label='排序方式' width='w-52' trigger={<VividButton tone='soft' dropdown>排序</VividButton>}>
-                <DropdownItem onClick={() => {}}>最新回复</DropdownItem>
-                <DropdownItem onClick={() => {}}>最新发布</DropdownItem>
-              </DropdownPanel>
-            </Line>
-          </>
-        }
-        dev={
-          <>
-            <Line label='A 系'>
-              <DropdownPanel label='排序方式' width='w-52' trigger={<Button dropdown>排序</Button>}>
-                <DropdownItem onClick={() => {}}>最新回复</DropdownItem>
-                <DropdownItem onClick={() => {}}>最新发布</DropdownItem>
-              </DropdownPanel>
-            </Line>
-          </>
-        }
-      />
 
       <section className='rounded-lg border border-dashed border-border p-3'>
         <h2 className='text-sm font-semibold text-foreground'>还没做对照的控件</h2>
@@ -257,7 +233,8 @@ export default function InteractivePage() {
         <div className='mt-2 flex flex-wrap items-center gap-2 text-[11px] text-muted-foreground'>
           <span className='rounded-sm bg-muted px-1.5 py-0.5'>Checkbox</span>
           <span className='rounded-sm bg-muted px-1.5 py-0.5'>Radio</span>
-          <span className='text-muted-foreground'>另：图标工具 icon16 / 官方图标仍在第 05 页。</span>
+          <span className='rounded-sm bg-muted px-1.5 py-0.5'>工具条下拉</span>
+          <span className='text-muted-foreground'>工具条下拉**暂时一律用 Ring 的**（我们自己做的那版观感不行，已废弃）；Ring 的 Dropdown/PopupMenu 还没在 DevRoom 验证，验证并登记后才能进业务代码。另：图标工具 icon16 / 官方图标仍在第 05 页。</span>
         </div>
       </section>
     </div>

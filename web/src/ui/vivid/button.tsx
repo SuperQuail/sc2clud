@@ -37,8 +37,6 @@ export type VividButtonProps = React.ButtonHTMLAttributes<HTMLButtonElement> &
     /** 图标：lucide 组件；这里是我们自己的控件，所以直接传，不需要 Ring UI 的尺寸包装 */
     icon?: LucideIcon;
     loading?: boolean;
-    /** 下拉触发器：右侧显示箭头（对齐 Ring UI Button 的 dropdown） */
-    dropdown?: boolean;
   };
 
 export function VividButton({
@@ -47,7 +45,6 @@ export function VividButton({
   size,
   icon: Icon,
   loading = false,
-  dropdown = false,
   disabled,
   children,
   ...props
@@ -66,12 +63,6 @@ export function VividButton({
         <Icon aria-hidden className='size-5' />
       ) : null}
       {children}
-      {dropdown ? (
-        <span
-          aria-hidden
-          className='ml-0.5 size-0 border-x-[4px] border-t-[5px] border-x-transparent border-t-current opacity-70'
-        />
-      ) : null}
     </button>
   );
 }
