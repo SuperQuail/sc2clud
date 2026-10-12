@@ -1,29 +1,34 @@
 import { useState } from 'react';
 import { Card, Row } from '@/devroom/kit';
+import { plainLength } from '@/ui/rich/markdown';
 import { ImageUploader, type UploadedImage } from '@/ui/rich/image-uploader';
-import { RichTextEditor } from '@/ui/rich/rich-text-editor';
+import { MarkdownEditor } from '@/ui/rich/markdown-editor';
 
 // DevRoom 09 · 富文本编辑器与图片上传（两个高复用控件）
 // 图片能力全部由属性控制：max（默认 10）、compress（默认开）、allowOriginal（默认关）。
 export default function RichPage() {
   const [imgs10, setImgs10] = useState<UploadedImage[]>([]);
   const [imgs3, setImgs3] = useState<UploadedImage[]>([]);
-  const [payload, setPayload] = useState<{ html: string; count: number }>({ html: '', count: 0 });
+  const [md, setMd] = useState('');
+  const [imgs, setImgs] = useState<UploadedImage[]>([]);
 
   return (
     <div className='flex flex-col gap-4'>
       <Card
         name='富文本编辑器（帖子正文用）'
-        note='工具栏复用 Ring Button；正文容器是 Ring ContentEditable；图片走下面的上传控件。命令用 execCommand（已废弃但无需新增依赖）。'
+        note='**底层是 Markdown**（后端 content_md 就是它）；左边写源码、右边实时预览，预览由 marked 解析 + DOMPurify 清洗；工具栏是 Ring Button，图片走上传控件。'
       >
-        <RichTextEditor
+        <MarkdownEditor
+          value={md}
+          onChange={setMd}
+          images={imgs}
+          onImagesChange={setImgs}
           maxImages={10}
           allowOriginal
-          onChange={(p) => setPayload({ html: p.html, count: p.images.length })}
         />
-        <Row label='当前内容' hint='图片与正文会一起提交；正文存 HTML（后端再清洗）'>
+        <Row label='当前内容' hint='正文存 Markdown（后端 content_md），HTML 由服务端 goldmark 渲染并清洗'>
           <span className='text-[12px] text-muted-foreground'>
-            正文 {payload.html.replace(/<[^>]+>/g, '').length} 字　图片 {payload.count} 张
+            正文 {plainLength(md)} 字　图片 {imgs.length} 张　（底层是 Markdown，HTML 只在预览时现算）
           </span>
         </Row>
       </Card>

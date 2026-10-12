@@ -1,36 +1,13 @@
-import { Fragment } from 'react';
-import { appPath } from '@/lib/url';
+import { markdownToHtml } from '@/ui/rich/markdown';
 
-// 评论正文渲染。**@提及的底层存的是用户 id**，显示时渲染成昵称，点击跳用户主页。
-// 存储格式（与后端约定）：`@{123|唐天}` —— 123 是 users.id，唐天是当时的昵称。
-// 只存 id 不存昵称是不行的（要显示）；只存昵称也不行（昵称可改、且可重名）——两个都存，显示用后者。
-const MENTION = /@\{(\d+)\|([^}]+)\}/g;
-
+// 评论正文渲染。**与编辑器共用同一个渲染器**（marked + DOMPurify + @提及还原成链接），
+// 所以预览看到什么，发出来就是什么。存储是 Markdown（含 `@{id|昵称}` token），不是 HTML。
 export function CommentBody({ body, className }: { body: string; className?: string }) {
-  const parts: Array<string | { id: string; nickname: string }> = [];
-  let last = 0;
-  for (const m of body.matchAll(MENTION)) {
-    if (m.index! > last) parts.push(body.slice(last, m.index));
-    parts.push({ id: m[1]!, nickname: m[2]! });
-    last = m.index! + m[0].length;
-  }
-  if (last < body.length) parts.push(body.slice(last));
-
   return (
-    <p className={className}>
-      {parts.map((p, i) =>
-        typeof p === 'string' ? (
-          <Fragment key={i}>{p}</Fragment>
-        ) : (
-          <a
-            key={i}
-            href={appPath('u/' + p.id)}
-            className='rounded-sm text-primary outline-none hover:underline focus-visible:ring-[3px] focus-visible:ring-ring/50'
-          >
-            @{p.nickname}
-          </a>
-        ),
-      )}
-    </p>
+    <div
+      className={className}
+      // eslint-disable-next-line react/no-danger -- 已经过 DOMPurify 清洗
+      dangerouslySetInnerHTML={{ __html: markdownToHtml(body) }}
+    />
   );
 }
