@@ -1,14 +1,22 @@
 // 方向 A / v2「密度墙」：单行制表 + 无侧栏 + 顶栏压到 36px。
-// 密度目标：1080p 一屏 22 条以上 —— 每个主题固定占 36px 一行，像看日志或工单列表。
+// 密度目标：1080p 一屏 22 条以上 —— 每个主题固定占一行（≥768px 时 36px），像看日志或工单列表。
 // 与 v1 的差别是结构性的：没有侧栏（宽度全给列表）、行只有一行（高度的钱花在条数上）、
-// 封面缩成标题前的 20×14 小图、版块导航改成下拉 + 纯文本横向条、多了列标题行（表头对齐才能扫列）。
+// 封面缩成标题前的 20×14 小图、版块导航改成横向滚动的 Ring UI 按钮组、多了列标题行（表头对齐才能扫列）。
+// 控件同样全部来自 Ring UI（§7.2/§7.6），Tailwind 只管布局与间距。
+import Avatar from '@jetbrains/ring-ui-built/components/avatar/avatar';
 import Button from '@jetbrains/ring-ui-built/components/button/button';
-import { Eye, Inbox, LoaderCircle, MessageSquare, Moon, Pin, Search, Star, Sun, ThumbsUp, TriangleAlert } from 'lucide-react';
+import ButtonSet from '@jetbrains/ring-ui-built/components/button-set/button-set';
+import ErrorMessage from '@jetbrains/ring-ui-built/components/error-message/error-message';
+import Input, { Size as InputSize } from '@jetbrains/ring-ui-built/components/input/input';
+import LoaderInline from '@jetbrains/ring-ui-built/components/loader-inline/loader-inline';
+import Link from '@jetbrains/ring-ui-built/components/link/link';
+import Tag, { TagType } from '@jetbrains/ring-ui-built/components/tag/tag';
+import Toggle from '@jetbrains/ring-ui-built/components/toggle/toggle';
+import { Eye, MessageSquare, Pin, Search, Star, ThumbsUp, TriangleAlert } from 'lucide-react';
 import { useState } from 'react';
 import { formatTime } from '@/lib/format';
 import { currentTheme, toggleTheme } from '@/lib/theme';
 import { cn } from '@/lib/utils';
-import { Input } from '@/ui/input';
 import coverCampaign from './cover-campaign.svg';
 import coverMap from './cover-map.svg';
 import coverTool from './cover-tool.svg';
@@ -44,11 +52,7 @@ const AUTHORS = {
 } satisfies Record<string, Author>;
 
 const KIND_LABEL: Record<Kind, string> = { discussion: '讨论', resource: '资源', repost: '转载' };
-const KIND_CLASS: Record<Kind, string> = {
-  discussion: 'border-border text-muted-foreground',
-  resource: 'border-primary/40 bg-primary/5 text-primary',
-  repost: 'border-border bg-muted text-foreground/80',
-};
+const KIND_TAG: Record<Kind, TagType> = { discussion: TagType.DEFAULT, resource: TagType.MAIN, repost: TagType.PURPLE };
 
 type Draft = {
   kind: Kind; title: string; board: keyof typeof BOARDS; author: keyof typeof AUTHORS;
@@ -105,27 +109,18 @@ type SortKey = (typeof SORTS)[number]['v'];
 type View = (typeof VIEWS)[number]['v'];
 
 // 表头与每一行共用同一份栅格：列宽只改这里一处，否则表头会与内容错位。
-// <768 只留 4 列（标记 / 类型 / 主题 / 时间），作者、版块、三个计数都被 display:none 掉，
-// 它们不进栅格；作者与计数改在主题行内第二行出现（display:none 不会重复念给读屏）。
+// <768 只留 4 列（标记 / 类型 / 主题 / 时间）；作者、版块、三个计数都被 display:none 掉，
+// 它们不进栅格，作者与计数改在主题行内第二行出现（display:none 不会重复念给读屏）。
 const ROW = 'grid grid-cols-[14px_38px_minmax(0,1fr)_68px] items-center gap-x-2 md:grid-cols-[14px_38px_minmax(0,1fr)_104px_64px_44px_44px_52px_68px]';
 const SKELETON = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9];
-const FOCUS = 'outline-none focus-visible:ring-2 focus-visible:ring-ring';
 const PAGE_CURSOR = 'eyJrIjoxNzYwMjQsImlkIjoiMDE5MmYwMTg2YTRhNCJ9';
+const TOKENS = '[--muted-foreground:color-mix(in_srgb,var(--foreground)_72%,transparent)]';
+const boardHref = (slug: string) => (slug === 'all' ? '#/' : '#/b/' + slug);
 
 function formatCount(n: number): string {
   if (n < 1000) return String(n);
   if (n < 10000) return (n / 1000).toFixed(1) + 'k';
   return (n / 10000).toFixed(1) + '万';
-}
-
-function KindBadge({ kind }: { kind: Kind }) {
-  return <span className={cn('shrink-0 rounded-[2px] border px-0.5 text-[11px] leading-4', KIND_CLASS[kind])}>{KIND_LABEL[kind]}</span>;
-}
-
-function Avatar({ author, className }: { author: Author; className?: string }) {
-  const base = 'flex shrink-0 items-center justify-center rounded-full bg-muted text-muted-foreground';
-  if (!author.avatar) return <span aria-hidden className={cn(base, className)}>{author.nickname.slice(0, 1)}</span>;
-  return <img src={author.avatar} alt={author.nickname + ' 的头像'} width={14} height={14} loading="lazy" className={cn(base, 'object-cover', className)} />;
 }
 
 function Stat({ icon: Icon, value, label, className }: { icon: typeof Eye; value: number; label: string; className?: string }) {
@@ -141,33 +136,33 @@ function Stat({ icon: Icon, value, label, className }: { icon: typeof Eye; value
 function DenseRow({ topic }: { topic: Topic }) {
   const featured = topic.featured_at !== null;
   return (
-    <li className={cn('group relative border-b border-border/60 transition-colors group-hover:bg-muted/50', topic.pinned && 'bg-muted/40')}>
-      <div className={cn(ROW, 'px-2 py-1 md:h-9 md:py-0')}>
+    <li className="group relative border-b border-border/60 transition-colors group-hover:bg-muted/50">
+      <div className={cn(ROW, 'px-2 py-1 md:min-h-9 md:py-0')}>
         <span className="flex justify-center">
           {topic.pinned ? <Pin aria-hidden className="size-3 fill-primary text-primary" /> : featured ? <Star aria-hidden className="size-3 text-muted-foreground" /> : null}
         </span>
-        <KindBadge kind={topic.kind} />
+        <Tag readOnly tagType={KIND_TAG[topic.kind]}>{KIND_LABEL[topic.kind]}</Tag>
         <div className="min-w-0">
           <div className="flex min-w-0 items-center gap-1.5">
             {topic.cover ? (
               <img src={topic.cover} alt={topic.title + ' 的封面'} width={20} height={14} loading="lazy" className="hidden h-3.5 w-5 shrink-0 rounded-[2px] object-cover sm:block" />
             ) : null}
             {topic.pinned || featured ? (
-              <span className={cn('shrink-0 rounded-[2px] border px-0.5 text-[10px] leading-[14px]', topic.pinned ? 'border-primary/40 text-primary' : 'border-border bg-muted text-foreground/80')}>
-                {topic.pinned ? '顶' : '精'}
-              </span>
+              <Tag readOnly tagType={topic.pinned ? TagType.MAIN : TagType.WARNING}>{topic.pinned ? '顶' : '精'}</Tag>
             ) : null}
             <h3 className="min-w-0 text-[13px] leading-5 font-normal">
-              <a href={'#/t/' + topic.id} className={cn(FOCUS, 'block truncate text-foreground after:absolute after:inset-0 hover:text-primary hover:underline')}>{topic.title}</a>
+              <a href={'#/t/' + topic.id} className="block truncate text-foreground outline-none after:absolute after:inset-0 hover:text-primary hover:underline focus-visible:ring-2 focus-visible:ring-ring">
+                {topic.title}
+              </a>
             </h3>
           </div>
           <div className="flex items-center gap-2 text-[11px] text-muted-foreground md:hidden">
             <span className="flex min-w-0 items-center gap-1">
-              <Avatar author={topic.author} className="size-3.5 text-[9px]" />
+              <Avatar url={topic.author.avatar || null} username={topic.author.nickname} size={16} round alt={topic.author.nickname + ' 的头像'} />
               <span className="truncate">{topic.author.nickname}</span>
             </span>
             <span aria-hidden>·</span>
-            <a href={'#/b/' + topic.board.slug} className={cn(FOCUS, 'relative z-10 shrink-0')}>{topic.board.name}</a>
+            <Link inherit href={boardHref(topic.board.slug)} className="relative z-10 shrink-0">{topic.board.name}</Link>
             <span className="ml-auto flex shrink-0 items-center gap-2 tabular-nums">
               <Stat icon={MessageSquare} value={topic.reply_count} label="回复" />
               <Stat icon={ThumbsUp} value={topic.like_count} label="赞" />
@@ -176,10 +171,10 @@ function DenseRow({ topic }: { topic: Topic }) {
           </div>
         </div>
         <div className="hidden min-w-0 items-center gap-1 md:flex">
-          <Avatar author={topic.author} className="size-3.5 text-[9px]" />
+          <Avatar url={topic.author.avatar || null} username={topic.author.nickname} size={16} round alt={topic.author.nickname + ' 的头像'} />
           <span className="truncate text-[12px] text-muted-foreground">{topic.author.nickname}</span>
         </div>
-        <span className="hidden truncate text-[12px] text-muted-foreground md:block">{topic.board.name}</span>
+        <Link inherit href={boardHref(topic.board.slug)} className="relative z-10 hidden truncate text-[12px] text-muted-foreground md:block">{topic.board.name}</Link>
         <Stat icon={MessageSquare} value={topic.reply_count} label="回复" className="hidden justify-end text-muted-foreground md:flex" />
         <Stat icon={ThumbsUp} value={topic.like_count} label="赞" className="hidden justify-end text-muted-foreground md:flex" />
         <Stat icon={Eye} value={topic.view_count} label="浏览" className="hidden justify-end text-muted-foreground md:flex" />
@@ -192,12 +187,16 @@ function DenseRow({ topic }: { topic: Topic }) {
 function SkeletonRows() {
   return (
     <ul aria-busy="true" aria-live="polite" className="border-t border-border">
-      <li className="sr-only">正在加载主题…</li>
+      <li className="flex items-center gap-1.5 border-b border-border px-2 py-1.5 text-[12px] text-muted-foreground">
+        <LoaderInline aria-hidden />
+        正在加载主题…
+      </li>
       {SKELETON.map((k) => (
-        <li key={k} className={cn(ROW, 'border-b border-border/60 px-2 py-1 md:h-9 md:py-0')}>
+        <li key={k} className={cn(ROW, 'border-b border-border/60 px-2 py-1 md:min-h-9 md:py-0')}>
           <span className="size-3 animate-pulse rounded-[2px] bg-muted" />
           <span className="h-4 w-8 animate-pulse rounded-[2px] bg-muted" />
           <span className="h-3.5 w-2/5 animate-pulse rounded-[2px] bg-muted" />
+          <span className="h-3.5 w-12 animate-pulse rounded-[2px] bg-muted md:hidden" />
           <span className="hidden h-3.5 w-16 animate-pulse rounded-[2px] bg-muted md:block" />
           <span className="hidden h-3.5 w-10 animate-pulse rounded-[2px] bg-muted md:block" />
           <span className="hidden h-3.5 w-6 animate-pulse rounded-[2px] bg-muted md:block" />
@@ -213,25 +212,26 @@ function SkeletonRows() {
 function EmptyState({ onReset }: { onReset: () => void }) {
   return (
     <div className="flex flex-col items-center gap-1 border-t border-border px-4 py-10 text-center">
-      <Inbox aria-hidden className="size-5 text-muted-foreground" />
       <p className="text-[13px] font-medium">这个版块还没有主题</p>
       <p className="text-[12px] text-muted-foreground">换个版块，或者发第一个主题。</p>
-      <div className="mt-1.5 flex items-center gap-2">
+      <ButtonSet className="mt-1.5">
         <Button onClick={onReset}>看全部版块</Button>
         <Button primary>发布主题</Button>
-      </div>
+      </ButtonSet>
     </div>
   );
 }
 
 function ErrorState({ onRetry }: { onRetry: () => void }) {
   return (
-    <div role="alert" className="flex flex-col items-center gap-1 border-t border-border px-4 py-10 text-center">
-      <TriangleAlert aria-hidden className="size-5 text-destructive" />
-      <p className="text-[13px] font-medium">主题列表加载失败</p>
-      <p className="text-[12px] text-muted-foreground">服务器错误，稍后重试即可。</p>
-      <p className="text-[11px] text-muted-foreground">common.internal · 请求编号 req_9f3c1a72</p>
-      <Button className="mt-1.5" onClick={onRetry}>重试</Button>
+    <div role="alert" className="flex flex-col items-center gap-3 border-t border-border px-4 py-10">
+      <ErrorMessage
+        icon={TriangleAlert}
+        code="common.internal"
+        message="主题列表加载失败"
+        description="服务器错误，稍后重试即可。请求编号 req_9f3c1a72"
+      />
+      <Button onClick={onRetry}>重试</Button>
     </div>
   );
 }
@@ -255,86 +255,46 @@ export default function StyleAV2() {
   }
 
   return (
-    <div className="min-h-screen bg-background text-foreground [--muted-foreground:color-mix(in_srgb,var(--foreground)_72%,transparent)]">
+    <div className={cn('min-h-screen bg-background text-foreground', TOKENS)}>
       <header className="sticky top-0 z-20 border-b border-border bg-background/95 backdrop-blur">
         <div className="mx-auto flex h-9 max-w-[1600px] items-center gap-2 px-2">
-          <a href="#/" className={cn(FOCUS, 'flex shrink-0 items-center gap-1 rounded-sm')}>
+          <a href="#/" className="flex shrink-0 items-center gap-1 rounded-sm outline-none focus-visible:ring-2 focus-visible:ring-ring">
             <span className="grid size-4.5 place-items-center rounded-[3px] bg-primary text-[10px] font-bold text-primary-foreground">S2</span>
             <span className="text-[13px] font-semibold tracking-tight">SC2clud</span>
           </a>
-          <label htmlFor="a2-board" className="sr-only">选择版块</label>
-          <select
-            id="a2-board"
-            value={board}
-            onChange={(e) => setBoard(e.target.value)}
-            className={cn(FOCUS, 'h-6 max-w-[7rem] shrink-0 rounded-sm border border-input bg-transparent px-1 text-[12px] text-foreground')}
-          >
-            {Object.values(BOARDS).map((b) => <option key={b.slug} value={b.slug}>{b.name}</option>)}
-          </select>
-          <form role="search" onSubmit={(e) => e.preventDefault()} className="relative hidden shrink-0 md:block">
-            <label htmlFor="a2-q" className="sr-only">搜索主题</label>
-            <Search aria-hidden className="pointer-events-none absolute top-1/2 left-1.5 size-3 -translate-y-1/2 text-muted-foreground" />
-            <Input id="a2-q" type="search" placeholder="搜索" className="h-6 w-28 pl-6 text-[12px] transition-[width] focus:w-44" />
-          </form>
-          <div className="ml-auto flex shrink-0 items-center gap-1">
-            <button
-              type="button"
-              aria-pressed={theme === 'dark'}
-              aria-label={theme === 'dark' ? '切换到浅色' : '切换到深色'}
-              onClick={() => setTheme(toggleTheme())}
-              className={cn(FOCUS, 'grid size-6 place-items-center rounded-sm text-muted-foreground hover:bg-muted')}
-            >
-              {theme === 'dark' ? <Sun aria-hidden className="size-3.5" /> : <Moon aria-hidden className="size-3.5" />}
-            </button>
-            <a href="#/u/tangtian" className={cn(FOCUS, 'flex items-center gap-1 rounded-sm px-1 py-0.5 hover:bg-muted')}>
-              <Avatar author={AUTHORS.tang} className="size-4.5 text-[10px]" />
-              <span className="hidden text-[12px] sm:inline">唐天</span>
-              <span className="rounded-full bg-primary px-1 text-[10px] leading-4 text-primary-foreground">
-                <span className="sr-only">未读通知 </span>3
-              </span>
-            </a>
+          <div className="min-w-0 flex-1 overflow-x-auto [scrollbar-width:none]">
+            <ButtonSet className="w-max" role="group" aria-label="版块导航">
+              {Object.values(BOARDS).map((b) => (
+                <Button key={b.slug} active={board === b.slug} aria-pressed={board === b.slug} onClick={() => setBoard(b.slug)}>{b.name}</Button>
+              ))}
+            </ButtonSet>
           </div>
+          <div className="hidden w-28 shrink-0 transition-[width] focus-within:w-44 md:block">
+            <Input size={InputSize.S} icon={Search} aria-label="搜索主题" placeholder="搜索" className="w-full" />
+          </div>
+          <Toggle aria-label="深色模式" checked={theme === 'dark'} onChange={() => setTheme(toggleTheme())} />
+          <a href="#/u/tangtian" className="flex shrink-0 items-center gap-1 rounded-sm px-1 py-0.5 outline-none hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring">
+            <Avatar url={AUTHORS.tang.avatar || null} username="唐天" size={20} round alt="唐天的头像" />
+            <span className="hidden text-[12px] sm:inline">唐天</span>
+            <Tag readOnly tagType={TagType.MAIN}>
+              <span className="sr-only">未读通知 </span>3
+            </Tag>
+          </a>
         </div>
-        <div className="mx-auto flex h-7 max-w-[1600px] items-center gap-2 border-t border-border/60 px-2 text-[11px] text-muted-foreground">
-          <nav aria-label="版块导航" className="flex min-w-0 flex-1 items-center gap-2 overflow-x-auto [scrollbar-width:none]">
-            {Object.values(BOARDS).map((b) => (
-              <a
-                key={b.slug}
-                href={b.slug === 'all' ? '#/' : '#/b/' + b.slug}
-                aria-current={board === b.slug ? 'page' : undefined}
-                onClick={() => setBoard(b.slug)}
-                className={cn(FOCUS, 'shrink-0 rounded-sm whitespace-nowrap hover:text-foreground', board === b.slug && 'font-semibold text-foreground underline decoration-1 underline-offset-2')}
-              >
-                {b.name}
-              </a>
-            ))}
-          </nav>
-          <span className="hidden shrink-0 tabular-nums lg:inline">共 {BOARDS.all.count.toLocaleString('zh-CN')} 个主题</span>
-          <div role="group" aria-label="排序" className="flex shrink-0 items-center gap-0.5">
+        <div className="mx-auto flex h-8 max-w-[1600px] items-center gap-2 border-t border-border/60 px-2 text-[11px] text-muted-foreground">
+          <ButtonSet role="group" aria-label="排序">
             {SORTS.map((s) => (
-              <button
-                key={s.v}
-                type="button"
-                aria-pressed={sort === s.v}
-                onClick={() => setSort(s.v)}
-                className={cn(FOCUS, 'rounded-sm px-1 py-0.5', sort === s.v ? 'bg-muted font-semibold text-foreground' : 'hover:text-foreground')}
-              >
-                {s.label}
-              </button>
+              <Button key={s.v} active={sort === s.v} aria-pressed={sort === s.v} onClick={() => setSort(s.v)}>{s.label}</Button>
             ))}
-          </div>
-          <div role="group" aria-label="预览状态" className="flex shrink-0 items-center gap-0.5">
-            {VIEWS.map((v) => (
-              <button
-                key={v.v}
-                type="button"
-                aria-pressed={view === v.v}
-                onClick={() => setView(v.v)}
-                className={cn(FOCUS, 'rounded-sm border px-1 py-0.5', view === v.v ? 'border-border bg-muted font-semibold text-foreground' : 'border-transparent hover:text-foreground')}
-              >
-                {v.label}
-              </button>
-            ))}
+          </ButtonSet>
+          <span className="hidden shrink-0 tabular-nums lg:inline">共 {BOARDS.all.count.toLocaleString('zh-CN')} 个主题</span>
+          <div className="ml-auto flex items-center gap-2">
+            <span className="hidden lg:inline">预览状态</span>
+            <ButtonSet role="group" aria-label="预览状态">
+              {VIEWS.map((v) => (
+                <Button key={v.v} active={view === v.v} aria-pressed={view === v.v} onClick={() => setView(v.v)}>{v.label}</Button>
+              ))}
+            </ButtonSet>
           </div>
         </div>
       </header>
@@ -348,7 +308,7 @@ export default function StyleAV2() {
         {view === 'list' ? (
           <>
             {/* 列标题只是对齐用的视觉尺子：每个单元格里已有 sr-only 指标名，这里对读屏隐藏避免重复 */}
-            <div aria-hidden className={cn(ROW, 'sticky top-16 z-10 hidden h-6 border-b border-border bg-background px-2 text-[11px] font-semibold text-muted-foreground md:grid')}>
+            <div aria-hidden className={cn(ROW, 'sticky top-17 z-10 hidden border-b border-border bg-background px-2 text-[11px] font-semibold text-muted-foreground md:grid')}>
               <span />
               <span>类型</span>
               <span>主题</span>
@@ -359,10 +319,10 @@ export default function StyleAV2() {
               <span className="text-right">浏览</span>
               <span className="text-right">最后回复</span>
             </div>
-            <ul className="border-t border-border">
+            <ul className="border-t border-border md:border-t-0">
               {items.map((t) => <DenseRow key={t.id} topic={t} />)}
             </ul>
-            <div className="flex items-center justify-center gap-3 py-3 text-[11px] text-muted-foreground">
+            <div className="flex items-center justify-center gap-2 py-3 text-[11px] text-muted-foreground">
               {cursor ? (
                 <>
                   <Button loader={loadingMore} disabled={loadingMore} onClick={loadMore}>{loadingMore ? '加载中' : '加载更多'}</Button>
@@ -373,12 +333,6 @@ export default function StyleAV2() {
               )}
             </div>
           </>
-        ) : null}
-        {view === 'loading' && cursor ? (
-          <p className="flex items-center justify-center gap-1.5 py-2 text-[11px] text-muted-foreground">
-            <LoaderCircle aria-hidden className="size-3.5 animate-spin" />
-            正在拉取下一页
-          </p>
         ) : null}
       </div>
     </div>

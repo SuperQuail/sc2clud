@@ -186,7 +186,7 @@ const FEED: TopicItem[] = [
 
 /* 演示用假接口：形状与后端 §21.3 一致。注释掉这里换成 api('/topics?cursor=…') 即可。
    首屏固定第一次就失败，用来演示错误态；#loading 之外的路径都会成功。 */
-function fakeTopics(cursor: string | null, limit: number, failFirst: boolean): Promise<TopicPage> {
+function fakeTopics(cursor: string | null, limit: number, fail: boolean): Promise<TopicPage> {
   const offset = cursor ? Number(cursor) : 0;
   const item: TopicItem[] = [];
   for (let i = 0; i < limit; i += 1) {
@@ -211,7 +211,7 @@ function fakeTopics(cursor: string | null, limit: number, failFirst: boolean): P
   }
   return new Promise((resolve, reject) => {
     window.setTimeout(() => {
-      if (offset === 0 && failFirst) reject(new Error('network'));
+      if (offset === 0 && fail) reject(new Error('network'));
       else resolve({ data: item, next_cursor: offset + limit < 40 ? String(offset + limit) : null });
     }, 460);
   });
@@ -485,18 +485,16 @@ function TopBar({
         >
           <Search aria-hidden className='size-5' />
         </a>
-        <button
-          aria-label='切换深浅色'
-          className='rounded-md p-2 text-muted-foreground outline-none hover:bg-muted hover:text-foreground focus-visible:ring-[3px] focus-visible:ring-ring/50'
+        {/* 深浅色切换用 Ring UI 的 Button，不手写 <button>（ESLint 同规则） */}
+        <Button
+          className='h-8 shrink-0 gap-1.5 px-3 text-[13px]'
+          ghost
+          icon={theme === 'dark' ? Sun : Moon}
           onClick={onTheme}
-          type='button'
+          aria-label='切换深浅色'
         >
-          {theme === 'dark' ? (
-            <Sun aria-hidden className='size-5' />
-          ) : (
-            <Moon aria-hidden className='size-5' />
-          )}
-        </button>
+          {theme === 'dark' ? '浅色' : '深色'}
+        </Button>
         <a
           className='flex shrink-0 items-center gap-2 rounded-full p-0.5 pr-1 outline-none hover:bg-muted focus-visible:ring-[3px] focus-visible:ring-ring/50 sm:pr-3'
           href='#u/tangtian'
@@ -522,7 +520,8 @@ export default function StyleBContentFirst() {
   const mode = useRef<'load' | 'more' | 'empty'>('load');
   const cursorRef = useRef<string | null>(null);
   const loadingRef = useRef(false);
-  const sendFailed = useRef(false);
+  /* 演示开关：forceError 用来点出错误态 */
+  const forceError = useRef(false);
   const sentinel = useRef<HTMLDivElement | null>(null);
 
   const acquire = useCallback(async () => {
@@ -535,8 +534,7 @@ export default function StyleBContentFirst() {
     const first = mode.current === 'load';
     setState(first ? 'loading' : 'more');
     try {
-      const page = await fakeTopics(cursorRef.current, first ? 6 : 4, !sendFailed.current);
-      sendFailed.current = true;
+      const page = await fakeTopics(cursorRef.current, first ? 6 : 4, forceError.current);
       setList((prev) => (first ? page.data : prev.concat(page.data)));
       cursorRef.current = page.next_cursor;
       setCursor(page.next_cursor);
@@ -569,7 +567,7 @@ export default function StyleBContentFirst() {
 
   const reload = () => {
     mode.current = 'load';
-    sendFailed.current = false;
+    forceError.current = false;
     cursorRef.current = null;
     setCursor(null);
     setList([]);
@@ -617,6 +615,19 @@ export default function StyleBContentFirst() {
               className='h-8 px-3.5 text-[13px]'
             >
               空状态
+            </Button>
+            <Button
+              className='h-8 px-3.5 text-[13px]'
+              onClick={() => {
+                mode.current = 'load';
+                forceError.current = true;
+                cursorRef.current = null;
+                setCursor(null);
+                setList([]);
+                void acquire();
+              }}
+            >
+              错误态
             </Button>
           </div>
 

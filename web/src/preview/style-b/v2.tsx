@@ -472,26 +472,19 @@ function TopBar({
           <PenLine aria-hidden className='size-4' />
           发帖
         </a>
-        <button
-          aria-label='通知'
-          className='relative rounded-md p-2 text-muted-foreground outline-none hover:bg-muted hover:text-foreground focus-visible:ring-[3px] focus-visible:ring-ring/50'
-          type='button'
-        >
-          <Bell aria-hidden className='size-5' />
+        {/* 通知：未读角标用 relative 容器套一个圆点；控件仍是 Ring UI 的 Button */}
+        <span className='relative shrink-0'>
+          <Button aria-label='通知（3 条未读）' ghost icon={Bell} />
           <span className='absolute top-1.5 right-1.5 size-2 rounded-full bg-destructive' />
-        </button>
-        <button
-          aria-label='切换深浅色'
-          className='rounded-md p-2 text-muted-foreground outline-none hover:bg-muted hover:text-foreground focus-visible:ring-[3px] focus-visible:ring-ring/50'
+        </span>
+        <Button
+          className='h-8 shrink-0 gap-1.5 px-3 text-[13px]'
+          ghost
+          icon={theme === 'dark' ? Sun : Moon}
           onClick={onTheme}
-          type='button'
         >
-          {theme === 'dark' ? (
-            <Sun aria-hidden className='size-5' />
-          ) : (
-            <Moon aria-hidden className='size-5' />
-          )}
-        </button>
+          {theme === 'dark' ? '浅色' : '深色'}
+        </Button>
         <a
           className='flex shrink-0 items-center gap-2 rounded-full p-0.5 pr-1 outline-none hover:bg-muted focus-visible:ring-[3px] focus-visible:ring-ring/50 xl:pr-3'
           href='#u/tangtian'
@@ -537,9 +530,9 @@ function LeftRail() {
         <p className='mt-2 text-[12px] leading-[1.7] text-muted-foreground'>
           服务器已升级到 4GB 档位：列表页改用缩略图，私信延迟降到 1 秒内。
         </p>
-        <a className='mt-3 inline-block text-[12px] font-semibold text-primary hover:underline' href='#announce'>
-          查看全部
-        </a>
+        <p className='mt-3 text-[12px] font-semibold text-primary'>
+          查看全部公告 →
+        </p>
       </div>
 
       <div className='mt-auto flex items-center gap-3 px-2 pt-6 text-[12px] text-muted-foreground'>
@@ -644,7 +637,8 @@ export default function StyleBDenseGrid() {
   const mode = useRef<'load' | 'more' | 'empty'>('load');
   const cursorRef = useRef<string | null>(null);
   const loadingRef = useRef(false);
-  const sendFailed = useRef(false);
+  /* 演示开关：forceError 用来点出错误态 */
+  const forceError = useRef(false);
 
   const acquire = useCallback(async () => {
     if (loadingRef.current) return;
@@ -656,8 +650,7 @@ export default function StyleBDenseGrid() {
     const first = mode.current === 'load';
     setState(first ? 'loading' : 'more');
     try {
-      const page = await fakeTopics(cursorRef.current, first ? 8 : 6, !sendFailed.current);
-      sendFailed.current = true;
+      const page = await fakeTopics(cursorRef.current, first ? 8 : 6, forceError.current);
       setList((prev) => (first ? page.data : prev.concat(page.data)));
       cursorRef.current = page.next_cursor;
       setCursor(page.next_cursor);
@@ -675,7 +668,7 @@ export default function StyleBDenseGrid() {
 
   const reload = () => {
     mode.current = 'load';
-    sendFailed.current = false;
+    forceError.current = false;
     cursorRef.current = null;
     setCursor(null);
     setList([]);
@@ -751,6 +744,19 @@ export default function StyleBDenseGrid() {
                 }}
               >
                 空状态
+              </Button>
+              <Button
+                className='h-8 px-3.5 text-[13px]'
+                onClick={() => {
+                  mode.current = 'load';
+                  forceError.current = true;
+                  cursorRef.current = null;
+                  setCursor(null);
+                  setList([]);
+                  void acquire();
+                }}
+              >
+                错误态
               </Button>
             </div>
 

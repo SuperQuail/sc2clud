@@ -16,7 +16,8 @@
     "test": "vitest run",
     "gate:size": "node scripts/check-size.ts",
     "gate:budget": "node scripts/check-budget.ts",
-    "check": "pnpm typecheck && pnpm lint && pnpm test && pnpm gate:size && pnpm build && pnpm gate:budget"
+    "check": "pnpm typecheck && pnpm lint && pnpm gate:ui && pnpm test && pnpm gate:size && pnpm build && pnpm gate:budget",
+    "gate:ui": "node scripts/check-ui-usage.ts"
   },
   "dependencies": {
     "@hookform/resolvers": "^5.9.1",
