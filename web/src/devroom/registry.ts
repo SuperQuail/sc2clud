@@ -110,4 +110,12 @@ export const VERIFIED: VerifiedControl[] = [
   { name: 'app-pager', path: '@/ui/pager', page: '03-navigation', verifiedOn: '2026-10-12',
     props: ['total / currentPage / pageSize / onPageChange / onPageSizeChange', 'pageSizes（默认 20/50/100）', 'showTotal（默认开）', 'labels：覆盖中文文案'],
     notes: ['**不要直接用 Ring 的 Pager**：它默认英文文案（Previous/Next page/Last page/N per page），中文界面会漏。'] },
+  { name: 'count-badge', path: '@/ui/message/count-badge', page: '10-messages', verifiedOn: '2026-10-12', props: ['见组件注释：全部为数据驱动的通用 props'], notes: ['数字角标（展示件，非交互）'] },
+  { name: 'notice-nav', path: '@/ui/message/notice-nav', page: '10-messages', verifiedOn: '2026-10-12', props: ['见组件注释：全部为数据驱动的通用 props'], notes: ['竖排导航：items/value/onChange，行用 Ring Button'] },
+  { name: 'notice-row', path: '@/ui/message/notice-row', page: '10-messages', verifiedOn: '2026-10-12', props: ['见组件注释：全部为数据驱动的通用 props'], notes: ['一行通知：actors/action/body/excerpt/time/actions'] },
+  { name: 'notice-list', path: '@/ui/message/notice-list', page: '10-messages', verifiedOn: '2026-10-12', props: ['见组件注释：全部为数据驱动的通用 props'], notes: ['列表容器：title/hint/empty/children'] },
+  { name: 'notice-chat', path: '@/ui/message/notice-chat', page: '10-messages', verifiedOn: '2026-10-12', props: ['见组件注释：全部为数据驱动的通用 props'], notes: ['会话气泡：messages + children（输入区）'] },
+  { name: 'notice-composer', path: '@/ui/message/notice-composer', page: '10-messages', verifiedOn: '2026-10-12', props: ['见组件注释：全部为数据驱动的通用 props'], notes: ['输入区：复用 MarkdownEditor(compact) + Ring Button'] },
+  { name: 'notice-settings', path: '@/ui/message/notice-settings', page: '10-messages', verifiedOn: '2026-10-12', props: ['见组件注释：全部为数据驱动的通用 props'], notes: ['设置面板：模式驱动的 rows（radio/toggle/tags）'] },
+  { name: 'notice-layout', path: '@/ui/message/notice-layout', page: '10-messages', verifiedOn: '2026-10-12', props: ['见组件注释：全部为数据驱动的通用 props'], notes: ['两栏骨架：nav + children'] },
 ];

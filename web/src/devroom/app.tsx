@@ -10,6 +10,7 @@ import OverlayPage from './pages/02-overlay';
 import NavigationPage from './pages/03-navigation';
 import DisplayPage from './pages/04-display';
 import CommentsPage from './pages/08-comments';
+import MessagesPage from './pages/10-messages';
 import RichPage from './pages/09-rich';
 import { ThemeSwitcher } from '@/ui/theme-switcher';
 
@@ -24,6 +25,7 @@ const PAGES: Record<string, { title: string; el: () => React.ReactNode }> = {
   '06-user-styles': { title: '06 · 用户向风格候选', el: () => <UserStylesPage /> },
   '07-user-render': { title: '07 · 用户身份控件', el: () => <UserRenderPage /> },
   '08-comments': { title: '08 · 评论区', el: () => <CommentsPage /> },
+  '10-messages': { title: '10 · 信息中心', el: () => <MessagesPage /> },
   '09-rich': { title: '09 · 富文本与图片', el: () => <RichPage /> },
 };
 
