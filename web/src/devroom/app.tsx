@@ -29,7 +29,7 @@ export function DevRoom({ page }: { page: string }) {
             ))}
             <span className='ml-auto flex items-center gap-3'>
               <span className='text-xs text-muted-foreground'>已登记控件：{VERIFIED.length} 个</span>
-              <ThemeSwitcher compact />
+              <ThemeSwitcher />
             </span>
           </nav>
         </div>

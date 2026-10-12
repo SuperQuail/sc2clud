@@ -1,10 +1,13 @@
 import { Heart, Plus, Send } from 'lucide-react';
 import { ThemeSwitcher } from '@/ui/theme-switcher';
-import { UserBadge } from '@/ui/user-badge';
+import { UserAvatar } from '@/ui/user/avatar';
+import { RoleBadge } from '@/ui/user/role-badge';
+import { TitleBadge } from '@/ui/user/title-badge';
+import { UserBadge, type UserSummary } from '@/ui/user/user-badge';
 import { VividButton } from '@/ui/vivid/button';
 
-// DevRoom 05 · 我们自己的组合件（不是 Ring UI 的控件，是我们按业务语义封装的）
-// 这一页同时是**两套设计语言的对照**：A = Ring UI（专业/密集），B = Tailwind 自建（鲜艳/大/圆润）。
+// DevRoom 05 · 我们自己的组合件
+// 原则：**拆成小控件 + 换排布**，而不是为每个场景重新设计一个用户展示。
 function Area({ title, desc, children }: { title: string; desc: string; children: React.ReactNode }) {
   return (
     <section className='flex flex-col gap-2 rounded-lg border border-border bg-card p-3'>
@@ -12,28 +15,71 @@ function Area({ title, desc, children }: { title: string; desc: string; children
         <h2 className='text-sm font-semibold text-foreground'>{title}</h2>
         <p className='text-[12px] leading-relaxed text-muted-foreground'>{desc}</p>
       </div>
-      <div className='flex flex-wrap items-center gap-4'>{children}</div>
+      <div className='flex flex-wrap items-center gap-5'>{children}</div>
     </section>
   );
 }
 
-const ME = {
+const ME: UserSummary = {
   handle: 'tangtian',
   nickname: '唐天',
-  level: 12,
-  role: { key: 'moderator', name: '版主' },
+  role: { key: 'admin', name: '管理员' },
   title: { name: '执政官', color: '#2563eb' },
 };
+const MOD: UserSummary = { handle: 'linshi', nickname: '林诗', role: { key: 'moderator', name: '版主' } };
+const PLAIN: UserSummary = { handle: 'newbie', nickname: '新来的' };
 
 export default function OurComponentsPage() {
   return (
     <div className='flex flex-col gap-4'>
       <Area
-        title='主题：日间 / 夜间 / 跟随系统'
-        desc='点一下就能切。跟随系统时会监听系统切换；偏好写在 localStorage，首屏由内联脚本应用（不闪白）。'
+        title='主题切换（点击循环）'
+        desc='一个按钮：日间 → 夜间 → 跟随系统 → 日间。图标显示当前状态，点击切下一个。'
       >
         <ThemeSwitcher />
-        <ThemeSwitcher compact />
+      </Area>
+
+      <Area
+        title='头像（自建，用户向）'
+        desc='不用 Ring UI 的 Avatar：四档尺寸、无图时按昵称取稳定色、支持真图。'
+      >
+        <UserAvatar name='唐天' size='sm' />
+        <UserAvatar name='唐天' size='md' />
+        <UserAvatar name='林诗' size='lg' />
+        <UserAvatar name='新来的' size='xl' />
+      </Area>
+
+      <Area
+        title='权限徽标（独立控件）'
+        desc='权限是角色，不是等级——我们没有 level 系统。颜色按角色 key 自动取。'
+      >
+        <RoleBadge role={{ key: 'admin', name: '管理员' }} />
+        <RoleBadge role={{ key: 'moderator', name: '版主' }} />
+        <RoleBadge role={{ key: 'member', name: '会员' }} />
+        <RoleBadge role={{ key: 'custom', name: '未知角色' }} />
+      </Area>
+
+      <Area
+        title='头衔徽标（独立控件）'
+        desc='头衔是运营/活动给的称号，可自定义颜色，与权限互不影响。'
+      >
+        <TitleBadge title={{ name: '执政官', color: '#2563eb' }} />
+        <TitleBadge title={{ name: '精华作者', color: '#7c3aed' }} />
+        <TitleBadge title={{ name: '地图作者', color: '#059669' }} />
+        <TitleBadge title={{ name: '无颜色时用主色' }} />
+      </Area>
+
+      <Area
+        title='用户渲染：同一套控件换排布'
+        desc='badges=after / before / below / none，layout=inline / stacked，size 四档。不同场景只换参数。'
+      >
+        <UserBadge user={ME} showHandle />
+        <UserBadge user={ME} badges='before' />
+        <UserBadge user={ME} badges='below' />
+        <UserBadge user={ME} badges='none' />
+        <UserBadge user={MOD} size='sm' />
+        <UserBadge user={PLAIN} size='sm' />
+        <UserBadge user={ME} layout='stacked' size='lg' showHandle />
       </Area>
 
       <Area
@@ -49,16 +95,6 @@ export default function OurComponentsPage() {
         <VividButton loading>提交中</VividButton>
         <VividButton disabled>不可用</VividButton>
         <VividButton size='icon' icon={Heart} aria-label='收藏' />
-      </Area>
-
-      <Area
-        title='用户渲染：昵称 / 权限等级 / 头衔'
-        desc='全站统一走这个控件；头像由 Ring UI Avatar 承担，昵称/等级/头衔的排版与配色收口在这里。'
-      >
-        <UserBadge user={ME} showHandle />
-        <UserBadge user={ME} />
-        <UserBadge user={{ handle: 'newbie', nickname: '新来的', level: 1 }} />
-        <UserBadge user={ME} layout='stacked' size='lg' showHandle />
       </Area>
     </div>
   );

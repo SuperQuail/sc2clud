@@ -14,7 +14,7 @@ export function Shell() {
             <Link to='/search'>搜索</Link>
           </nav>
           <div className='ml-auto'>
-            <ThemeSwitcher compact />
+            <ThemeSwitcher />
           </div>
         </div>
       </header>
