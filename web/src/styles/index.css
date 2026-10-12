@@ -41,3 +41,24 @@ body {
 @media (prefers-reduced-motion: reduce) {
   .vivid-loading::after { animation: none; opacity: 0.35; }
 }
+
+/* @提及在编辑框里的样子（芯片，不可编辑）：编辑时就要看到渲染后的结果，而不是 @{123|唐天}。 */
+.mention-chip {
+  display: inline-block;
+  padding: 0 4px;
+  border-radius: 4px;
+  background: color-mix(in srgb, var(--ring-link-color) 14%, transparent);
+  color: var(--ring-link-color);
+  font-weight: 500;
+  user-select: none;
+}
+
+/* contenteditable 的占位符（Ring 的 ContentEditable 没有内置 placeholder） */
+[contenteditable][data-placeholder]:empty::before {
+  content: attr(data-placeholder);
+  color: var(--muted-foreground);
+  pointer-events: none;
+}
+[contenteditable] {
+  min-height: 5rem;
+}

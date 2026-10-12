@@ -6,6 +6,7 @@ import OurComponentsPage from './pages/05-our-components';
 import UserStylesPage from './pages/06-user-styles';
 import UserRenderPage from './pages/07-user-render';
 import CommentsPage from './pages/08-comments';
+import RichPage from './pages/09-rich';
 import { ThemeSwitcher } from '@/ui/theme-switcher';
 
 // 开发者房间：控件在这里**逐件验证**；业务代码只允许使用登记过的控件。
@@ -15,6 +16,7 @@ const PAGES: Record<string, { title: string; el: () => React.ReactNode }> = {
   '06-user-styles': { title: '06 · 用户向风格候选', el: () => <UserStylesPage /> },
   '07-user-render': { title: '07 · 用户身份控件', el: () => <UserRenderPage /> },
   '08-comments': { title: '08 · 评论区', el: () => <CommentsPage /> },
+  '09-rich': { title: '09 · 富文本与图片', el: () => <RichPage /> },
 };
 
 export function DevRoom({ page }: { page: string }) {
