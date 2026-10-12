@@ -85,4 +85,13 @@ export const VERIFIED: VerifiedControl[] = [
     props: ['code / message / description', 'icon：须 icon16() 包装'], notes: ['页面级错误用它，不要自己拼红字。'] },
   { name: 'loader-inline', path: '@jetbrains/ring-ui-built/components/loader-inline/loader-inline', page: '02-overlay', verifiedOn: '2026-10-12',
     props: ['无独立 props（行内加载）'], notes: ['局部加载用它；整页加载用 LoaderScreen。'] },
+  { name: 'checkbox', path: '@jetbrains/ring-ui-built/components/checkbox/checkbox', page: '01-interactive', verifiedOn: '2026-10-12',
+    props: ['label / help（标签与说明用控件自己的属性，不要外面拼 label）', 'checked + onChange（收事件）', 'disabled / indeterminate'], notes: [] },
+  { name: 'radio', path: '@jetbrains/ring-ui-built/components/radio/radio', page: '01-interactive', verifiedOn: '2026-10-12',
+    props: ['同一 name 互斥', 'checked + onChange', 'children 作为标签'], notes: [] },
+  { name: 'button-set', path: '@jetbrains/ring-ui-built/components/button-set/button-set', page: '01-interactive', verifiedOn: '2026-10-12',
+    props: ['无自有 props：包住一组 Button 即可'], notes: ['连在一起的一组动作（全部/精华/待回复）。'] },
+  { name: 'dropdown-menu', path: '@jetbrains/ring-ui-built/components/dropdown-menu/dropdown-menu', page: '01-interactive', verifiedOn: '2026-10-12',
+    props: ['anchor：触发元素', 'data：[{ key, label }]', 'onSelect(item)', 'menuProps / children 函数形式'],
+    notes: ['定位、点外部关闭、Esc、键盘导航都由它负责——不要自己写浮层。'] },
 ];

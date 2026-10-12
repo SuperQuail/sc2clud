@@ -1,5 +1,7 @@
 import { Pending } from '@/devroom/kit';
 import { ButtonPair } from './button';
+import { ChoicePair } from './choice';
+import { DropdownPair } from './dropdown';
 import { InputPair } from './input';
 import { SelectPair } from './select';
 import { TogglePair } from './toggle';
@@ -14,9 +16,11 @@ export default function InteractivePage() {
       <InputPair />
       <TogglePair />
       <SelectPair />
+      <ChoicePair />
+      <DropdownPair />
       <Pending
-        items={['Checkbox', 'Radio', '工具条下拉']}
-        note='复选/单选：B 系还没做（Ring 那侧可用）。工具条下拉与下拉选择：我们自制的两版观感都不行，**已全部废弃，一律用 Ring 的**；Ring 的 Dropdown/PopupMenu 还没在 DevRoom 验证，验证登记后才能进业务代码。另：图标工具 icon16 / 官方图标在第 05 页。'
+        items={['工具条下拉']}
+        note='复选/单选/按钮组/下拉菜单**本次已用 Ring 补上**。工具条下拉：自制的已废弃，用 Ring 的 DropdownMenu（已登记）。另：图标工具 icon16 / 官方图标在第 05 页。'
       />
     </div>
   );
