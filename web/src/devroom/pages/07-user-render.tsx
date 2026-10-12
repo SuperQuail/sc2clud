@@ -1,39 +1,33 @@
-import { ChevronDown } from 'lucide-react';
 import { assetUrl } from '@/lib/url';
+import { DropdownPanel } from '@/ui/dropdown-panel';
 import { UserAvatar } from '@/ui/user/avatar';
-import { RoleBadge } from '@/ui/user/role-badge';
-import { TitleBadge } from '@/ui/user/title-badge';
+import { RoleBadge, type RoleDesign } from '@/ui/user/role-badge';
+import { TitleBadge, type TitleDesign } from '@/ui/user/title-badge';
 import { Username } from '@/ui/user/username';
 
 // DevRoom 07 · 用户身份与权限
-// 按最终设计（见 完全重构/RBAC权限树设计.md）：
-//   权限 = **基线单角色**（users.role_id）∪ **点对点追加**（user_permissions，带期限与理由）
-//   角色徽标显示基线角色；**有追加或分区授权时才出现下拉**，展开看全部
-//   颜色：角色用 badge_color（有则上色/无则中性）；头衔用 titles.color；用户名默认色可自定义
-//   未激活：只做暗色
-// 已删除的废弃项：多角色并列、Username 的三变体、头衔的 plain/gradient/glow 三版。
+// 权限模型见 完全重构/RBAC权限树设计.md：基线单角色 ∪ 点对点追加（带期限与理由）。
+// 本页两件事：① 点击徽标本身展开「权限明细 / 头衔说明」；② 权限与头衔的**差异化方案三选一**。
 const A = (p: string) => assetUrl(p);
 
-const SUPER = { key: 'superadmin', name: '超级管理员', color: '#dc2626' };
 const ADMIN = { key: 'admin', name: '管理员', color: '#2563eb' };
 const CREATOR = { key: 'creator', name: '认证创作者', color: '#7c3aed' };
 const USER = { key: 'user', name: '普通用户' };
 
-// 演示数据：一个基线角色 + 两条追加权限（其中一条带到期）
 const EXTRA = [
-  { key: 'topic.pin', name: '置顶主题', expires: null },
-  { key: 'donation.review', name: '核验打赏', expires: '2026-11-15' },
+  { key: 'topic.pin', name: '置顶主题', expires: null as string | null },
+  { key: 'donation.review', name: '核验打赏', expires: '2026-11-15' as string | null },
 ];
-const BOARD_GRANTS = [{ board: '自制战役', expires: null }];
+const BOARDS = [{ board: '自制战役', expires: null as string | null }];
 
 function Row({ label, hint, children }: { label: string; hint?: string; children: React.ReactNode }) {
   return (
-    <div className='flex flex-col gap-1.5 border-b border-border py-2.5 last:border-0'>
+    <div className='flex flex-col gap-2 border-b border-border py-3 last:border-0'>
       <span className='flex flex-wrap items-baseline gap-2'>
         <span className='text-[12px] font-medium text-foreground'>{label}</span>
         {hint ? <span className='text-[11px] text-muted-foreground'>{hint}</span> : null}
       </span>
-      <span className='flex flex-wrap items-center gap-x-6 gap-y-2'>{children}</span>
+      <span className='flex flex-wrap items-center gap-x-6 gap-y-3'>{children}</span>
     </div>
   );
 }
@@ -48,53 +42,99 @@ function Card({ name, note, children }: { name: string; note: string; children: 
   );
 }
 
-// 权限下拉：默认收起，只有该用户有追加权限或分区授权时才出现。
-// 现在是原生 <details>（候选）；等 Ring UI Dropdown 在 DevRoom 验证并登记后再换。
-function PermissionDetails() {
+function RolePanelBody() {
   return (
-    <details className='group inline-block align-middle'>
-      <summary className='flex cursor-pointer list-none items-center gap-1 rounded-[4px] px-1.5 py-0.5 text-[11px] text-muted-foreground hover:bg-muted'>
-        权限明细
-        <ChevronDown aria-hidden className='size-3 transition-transform group-open:rotate-180' />
-      </summary>
-      <div className='mt-2 flex w-80 flex-col gap-2 rounded-md border border-border bg-popover p-3 text-[12px] shadow-md'>
-        <div className='flex flex-col gap-1'>
-          <span className='text-[11px] font-semibold text-muted-foreground'>基线角色</span>
-          <span className='flex items-center gap-2'><RoleBadge role={ADMIN} /><span className='text-muted-foreground'>管理员（含其下全部继承权限）</span></span>
-        </div>
-        <div className='flex flex-col gap-1'>
-          <span className='text-[11px] font-semibold text-muted-foreground'>单独追加的权限（{EXTRA.length}）</span>
-          {EXTRA.map((e) => (
-            <span key={e.key} className='flex items-center justify-between gap-2'>
-              <span className='text-foreground'>{e.name}</span>
-              <span className='text-muted-foreground tabular-nums'>{e.expires ? e.expires + ' 到期' : '长期'}</span>
-            </span>
-          ))}
-        </div>
-        <div className='flex flex-col gap-1'>
-          <span className='text-[11px] font-semibold text-muted-foreground'>分区授权（{BOARD_GRANTS.length}）</span>
-          {BOARD_GRANTS.map((b) => (
-            <span key={b.board} className='flex items-center justify-between gap-2'>
-              <span className='text-foreground'>{b.board}</span>
-              <span className='text-muted-foreground'>{b.expires ? b.expires + ' 到期' : '长期'}</span>
-            </span>
-          ))}
-        </div>
-      </div>
-    </details>
+    <>
+      <span className='flex flex-col gap-1'>
+        <span className='text-[11px] font-semibold text-muted-foreground'>基线角色</span>
+        <span className='flex items-center gap-2'><RoleBadge role={ADMIN} /><span className='text-muted-foreground'>含其下全部继承权限</span></span>
+      </span>
+      <span className='flex flex-col gap-1'>
+        <span className='text-[11px] font-semibold text-muted-foreground'>单独追加的权限（{EXTRA.length}）</span>
+        {EXTRA.map((e) => (
+          <span key={e.key} className='flex items-center justify-between gap-3'>
+            <span className='text-foreground'>{e.name}</span>
+            <span className='text-muted-foreground tabular-nums'>{e.expires ? e.expires + ' 到期' : '长期'}</span>
+          </span>
+        ))}
+      </span>
+      <span className='flex flex-col gap-1'>
+        <span className='text-[11px] font-semibold text-muted-foreground'>分区授权（{BOARDS.length}）</span>
+        {BOARDS.map((b) => (
+          <span key={b.board} className='flex items-center justify-between gap-3'>
+            <span className='text-foreground'>{b.board}</span>
+            <span className='text-muted-foreground'>{b.expires ? b.expires + ' 到期' : '长期'}</span>
+          </span>
+        ))}
+      </span>
+    </>
   );
 }
+
+function TitlePanelBody() {
+  return (
+    <>
+      <span className='flex flex-col gap-1'>
+        <span className='text-[11px] font-semibold text-muted-foreground'>执政官</span>
+        <span className='text-muted-foreground'>运营在 titles 表里配置的称号，与权限无关；一个用户只佩戴一个。</span>
+        <span className='text-muted-foreground'>key：consul　颜色：#2563eb</span>
+      </span>
+    </>
+  );
+}
+
+const PAIRS: Array<{ n: number; name: string; note: string; role: RoleDesign; title: TitleDesign }> = [
+  { n: 1, name: '形状对立', note: '权限=直角小标签（像分类）／头衔=圆润胶囊（像称号）', role: 1, title: 1 },
+  { n: 2, name: '轻重对立', note: '权限=左侧竖线的纯文字（最轻）／头衔=描边方框（有边界）', role: 2, title: 2 },
+  { n: 3, name: '明暗对立', note: '权限=实心深底浅字（最重）／头衔=彩色下划线（最轻）', role: 3, title: 3 },
+];
 
 export default function UserControlsPage() {
   return (
     <div className='flex flex-col gap-4'>
-      <Card name='Username（用户名）' note='只渲染名字。默认前景色；自定义色由数据传；未激活只做暗色。'>
-        <Row label='常规 / 加粗 / 自定义色' hint='不给 color 即默认色'>
+      <Card
+        name='权限 × 头衔 · 差异化方案（三选一）'
+        note='现在两者都是「小方块+浅底」，区分度不够。每套都是**成对**的：形状、轻重、明暗各走一个方向。点徽标可展开。'
+      >
+        {PAIRS.map((p) => (
+          <Row key={p.n} label={'方案 ' + p.n + ' · ' + p.name} hint={p.note}>
+            <span className='flex items-center gap-3'>
+              <UserAvatar name='唐天' src={A('miyin-portrait-320.webp')} size='sm' />
+              <Username nickname='唐天' strong />
+              <DropdownPanel label='权限明细' width='w-72' trigger={<RoleBadge role={ADMIN} design={p.role} />}>
+                <RolePanelBody />
+              </DropdownPanel>
+              <DropdownPanel label='头衔说明' width='w-72' trigger={<TitleBadge title={{ name: '执政官', color: '#2563eb' }} design={p.title} />}>
+                <TitlePanelBody />
+              </DropdownPanel>
+            </span>
+            <span className='flex items-center gap-3'>
+              <Username nickname='林诗' />
+              <RoleBadge role={CREATOR} design={p.role} />
+              <TitleBadge title={{ name: '精华作者', color: '#7c3aed' }} design={p.title} />
+            </span>
+            <span className='flex items-center gap-3'>
+              <Username nickname='新来的' />
+              <RoleBadge role={USER} design={p.role} />
+            </span>
+          </Row>
+        ))}
+      </Card>
+
+      <Card name='权限明细（点击徽标展开）' note='基线单角色 + 点对点追加（含到期）+ 分区授权。没有追加的人不显示可点状态。'>
+        <Row label='有追加：可点' hint='点「管理员」看明细'>
+          <span className='flex items-center gap-2'><UserAvatar name='唐天' src={A('miyin-portrait-320.webp')} size='sm' /><Username nickname='唐天' /><DropdownPanel label='权限明细' trigger={<RoleBadge role={ADMIN} />}><RolePanelBody /></DropdownPanel></span>
+        </Row>
+        <Row label='无追加：不可点' hint='只有基线角色，没有可展开的内容'>
+          <span className='flex items-center gap-2'><UserAvatar name='新来的' size='sm' /><Username nickname='新来的' /><RoleBadge role={USER} /></span>
+        </Row>
+      </Card>
+
+      <Card name='Username（用户名）' note='只渲染名字；默认前景色，可选自定义色；未激活只做暗色。'>
+        <Row label='常规 / 加粗 / 自定义色 / 未激活'>
           <Username nickname='普通用户' />
           <Username nickname='唐天' strong />
           <Username nickname='唐天' color='#2563eb' />
-        </Row>
-        <Row label='未激活' hint='只暗一档——不加文字、不加横线'>
           <Username nickname='未激活的人' state='inactive' />
         </Row>
         <Row label='尺寸 / @handle / 超长昵称'>
@@ -102,36 +142,6 @@ export default function UserControlsPage() {
           <Username nickname='唐天' size='lg' />
           <Username nickname='唐天' handle='tangtian' />
           <span className='flex min-w-0 max-w-56'><Username nickname='一个特别特别长的昵称用来压测截断行为' /></span>
-        </Row>
-      </Card>
-
-      <Card
-        name='RoleBadge（基线角色）+ 权限下拉'
-        note='基线角色唯一（users.role_id）；追加权限走 user_permissions（带期限与理由）。有追加或分区授权时才出现「权限明细」。'
-      >
-        <Row label='四个内置角色' hint='badge_color 有则上色（前三个），无则中性（普通用户）'>
-          <RoleBadge role={SUPER} />
-          <RoleBadge role={ADMIN} />
-          <RoleBadge role={CREATOR} />
-          <RoleBadge role={USER} />
-        </Row>
-        <Row label='只有基线角色' hint='没有追加 → 不显示下拉箭头'>
-          <span className='flex items-center gap-2'><UserAvatar name='新来的' size='sm' /><Username nickname='新来的' /><RoleBadge role={USER} /></span>
-        </Row>
-        <Row label='基线 + 追加权限 / 分区授权' hint='点开看明细：基线是什么、追加了什么、什么时候到期'>
-          <span className='flex items-center gap-2'><UserAvatar name='唐天' src={A('miyin-portrait-320.webp')} size='sm' /><Username nickname='唐天' /><RoleBadge role={ADMIN} /><PermissionDetails /></span>
-        </Row>
-      </Card>
-
-      <Card name='TitleBadge（头衔）' note='titles 表：key/name/color/description；用户只佩戴一个。样式已定稿（描边+浅底，无图标）。'>
-        <Row label='常见头衔 / 未配颜色' hint='颜色由 titles.color 给；缺省用主色'>
-          <TitleBadge title={{ key: 'consul', name: '执政官', color: '#2563eb' }} />
-          <TitleBadge title={{ key: 'elite', name: '精华作者', color: '#7c3aed' }} />
-          <TitleBadge title={{ key: 'mapper', name: '地图作者', color: '#059669' }} />
-          <TitleBadge title={{ key: 'none', name: '未配颜色' }} />
-        </Row>
-        <Row label='与用户名并排（顺序由使用方决定）'>
-          <span className='flex items-center gap-1.5'><Username nickname='唐天' strong /><TitleBadge title={{ name: '执政官', color: '#2563eb' }} /></span>
         </Row>
       </Card>
 
@@ -144,7 +154,7 @@ export default function UserControlsPage() {
         </Row>
       </Card>
 
-      <Card name='复用：三种场景，全是上面四个控件拼的' note='没有任何一个是「帖子页专用」；顺序与排布由使用方决定。'>
+      <Card name='复用：三种场景' note='全是上面几个控件拼的；顺序与排布由使用方决定。'>
         <Row label='① 列表行'>
           <span className='flex items-center gap-2'><UserAvatar name='唐天' src={A('miyin-portrait-320.webp')} size='sm' /><Username nickname='唐天' /><span className='text-xs text-muted-foreground'>2 小时前</span></span>
         </Row>
@@ -157,7 +167,7 @@ export default function UserControlsPage() {
             </span>
           </span>
         </Row>
-        <Row label='③ 管理表格（角色单独一列）'>
+        <Row label='③ 管理表格'>
           <span className='flex w-72 items-center justify-between gap-2 rounded border border-border px-2 py-1 text-sm'><Username nickname='林诗' /><RoleBadge role={CREATOR} /></span>
           <span className='flex w-72 items-center justify-between gap-2 rounded border border-border px-2 py-1 text-sm'><Username nickname='未激活的人' state='inactive' /><RoleBadge role={USER} /></span>
         </Row>
