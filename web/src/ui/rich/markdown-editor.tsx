@@ -9,16 +9,20 @@ import { HistoryPlugin } from '@lexical/react/LexicalHistoryPlugin';
 import { OnChangePlugin } from '@lexical/react/LexicalOnChangePlugin';
 import { useLexicalComposerContext } from '@lexical/react/LexicalComposerContext';
 import { MarkdownShortcutPlugin } from '@lexical/react/LexicalMarkdownShortcutPlugin';
+import { ListPlugin } from '@lexical/react/LexicalListPlugin';
+import { LinkPlugin } from '@lexical/react/LexicalLinkPlugin';
 import {
   LexicalTypeaheadMenuPlugin,
   useBasicTypeaheadTriggerMatch,
 } from '@lexical/react/LexicalTypeaheadMenuPlugin';
 import { ELEMENT_TRANSFORMERS, TEXT_FORMAT_TRANSFORMERS, TEXT_MATCH_TRANSFORMERS } from '@lexical/markdown';
 import { $generateHtmlFromNodes } from '@lexical/html';
-import { HeadingNode, QuoteNode } from '@lexical/rich-text';
-import { ListItemNode, ListNode } from '@lexical/list';
+import { $createQuoteNode, HeadingNode, QuoteNode } from '@lexical/rich-text';
+import { INSERT_UNORDERED_LIST_COMMAND, ListItemNode, ListNode } from '@lexical/list';
 import { LinkNode, TOGGLE_LINK_COMMAND } from '@lexical/link';
 import { $createTextNode, $getRoot, $getSelection, $isRangeSelection, FORMAT_TEXT_COMMAND, type EditorState, type LexicalEditor, type TextNode } from 'lexical';
+// $setBlocksType 在官方的 @lexical/selection 包里（不在核心包）
+import { $setBlocksType } from '@lexical/selection';
 import { Bold, Code, Italic, Link2, List, Quote, AtSign } from 'lucide-react';
 import { icon16 } from '@/ui/icons';
 import { MentionMenu } from '@/ui/comment/mention-menu';
@@ -40,15 +44,40 @@ import { $createImageNode, ImageNode, countImageNodes } from './lexical/image-no
 // Lexical 的原生存储是 EditorState JSON（每个节点自带 type/version，exportJSON/importJSON 无损往返）。
 const SHORTCUT_TRANSFORMERS = [...ELEMENT_TRANSFORMERS, ...TEXT_FORMAT_TRANSFORMERS, ...TEXT_MATCH_TRANSFORMERS];
 
+// 工具栏。**每个按钮都必须有对应的官方命令**（引用/列表原先接的是斜体/粗体的命令，点了没用）：
+//   行内格式 → FORMAT_TEXT_COMMAND
+//   无序列表 → INSERT_UNORDERED_LIST_COMMAND（@lexical/list）
+//   引用     → 没有 INSERT 命令，用 $setBlocksType + $createQuoteNode（@lexical/rich-text）
 function Toolbar({ onMention }: { onMention: () => void }) {
   const [editor] = useLexicalComposerContext();
+
+  const inEditor = (fn: () => void) => () => {
+    editor.focus();
+    editor.update(fn);
+  };
+
   return (
     <div className='flex flex-wrap items-center gap-1 rounded-md border border-border bg-muted/40 p-1'>
       <Button ghost icon={icon16(Bold)} aria-label='粗体' title='粗体' onClick={() => editor.dispatchCommand(FORMAT_TEXT_COMMAND, 'bold')} />
       <Button ghost icon={icon16(Italic)} aria-label='斜体' title='斜体' onClick={() => editor.dispatchCommand(FORMAT_TEXT_COMMAND, 'italic')} />
       <Button ghost icon={icon16(Code)} aria-label='行内代码' title='行内代码' onClick={() => editor.dispatchCommand(FORMAT_TEXT_COMMAND, 'code')} />
-      <Button ghost icon={icon16(Quote)} aria-label='引用' title='引用' onClick={() => editor.dispatchCommand(FORMAT_TEXT_COMMAND, 'italic')} />
-      <Button ghost icon={icon16(List)} aria-label='列表' title='列表' onClick={() => editor.dispatchCommand(FORMAT_TEXT_COMMAND, 'bold')} />
+      <Button
+        ghost
+        icon={icon16(Quote)}
+        aria-label='引用'
+        title='引用'
+        onClick={inEditor(() => {
+          const sel = $getSelection();
+          if ($isRangeSelection(sel)) $setBlocksType(sel, () => $createQuoteNode());
+        })}
+      />
+      <Button
+        ghost
+        icon={icon16(List)}
+        aria-label='无序列表'
+        title='无序列表'
+        onClick={() => editor.dispatchCommand(INSERT_UNORDERED_LIST_COMMAND, undefined)}
+      />
       <Button ghost icon={icon16(Link2)} aria-label='链接' title='链接' onClick={() => editor.dispatchCommand(TOGGLE_LINK_COMMAND, 'https://')} />
       <Button ghost icon={icon16(AtSign)} aria-label='提及某人' title='提及某人' onClick={onMention} />
     </div>
@@ -302,6 +331,9 @@ export function MarkdownEditor({
         <HistoryPlugin />
         <MaxLengthPlugin maxLength={maxLength} />
         <MarkdownShortcutPlugin transformers={SHORTCUT_TRANSFORMERS} />
+        {/* 列表与链接的命令要靠官方插件注册，否则发出去没人接（这就是「点了没反应」的原因） */}
+        <ListPlugin />
+        <LinkPlugin />
         <OnChangePlugin onChange={onEditorChange} />
         <InitialState value={value} />
         <DemoImage
