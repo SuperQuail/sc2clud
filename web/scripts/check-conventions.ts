@@ -56,6 +56,9 @@ for (const f of uiFiles) {
   for (const m of src.matchAll(/export const ([A-Z][A-Za-z0-9]*)\s*[:=]/g)) ownComponents.add(m[1]!);
 }
 // 显式豁免：必须写明理由，别用「它不重要」蒙过去
+// 浏览器断言不在 pnpm check 里跑（要 Chrome + 预览服务），但每次检查都要提醒别忘
+const E2E_HINT = 'pnpm e2e（8 组浏览器断言：提及/图片计数/折叠/浮层/工具栏/字数上限）';
+
 const EXEMPT: Record<string, string> = {
   DevEntry: '构建期开关控制的开发期入口（VITE_DEVROOM），不面向用户，生产构建里不存在',
 };
@@ -78,6 +81,7 @@ if (diff.includes('package.json')) TODO.push('最近一次提交改了 package.j
 const bar = '─'.repeat(74);
 console.log(bar);
 console.log('开发规范自查（每次 pnpm check 都会打印）');
+console.log('  · ' + E2E_HINT + ' —— 改了交互控件就该跑它');
 console.log(bar);
 for (const r of rows) {
   console.log((r.ok ? '  ✓ ' : '  ✗ ') + r.rule.padEnd(30) + r.how.padEnd(16) + r.detail);

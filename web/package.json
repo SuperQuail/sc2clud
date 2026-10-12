@@ -28,7 +28,8 @@
     "gate:urls": "node scripts/check-urls.ts",
     "gate:bundle": "node scripts/check-bundle.ts",
     "pack:dev": "node scripts/pack-dev.ts",
-    "gate:conventions": "node scripts/check-conventions.ts"
+    "gate:conventions": "node scripts/check-conventions.ts",
+    "e2e": "pnpm preview:build && node scripts/e2e.ts"
   },
   "dependencies": {
     "@hookform/resolvers": "^5.9.1",

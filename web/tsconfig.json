@@ -1,5 +1,7 @@
 {
   "compilerOptions": {
+    // 运行时（Node ESM）导入 .ts 必须带扩展名，这里放行
+    "allowImportingTsExtensions": true,
     "target": "ES2022",
     "lib": [
       "ES2023",
