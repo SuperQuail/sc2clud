@@ -25,7 +25,9 @@
     "gate:controls": "node scripts/check-controls.ts",
     "devroom": "node scripts/serve-preview.ts preview-dist 5202",
     "gate:tokens": "node scripts/check-tokens.ts",
-    "gate:urls": "node scripts/check-urls.ts"
+    "gate:urls": "node scripts/check-urls.ts",
+    "gate:bundle": "node scripts/check-bundle.ts",
+    "pack:dev": "node scripts/pack-dev.ts"
   },
   "dependencies": {
     "@hookform/resolvers": "^5.9.1",
