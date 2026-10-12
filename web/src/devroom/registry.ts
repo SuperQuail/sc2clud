@@ -118,4 +118,5 @@ export const VERIFIED: VerifiedControl[] = [
   { name: 'notice-composer', path: '@/ui/message/notice-composer', page: '10-messages', verifiedOn: '2026-10-12', props: ['见组件注释：全部为数据驱动的通用 props'], notes: ['输入区：复用 MarkdownEditor(compact) + Ring Button'] },
   { name: 'notice-settings', path: '@/ui/message/notice-settings', page: '10-messages', verifiedOn: '2026-10-12', props: ['见组件注释：全部为数据驱动的通用 props'], notes: ['设置面板：模式驱动的 rows（radio/toggle/tags）'] },
   { name: 'notice-layout', path: '@/ui/message/notice-layout', page: '10-messages', verifiedOn: '2026-10-12', props: ['见组件注释：全部为数据驱动的通用 props'], notes: ['两栏骨架：nav + children'] },
+  { name: 'topic-row', path: '@/ui/topic/topic-row', page: '11-profile', verifiedOn: '2026-10-12', props: ['topic: TopicRowData（id/title/tags/author/replies/views/lastReplyAt）'], notes: ['全站主题列表的唯一实现（分区页/搜索页/个人主页共用）；样板间里那份局部件应替换为它。'] },
 ];

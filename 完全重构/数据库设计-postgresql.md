@@ -287,6 +287,9 @@
 - `idx_notifications_inbox (user_id, created_at DESC) WHERE deleted_at IS NULL` —— 列表
 - `idx_notifications_unread (user_id) WHERE read_at IS NULL AND deleted_at IS NULL` —— 未读角标
 
+**user_notice_settings**：`user_id` pk、`alert bool DEFAULT true`、`reply_scope text DEFAULT 'all'`、`mention_scope text DEFAULT 'all'`、`like_alert bool DEFAULT true`、`smart_block bool DEFAULT false`、`block_words text[] DEFAULT '{}'`。
+- **`block_words` 默认必须是空数组**：不预置默认屏蔽词（见后端方案 M6）。任何「官方词库」都不要写进默认值或种子数据。
+
 **notification_mutes**：`user_id`、`kind varchar(32)`（类别或 `link`）、`target_key text`，主键 `(user_id, kind, target_key)`，user 侧 CASCADE。
 
 ### 4.6 赞赏（**老设计：收款码 + 用户自报 + 管理员人工核验**）

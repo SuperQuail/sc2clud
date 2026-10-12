@@ -301,20 +301,8 @@ export function MarkdownEditor({
       >
         <EditorHandle onReady={onReady} />
         <Toolbar onMention={insertTrigger} />
-        <RichTextPlugin
-          contentEditable={
-            <ContentEditable
-              aria-label='正文'
-              data-placeholder={placeholder}
-              className={
-                'rounded-lg border border-input bg-background px-3 py-2.5 outline-none focus-visible:ring-[3px] focus-visible:ring-ring/40 ' +
-                (compact ? 'min-h-20' : 'min-h-64')
-              }
-            />
-          }
-          placeholder={null}
-          ErrorBoundary={LexicalErrorBoundary}
-        />
+        {/* 拖拽落点：必须包住**有尺寸**的元素——之前挂在一个 0 高度的空 div 上，
+            指针永远进不去，「拖图进正文」实际一直是坏的（子 agent 审计发现）。 */}
         <div
           onDragOver={(e) => {
             if (!onImagesChange) return;
@@ -329,7 +317,22 @@ export function MarkdownEditor({
             void onDropFiles(Array.from(e.dataTransfer.files));
           }}
           className={dragging ? 'rounded-lg ring-[3px] ring-ring/40' : undefined}
+        >
+        <RichTextPlugin
+          contentEditable={
+            <ContentEditable
+              aria-label='正文'
+              data-placeholder={placeholder}
+              className={
+                'rounded-lg border border-input bg-background px-3 py-2.5 outline-none focus-visible:ring-[3px] focus-visible:ring-ring/40 ' +
+                (compact ? 'min-h-20' : 'min-h-64')
+              }
+            />
+          }
+          placeholder={null}
+          ErrorBoundary={LexicalErrorBoundary}
         />
+        </div>
         <HistoryPlugin />
         <MaxLengthPlugin maxLength={maxLength} />
         <MarkdownShortcutPlugin transformers={SHORTCUT_TRANSFORMERS} />
