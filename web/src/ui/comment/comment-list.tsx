@@ -3,6 +3,7 @@ import Button from '@jetbrains/ring-ui-built/components/button/button';
 import { CommentItem } from './comment-item';
 import { CommentReplies } from './comment-replies';
 import { ReplyBox } from './reply-box';
+import type { MentionCandidate } from './mention-picker';
 import type { CommentData } from './types';
 
 // 评论区（对照 B 站）：表头「评论 N」+ 最热｜最新；下面是常驻的评论编辑器；
@@ -13,11 +14,13 @@ export function CommentList({
   comments,
   total,
   me,
+  candidates,
   onSubmit,
 }: {
   comments: CommentData[];
   total?: number;
   me: { nickname: string; avatar?: string | null };
+  candidates?: MentionCandidate[];
   onSubmit?: (parentId: string | null, body: string) => void;
 }) {
   const [sort, setSort] = useState<(typeof SORTS)[number]>('最热');
@@ -41,7 +44,7 @@ export function CommentList({
         </span>
       </header>
 
-      <ReplyBox me={me} onSubmit={(body) => onSubmit?.(null, body)} />
+      <ReplyBox me={me} candidates={candidates} onSubmit={(body) => onSubmit?.(null, body)} />
 
       <div className='flex flex-col gap-6'>
         {comments.map((c) => (
@@ -57,6 +60,7 @@ export function CommentList({
               <div className='mt-3'>
                 <ReplyBox
                   me={me}
+                  candidates={candidates}
                   replyingTo={c.author.nickname}
                   onSubmit={(body) => {
                     onSubmit?.(c.id, body);

@@ -1,38 +1,30 @@
-import { useEffect, useId, useRef, useState } from 'react';
+import { useState } from 'react';
 import Button from '@jetbrains/ring-ui-built/components/button/button';
+import Input from '@jetbrains/ring-ui-built/components/input/input';
+import { ControlsHeight } from '@jetbrains/ring-ui-built/components/global/controls-height';
 import { UserAvatar } from '@/ui/user/avatar';
+import { MentionPicker, type MentionCandidate } from './mention-picker';
 
-// 评论编辑器（顶层评论框与就地回复共用）。
-// **不用 Ring UI 的 Input**：它是表单小输入，评论是长文本——这里用原生 textarea 自己控制尺寸
-// （默认 7 行高、随输入自动长高）。src/ui 允许写原生表单元素，业务代码不许（gate:ui 会挡）。
-// 需求依据：后端 §9 用户提交 Markdown 由服务端渲染（所以不需要在界面上标注）；
-// 回复不带图片（图片只有头像/帖子配图/收款码三个端点），所以工具栏不放图片按钮。
-const MIN_ROWS = 7;
-
+// 评论编辑器。**用 Ring UI 的 Input**：multiline + autogrow + height=L，
+// 再用它官方的 `inputClassName` 给内层 textarea 一个最小高度——
+// 这样框够大、又完全在库的 API 之内（之前换成原生 textarea 是走极端，丑）。
 export function ReplyBox({
   me,
   replyingTo,
+  candidates = [],
   placeholder = '你渴望拥有力量吗？评论让力量更强大',
   onSubmit,
 }: {
   me: { nickname: string; avatar?: string | null };
   replyingTo?: string | null;
+  /** @ 提及候选（真实实现来自 GET /users/search?q=） */
+  candidates?: MentionCandidate[];
   placeholder?: string;
   onSubmit?: (body: string) => void;
 }) {
-  const id = useId();
-  const area = useRef<HTMLTextAreaElement>(null);
   const [body, setBody] = useState('');
   const [error, setError] = useState<string | null>(null);
   const empty = body.trim().length === 0;
-
-  // 随输入长高（只增不减到最小值为止，避免删字时抖动）
-  useEffect(() => {
-    const el = area.current;
-    if (!el) return;
-    el.style.height = 'auto';
-    el.style.height = Math.max(el.scrollHeight, 0) + 'px';
-  }, [body]);
 
   function submit() {
     if (empty) {
@@ -48,26 +40,23 @@ export function ReplyBox({
     <div className='flex items-start gap-3'>
       <UserAvatar name={me.nickname} src={me.avatar} size='md' className='mt-1' />
       <div className='flex min-w-0 flex-1 flex-col gap-2'>
-        {replyingTo ? (
-          <span className='text-[12px] text-muted-foreground'>回复 @{replyingTo}</span>
-        ) : null}
-        <label htmlFor={id} className='sr-only'>
-          评论内容
-        </label>
-        <textarea
-          ref={area}
-          id={id}
-          rows={MIN_ROWS}
+        {replyingTo ? <span className='text-[12px] text-muted-foreground'>回复 @{replyingTo}</span> : null}
+        <Input
+          multiline
+          autogrow
+          height={ControlsHeight.L}
           value={body}
           onChange={(e) => setBody(e.target.value)}
           placeholder={placeholder}
-          aria-invalid={error ? true : undefined}
-          aria-describedby={error ? id + '-err' : undefined}
-          className='w-full resize-y rounded-lg border border-input bg-background px-3 py-2.5 text-[15px] leading-relaxed text-foreground outline-none placeholder:text-muted-foreground focus-visible:ring-[3px] focus-visible:ring-ring/40'
+          error={error ?? undefined}
+          inputClassName='min-h-32 resize-y leading-relaxed'
         />
         <div className='flex items-center gap-3'>
-          {error ? (
-            <span id={id + '-err'} className='text-[12px] text-destructive'>{error}</span>
+          {candidates.length > 0 ? (
+            <MentionPicker
+              candidates={candidates}
+              onPick={(c) => setBody((v) => v + (v && !v.endsWith(' ') ? ' ' : '') + '@{' + c.id + '|' + c.nickname + '} ')}
+            />
           ) : null}
           <Button primary className='ml-auto' disabled={empty} onClick={submit}>
             发布

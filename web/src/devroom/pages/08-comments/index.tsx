@@ -3,6 +3,7 @@ import { CommentActions } from '@/ui/comment/comment-actions';
 import { CommentItem } from '@/ui/comment/comment-item';
 import { CommentList } from '@/ui/comment/comment-list';
 import { CommentReplies } from '@/ui/comment/comment-replies';
+import type { MentionCandidate } from '@/ui/comment/mention-picker';
 import { ReplyBox } from '@/ui/comment/reply-box';
 import type { CommentData } from '@/ui/comment/types';
 import { Card, Row } from '@/devroom/kit';
@@ -27,7 +28,7 @@ const REPLIES: CommentData[] = [
   {
     id: 'r1',
     author: LIN,
-    body: '这个思路对，但要注意前置依赖；我上次直接覆盖 Maps 目录，结果旧存档读不出来。',
+    body: '这个思路对，但要注意前置依赖；@{58|某小X} 上次直接覆盖 Maps 目录，结果旧存档读不出来。',
     createdAt: '2026-09-28 12:25',
     likes: 3,
     dislikes: 0,
@@ -47,11 +48,19 @@ const REPLIES: CommentData[] = [
 
 const ME = { nickname: '唐天', avatar: A('miyin-portrait-320.webp') };
 
+// @ 提及候选（真实实现来自 GET /api/v1/users/search?q=）
+const CANDIDATES: MentionCandidate[] = [
+  { id: '12', nickname: '唐天', handle: 'tangtian', avatar: A('miyin-portrait-320.webp'), role: { key: 'admin', name: '管理员' } },
+  { id: '37', nickname: '林诗', handle: 'linshi', avatar: A('miyin-chibi-160.webp'), role: { key: 'creator', name: '认证创作者' } },
+  { id: '58', nickname: '某小X', handle: 'xiaox' },
+  { id: '91', nickname: '唐天（同名）', handle: 'tangtian2' },
+];
+
 const COMMENTS: CommentData[] = [
   {
     id: 'c1',
     author: XIAO,
-    body: '？为什么不叫我',
+    body: '？为什么不叫我，@{12|唐天} 你说说看',
     createdAt: '2026-09-28 12:25',
     likes: 12,
     dislikes: 0,
@@ -76,9 +85,9 @@ export default function CommentsPage() {
     <div className='flex flex-col gap-4'>
       <Card
         name='评论区（整块 · CommentList）'
-        note='对照 B 站：表头「评论 N」+ 最热｜最新，下面常驻评论框；楼中楼不加竖线，靠缩进与间距表达层级。'
+        note='对照 B 站：表头「评论 N」+ 最热｜最新，下面常驻评论框；**主楼字号 15px、楼中楼 13px + 头像小一号**（层级靠字号/头像/间距，不靠竖线）；@提及底层存用户 id、显示昵称、点击跳主页。'
       >
-        <CommentList comments={COMMENTS} total={54} me={ME} />
+        <CommentList comments={COMMENTS} total={54} me={ME} candidates={CANDIDATES} />
       </Card>
 
       <Card
@@ -101,14 +110,13 @@ export default function CommentsPage() {
         </Row>
         <Row label='ReplyBox（回复框）' hint='原生 textarea（Ring 的 Input 是表单小输入，装不下长评论）：默认 7 行、随输入长高；只有一个发布按钮，空内容不可点'>
           <div className='w-full max-w-xl'>
-            <ReplyBox me={ME} replyingTo='某小X' />
+            <ReplyBox me={ME} replyingTo='某小X' candidates={CANDIDATES} />
           </div>
         </Row>
       </Card>
 
       <Card name='待补' note='只列**需求文档里确实有**的（表情/回复配图不在需求里，已删掉）。'>
-        <Row label='未做' hint='不做出来不许进业务页面'>
-          <span className='rounded-sm bg-muted px-1.5 py-0.5 text-[11px] text-muted-foreground'>@ 提及选择器（需求：GET /users/search）</span>
+        <Row label='未做' hint='不做出来不许进业务页面；@ 提及已完成，从这里划掉'>
           <span className='rounded-sm bg-muted px-1.5 py-0.5 text-[11px] text-muted-foreground'>举报菜单</span>
           <span className='rounded-sm bg-muted px-1.5 py-0.5 text-[11px] text-muted-foreground'>分页/加载更多</span>
         </Row>

@@ -20,12 +20,7 @@ export function CommentReplies({
   return (
     <div className='mt-3 flex flex-col gap-4'>
       {shown.map((r) => (
-        <CommentItem
-          key={r.id}
-          comment={r}
-          avatarSize='sm'
-          onReply={() => onReply?.(r.id)}
-        />
+        <CommentItem key={r.id} comment={r} level='reply' onReply={() => onReply?.(r.id)} />
       ))}
       {replies.total > preview ? (
         <div>
