@@ -21,6 +21,7 @@ export default function RichPage() {
   const [imgs3, setImgs3] = useState<UploadedImage[]>([]);
   const [avatar, setAvatar] = useState<UploadedImage[]>([]);
   const [avatarB, setAvatarB] = useState<UploadedImage[]>([]);
+  const [postLength, setPostLength] = useState(0);
   const [row, setRow] = useState<{ id: string; content_json: string; content_html: string; saved_at: string } | null>(null);
   const [busy, setBusy] = useState(false);
 
@@ -40,7 +41,7 @@ export default function RichPage() {
     <div className='flex flex-col gap-4'>
       <Card
         name='富文本编辑器（帖子正文用）'
-        note='**所见即所得**（Lexical 内核）。存储用它 **EditorState JSON**（节点自带 type/version，无损往返），写入时同时生成 HTML 供只读展示；工具栏与输入 @ 走同一个候选面板；图片是正文节点。'
+        note='**所见即所得**（Lexical 内核）。**帖子正文上限 20000 字**（超出自动截断，计数变红）。存储用它 **EditorState JSON**（节点自带 type/version，无损往返），写入时同时生成 HTML 供只读展示；工具栏与输入 @ 走同一个候选面板；图片是正文节点。'
       >
         <MarkdownEditor
           value={doc.json}
@@ -49,6 +50,8 @@ export default function RichPage() {
           images={imgs}
           onImagesChange={setImgs}
           maxImages={10}
+          maxLength={20000}
+          onLengthChange={setPostLength}
           allowOriginal
         />
         <Row label='当前内容' hint='正文存 EditorState JSON（后端 content_json），HTML 由前端生成、服务端清洗后存 content_html'>
@@ -66,7 +69,7 @@ export default function RichPage() {
           <Button primary disabled={textLength(doc.html) === 0 || busy} onClick={save}>
             {busy ? '保存中…' : '存一次（模拟发布）'}
           </Button>
-          <span className='text-[11px] text-muted-foreground'>{textLength(doc.html)} 字 / {docImages} 张图</span>
+          <span className='text-[11px] text-muted-foreground'>{postLength} / 20000 字 · {docImages} 张图</span>
         </Row>
         {row ? (
           <>
@@ -77,7 +80,7 @@ export default function RichPage() {
             </Row>
             <Row label='③ 读回来' hint='读回来的样子——提及是链接、图片是图片'>
               <div className='w-full max-w-2xl rounded-md border border-border p-3'>
-                <CommentBody body={row.content_html} className='prose prose-sm max-w-none text-foreground' />
+                <CommentBody body={row.content_html} collapsible collapsedHeight={200} className='prose prose-sm max-w-none text-foreground' />
               </div>
             </Row>
           </>

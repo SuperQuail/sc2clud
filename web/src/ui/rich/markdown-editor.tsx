@@ -25,6 +25,7 @@ import { MentionMenu } from '@/ui/comment/mention-menu';
 import { MentionOption } from '@/ui/comment/mention-option';
 import type { MentionCandidate } from '@/ui/comment/mention-types';
 import { assetUrl } from '@/lib/url';
+import { MaxLengthPlugin } from './lexical/max-length-plugin';
 import { ImageUploader, type UploadedImage } from './image-uploader';
 import { planImages, processImage } from './image-pipeline';
 import { theme } from './lexical/theme';
@@ -121,6 +122,8 @@ export function MarkdownEditor({
   maxImages = 10,
   allowOriginal = false,
   compress = true,
+  maxLength = 20000,
+  onLengthChange,
 }: {
   value: string;
   /** json = SerializedEditorState；html = 只读展示用（已由调用方决定是否再清洗） */
@@ -133,6 +136,10 @@ export function MarkdownEditor({
   maxImages?: number;
   allowOriginal?: boolean;
   compress?: boolean;
+  /** 字数上限（帖子 20000、评论 10000）；超出部分会被自动截掉 */
+  maxLength?: number;
+  /** 把当前字数报给使用方（发布按钮要用） */
+  onLengthChange?: (length: number) => void;
 }) {
   const [query, setQuery] = useState<string | null>(null);
   const [dragging, setDragging] = useState(false);
@@ -239,6 +246,7 @@ export function MarkdownEditor({
       const html = state.read(() => $generateHtmlFromNodes(editor, null));
       // 图片数从**文档**里数：在正文删掉图片，计数器就跟着降
       setDocImages(countImageNodes(tree));
+      onLengthChange?.(editor.getRootElement()?.textContent?.length ?? 0);
       onChange(json, html);
     },
     [onChange],
@@ -292,6 +300,7 @@ export function MarkdownEditor({
           className={dragging ? 'rounded-lg ring-[3px] ring-ring/40' : undefined}
         />
         <HistoryPlugin />
+        <MaxLengthPlugin maxLength={maxLength} />
         <MarkdownShortcutPlugin transformers={SHORTCUT_TRANSFORMERS} />
         <OnChangePlugin onChange={onEditorChange} />
         <InitialState value={value} />

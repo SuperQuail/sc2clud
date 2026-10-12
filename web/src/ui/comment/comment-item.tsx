@@ -50,7 +50,12 @@ export function CommentItem({
             <span className='shrink-0 rounded-[4px] bg-muted px-1.5 py-0.5 text-[11px] text-muted-foreground'>互相关注</span>
           ) : null}
         </div>
-        <CommentBody body={comment.body} className={cn('whitespace-pre-wrap text-foreground', s.body)} />
+        <CommentBody
+          body={comment.body}
+          collapsible={level === 'top'}
+          collapsedHeight={240}
+          className={cn('text-foreground', s.body)}
+        />
         <div className='flex flex-wrap items-center gap-x-4 gap-y-1'>
           <span className={cn('tabular-nums text-muted-foreground', s.meta)}>{comment.createdAt}</span>
           <CommentActions
