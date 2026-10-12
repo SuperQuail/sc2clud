@@ -18,10 +18,10 @@ import {
 import { HeadingNode, QuoteNode } from '@lexical/rich-text';
 import { ListItemNode, ListNode } from '@lexical/list';
 import { $createLinkNode, LinkNode, TOGGLE_LINK_COMMAND } from '@lexical/link';
-import { $createTextNode, $getSelection, $isRangeSelection, FORMAT_TEXT_COMMAND, type EditorState, type LexicalEditor } from 'lexical';
+import { $createTextNode, $getRoot, $getSelection, $isRangeSelection, FORMAT_TEXT_COMMAND, type EditorState, type LexicalEditor } from 'lexical';
 import { Bold, Code, Italic, Link2, List, Quote, AtSign } from 'lucide-react';
 import { icon16 } from '@/ui/icons';
-import { MentionSuggest } from '@/ui/comment/mention-suggest';
+import { MentionSuggest, type Anchor } from '@/ui/comment/mention-suggest';
 import type { MentionCandidate } from '@/ui/comment/mention-types';
 import { ImageUploader, type UploadedImage } from './image-uploader';
 import { theme } from './lexical/theme';
@@ -51,6 +51,27 @@ function Toolbar({ onMention }: { onMention: () => void }) {
 }
 
 /** 初次挂载时把外部 value（Markdown）灌进编辑器；之后只在外部强制替换时同步 */
+/** 测试开关：?demo=mention 时挂载后自动在光标处插入 @，用来验证候选面板的位置。
+ *  这是给 DevRoom 出图/自查用的，不进业务代码路径。 */
+function DemoMention({ enabled }: { enabled: boolean }) {
+  const [editor] = useLexicalComposerContext();
+  const done = useRef(false);
+  useEffect(() => {
+    if (!enabled || done.current) return;
+    done.current = true;
+    window.setTimeout(() => {
+      editor.focus();
+      editor.update(() => {
+        // 先给根节点一个选区：没有选区时 $getSelection() 返回 null，插不进去
+        $getRoot().selectEnd();
+        const sel = $getSelection();
+        if ($isRangeSelection(sel)) sel.insertText('@');
+      });
+    }, 400);
+  }, [editor, enabled]);
+  return null;
+}
+
 function InitialMarkdown({ value }: { value: string }) {
   const [editor] = useLexicalComposerContext();
   const done = useRef(false);
@@ -89,6 +110,7 @@ export function MarkdownEditor({
   compress?: boolean;
 }) {
   const [menuOpen, setMenuOpen] = useState(false);
+  const [anchor, setAnchor] = useState<Anchor | null>(null);
   const [query, setQuery] = useState('');
   const [active, setActive] = useState(0);
   const editorRef = useRef<LexicalEditor | null>(null);
@@ -156,11 +178,19 @@ export function MarkdownEditor({
           <MarkdownShortcutPlugin transformers={TRANSFORMERS} />
           <OnChangePlugin onChange={onEditorChange} />
           <InitialMarkdown value={value} />
-          <EditorRef editorRef={editorRef} onQuery={setQuery} onOpen={setMenuOpen} />
+          <DemoMention enabled={typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('demo') === 'mention'} />
+          <EditorRef
+            editorRef={editorRef}
+            onQuery={(q, a) => {
+              setQuery(q);
+              setAnchor(a);
+            }}
+            onOpen={setMenuOpen}
+          />
         </div>
       </LexicalComposer>
       {menuOpen ? (
-        <MentionSuggest candidates={matched} activeIndex={active} onPick={insertMention} />
+        <MentionSuggest candidates={matched} activeIndex={active} onPick={insertMention} anchor={anchor} />
       ) : null}
       {onImagesChange ? (
         <ImageUploader
@@ -179,6 +209,23 @@ export function MarkdownEditor({
   );
 }
 
+/** 取「@ 到光标」这段文字的视口矩形：面板左边缘与 @ 对齐，出现在它的上方。
+ *  用 Range 量，而不是猜坐标——光标在长文里时，容器的相对位置没有意义。 */
+function caretAnchor(backChars: number): Anchor | null {
+  const sel = window.getSelection();
+  if (!sel || sel.rangeCount === 0) return null;
+  const range = sel.getRangeAt(0).cloneRange();
+  const node = range.startContainer;
+  if (node.nodeType !== Node.TEXT_NODE) return null;
+  const end = range.startOffset;
+  const start = Math.max(0, end - backChars);
+  const measure = document.createRange();
+  measure.setStart(node, start);
+  measure.setEnd(node, end);
+  const r = measure.getBoundingClientRect();
+  return { left: r.left, top: r.top, bottom: r.bottom };
+}
+
 /** 暴露 editor 实例，并在输入 @ 时自动打开候选（与工具栏按钮走同一个面板） */
 function EditorRef({
   editorRef,
@@ -186,7 +233,7 @@ function EditorRef({
   onOpen,
 }: {
   editorRef: React.MutableRefObject<LexicalEditor | null>;
-  onQuery: (q: string) => void;
+  onQuery: (q: string, anchor: Anchor | null) => void;
   onOpen: (open: boolean) => void;
 }) {
   const [editor] = useLexicalComposerContext();
@@ -199,7 +246,7 @@ function EditorRef({
         const before = sel.anchor.getNode().getTextContent().slice(0, sel.anchor.offset);
         const m = /(?:^|\s)@([^\s@]*)$/.exec(before);
         if (m) {
-          onQuery(m[1]!);
+          onQuery(m[1]!, caretAnchor(m[0].length));
           onOpen(true);
         }
       });

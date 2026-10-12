@@ -3,24 +3,42 @@ import { Username } from '@/ui/user/username';
 import { cn } from '@/lib/utils';
 import type { MentionCandidate } from './mention-types';
 
-// 输入 @ 之后**自动弹出**的候选面板（不是按钮触发的下拉）。
-// 为什么不用 DropdownPanel：它的语义是「点触发器开合」；这里是随输入出现、随选择消失，
-// 而且需要方向键选择——两种交互不同，硬套会更绕。
+// 输入 @ 之后自动弹出的候选面板。
+// **位置由光标决定**（不是挂在编辑器下方）：调用方传 anchor（@ 符号的视口坐标），
+//   面板出现在**那一行的上方**，左边缘与 **@ 符号**对齐；空间不够时才落到下方。
+// 之前用 absolute top-full 挂在容器上，编辑器一高它就跑到页面角落去了。
+export type Anchor = { left: number; top: number; bottom: number };
+
 export function MentionSuggest({
   candidates,
   activeIndex,
   onPick,
+  anchor,
 }: {
   candidates: MentionCandidate[];
   activeIndex: number;
   onPick: (c: MentionCandidate) => void;
+  /** @ 符号的视口矩形；不传就退回默认定位 */
+  anchor?: Anchor | null;
 }) {
   if (candidates.length === 0) return null;
+
+  const above = anchor ? anchor.top > 240 : true;
+  const style = anchor
+    ? above
+      ? { left: anchor.left, bottom: window.innerHeight - anchor.top + 4 }
+      : { left: anchor.left, top: anchor.bottom + 4 }
+    : undefined;
+
   return (
     <div
       role='listbox'
       aria-label='提及候选'
-      className='absolute left-0 top-full z-50 mt-1 flex max-h-64 w-72 flex-col overflow-y-auto rounded-lg border border-border bg-popover p-1 text-[12px] shadow-lg'
+      style={style}
+      className={cn(
+        'z-50 flex max-h-64 w-72 flex-col overflow-y-auto rounded-lg border border-border bg-popover p-1 text-[12px] shadow-lg',
+        anchor ? 'fixed' : 'absolute left-0 top-full mt-1',
+      )}
     >
       {candidates.map((c, i) => (
         <button
@@ -29,7 +47,7 @@ export function MentionSuggest({
           role='option'
           aria-selected={i === activeIndex}
           onMouseDown={(e) => {
-            e.preventDefault(); // 别让输入框失焦
+            e.preventDefault(); // 别让编辑区失焦
             onPick(c);
           }}
           className={cn(
