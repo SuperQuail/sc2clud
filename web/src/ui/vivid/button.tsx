@@ -52,7 +52,7 @@ export function VividButton({
   return (
     <button
       type={props.type ?? 'button'}
-      className={cn(vivid({ tone, size }), className)}
+      className={cn(vivid({ tone, size }), loading && 'vivid-loading', className)}
       disabled={disabled || loading}
       aria-busy={loading || undefined}
       {...props}

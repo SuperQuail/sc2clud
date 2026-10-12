@@ -3,7 +3,11 @@
 function readBase(): string {
   try {
     const path = new URL(document.baseURI).pathname;
-    return path.endsWith('/') ? path : path + '/';
+    if (path.endsWith('/')) return path;
+    // 文档 URL 是**文件**时（例如本地把 devroom 当 /devroom.html 提供），
+    // 基址是它所在的目录，而不是「文件名 + 斜杠」——否则图片会变成 /devroom.html/art/x 而 404。
+    const cut = path.lastIndexOf('/');
+    return cut < 0 ? '/' : path.slice(0, cut + 1);
   } catch {
     return '/'; // jsdom 或异常环境下退化为根
   }

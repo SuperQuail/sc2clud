@@ -15,3 +15,29 @@ body {
 @media (prefers-reduced-motion: reduce) {
   * { transition: none !important; animation: none !important; }
 }
+
+/* 夜间模式：我们的开关是 <html data-theme="dark">，不是 Tailwind 默认的 prefers-color-scheme。
+   不接这一条，业务里写 dark: 就会跟着系统走、跟我们的切换按钮脱节。 */
+@custom-variant dark (&:where([data-theme='dark'], [data-theme='dark'] *));
+
+/* 用户向按钮的「提交中」：一条流动的高光扫过（与 Ring UI 的 loader 观感一致）。
+   只用 transform，尊重 prefers-reduced-motion。 */
+@keyframes vivid-sweep {
+  from { transform: translateX(-100%); }
+  to { transform: translateX(100%); }
+}
+.vivid-loading {
+  position: relative;
+  overflow: hidden;
+}
+.vivid-loading::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(90deg, transparent, color-mix(in srgb, white 34%, transparent), transparent);
+  animation: vivid-sweep 1.4s linear infinite;
+  pointer-events: none;
+}
+@media (prefers-reduced-motion: reduce) {
+  .vivid-loading::after { animation: none; opacity: 0.35; }
+}
