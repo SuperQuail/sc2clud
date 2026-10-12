@@ -1,7 +1,9 @@
 import { useState } from 'react';
 import Button from '@jetbrains/ring-ui-built/components/button/button';
 import Toggle from '@jetbrains/ring-ui-built/components/toggle/toggle';
+import Select, { Type as SelectType } from '@jetbrains/ring-ui-built/components/select/select';
 import { DropdownItem, DropdownPanel } from '@/ui/dropdown-panel';
+import { VividSelect } from '@/ui/vivid/select';
 import { VividSwitch } from '@/ui/vivid/switch';
 import Input from '@jetbrains/ring-ui-built/components/input/input';
 import { ControlsHeight } from '@jetbrains/ring-ui-built/components/global/controls-height';
@@ -61,9 +63,17 @@ function Line({ label, children }: { label: string; children: React.ReactNode })
   );
 }
 
+const SORTS = [
+  { key: 'new', label: '最新回复' },
+  { key: 'created', label: '最新发布' },
+  { key: 'hot', label: '最多回复' },
+];
+
 export default function InteractivePage() {
   const [on, setOn] = useState(true);
   const [off, setOff] = useState(false);
+  const [sort, setSort] = useState<string | null>('new');
+  const selectedSort = SORTS.find((s) => s.key === sort) ?? null;
   return (
     <div className='flex flex-col gap-6'>
       <Pair
@@ -179,26 +189,53 @@ export default function InteractivePage() {
       />
 
       <Pair
-        name='下拉面板 DropdownPanel（我们自己的）'
-        note='触发器右侧有可点三角（展开时翻转）；面板有表头与条目 hover 态；**direction=auto 时下方放不下会向上弹**；Esc/点外部关闭。两侧共用同一个控件。'
+        name='下拉选择 Select'
+        note='**下拉是表单控件，不是按钮**：B 系 VividSelect 与输入框同高同圆角，右侧箭头是控件自己的一部分；A 系 Ring UI Select 用 type=INPUT 也是输入框外观。'
         user={
           <>
-            <Line label='点徽标/按钮展开'>
-              <DropdownPanel label='排序方式' width='w-52' trigger={<VividButton tone='soft'>排序</VividButton>}>
+            <Line label='默认 / 带标签 / 已选'>
+              <div className='w-52'><VividSelect options={SORTS} value={sort} onChange={setSort} /></div>
+              <div className='w-52'><VividSelect label='排序方式' options={SORTS} value={sort} onChange={setSort} /></div>
+              <div className='w-52'><VividSelect label='禁用' options={SORTS} onChange={() => {}} disabled /></div>
+            </Line>
+          </>
+        }
+        dev={
+          <>
+            <Line label='INPUT 类型（表单里用）'>
+              <Select
+                type={SelectType.INPUT}
+                label='排序方式'
+                data={SORTS}
+                selected={selectedSort}
+                onSelect={(item) => {
+                  if (item) setSort(String(item.key));
+                }}
+              />
+            </Line>
+          </>
+        }
+      />
+
+      <Pair
+        name='工具条按钮下拉（箭头由触发器自己画）'
+        note='A 系的箭头是 Ring UI Button 自带的 dropdown；B 系由 VividButton 的 dropdown 渲染。**DropdownPanel 本身不再画箭头**。'
+        user={
+          <>
+            <Line label='B 系'>
+              <DropdownPanel label='排序方式' width='w-52' trigger={<VividButton tone='soft' dropdown>排序</VividButton>}>
                 <DropdownItem onClick={() => {}}>最新回复</DropdownItem>
                 <DropdownItem onClick={() => {}}>最新发布</DropdownItem>
-                <DropdownItem onClick={() => {}}>最多回复</DropdownItem>
               </DropdownPanel>
             </Line>
           </>
         }
         dev={
           <>
-            <Line label='点按钮展开'>
+            <Line label='A 系'>
               <DropdownPanel label='排序方式' width='w-52' trigger={<Button dropdown>排序</Button>}>
                 <DropdownItem onClick={() => {}}>最新回复</DropdownItem>
                 <DropdownItem onClick={() => {}}>最新发布</DropdownItem>
-                <DropdownItem onClick={() => {}}>最多回复</DropdownItem>
               </DropdownPanel>
             </Line>
           </>
@@ -208,11 +245,9 @@ export default function InteractivePage() {
       <section className='rounded-lg border border-dashed border-border p-3'>
         <h2 className='text-sm font-semibold text-foreground'>还没做对照的控件</h2>
         <p className='text-[12px] leading-relaxed text-muted-foreground'>
-          下拉选择、复选/单选：B 系还没做（Ring UI 那侧已可用）。按这个页面的格式补上左右对照后，才允许在业务页面里用。
+          复选/单选：B 系还没做（Ring UI 那侧已可用）。按这个页面的格式补上左右对照后，才允许在业务页面里用。
         </p>
         <div className='mt-2 flex flex-wrap items-center gap-2 text-[11px] text-muted-foreground'>
-          <span className='rounded-sm bg-muted px-1.5 py-0.5'>Select</span>
-          <span className='rounded-sm bg-muted px-1.5 py-0.5'>Dropdown</span>
           <span className='rounded-sm bg-muted px-1.5 py-0.5'>Checkbox</span>
           <span className='rounded-sm bg-muted px-1.5 py-0.5'>Radio</span>
           <span className='text-muted-foreground'>另：图标工具 icon16 / 官方图标仍在第 05 页。</span>

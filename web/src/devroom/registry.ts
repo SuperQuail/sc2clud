@@ -63,4 +63,17 @@ export const VERIFIED: VerifiedControl[] = [
     props: ['checked + onChange（受控；onChange 收事件 e => setX(e.target.checked)）', '标签用 children；另有 leftLabel / help', 'disabled', 'size（控件默认值）'],
     notes: ['紧凑型开关，适合发帖页/设置页这类密集表单。'],
   },
+  {
+    name: 'select',
+    path: '@jetbrains/ring-ui-built/components/select/select',
+    page: '01-interactive',
+    verifiedOn: '2026-10-12',
+    props: [
+      'type：Type.INPUT（输入框外观，表单里用）/ BUTTON / INLINE / CUSTOM',
+      'data：条目数组 [{ key, label }]；**selected 要传条目对象，不是 key**（传字符串会把泛型 T 推断成 string，类型直接报错）',
+      'onSelect(item)：item 可能为 null，要判空',
+      'label / filter / multiple 等按需',
+    ],
+    notes: ['A 系表单里的下拉用它；B 系用 src/ui/vivid/select（VividSelect）。'],
+  },
 ];

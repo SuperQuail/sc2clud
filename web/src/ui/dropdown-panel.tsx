@@ -2,10 +2,10 @@ import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 're
 import { cn } from '@/lib/utils';
 
 // 通用下拉面板。触发元素就是传进来的东西本身（徽标 / 按钮）。
-// 三件它必须自己负责的事：
-//   ① **可点标记**：默认在触发元素右侧画一个 CSS 三角（不用图标/emoji），展开时翻转；
-//   ② **自己的样式**：表头 + 内容区 + 圆角/阴影/最大高度滚动，条目有 hover 态（DropdownItem）；
-//   ③ **向上/向下**：direction=auto 时打开后测量，下方放不下且上方够就向上弹。
+// 它只管三件事：展开/收起、点外部与 Esc 关闭、向上/向下自适应。
+// **不画箭头**：可点标记是触发器自己的事——A 系用 Ring UI Button 自带的 dropdown 箭头，
+// B 系用 VividButton / VividSelect 自己渲染（曾经在面板里给任意触发器旁边画三角，属于画蛇添足）。
+// 面板样式：表头 + 内容区 + 圆角/阴影/最大高度滚动，条目统一用 DropdownItem。
 export type DropdownDirection = 'down' | 'up' | 'auto';
 
 export function DropdownPanel({
@@ -15,8 +15,9 @@ export function DropdownPanel({
   align = 'left',
   width = 'w-72',
   direction = 'auto',
-  marker = true,
   className,
+  open: controlledOpen,
+  onOpenChange,
 }: {
   trigger: ReactNode;
   children: ReactNode;
@@ -24,11 +25,17 @@ export function DropdownPanel({
   align?: 'left' | 'right';
   width?: string;
   direction?: DropdownDirection;
-  /** 是否在触发元素旁画可点三角 */
-  marker?: boolean;
   className?: string;
+  /** 传了就是受控模式（父组件决定开合，例如选中一项后主动关闭） */
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
 }) {
-  const [open, setOpen] = useState(false);
+  const [innerOpen, setInnerOpen] = useState(false);
+  const open = controlledOpen ?? innerOpen;
+  const setOpen = (v: boolean) => {
+    setInnerOpen(v);
+    onOpenChange?.(v);
+  };
   const [dir, setDir] = useState<'down' | 'up'>('down');
   const wrap = useRef<HTMLSpanElement>(null);
   const panel = useRef<HTMLSpanElement>(null);
@@ -70,19 +77,10 @@ export function DropdownPanel({
         aria-haspopup='dialog'
         aria-expanded={open}
         aria-label={label + '（点击展开）'}
-        onClick={() => setOpen((v) => !v)}
+        onClick={() => setOpen(!open)}
         className={cn('inline-flex cursor-pointer items-center rounded-[5px] outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50', className)}
       >
         {trigger}
-        {marker ? (
-          <span
-            aria-hidden
-            className={cn(
-              'ml-1 inline-block size-0 border-x-[4px] border-t-[5px] border-x-transparent border-t-current opacity-60 transition-transform duration-150 motion-reduce:transition-none',
-              open && 'rotate-180',
-            )}
-          />
-        ) : null}
       </button>
       {open ? (
         <span
