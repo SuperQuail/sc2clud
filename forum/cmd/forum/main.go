@@ -63,9 +63,17 @@ func spa(root string, files http.Handler, serveIndex http.HandlerFunc) http.Hand
 			return
 		}
 		clean := filepath.Join(root, filepath.Clean("/"+strings.TrimPrefix(r.URL.Path, "/")))
-		if info, err := os.Stat(clean); err == nil && !info.IsDir() {
-			files.ServeHTTP(w, r)
-			return
+		if info, err := os.Stat(clean); err == nil {
+			// 文件直接发；**目录要先看它有没有自己的 index.html**（/devroom/ 这种子应用），
+			// 有就交给静态服务器，没有才走前端路由。少了这一条，子应用会掉进 SPA 回退变成 404。
+			if !info.IsDir() {
+				files.ServeHTTP(w, r)
+				return
+			}
+			if idx, ierr := os.Stat(filepath.Join(clean, "index.html")); ierr == nil && !idx.IsDir() {
+				files.ServeHTTP(w, r)
+				return
+			}
 		}
 		serveIndex(w, r)
 	})
