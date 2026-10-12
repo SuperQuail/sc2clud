@@ -76,4 +76,13 @@ export const VERIFIED: VerifiedControl[] = [
     ],
     notes: ['A 系表单里的下拉用它；B 系用 src/ui/vivid/select（VividSelect）。'],
   },
+  { name: 'dialog', path: '@jetbrains/ring-ui-built/components/dialog/dialog', page: '02-overlay', verifiedOn: '2026-10-12',
+    props: ['show（受控）', 'label：必填，作为无障碍标题', 'onCloseAttempt / onOverlayClick / onEscPress', 'modal / trapFocus / dense / showCloseButton'],
+    notes: ['遮罩点击、Esc、焦点陷阱都由控件负责，不要自己写弹层。'] },
+  { name: 'tooltip', path: '@jetbrains/ring-ui-built/components/tooltip/tooltip', page: '02-overlay', verifiedOn: '2026-10-12',
+    props: ['title（内容）', 'long：允许长文本换行', 'delay', 'hide', 'selfOverflowOnly'], notes: [] },
+  { name: 'error-message', path: '@jetbrains/ring-ui-built/components/error-message/error-message', page: '02-overlay', verifiedOn: '2026-10-12',
+    props: ['code / message / description', 'icon：须 icon16() 包装'], notes: ['页面级错误用它，不要自己拼红字。'] },
+  { name: 'loader-inline', path: '@jetbrains/ring-ui-built/components/loader-inline/loader-inline', page: '02-overlay', verifiedOn: '2026-10-12',
+    props: ['无独立 props（行内加载）'], notes: ['局部加载用它；整页加载用 LoaderScreen。'] },
 ];
