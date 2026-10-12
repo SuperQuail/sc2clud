@@ -40,12 +40,15 @@ export function ImageUploader({
   max = 10,
   compress = true,
   allowOriginal = false,
+  showList = true,
 }: {
   images: UploadedImage[];
   onChange: (next: UploadedImage[]) => void;
   max?: number;
   compress?: boolean;
   allowOriginal?: boolean;
+  /** 编辑器里用 false：图片已经是正文内容，不必再列一遍缩略图 */
+  showList?: boolean;
 }) {
   const input = useRef<HTMLInputElement>(null);
   const [useOriginal, setUseOriginal] = useState(false);
@@ -106,7 +109,7 @@ export function ImageUploader({
         </span>
       </div>
       {error ? <span className='text-[12px] text-destructive'>{error}</span> : null}
-      {images.length > 0 ? (
+      {showList && images.length > 0 ? (
         <ul className='flex flex-wrap gap-2'>
           {images.map((im) => (
             <li key={im.id} className='relative'>

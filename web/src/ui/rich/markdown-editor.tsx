@@ -29,10 +29,13 @@ import { icon16 } from '@/ui/icons';
 import { MentionMenu } from '@/ui/comment/mention-menu';
 import { MentionOption } from '@/ui/comment/mention-option';
 import type { MentionCandidate } from '@/ui/comment/mention-types';
+import { assetUrl } from '@/lib/url';
 import { ImageUploader, type UploadedImage } from './image-uploader';
 import { theme } from './lexical/theme';
 import { $createMentionNode, MentionNode } from './lexical/mention-node';
 import { MENTION_TRANSFORMER } from './lexical/mention-transformer';
+import { $createImageNode, ImageNode } from './lexical/image-node';
+import { IMAGE_TRANSFORMER } from './lexical/image-transformer';
 
 // 富文本编辑器（所见即所得，Markdown 底层）。
 // @提及用 **Lexical 官方 LexicalTypeaheadMenuPlugin**：贴合触发文字的定位、滚动跟随、
@@ -40,6 +43,7 @@ import { MENTION_TRANSFORMER } from './lexical/mention-transformer';
 // 提及是 `[@昵称](mention:<user_id>)` 标准 Markdown 链接（契约见后端方案 §9）。
 const TRANSFORMERS = [
   MENTION_TRANSFORMER,
+  IMAGE_TRANSFORMER,
   ...ELEMENT_TRANSFORMERS,
   ...TEXT_FORMAT_TRANSFORMERS,
   ...TEXT_MATCH_TRANSFORMERS,
@@ -69,6 +73,24 @@ function InitialMarkdown({ value }: { value: string }) {
     if (!value) return;
     editor.update(() => $convertFromMarkdownString(value, TRANSFORMERS));
   }, [editor, value]);
+  return null;
+}
+
+/** 自查开关：?demo=image 往正文里插一张图（验证图片是正文的一部分） */
+function DemoImage({ enabled, src }: { enabled: boolean; src: string }) {
+  const [editor] = useLexicalComposerContext();
+  const done = useRef(false);
+  useEffect(() => {
+    if (!enabled || done.current) return;
+    done.current = true;
+    window.setTimeout(() => {
+      editor.update(() => {
+        $getRoot().selectEnd();
+        const sel = $getSelection();
+        if ($isRangeSelection(sel)) sel.insertNodes([$createImageNode(src, '示例图')]);
+      });
+    }, 400);
+  }, [editor, enabled, src]);
   return null;
 }
 
@@ -168,6 +190,23 @@ export function MarkdownEditor({
     });
   }, []);
 
+  /** 把上传好的图片作为**正文节点**插到光标处（不是往下追加一行 Markdown 文本） */
+  const insertImages = useCallback((items: UploadedImage[]) => {
+    const editor = editorRef.current;
+    if (!editor || items.length === 0) return;
+    editor.update(() => {
+      let sel = $getSelection();
+      if (!$isRangeSelection(sel)) {
+        $getRoot().selectEnd();
+        sel = $getSelection();
+      }
+      if (!$isRangeSelection(sel)) return;
+      for (const im of items) {
+        sel.insertNodes([$createImageNode(im.url, im.name), $createTextNode(' ')]);
+      }
+    });
+  }, []);
+
   const onEditorChange = useCallback(
     (state: EditorState) => state.read(() => onChange($convertToMarkdownString(TRANSFORMERS))),
     [onChange],
@@ -183,7 +222,7 @@ export function MarkdownEditor({
         initialConfig={{
           namespace: 'sc2clud-editor',
           theme,
-          nodes: [HeadingNode, QuoteNode, ListNode, ListItemNode, LinkNode, MentionNode],
+          nodes: [HeadingNode, QuoteNode, ListNode, ListItemNode, LinkNode, MentionNode, ImageNode],
           onError: (e) => {
             throw e;
           },
@@ -209,6 +248,10 @@ export function MarkdownEditor({
         <MarkdownShortcutPlugin transformers={TRANSFORMERS} />
         <OnChangePlugin onChange={onEditorChange} />
         <InitialMarkdown value={value} />
+        <DemoImage
+          enabled={typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('demo') === 'image'}
+          src={assetUrl('miyin-portrait-320.webp')}
+        />
         <DemoMention
           enabled={typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('demo') === 'mention'}
         />
@@ -238,11 +281,12 @@ export function MarkdownEditor({
           onChange={(next) => {
             onImagesChange(next);
             const added = next.filter((n) => !(images ?? []).some((o) => o.id === n.id));
-            if (added.length > 0) onChange(value + added.map((a) => '\n![' + a.name + '](' + a.url + ')\n').join(''));
+            insertImages(added);
           }}
           max={maxImages}
           allowOriginal={allowOriginal}
           compress={compress}
+          showList={false}
         />
       ) : null}
     </div>
