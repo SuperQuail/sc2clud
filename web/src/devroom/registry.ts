@@ -55,4 +55,12 @@ export const VERIFIED: VerifiedControl[] = [
     ],
     notes: ['它是 Ring UI 里唯一能做「带色半透明小标签」的现成控件，权限徽标优先用它。'],
   },
+  {
+    name: 'toggle',
+    path: '@jetbrains/ring-ui-built/components/toggle/toggle',
+    page: '01-interactive',
+    verifiedOn: '2026-10-12',
+    props: ['checked + onChange（受控；onChange 收事件 e => setX(e.target.checked)）', '标签用 children；另有 leftLabel / help', 'disabled', 'size（控件默认值）'],
+    notes: ['紧凑型开关，适合发帖页/设置页这类密集表单。'],
+  },
 ];

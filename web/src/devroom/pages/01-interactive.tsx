@@ -1,4 +1,8 @@
+import { useState } from 'react';
 import Button from '@jetbrains/ring-ui-built/components/button/button';
+import Toggle from '@jetbrains/ring-ui-built/components/toggle/toggle';
+import { DropdownPanel } from '@/ui/dropdown-panel';
+import { VividSwitch } from '@/ui/vivid/switch';
 import Input from '@jetbrains/ring-ui-built/components/input/input';
 import { ControlsHeight } from '@jetbrains/ring-ui-built/components/global/controls-height';
 import add from '@jetbrains/icons/add-20px';
@@ -58,6 +62,8 @@ function Line({ label, children }: { label: string; children: React.ReactNode })
 }
 
 export default function InteractivePage() {
+  const [on, setOn] = useState(true);
+  const [off, setOff] = useState(false);
   return (
     <div className='flex flex-col gap-6'>
       <Pair
@@ -149,13 +155,66 @@ export default function InteractivePage() {
         }
       />
 
+      <Pair
+        name='开关 Toggle'
+        note='B 系 28×48px 圆角开关（原生 role=switch，键盘可用）；A 系是 checkbox 输入，标签用 children，另有 leftLabel/help。'
+        user={
+          <>
+            <Line label='开 / 关 / 禁用'>
+              <VividSwitch checked={on} onChange={setOn} label='接收回复通知' hint='有人回复你时提醒' />
+              <VividSwitch checked={off} onChange={setOff} label='公开我的收藏' />
+              <VividSwitch checked disabled onChange={() => {}} label='不可用' />
+            </Line>
+          </>
+        }
+        dev={
+          <>
+            <Line label='开 / 关 / 禁用'>
+              <Toggle checked={on} onChange={(e) => setOn(e.target.checked)}>接收回复通知</Toggle>
+              <Toggle checked={off} onChange={(e) => setOff(e.target.checked)}>公开我的收藏</Toggle>
+              <Toggle checked disabled onChange={() => {}}>不可用</Toggle>
+            </Line>
+          </>
+        }
+      />
+
+      <Pair
+        name='下拉面板 DropdownPanel（我们自己的）'
+        note='点触发器本身展开，面板在下方；Esc 或点外部关闭；aria-expanded/haspopup 齐全。两侧都用它——它是语言无关的基础件。'
+        user={
+          <>
+            <Line label='点徽标/按钮展开'>
+              <DropdownPanel label='排序方式' width='w-56' trigger={<VividButton tone='soft'>排序</VividButton>}>
+                <span className='flex flex-col gap-1.5'>
+                  <span className='text-foreground'>最新回复</span>
+                  <span className='text-foreground'>最新发布</span>
+                  <span className='text-foreground'>最多回复</span>
+                </span>
+              </DropdownPanel>
+            </Line>
+          </>
+        }
+        dev={
+          <>
+            <Line label='点按钮展开'>
+              <DropdownPanel label='排序方式' width='w-56' trigger={<Button dropdown>排序</Button>}>
+                <span className='flex flex-col gap-1.5'>
+                  <span className='text-foreground'>最新回复</span>
+                  <span className='text-foreground'>最新发布</span>
+                  <span className='text-foreground'>最多回复</span>
+                </span>
+              </DropdownPanel>
+            </Line>
+          </>
+        }
+      />
+
       <section className='rounded-lg border border-dashed border-border p-3'>
         <h2 className='text-sm font-semibold text-foreground'>还没做对照的控件</h2>
         <p className='text-[12px] leading-relaxed text-muted-foreground'>
-          开关、下拉选择、复选/单选：B 系还没做（Ring UI 那侧已可用）。按这个页面的格式补上左右对照后，才允许在业务页面里用。
+          下拉选择、复选/单选：B 系还没做（Ring UI 那侧已可用）。按这个页面的格式补上左右对照后，才允许在业务页面里用。
         </p>
         <div className='mt-2 flex flex-wrap items-center gap-2 text-[11px] text-muted-foreground'>
-          <span className='rounded-sm bg-muted px-1.5 py-0.5'>Toggle</span>
           <span className='rounded-sm bg-muted px-1.5 py-0.5'>Select</span>
           <span className='rounded-sm bg-muted px-1.5 py-0.5'>Dropdown</span>
           <span className='rounded-sm bg-muted px-1.5 py-0.5'>Checkbox</span>
