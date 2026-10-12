@@ -4,6 +4,9 @@ import react from '@vitejs/plugin-react';
 import { defineConfig } from 'vitest/config';
 
 export default defineConfig({
+  // 相对 base：资源 URL 写成 ./assets/…，由 <base href> 决定最终前缀。
+  // 不能用绝对 '/assets/'：dev 实例在 /dev/ 下会去加载生产的前端产物（盲审 F01）。
+  base: './',
   plugins: [react(), tailwindcss()],
   resolve: { alias: { '@': fileURLToPath(new URL('./src', import.meta.url)) } },
   server: {

@@ -436,7 +436,7 @@
 
 
 
-PG 内置的 `to_tsvector` 对中文按「整段」处理，不做分词，直接用它搜中文等于搜不到。方案：**写入前用 gse 预分词，查询前用同一套分词**（这条规则原封不动从 v2 §7.6 继承——两边分词不一致就是「搜不到」，且很难查）。
+PG 内置的 `to_tsvector` 对中文按「整段」处理，不做分词，直接用它搜中文等于搜不到。方案：**写入与查询都切 bigram（2-gram）**，不加载任何词典（原 gse 方案已按 `性能与容量.md` §2.1 删除——它一个实例就吃掉近百 MB）。两边切法必须一致，否则「搜不到」且很难查。
 
 **索引表** `topic_search`（由 `search:index` 后台任务维护，不在发帖请求里同步写）：
 
@@ -445,7 +445,7 @@ PG 内置的 `to_tsvector` 对中文按「整段」处理，不做分词，直�
 | topic_id | bigint | PRIMARY KEY fk topics CASCADE | 一行一主题 |
 | title | varchar(200) | NOT NULL | 标题原文 |
 | body_text | text | NOT NULL DEFAULT '' | 1 楼正文的纯文本（去 markdown） |
-| tokens | text | NOT NULL DEFAULT '' | `title + body_text` 经 gse 切词后用空格连接 |
+| tokens | text | NOT NULL DEFAULT '' | `title + body_text` 切成 2-gram 后用空格连接（「中文搜索」→「中文 文搜 搜索」） |
 | tsv | tsvector | `GENERATED ALWAYS AS (to_tsvector('simple', title || ' ' || tokens)) STORED` | **生成列：不可能与 tokens 漂移** |
 | updated_at | ts | NOT NULL DEFAULT now() | — |
 
@@ -453,14 +453,14 @@ PG 内置的 `to_tsvector` 对中文按「整段」处理，不做分词，直�
 
 查询：`SELECT t.id FROM topic_search s JOIN topics t ON t.id = s.topic_id
         WHERE s.tsv @@ plainto_tsquery('simple', $1)
-          AND t.status = 'normal'`，其中 `$1` 是**用 gse 切好的查询串**。
+          AND t.status = 'normal'`，其中 `$1` 是**按同样规则切好的 bigram 查询串**。
 
    **必须 JOIN topics 过滤状态**：`topic_search` 里没有 status 列，而 `pending`/`rejected`/`hidden`/`deleted` 的主题只有作者与管理员可见（§4.2）——只按 tsv 匹配等于**把未公开内容泄露给游客**（盲审 D2，安全级）。
    **不要**给 topic_search 加 status 冗余列：那是第二份状态，必然漂移。排序用 `ts_rank` 或直接按 `t.last_reply_at`。
 
 依赖扩展：`CREATE EXTENSION IF NOT EXISTS pg_trgm;`（**必须是第一个迁移**）。pg_trgm 自 PG 13 起是 trusted extension，数据库属主可自行创建，不需要超级用户；服务端需要装 `postgresql-contrib`。
 
-> 为什么不用 `zhparser`/`pg_jieba`：要编译安装、要超级用户、升级 PG 时要重来一遍。用 gse + 生成列达到同样效果，代价是多一张索引表和一条后台任务——而这两样本来就有。
+> 为什么不用 `zhparser`/`pg_jieba`：要编译安装、要超级用户、升级 PG 时要重来一遍。用 bigram + 生成列达到同样效果，代价是多一张索引表和一条后台任务——而这两样本来就有。
 
 ---
 
@@ -499,7 +499,7 @@ PG 内置的 `to_tsvector` 对中文按「整段」处理，不做分词，直�
 | pgxpool 16 连接 | 每连接约 1–2 MB 工作内存 → ≤ 32 MB |
 | PG 服务端 shared_buffers | 256 MB（PG 自己的内存，不占 Go 进程） |
 | PG 服务端 work_mem | 4 MB（默认 4MB 够；排序大的查询单独调） |
-| Go 进程其它 | 见 v2 §9.6（gse 词典 ≤ 80 MB 等） |
+| Go 进程其它 | 见 `性能与容量.md`（原 §9.6 的预算表已作废） |
 
 其它参数：`statement_cache_mode=describe`（避免与连接池准备语句爆炸）；**不引入 pgbouncer**（单机单应用，多一层反而多一处故障）；`max_connections` 服务端设 50，留出 psql 与 pg_dump 的余量。
 

@@ -2,6 +2,8 @@
 <html lang="zh-CN">
   <head>
     <meta charset="utf-8" />
+    <!-- Go 壳按实例注入：生产 /，dev /dev/。相对资源 URL 全靠它解析，深链接才不会丢前缀 -->
+    <base href="/" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>SC2clud</title>
     <!-- 上面这行 title 是 Go meta 壳的锚点：Go 启动时校验它存在，请求时整块替换为

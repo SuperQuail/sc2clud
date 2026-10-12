@@ -1,7 +1,9 @@
+import { BASE } from '@/lib/base';
 import { ApiError } from './errors';
 
 // 全站唯一的 fetch 出口（前端方案 §4.1 / §5）。其它任何文件出现 fetch( 都由 ESLint 拦住。
-const DEFAULT_BASE = '/api/v1';
+// 前缀来自 <base href>，所以同一份产物在 / 与 /dev/ 下都指向自己那个实例的后端
+const DEFAULT_BASE = BASE + 'api/v1';
 
 type Method = 'GET' | 'POST' | 'PATCH' | 'PUT' | 'DELETE';
 
