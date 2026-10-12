@@ -1,7 +1,8 @@
 import { useState } from 'react';
 import Breadcrumbs from '@jetbrains/ring-ui-built/components/breadcrumbs/breadcrumbs';
 import Island from '@jetbrains/ring-ui-built/components/island/island';
-import Pager from '@jetbrains/ring-ui-built/components/pager/pager';
+import PagerRing from '@jetbrains/ring-ui-built/components/pager/pager';
+import { AppPager } from '@/ui/pager';
 import Panel from '@jetbrains/ring-ui-built/components/panel/panel';
 // 注意：Tabs 是**命名导出**（没有 default），Tab 也一样
 import { Tab, Tabs } from '@jetbrains/ring-ui-built/components/tabs/tabs';
@@ -48,15 +49,12 @@ export default function NavigationPage() {
         </Row>
       </Card>
 
-      <Card name='分页 Pager' note='页码切换 + 每页条数。**不要自己写上一页/下一页**——它带无障碍标记与键盘行为。'>
-        <Row label='总数 / 当前页 / 每页'>
-          <Pager
-            total={1284}
-            currentPage={page}
-            pageSize={size}
-            onPageChange={setPage}
-            onPageSizeChange={setSize}
-          />
+      <Card name='分页 Pager' note='**我们的 AppPager**：中文文案 + 总数 + 每页条数（默认 20/50/100）。下面同时放 Ring 原生做对照——**不封装就是英文**。'>
+        <Row label='我们的 AppPager（中文）'>
+          <AppPager total={1284} currentPage={page} pageSize={size} onPageChange={setPage} onPageSizeChange={setSize} />
+        </Row>
+        <Row label='Ring 原生 Pager（英文，作为对照）' hint='这就是不封装的后果'>
+          <PagerRing total={1284} currentPage={page} pageSize={size} onPageChange={setPage} onPageSizeChange={setSize} />
         </Row>
         <Row label='当前状态'>
           <span className='text-[12px] text-muted-foreground'>第 {page} 页，每页 {size} 条</span>

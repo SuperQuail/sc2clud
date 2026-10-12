@@ -107,4 +107,7 @@ export const VERIFIED: VerifiedControl[] = [
   { name: 'avatar-stack', path: '@jetbrains/ring-ui-built/components/avatar-stack/avatar-stack', page: '04-display', verifiedOn: '2026-10-12', props: ['size + 子 Avatar'], notes: [] },
   { name: 'progress-bar', path: '@jetbrains/ring-ui-built/components/progress-bar/progress-bar', page: '04-display', verifiedOn: '2026-10-12', props: ['value / max / staticColor / global'], notes: ['不要自己拼 div 宽度当进度条。'] },
   { name: 'code', path: '@jetbrains/ring-ui-built/components/code/code', page: '04-display', verifiedOn: '2026-10-12', props: ['code / inline / language / softWrap'], notes: [] },
+  { name: 'app-pager', path: '@/ui/pager', page: '03-navigation', verifiedOn: '2026-10-12',
+    props: ['total / currentPage / pageSize / onPageChange / onPageSizeChange', 'pageSizes（默认 20/50/100）', 'showTotal（默认开）', 'labels：覆盖中文文案'],
+    notes: ['**不要直接用 Ring 的 Pager**：它默认英文文案（Previous/Next page/Last page/N per page），中文界面会漏。'] },
 ];
