@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import Button from '@jetbrains/ring-ui-built/components/button/button';
-import Input from '@jetbrains/ring-ui-built/components/input/input';
+import Input, { Size as InputSize } from '@jetbrains/ring-ui-built/components/input/input';
 import { ControlsHeight } from '@jetbrains/ring-ui-built/components/global/controls-height';
 import { UserAvatar } from '@/ui/user/avatar';
 import { MentionPicker, type MentionCandidate } from './mention-picker';
@@ -44,12 +44,13 @@ export function ReplyBox({
         <Input
           multiline
           autogrow
+          size={InputSize.FULL}
           height={ControlsHeight.L}
           value={body}
           onChange={(e) => setBody(e.target.value)}
           placeholder={placeholder}
           error={error ?? undefined}
-          inputClassName='min-h-32 resize-y leading-relaxed'
+          inputClassName='min-h-32 w-full resize-y leading-relaxed'
         />
         <div className='flex items-center gap-3'>
           {candidates.length > 0 ? (

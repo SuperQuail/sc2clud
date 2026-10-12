@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import Button from '@jetbrains/ring-ui-built/components/button/button';
-import Input from '@jetbrains/ring-ui-built/components/input/input';
+import Input, { Size as InputSize } from '@jetbrains/ring-ui-built/components/input/input';
 import { DropdownItem, DropdownPanel } from '@/ui/dropdown-panel';
 import { UserAvatar } from '@/ui/user/avatar';
 import { Username } from '@/ui/user/username';
@@ -23,7 +23,7 @@ export function MentionPicker({
   return (
     <DropdownPanel label='提及某人' width='w-72' trigger={<Button ghost>@ 提及</Button>}>
       <span className='px-1 pb-1'>
-        <Input value={q} onChange={(e) => setQ(e.target.value)} placeholder='搜索昵称或用户名…' />
+        <Input size={InputSize.FULL} value={q} onChange={(e) => setQ(e.target.value)} placeholder='搜索昵称或用户名…' />
       </span>
       {matched.length === 0 ? (
         <span className='px-2 py-1.5 text-muted-foreground'>没有匹配的人</span>
