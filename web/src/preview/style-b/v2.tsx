@@ -278,6 +278,7 @@ const KIND: Record<TopicKind, { text: string; cls: string }> = {
 
 /** 头像交给 Ring UI 的 Avatar：没给 url 时它自带 fallback（渐变 + 首字母），
    真实项目只要把 url 换成 /img/<hash> 即可。演示数据不带头像，正好走 fallback。 */
+/* size 只能是 16/18/20/24/28/32/40/48/56：其它值会让 Ring UI 的 fallback 抛错 */
 function UserAvatar({ nickname, size }: { nickname: string; size: number }) {
   return <Avatar className='shrink-0' round size={size} username={nickname} />;
 }
@@ -323,7 +324,7 @@ function TopicCard({ topic, now }: { topic: TopicItem; now: number }) {
   return (
     <article
       className={cn(
-        'flex h-full flex-col overflow-hidden rounded-lg border border-border bg-card',
+        'flex flex-col overflow-hidden rounded-lg border border-border bg-card',
         marked && 'border-l-2 border-l-primary',
       )}
     >
@@ -340,7 +341,7 @@ function TopicCard({ topic, now }: { topic: TopicItem; now: number }) {
         </div>
       ) : null}
 
-      <div className='flex min-w-0 flex-1 flex-col p-5'>
+      <div className='flex min-w-0 flex-col p-5'>
         {topic.cover ? null : <CardMarks className='mb-3' topic={topic} />}
         <div className='flex flex-wrap items-center gap-2 text-[12px] text-muted-foreground'>
           <a className='font-medium text-foreground hover:underline' href={'#b/' + topic.board.slug}>
@@ -360,7 +361,7 @@ function TopicCard({ topic, now }: { topic: TopicItem; now: number }) {
         <p className='mt-2 line-clamp-2 text-[13px] leading-[1.75] text-muted-foreground'>{topic.excerpt}</p>
 
         <div className='mt-auto flex items-center gap-3 pt-5'>
-          <UserAvatar nickname={topic.author.nickname} size={26} />
+          <UserAvatar nickname={topic.author.nickname} size={24} />
           <span className='text-[12px] text-foreground'>{topic.author.nickname}</span>
           <span className='ml-auto flex items-center gap-3 text-[12px] text-muted-foreground tabular-nums'>
             <span className='flex items-center gap-1' title='回复数'>
@@ -477,7 +478,7 @@ function TopBar({
           className='flex shrink-0 items-center gap-2 rounded-full p-0.5 pr-1 outline-none hover:bg-muted focus-visible:ring-[3px] focus-visible:ring-ring/50 xl:pr-3'
           href='#u/tangtian'
         >
-          <UserAvatar nickname='唐天' size={30} />
+          <UserAvatar nickname='唐天' size={32} />
           <span className='hidden text-[13px] text-foreground xl:inline'>唐天</span>
         </a>
       </div>
@@ -789,7 +790,7 @@ export default function StyleBDenseGrid() {
               ) : null}
 
               {list.length > 0 ? (
-                <div className='grid grid-cols-1 gap-4 sm:grid-cols-2'>
+                <div className='grid grid-cols-1 items-start gap-4 sm:grid-cols-2'>
                   {list.map((t) => (
                     <TopicCard key={t.id} now={now} topic={t} />
                   ))}

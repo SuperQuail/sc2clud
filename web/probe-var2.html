@@ -1,0 +1,23 @@
+<!doctype html><html><head><meta charset='utf-8'><style>
+body{background:#161a26;font:13px system-ui;color:#e6e8ef;padding:16px}
+figure{margin:0 0 14px}
+.ink-light{color:#1f2430} .ink-dark{color:#e6e8ef} .ink-primary{color:#8fb0ff}
+img{width:240px;height:160px;border:1px solid #555;display:block;background:#1d2230}
+</style></head><body><div id='root'></div>
+<script>
+const svg = (inner) => '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 800">' + inner + '</svg>';
+const art = "<circle cx='500' cy='400' r='200' fill='none' stroke='currentColor' stroke-width='30' stroke-opacity='.8'/>";
+const variants = [
+  ['1 容器 color=浅色前景', 'ink-dark', art],
+  ['2 容器 color=主色', 'ink-primary', art],
+  ['3 无颜色类（继承 body 浅色字）', '', art],
+  ['4 硬编码 stroke', 'ink-dark', "<circle cx='500' cy='400' r='200' fill='none' stroke='#e6e8ef' stroke-width='30'/>"],
+];
+const root = document.getElementById('root');
+for (const [label, cls, inner] of variants) {
+  const fig = document.createElement('figure');
+  const cap = document.createElement('figcaption'); cap.textContent = label;
+  const im = document.createElement('img'); im.className = cls; im.alt = label; im.src = 'data:image/svg+xml,' + svg(inner).split('#').join('%23');
+  fig.append(cap, im); root.append(fig);
+}
+</script></body></html>

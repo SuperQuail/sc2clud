@@ -19,7 +19,8 @@
     "check": "pnpm typecheck && pnpm lint && pnpm gate:ui && pnpm test && pnpm gate:size && pnpm build && pnpm gate:budget",
     "gate:ui": "node scripts/check-ui-usage.ts",
     "preview:dev": "vite --config vite.preview.config.ts",
-    "preview:build": "vite build --config vite.preview.config.ts"
+    "preview:build": "vite build --config vite.preview.config.ts",
+    "preview:shot": "node scripts/shoot-previews.ts"
   },
   "dependencies": {
     "@hookform/resolvers": "^5.9.1",

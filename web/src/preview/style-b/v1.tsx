@@ -219,25 +219,60 @@ function fakeTopics(cursor: string | null, limit: number, fail: boolean): Promis
 
 /* ── 令牌内的绘图件：只有文字与几何，没有任何图片字节 ─────────────────────── */
 
-/* 封面是 <img> 加载的 SVG：CSS 变量在 <img> 里解析不了（实测 --primary 会退成黑色），
-   所以图内一律用 currentColor，颜色由容器上的文字色类决定。 */
+/* 演示封面画成内联 SVG 而不是 data URL：<img> 里的 SVG 拿不到 CSS 变量，
+   也拿不到 currentColor（两者都实测过，会直接退成黑色）。内联之后颜色就是令牌。 */
 const COVER_INK = ['text-primary', 'text-foreground', 'text-muted-foreground'];
 
-/** 封面：用令牌变量画的抽象图（真实项目这里是 /img/<hash> 缩略图，≤60KB 由后端生成）。 */
-function coverImage(seed: number): string {
-  const svg =
-    '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 800">' +
-    '<defs><pattern id="p" width="64" height="64" patternUnits="userSpaceOnUse">' +
-    '<path d="M64 0H0V64" fill="none" stroke="currentColor" stroke-opacity=".18"/></pattern></defs>' +
-    '<rect width="1200" height="800" fill="currentColor" fill-opacity=".08"/>' +
-    '<rect width="1200" height="800" fill="url(#p)"/>' +
-    '<circle cx="' + String(280 + (seed % 5) * 130) + '" cy="430" r="220" fill="none" stroke="currentColor"' +
-    ' stroke-opacity=".55" stroke-width="22"/>' +
-    '<circle cx="' + String(820 - (seed % 4) * 90) + '" cy="500" r="150" fill="none" stroke="currentColor"' +
-    ' stroke-opacity=".38" stroke-width="14"/>' +
-    '<path d="M0 706L1200 528" stroke="currentColor" stroke-opacity=".3" stroke-width="10"/>' +
-    '</svg>';
-  return dataUrl(svg);
+/* 版块色带的纹理用 SVG pattern 画：5 条竖线 + 一组斜线。
+   不用 SVG <pattern>——它的 id 是文档级的，一个页面上多张封面必然撞名。 */
+const GRID_LINE = <line stroke='currentColor' strokeOpacity='.22' strokeWidth='1.5' x1='0' x2='0' y1='0' y2='800' />;
+const GRID_SLASH = <line stroke='currentColor' strokeOpacity='.16' strokeWidth='1.5' x1='0' x2='0' y1='-400' y2='1200' />;
+
+/** 封面：内联 SVG 画的抽象图（真实项目这里是 /img/<hash> 缩略图，≤60KB 由后端生成）。 */
+function CoverArt({ seed, title }: { seed: number; title: string }) {
+  return (
+    <svg
+      aria-hidden
+      className='size-full'
+      focusable='false'
+      preserveAspectRatio='xMidYMid slice'
+      viewBox='0 0 1200 800'
+    >
+      <rect fill='currentColor' fillOpacity='.08' height='800' width='1200' />
+      <g>
+        {[0, 50, 150, 700, 750].map((x) => (
+          <g key={x} transform={'translate(' + x + ' 0)'}>
+            {GRID_LINE}
+          </g>
+        ))}
+        {[0, 50, 150, 700, 750].map((x) => (
+          <g key={'s' + x} transform={'translate(' + x + ' 0) rotate(18)'}>
+            {GRID_SLASH}
+          </g>
+        ))}
+      </g>
+      <circle
+        cx={280 + (seed % 5) * 130}
+        cy={430}
+        fill='none'
+        r={220}
+        stroke='currentColor'
+        strokeOpacity='.5'
+        strokeWidth={22}
+      />
+      <circle
+        cx={820 - (seed % 4) * 90}
+        cy={500}
+        fill='none'
+        r={150}
+        stroke='currentColor'
+        strokeOpacity='.35'
+        strokeWidth={14}
+      />
+      <path d='M0 706L1200 528' fill='none' stroke='currentColor' strokeOpacity='.3' strokeWidth={10} />
+      <title>{title}</title>
+    </svg>
+  );
 }
 
 
@@ -250,10 +285,6 @@ function seedOf(text: string): number {
 const compact = new Intl.NumberFormat('zh-CN', { notation: 'compact', maximumFractionDigits: 1 });
 const wall = new Intl.DateTimeFormat('zh-CN', { month: 'numeric', day: 'numeric' });
 
-/** 数据 URL 的手工编码：encodeURIComponent 会把中文与 < > 一起码掉，体积翻三倍。 */
-function dataUrl(svg: string): string {
-  return 'data:image/svg+xml,' + svg.split('#').join('%23').split('\n').join('');
-}
 
 /** 只做「UTC ISO → 相对时间」的展示换算，本地时区只在这里出现。 */
 function relative(iso: string, now: number): string {
@@ -275,6 +306,7 @@ const KIND: Record<TopicKind, { text: string; cls: string }> = {
 
 /** 头像交给 Ring UI 的 Avatar：没给 url 时它自带 fallback（渐变 + 首字母），
    真实项目只要把 url 换成 /img/<hash> 即可。演示数据不带头像，正好走 fallback。 */
+/* size 只能是 16/18/20/24/28/32/40/48/56：其它值会让 Ring UI 的 fallback 抛错 */
 function UserAvatar({ nickname, size }: { nickname: string; size: number }) {
   return <Avatar className='shrink-0' round size={size} username={nickname} />;
 }
@@ -318,14 +350,9 @@ function Cover({ topic, className }: { topic: TopicItem; className?: string }) {
   if (!topic.cover) return null;
   const seed = seedOf(topic.title);
   return (
-    <div className={cn('relative overflow-hidden rounded-md bg-muted', COVER_INK[seed % COVER_INK.length], className)}>
-      {/* 定宽高比容器：图未到时高度已占住，CLS 为 0（前端方案 §9.1） */}
-      <img
-        alt={''}
-        className='size-full object-cover'
-        loading='lazy'
-        src={coverImage(seed)}
-      />
+    <div className={cn('overflow-hidden rounded-md bg-muted', COVER_INK[seed % COVER_INK.length], className)}>
+      {/* 固定宽高比容器：图未到时高度已占住，CLS 为 0（前端方案 §9.1） */}
+      <CoverArt seed={seed} title={topic.board.name + ' 封面'} />
     </div>
   );
 }
@@ -367,7 +394,7 @@ function TopicRow({ topic, now }: { topic: TopicItem; now: number }) {
 
           <div className='mt-5 flex flex-wrap items-center gap-x-5 gap-y-2 text-[13px] text-muted-foreground'>
             <span className='flex items-center gap-2'>
-              <UserAvatar nickname={topic.author.nickname} size={22} />
+              <UserAvatar nickname={topic.author.nickname} size={24} />
               <span className='text-foreground'>{topic.author.nickname}</span>
             </span>
             <span className='flex items-center gap-1.5 tabular-nums'>
