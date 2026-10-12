@@ -1,8 +1,9 @@
 import { cn } from '@/lib/utils';
 
-// 权限徽标（独立控件）。**颜色可选、由数据给**（角色记录里的配色字段），不传就是中性。
-// 控件不认识任何具体角色——权限树增减不影响这里。
-// 一个用户可以同时有多个角色（user_roles 是关系表），使用方渲染多个即可。
+// 权限徽标（独立控件）。**一个用户只有一个角色**——权限树是层级：
+//   超级管理员 / 管理员 / 认证创作者 / 普通用户
+// 颜色可选、由数据给（角色记录上的配色字段）；不配就是中性徽标。
+// 控件不认识任何具体角色，权限树增减不影响这里。
 export type UserRole = { key: string; name: string; color?: string | null };
 
 export function RoleBadge({ role, className }: { role: UserRole; className?: string }) {

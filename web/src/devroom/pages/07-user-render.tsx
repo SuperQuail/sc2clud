@@ -78,10 +78,6 @@ export default function UserControlsPage() {
         <Row label='将来加角色' hint='只给 key 和 name 就是中性徽标；要配色就多给一个 color'>
           <RoleBadge role={{ key: 'translator', name: '翻译组' }} />
         </Row>
-        <Row label='多角色同时拥有'>
-          <span className='flex items-center gap-1.5'><RoleBadge role={ADMIN} /><RoleBadge role={CREATOR} /></span>
-          <span className='flex items-center gap-1.5'><RoleBadge role={SUPER} /><RoleBadge role={ADMIN} /></span>
-        </Row>
       </Card>
 
       <Card

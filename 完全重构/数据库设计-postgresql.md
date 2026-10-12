@@ -27,7 +27,7 @@
 11. **删除策略**：
     - `users` **永不硬删**（封禁/注销都是 `status`），所有引用 users 的外键用 `RESTRICT` 或 `SET NULL`；
     - 内容（topics/posts）**软删**（`status`），不物理删除；
-    - 纯关联表（user_roles、likes、bookmarks、topic_images…）用 `ON DELETE CASCADE`。
+    - 纯关联表（likes、bookmarks、topic_images…）用 `ON DELETE CASCADE`。
 12. **每张表都有 `created_at`**；会变的表加 `updated_at`。两者由 **ent mixin 在应用层写**，**不建触发器**。若确实需要 DDL 默认值（如 `now()`），必须用 `entsql.DefaultExpr("now()")` —— **已核实：ent 的 `.Default(time.Now)` / `.Default(uuid.New)` 不会写进 DDL**。
 13. **有业务上限的文本用 `varchar(n)`**（PG 里 varchar(n) 没有性能劣势），长度约束留在库里；无上限的（正文、HTML）用 `text`。
 14. **禁止**：`serial`、`timestamp`（无时区）、PG 原生 enum、`money`、float 存金额、用 TEXT 存 UUID、用 `SELECT ... FOR UPDATE` 而不带 `SKIP LOCKED` 去抢队列、在应用里拼 SQL 字符串、物理删除内容行。
@@ -42,7 +42,7 @@
 | 账号 | users | 用户 | `lower(username)`、`lower(email)` 唯一 |
 | 账号 | sessions | 登录会话 | `token_hash` 唯一、`user_id`、`expires_at` |
 | 账号 | email_tokens | 邮箱验证 / 找回密码 | `token_hash` 唯一、`user_id`、`expires_at` |
-| 授权 | roles / permissions / role_permissions / user_roles | RBAC | 见 §4.1 |
+| 授权 | roles / permissions / role_permissions（**角色在 users.role_id 上，单一**） | RBAC | 见 §4.1 |
 | 授权 | board_moderators | 分区版主 | `(board_id, user_id)` 主键 |
 | 授权 | audit_logs | 审计 | `(actor_id, created_at DESC)`、`(target_type, target_id)` |
 | 论坛 | boards | 版块 | `slug` 唯一、`sort` |
@@ -145,7 +145,12 @@
 **roles**：`id`、`key varchar(32)` UNIQUE、`name varchar(32)`、`description varchar(200)`、`is_system boolean NOT NULL DEFAULT false`、`priority int NOT NULL DEFAULT 0`（**只用于后台展示排序，禁止用于授权判断**）。
 **permissions**：`id`、`key varchar(64)` UNIQUE、`grp varchar(32)` NOT NULL、`description varchar(200)`。权限点由**迁移**写入，与 `internal/authz/permissions.go` 的常量一一对应。
 **role_permissions**：`role_id`、`permission_id`，主键 `(role_id, permission_id)`，两侧 CASCADE。
-**user_roles**：`user_id`、`role_id`，主键 `(user_id, role_id)`，两侧 CASCADE。**一个用户可多角色**。
+**users.role_id**：`bigint NOT NULL fk roles RESTRICT` —— **一个用户只有一个角色**。
+
+> **权限树的完整设计见 `RBAC权限树设计.md`（唯一真源）**。修正（2026-10-12）：原设计用 `user_roles` 关系表（抄 RBAC 的 N:N 惯性），但本产品的权限树是**层级**——
+> 超级管理员 / 管理员 / 认证创作者 / 普通用户，一个人只站在一个节点上。
+> 于是取消 `user_roles` 关系表，改为 `users.role_id` 单列外键；权限仍由 `role_permissions` 决定。
+> 迁移也因此简化：旧站的「角色列」直接映射成一个 role_id，不需要展开成关系。
 **board_moderators**：`board_id`、`user_id`，主键 `(board_id, user_id)`，两侧 CASCADE。
 
 **audit_logs**
@@ -551,7 +556,7 @@ PG 内置的 `to_tsvector` 对中文按「整段」处理，不做分词，直�
 | status | 旧「停用/封禁」→ `banned`；旧「未激活」不是 status，而是 `email_verified_at = NULL` |
 | email_verified_at | 【待确认】旧站是否真的验证过邮箱。若旧库没有可信的验证时间：**一律置 NULL**，让用户走一次验证邮件（安全默认） |
 | last_login_at | 旧库若有最后登录时间则搬，否则 NULL |
-| 角色 | 旧 4 级角色 → 新 RBAC：映射到 `user` / `moderator` / `admin` / `superadmin` 四个内置 `roles`，写 `user_roles`。**禁止**在新库保留「角色列」 |
+| 角色 | 旧 4 级角色 → 映射到 `superadmin` / `admin` / `creator` / `user` 四个内置 `roles`，写 **`users.role_id`**（单一角色）。旧站在新库不再有角色列——角色是外键，不是散列 |
 | activated_at | 旧 `activated_at`（Unix 秒）→ 新 `activated_at`（timestamptz）。**注意**：旧站的"激活"是管理员/策略门槛，**不是邮箱验证**，所以**不许**映射到 `email_verified_at`（盲审 D1/B4；映射错会让这批人要么被锁死、要么获得写权限，且不可逆） |
 | trusted | 旧 `trusted`（1 = 发帖跳过人工审核）→ 新 `trusted`；旧库若是 0/1 整数，按 `<> 0` 转 boolean |
 | 头衔 / 等级 / 经验 | **完整迁移**：`titles` → `titles`（key/name/color/description，归档态保留）、`user_titles` → 同表、`equipped_title_id` → 同列；`exp`/`level` 原值搬（**并校验 level = floor(sqrt(exp/100))+1，不一致时以 exp 重算并记入报告**）、`exp_events` → 同表 |
@@ -593,7 +598,7 @@ PG 内置的 `to_tsvector` 对中文按「整段」处理，不做分词，直�
 本节只记结论性规则：
 
 1. **不复制任何旧列结构**。旧表是 36 份迁移只加不删堆出来的，含语义已废的列（复盘根因 8）。新表按 §4.1 重新设计。
-2. **角色从列变成关系**（`user_roles`）。旧表的角色列在导入时一次性展开成角色关系，之后新库不再有角色列。
+2. **角色从旧站的列变成新库的外键**（`users.role_id`）。导入时按映射表一次性转换，之后新库只有这一处角色来源。
 3. **大小写不敏感的归一化列取消**，改表达式唯一索引。
 4. **旧表的「激活」语义**映射到 `email_verified_at IS NOT NULL`，不再是一个独立列。
 5. **头衔/等级/经验/配额不进新库**（除非 I4 拍板要保留）。
@@ -621,7 +626,7 @@ PG 内置的 `to_tsvector` 对中文按「整段」处理，不做分词，直�
    有结果即失败。**注意三件事**（盲审核实过）：
    ① 切片与 `@>` 的写法本身是对的（`indkey` 是 0 基，`int2vector → int2[]` 走 ArrayCoerceExpr 保留 0 基）；
    ② 必须带 `indisvalid` 与 `indpred IS NULL`，否则**部分索引会被误判为已覆盖**，删父行时照样全表扫；
-   ③ 这条检查只保证"外键列上有可用索引"，**复合主键的第二列不算已索引**（例如 `user_roles.role_id`、`bookmarks.topic_id`、`board_moderators.user_id`）——这些列都是级联删除的真实路径，**要么补单列索引，要么在 CI 里放一份负例夹具证明这条检查真会红**（空库跑通不算验收）。
+   ③ 这条检查只保证"外键列上有可用索引"，**复合主键的第二列不算已索引**（例如 `bookmarks.topic_id`、`board_moderators.user_id`、`topic_images.topic_id`）——这些列都是级联删除的真实路径，**要么补单列索引，要么在 CI 里放一份负例夹具证明这条检查真会红**（空库跑通不算验收）。
 
 2. **迁移版本一致**：DB 里 `schema_migrations` 的最新版本 == 嵌入的最新版本，否则拒绝启动。
 3. **权限点一致**：代码常量集合 == `permissions.key` 集合（代码有表里没有 → 启动失败；表里有代码没有 → Warn）。
