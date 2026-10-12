@@ -188,43 +188,6 @@ export default function InteractivePage() {
         }
       />
 
-      <Pair
-        name='下拉选择 Select'
-        note='**下拉是表单控件，不是按钮**：B 系 VividSelect 与输入框同高同圆角，右侧箭头是控件自己的一部分；A 系 Ring UI Select 用 type=INPUT 也是输入框外观。'
-        user={
-          <>
-            <Line label='默认 / 带标签 / 已选'>
-              <div className='w-52'><VividSelect options={SORTS} value={sort} onChange={setSort} /></div>
-              <div className='w-52'><VividSelect label='排序方式' options={SORTS} value={sort} onChange={setSort} /></div>
-              <div className='w-52'><VividSelect label='禁用' options={SORTS} onChange={() => {}} disabled /></div>
-            </Line>
-          </>
-        }
-        dev={
-          <>
-            <Line label='展开态样本（打勾 = 当前选中）'>
-              <DropdownPanel label='排序方式' width='w-52' open onOpenChange={() => {}} trigger={<VividButton tone='soft' dropdown>排序</VividButton>}>
-                <DropdownItem selected>最新回复</DropdownItem>
-                <DropdownItem onClick={() => {}}>最新发布</DropdownItem>
-                <DropdownItem onClick={() => {}}>最多回复</DropdownItem>
-              </DropdownPanel>
-            </Line>
-            <Line label='INPUT 类型（表单里用，Ring 原生行为）'>
-              <Select
-                type={SelectType.INPUT}
-                label='排序方式'
-                data={SORTS}
-                selected={selectedSort}
-                onSelect={(item) => {
-                  if (item) setSort(String(item.key));
-                }}
-              />
-            </Line>
-          </>
-        }
-      />
-
-
       <section className='rounded-lg border border-dashed border-border p-3'>
         <h2 className='text-sm font-semibold text-foreground'>还没做对照的控件</h2>
         <p className='text-[12px] leading-relaxed text-muted-foreground'>
