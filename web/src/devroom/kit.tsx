@@ -24,10 +24,13 @@ export function Row({ label, hint, children }: { label: string; hint?: string; c
   );
 }
 
-export function Line({ label, children }: { label: string; children: ReactNode }) {
+export function Line({ label, hint, children }: { label: string; hint?: string; children: ReactNode }) {
   return (
     <div className='flex flex-col gap-1.5'>
-      <span className='text-[11px] text-muted-foreground'>{label}</span>
+      <span className='flex flex-wrap items-baseline gap-1.5'>
+        <span className='text-[11px] text-muted-foreground'>{label}</span>
+        {hint ? <span className='text-[10px] text-muted-foreground/70'>{hint}</span> : null}
+      </span>
       <span className='flex flex-wrap items-center gap-2'>{children}</span>
     </div>
   );

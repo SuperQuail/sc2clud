@@ -16,7 +16,7 @@ export default function InteractivePage() {
       <SelectPair />
       <Pending
         items={['Checkbox', 'Radio', '工具条下拉']}
-        note='复选/单选：B 系还没做。工具条下拉：我们自己做的那版观感不行已废弃，**暂时一律用 Ring 的**——Ring 的 Dropdown/PopupMenu 还没在 DevRoom 验证，验证并登记后才能进业务代码。另：图标工具 icon16 / 官方图标在第 05 页。'
+        note='复选/单选：B 系还没做（Ring 那侧可用）。工具条下拉与下拉选择：我们自制的两版观感都不行，**已全部废弃，一律用 Ring 的**；Ring 的 Dropdown/PopupMenu 还没在 DevRoom 验证，验证登记后才能进业务代码。另：图标工具 icon16 / 官方图标在第 05 页。'
       />
     </div>
   );
