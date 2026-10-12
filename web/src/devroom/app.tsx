@@ -4,6 +4,7 @@ import { appPath } from '@/lib/url';
 import InteractivePage from './pages/01-interactive';
 import OurComponentsPage from './pages/05-our-components';
 import UserStylesPage from './pages/06-user-styles';
+import UserRenderPage from './pages/07-user-render';
 import { ThemeSwitcher } from '@/ui/theme-switcher';
 
 // 开发者房间：控件在这里**逐件验证**；业务代码只允许使用登记过的控件。
@@ -11,6 +12,7 @@ const PAGES: Record<string, { title: string; el: () => React.ReactNode }> = {
   '01-interactive': { title: '01 · 交互与表单', el: () => <InteractivePage /> },
   '05-our-components': { title: '05 · 我们的组合件', el: () => <OurComponentsPage /> },
   '06-user-styles': { title: '06 · 用户向风格候选', el: () => <UserStylesPage /> },
+  '07-user-render': { title: '07 · 用户渲染候选', el: () => <UserRenderPage /> },
 };
 
 export function DevRoom({ page }: { page: string }) {

@@ -75,6 +75,12 @@ func spa(root string, files http.Handler, serveIndex http.HandlerFunc) http.Hand
 				return
 			}
 		}
+		// 只有当请求看起来像「前端路由」时才回退到 index.html。
+		// 否则缺一个图片会被回退成 200 的 HTML，<img> 解不出来 —— 表现为「裂图」，而且掩盖真正原因（踩过）。
+		if looksLikeAsset(r.URL.Path) {
+			http.NotFound(w, r)
+			return
+		}
 		serveIndex(w, r)
 	})
 }
