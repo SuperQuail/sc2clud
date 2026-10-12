@@ -3,7 +3,7 @@ import { CommentActions } from '@/ui/comment/comment-actions';
 import { CommentItem } from '@/ui/comment/comment-item';
 import { CommentList } from '@/ui/comment/comment-list';
 import { CommentReplies } from '@/ui/comment/comment-replies';
-import type { MentionCandidate } from '@/ui/comment/mention-picker';
+import type { MentionCandidate } from '@/ui/comment/mention-types';
 import { ReplyBox } from '@/ui/comment/reply-box';
 import type { CommentData } from '@/ui/comment/types';
 import { Card, Row } from '@/devroom/kit';
@@ -53,7 +53,7 @@ const CANDIDATES: MentionCandidate[] = [
   { id: '12', nickname: '唐天', handle: 'tangtian', avatar: A('miyin-portrait-320.webp'), role: { key: 'admin', name: '管理员' } },
   { id: '37', nickname: '林诗', handle: 'linshi', avatar: A('miyin-chibi-160.webp'), role: { key: 'creator', name: '认证创作者' } },
   { id: '58', nickname: '某小X', handle: 'xiaox' },
-  { id: '91', nickname: '唐天（同名）', handle: 'tangtian2' },
+  { id: '91', nickname: '唐天（同名）', handle: 'tangtian2', duplicate: true },
 ];
 
 const COMMENTS: CommentData[] = [

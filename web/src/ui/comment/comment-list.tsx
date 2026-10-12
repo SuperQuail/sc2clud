@@ -3,7 +3,7 @@ import Button from '@jetbrains/ring-ui-built/components/button/button';
 import { CommentItem } from './comment-item';
 import { CommentReplies } from './comment-replies';
 import { ReplyBox } from './reply-box';
-import type { MentionCandidate } from './mention-picker';
+import type { MentionCandidate } from './mention-types';
 import type { CommentData } from './types';
 
 // 评论区（对照 B 站）：表头「评论 N」+ 最热｜最新；下面是常驻的评论编辑器；
