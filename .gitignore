@@ -74,3 +74,4 @@ dist/
 # 子 agent 跑截图/浏览器留下的临时目录
 .tmp-*/
 web/.tmp-*/
+preview-dist/

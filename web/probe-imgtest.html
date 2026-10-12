@@ -1,0 +1,19 @@
+<!doctype html><html><head><meta charset='utf-8'><style>body{font:14px system-ui;padding:20px}img{width:260px;height:170px;border:1px solid #333;display:block;margin:8px 0}</style></head>
+<body><div id='root'></div>
+<script>
+const P = "<defs><pattern id='p' width='64' height='64' patternUnits='userSpaceOnUse'><path d='M64 0H0V64' fill='none' stroke='red' stroke-opacity='.3'/></pattern></defs>";
+const B = "<rect width='1200' height='800' fill='blue' fill-opacity='.1'/><rect width='1200' height='800' fill='url(#p)'/><circle cx='500' cy='430' r='220' fill='none' stroke='red' stroke-width='22'/>";
+const svg = (inner) => '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 800">' + inner + '</svg>';
+const variants = {
+  'A: 原样(未编码, # 保留)': 'data:image/svg+xml,' + svg(P + B),
+  'B: 只替换 # 为 %23': 'data:image/svg+xml,' + svg(P + B).split('#').join('%23'),
+  'C: 替换 # 且去换行': 'data:image/svg+xml,' + svg(P + B).split('#').join('%23').split('\n').join(''),
+  'D: 不定义 pattern, 不用 url()': 'data:image/svg+xml,' + svg("<rect width='1200' height='800' fill='blue' fill-opacity='.1'/><circle cx='500' cy='430' r='220' fill='none' stroke='red' stroke-width='22'/>").split('#').join('%23'),
+};
+const root = document.getElementById('root');
+for (const [k, v] of Object.entries(variants)) {
+  const t = document.createElement('div'); t.textContent = k;
+  const im = document.createElement('img'); im.src = v; im.alt = k;
+  root.append(t, im);
+}
+</script></body></html>
