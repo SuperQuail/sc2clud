@@ -1,9 +1,8 @@
 import Button from '@jetbrains/ring-ui-built/components/button/button';
 import Island from '@jetbrains/ring-ui-built/components/island/island';
 import Tag, { TagType } from '@jetbrains/ring-ui-built/components/tag/tag';
-import { Tab, Tabs } from '@jetbrains/ring-ui-built/components/tabs/tabs';
 import { useState } from 'react';
-import { MapPin, MessageSquare, MoreHorizontal, UserPlus } from 'lucide-react';
+import { FolderOpen, Heart, Image as ImageIcon, MapPin, MessageSquare, MoreHorizontal, Star, UserPlus, UserRound } from 'lucide-react';
 import { assetUrl } from '@/lib/url';
 import { icon16 } from '@/ui/icons';
 import { UserAvatar } from '@/ui/user/avatar';
@@ -12,6 +11,7 @@ import { RoleBadge } from '@/ui/user/role-badge';
 import { TitleBadge } from '@/ui/user/title-badge';
 import { TopicRow, type TopicRowData } from '@/ui/topic/topic-row';
 import { NoticeSettings, type SettingRow } from '@/ui/message/notice-settings';
+import { IconTabs, type IconTabItem } from '@/ui/nav/icon-tabs';
 
 // DevRoom 11 · 个人主页（带设置）
 // 布局照主流站点（GitHub / B 站空间 / Discourse 用户页）的**共同结构**：
@@ -48,10 +48,20 @@ const TOPICS: TopicRowData[] = [
   },
 ];
 
+const TABS: IconTabItem[] = [
+  { key: 'posts', label: '帖子', icon: <FolderOpen aria-hidden className='size-5' />, count: 42 },
+  { key: 'replies', label: '回复', icon: <MessageSquare aria-hidden className='size-5' />, count: 318 },
+  { key: 'starred', label: '收藏', icon: <Star aria-hidden className='size-5' />, count: 12 },
+  { key: 'liked', label: '赞过', icon: <Heart aria-hidden className='size-5' />, count: 236 },
+  { key: 'settings', label: '设置', icon: <UserRound aria-hidden className='size-5' /> },
+];
+
 const FOLLOWING = ['林诗', '某小X', '新来的', '夜航星'];
 
 export default function ProfilePage() {
-  const [tab, setTab] = useState('topics');
+  const [tab, setTab] = useState('posts');
+  // 封面可自定义：默认给一张，之后接入用户上传（与头像同一个上传控件）
+  const [cover, setCover] = useState<string>(assetUrl('starcraft/zerg.webp'));
   const [visibility, setVisibility] = useState('public');
   const [showTitle, setShowTitle] = useState(true);
   const [blocked, setBlocked] = useState<string[]>([]);
@@ -85,18 +95,29 @@ export default function ProfilePage() {
 
   return (
     <div className='flex flex-col gap-5'>
-      {/* 身份卡：封面 + 头像压边 + 统计行 —— 主流个人页的共同结构 */}
-      <Island withoutPaddings>
-        <div className='relative overflow-hidden'>
-          <img src={assetUrl('starcraft/sc2-battle.webp')} alt='' className='h-40 w-full object-cover' />
-          <span aria-hidden className='absolute inset-0 bg-gradient-to-t from-background to-transparent' />
+      {/* 身份卡：**大封面 + 半透明磨砂面板**（参考 B 站空间页）
+          封面允许自定义（cover 状态；接上传后即为「更换封面」）；信息面板压在封面下半部，
+          用 backdrop-blur 让封面透出来，而不是用实色把图挡住。 */}
+      <section className='overflow-hidden rounded-xl border border-border bg-background'>
+        <div className='relative'>
+          <img src={cover} alt='主页封面' className='h-56 w-full object-cover sm:h-64' />
+          <span className='absolute right-4 top-4'>
+            <Button
+              data-testid='change-cover'
+              icon={icon16(ImageIcon)}
+              onClick={() => setCover((c) => (c.includes('zerg') ? assetUrl('starcraft/protoss.webp') : assetUrl('starcraft/zerg.webp')))}
+            >
+              更换封面
+            </Button>
+          </span>
         </div>
-        <div className='flex flex-col gap-5 px-6 pb-5'>
-          <div className='-mt-10 flex flex-wrap items-end justify-between gap-4'>
+
+        <div className='relative mx-4 -mt-20 mb-4 flex flex-col gap-5 rounded-xl border border-border bg-background/70 p-5 backdrop-blur-md'>
+          <div className='flex flex-wrap items-end justify-between gap-4'>
             <span className='rounded-full ring-4 ring-background'>
               <UserAvatar name='唐天' src={assetUrl('miyin-portrait-320.webp')} size='xl' />
             </span>
-            <span className='flex flex-wrap items-center gap-2 pb-1'>
+            <span className='flex flex-wrap items-center gap-2'>
               <Button primary icon={icon16(UserPlus)}>关注</Button>
               <Button icon={icon16(MessageSquare)}>发私信</Button>
               <Button icon={icon16(MoreHorizontal)} aria-label='更多操作' />
@@ -122,30 +143,25 @@ export default function ProfilePage() {
           </div>
           <div className='flex flex-wrap items-center gap-8 border-t border-border pt-4'>
             {[
-              { n: '42', label: '主题' },
+              { n: '42', label: '帖子' },
               { n: '318', label: '回复' },
               { n: '1.2k', label: '获赞' },
               { n: '86', label: '关注者' },
-            ].map((s) => (
-              <span key={s.label} className='flex items-baseline gap-1.5'>
-                <span className='text-[20px] leading-none font-semibold tabular-nums text-foreground'>{s.n}</span>
-                <span className='text-[13px] text-muted-foreground'>{s.label}</span>
+            ].map((st) => (
+              <span key={st.label} className='flex items-baseline gap-1.5'>
+                <span className='text-[20px] leading-none font-semibold tabular-nums text-foreground'>{st.n}</span>
+                <span className='text-[13px] text-muted-foreground'>{st.label}</span>
               </span>
             ))}
           </div>
         </div>
-      </Island>
+      </section>
 
-      <Tabs selected={tab} onSelect={(id: string) => setTab(String(id))}>
-        <Tab id='topics' title='主题 42' />
-        <Tab id='replies' title='回复 318' />
-        <Tab id='starred' title='收藏 12' />
-        <Tab id='settings' title='设置' />
-      </Tabs>
+      <IconTabs items={TABS} value={tab} onChange={setTab} ariaLabel='个人主页分区' />
 
       <div className='grid gap-5 lg:grid-cols-[minmax(0,1fr)_16rem]'>
         <div className='flex flex-col gap-4'>
-          {tab === 'topics' ? (
+          {tab === 'posts' ? (
             <Island withoutPaddings>
               {TOPICS.map((t) => (
                 <TopicRow key={t.id} topic={t} />
@@ -153,7 +169,7 @@ export default function ProfilePage() {
             </Island>
           ) : null}
           {tab === 'settings' ? <NoticeSettings rows={settings} /> : null}
-          {tab === 'replies' || tab === 'starred' ? (
+          {tab === 'replies' || tab === 'starred' || tab === 'liked' ? (
             <Island withoutPaddings>
               <div className='flex flex-col items-center gap-2 px-4 py-12 text-center'>
                 <span className='text-[15px] text-foreground'>这里还没有内容</span>

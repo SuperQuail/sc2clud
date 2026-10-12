@@ -26,3 +26,8 @@ minimumReleaseAgeExclude:
   - '@tanstack/query-core@5.104.2'
   - '@tanstack/react-query@5.104.2'
   - zod@4.6.6
+
+# 安全：ansi-regex@5.0.0 有已知 ReDoS（GHSA-93q8-gq69-wqmw），提到同主版本的修复版。
+# 它在 @testing-library 链上（开发依赖、不进产物），但修起来便宜，且审计要干净。
+overrides:
+  ansi-regex: ^5.0.1

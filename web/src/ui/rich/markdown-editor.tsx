@@ -341,12 +341,13 @@ export function MarkdownEditor({
         <LinkPlugin />
         <OnChangePlugin onChange={onEditorChange} />
         <InitialState value={value} />
+        {/* 自查开关只在开发构建里生效：产品包里不许留能改变行为的调试入口 */}
         <DemoImage
-          enabled={typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('demo') === 'image'}
+          enabled={import.meta.env.DEV && new URLSearchParams(window.location.search).get('demo') === 'image'}
           src={assetUrl('miyin-portrait-320.webp')}
         />
         <DemoMention
-          enabled={typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('demo') === 'mention'}
+          enabled={import.meta.env.DEV && new URLSearchParams(window.location.search).get('demo') === 'mention'}
         />
         <LexicalTypeaheadMenuPlugin<MentionOption>
           onQueryChange={setQuery}
