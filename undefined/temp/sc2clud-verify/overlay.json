@@ -1,0 +1,6 @@
+{
+ "Replace": {
+  "D:\\Code\\Rust\\SC2clud\\forum\\internal\\ent\\schema\\audit_log.go": "undefined\\temp\\sc2clud-verify\\audit_log.go",
+  "D:\\Code\\Rust\\SC2clud\\forum\\internal\\ent\\schema\\session.go": "undefined\\temp\\sc2clud-verify\\session.go"
+ }
+}

@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { CURRENT_ADMIN } from './mock/perms';
 import { AdminShell } from './shell';
 import { SCREEN_KEYS, type ScreenKey } from './nav';
+import { AiReviewScreen } from './screens/ai-review';
 import { AuditScreen } from './screens/audit';
 import { BoardsScreen } from './screens/boards';
 import { DiagnosticsScreen } from './screens/diagnostics';
@@ -28,6 +29,7 @@ const SCREENS: Record<ScreenKey, () => React.ReactNode> = {
   titles: () => <TitlesScreen />,
   mail: () => <MailScreen />,
   settings: () => <SettingsScreen />,
+  ai: () => <AiReviewScreen />,
   audit: () => <AuditScreen />,
   diagnostics: () => <DiagnosticsScreen />,
 };

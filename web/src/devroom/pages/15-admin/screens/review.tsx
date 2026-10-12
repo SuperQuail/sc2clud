@@ -1,17 +1,21 @@
 import { useMemo, useState } from 'react';
 import Button from '@jetbrains/ring-ui-built/components/button/button';
+import Checkbox from '@jetbrains/ring-ui-built/components/checkbox/checkbox';
 import Input from '@jetbrains/ring-ui-built/components/input/input';
 import DropdownMenu from '@jetbrains/ring-ui-built/components/dropdown-menu/dropdown-menu';
 import Select, { Type as SelectType } from '@jetbrains/ring-ui-built/components/select/select';
 import { Tab, Tabs } from '@jetbrains/ring-ui-built/components/tabs/tabs';
-import { CheckCheck, FileText } from 'lucide-react';
+import { CheckCheck, FileText, History } from 'lucide-react';
 import { icon16 } from '@/ui/icons';
 import { UserAvatar } from '@/ui/user/avatar';
 import { Username } from '@/ui/user/username';
 import { DataTable } from '../data-table';
 import { ConfirmDialog, DangerAction } from '../confirm';
 import { DisabledReason, GateNote, KV, Panel, Pill, ScreenHead, Stat, StatRow, Toolbar } from '../bits';
-import { REVIEW_QUEUE, relTime, type ReviewItem } from '../mock';
+import {
+  REVIEW_EVENTS, REVIEW_QUEUE, REVIEW_SOURCE_LABEL, REVIEW_TRIGGER_LABEL, fmtTime, relTime,
+  type ReviewEvent, type ReviewItem,
+} from '../mock';
 import { canInBoard, useCan } from '../mock/perms';
 
 // 屏 d：帖子审核队列（13.3）。topics.status ∈ pending / normal / rejected（DB §4.2）。
@@ -24,6 +28,8 @@ export function ReviewScreen() {
   const canDeleteAny = useCan('post.delete_any');
   const [tab, setTab] = useState<ReviewItem['state']>('pending');
   const [boardFilter, setBoardFilter] = useState('all');
+  // 「只看 AI 转人工」：审核员最先要看的就是这一类（d7 §8）
+  const [onlyAiReview, setOnlyAiReview] = useState(false);
   const [selected, setSelected] = useState<string[]>([]);
   const [activeId, setActiveId] = useState<string | null>(REVIEW_QUEUE[0]!.id);
   const [patch, setPatch] = useState<Record<string, ReviewItem['state']>>({});
@@ -31,9 +37,11 @@ export function ReviewScreen() {
   const [pending, setPending] = useState<{ kind: 'approve' | 'reject' | 'revise'; ids: string[] } | null>(null);
 
   const boards = useMemo(() => [...new Set(REVIEW_QUEUE.map((r) => r.board.slug))], []);
-  const rows = REVIEW_QUEUE
-    .map((r) => ({ ...r, state: patch[r.id] ?? r.state }))
-    .filter((r) => r.state === tab && (boardFilter === 'all' || r.board.slug === boardFilter));
+  const withState = REVIEW_QUEUE.map((r) => ({ ...r, state: patch[r.id] ?? r.state }));
+  const aiReviewCount = withState.filter((r) => isAiToHuman(r)).length;
+  const rows = withState
+    .filter((r) => r.state === tab && (boardFilter === 'all' || r.board.slug === boardFilter))
+    .filter((r) => !onlyAiReview || isAiToHuman(r));
   const active = REVIEW_QUEUE.find((r) => r.id === activeId) ?? null;
   const activeState = active ? patch[active.id] ?? active.state : 'pending';
   const activeScoped = active ? canInBoard(active.board.slug, 'board.moderate') : false;
@@ -62,6 +70,14 @@ export function ReviewScreen() {
           <span className='flex items-center gap-1.5'>
             <Pill>{KIND_LABEL[r.kind]}</Pill>
             <span className='truncate text-[13px] font-medium text-foreground'>{r.title}</span>
+          </span>
+          <span className='flex min-w-0 items-center gap-1.5'>
+            <SourceBadge item={r} />
+            {/* 截断用 min-w-0 + truncate（flex 子项默认 min-width:auto 不会收缩，之前这句话会压过整行）；
+                hover 看全用原生 title —— Ring Tooltip 会再包一层，那层没有 min-w-0，截断会失效 */}
+            <span className='min-w-0 truncate text-[11px] text-muted-foreground' title={lastReason(r) + ' · ' + sourceWho(r)}>
+              {lastReason(r)}
+            </span>
           </span>
           <span className='truncate text-[11px] text-muted-foreground'>{r.excerpt}</span>
           <span className='truncate text-[10px] text-muted-foreground'>{relTime(r.created_at)} 提交 · {r.images} 张图</span>
@@ -144,6 +160,12 @@ export function ReviewScreen() {
           selected={{ key: boardFilter, label: boardFilter === 'all' ? '全部分区' : REVIEW_QUEUE.find((r) => r.board.slug === boardFilter)!.board.name }}
           onSelect={(item) => { if (item) setBoardFilter(String(item.key)); }}
         />
+        <Checkbox
+          label={'只看 AI 转人工（' + aiReviewCount + '）'}
+          checked={onlyAiReview}
+          indeterminate={false}
+          onChange={(e) => setOnlyAiReview(e.target.checked)}
+        />
         <Button
           icon={icon16(CheckCheck)}
           disabled={!canReview || selected.length === 0}
@@ -177,7 +199,8 @@ export function ReviewScreen() {
           onRowClick={(r) => setActiveId(r.id)}
           minWidth={592}
           density='compact'
-          empty='这个状态下没有帖子'
+          rowClassName={(r) => (isAiToHuman(r) ? 'bg-destructive/10' : undefined)}
+          empty={onlyAiReview ? '当前没有「AI 转人工」的帖子' : '这个状态下没有帖子'}
         />
 
         <div className='flex flex-col gap-2'>
@@ -201,6 +224,7 @@ export function ReviewScreen() {
                   label='备注（通过/拒绝/请求修改都写这里，进审计）'
                   multiline
                   rows={2}
+                  inputClassName='!h-[64px]'
                   value={note[active.id] ?? active.review_note}
                   onChange={(e) => setNote((p) => ({ ...p, [active.id]: e.target.value }))}
                 />
@@ -208,6 +232,26 @@ export function ReviewScreen() {
               </>
             ) : (
               <p className='text-[12px] text-muted-foreground'>在左侧点一行查看原文。</p>
+            )}
+          </Panel>
+
+          <Panel
+            title='判定时间线'
+            note='review_events 倒序（只增不改）：谁判的、什么理由、耗时、触发方式'
+            actions={active && (REVIEW_EVENTS[active.id]?.length ?? 0) > 0 ? <Pill tone='outline'>{REVIEW_EVENTS[active.id]!.length} 次判定</Pill> : null}
+          >
+            {!active ? (
+              <p className='text-[12px] text-muted-foreground'>在左侧点一行查看它的判定历史。</p>
+            ) : (REVIEW_EVENTS[active.id]?.length ?? 0) === 0 ? (
+              <p className='text-[12px] text-muted-foreground'>这篇还没有判定事件。</p>
+            ) : (
+              <>
+                <p className='mb-2 flex items-center gap-1 text-[11px] text-muted-foreground'>
+                  <History size={12} aria-hidden />
+                  审核是一串事件，不是当前状态：AI 先说通过、复审再说违规，两条都要留着（申诉时要看的就是它）
+                </p>
+                <Timeline events={REVIEW_EVENTS[active.id]!} />
+              </>
             )}
           </Panel>
 
@@ -248,5 +292,71 @@ export function ReviewScreen() {
         }}
       />
     </div>
+  );
+}
+/** d7 §8：判定来源三色 —— AI 判定（绿/红）、人工判定（灰）、免审（虚线）；
+ *  **AI 转人工**单独用 danger + 整行高亮，因为它是审核员最先要看的一类。 */
+function SourceBadge({ item }: { item: ReviewItem }) {
+  if (item.review_source === 'ai') {
+    if (item.review_verdict === 'review') return <Pill tone='danger' className='font-semibold'>AI 转人工</Pill>;
+    if (item.review_verdict === 'reject') return <Pill tone='danger'>AI 拒绝</Pill>;
+    return <Pill tone='ok'>AI 通过</Pill>;
+  }
+  if (item.review_source === 'manual') return <Pill tone='neutral'>人工判定</Pill>;
+  if (item.review_source === 'trusted') return <Pill tone='outline'>免审</Pill>;
+  return <Pill tone='warn'>AI 未判定</Pill>;
+}
+
+/** d7：ai + verdict=review 就是「AI 转人工」。 */
+function isAiToHuman(r: ReviewItem): boolean {
+  return r.review_source === 'ai' && r.review_verdict === 'review';
+}
+
+/** d7 §8：队列里显示「最近一次 review_events 的理由」；reject 时它同时写进了 review_note。 */
+function lastReason(r: ReviewItem): string {
+  const events = REVIEW_EVENTS[r.id] ?? [];
+  const newest = [...events].sort((a, b) => b.created_at.localeCompare(a.created_at))[0];
+  return newest?.reason || r.review_note || '（没有留下理由）';
+}
+
+function sourceWho(r: ReviewItem): string {
+  if (r.review_source === 'ai') return '判定方：AI（deepseek-chat）';
+  if (r.review_source === 'trusted') return '判定方：免审规则（users.trusted=true）';
+  if (r.review_source === 'manual') return '判定方：人工 · ' + (r.reviewer?.nickname ?? '管理员');
+  return '判定方：无 —— AI 调用失败或未配置密钥，留在 pending 交人工（AI 挂了不挡发帖）';
+}
+
+function verdictLabel(v: ReviewEvent['verdict']): string {
+  return v === 'approve' ? '通过' : v === 'reject' ? '拒绝' : '转人工';
+}
+
+function Timeline({ events }: { events: ReviewEvent[] }) {
+  const ordered = [...events].sort((a, b) => b.created_at.localeCompare(a.created_at));
+  return (
+    <ol className='flex flex-col'>
+      {ordered.map((e, i) => (
+        <li key={e.id} className='relative flex flex-col gap-0.5 border-l-2 border-border pb-2.5 pl-3 last:pb-0'>
+          <span aria-hidden className='absolute -left-[5px] top-1.5 size-2 rounded-full bg-border' />
+          <span className='flex flex-wrap items-center gap-1'>
+            <Pill tone='outline'>{REVIEW_TRIGGER_LABEL[e.trigger]}</Pill>
+            <Pill tone={e.source === 'ai' ? (e.verdict === 'approve' ? 'ok' : 'danger') : 'neutral'}>
+              {REVIEW_SOURCE_LABEL[e.source]}
+              {e.source === 'ai' ? ' · ' + verdictLabel(e.verdict) : ''}
+            </Pill>
+            {e.latency_ms > 0 ? <span className='text-[10px] text-muted-foreground'>{e.latency_ms} ms</span> : null}
+            <span className='text-[10px] text-muted-foreground'>{fmtTime(e.created_at)}</span>
+            {i === 0 ? <Pill tone='warn'>最近一次</Pill> : null}
+          </span>
+          <p className='text-[11px] leading-relaxed text-foreground'>{e.reason}</p>
+          <span className='text-[10px] text-muted-foreground'>
+            {e.source === 'ai'
+              ? '判定方：AI（' + (e.model || 'deepseek-chat') + '）'
+              : e.source === 'trusted'
+                ? '判定方：免审规则（users.trusted=true）'
+                : '判定方：人工 · ' + (e.actor?.nickname ?? '管理员')}
+          </span>
+        </li>
+      ))}
+    </ol>
   );
 }

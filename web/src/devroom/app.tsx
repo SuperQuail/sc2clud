@@ -16,6 +16,7 @@ import AdminPage from './pages/15-admin';
 import HomePage from './pages/14-home';
 import IssuePage from './pages/13-issue';
 import TopicPage from './pages/12-topic';
+import AuthPage from './pages/16-auth';
 import RichPage from './pages/09-rich';
 import { ThemeSwitcher } from '@/ui/theme-switcher';
 
@@ -40,6 +41,7 @@ const PAGES: Record<string, { title: string; el: () => React.ReactNode }> = {
   '11-profile': { title: '11 · 个人主页', el: () => <ProfilePage /> },
   '10-messages': { title: '10 · 信息中心', el: () => <MessagesPage /> },
   '09-rich': { title: '09 · 富文本与图片', el: () => <RichPage /> },
+  '16-auth': { title: '16 · 登录与注册', el: () => <AuthPage /> },
 };
 
 export function DevRoom({ page }: { page: string }) {

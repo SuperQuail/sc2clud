@@ -66,7 +66,7 @@ export function StatRow({ children }: { children: ReactNode }) {
 }
 
 export function Pill({ tone = 'neutral', children, className }: {
-  tone?: 'neutral' | 'ok' | 'warn' | 'danger';
+  tone?: 'neutral' | 'ok' | 'warn' | 'danger' | 'outline';
   children: ReactNode;
   className?: string;
 }) {
@@ -78,6 +78,7 @@ export function Pill({ tone = 'neutral', children, className }: {
         tone === 'ok' && 'bg-primary/12 text-primary',
         tone === 'warn' && 'bg-muted text-foreground ring-1 ring-border',
         tone === 'danger' && 'bg-destructive/12 text-destructive',
+        tone === 'outline' && 'border border-dashed border-border text-muted-foreground',
         className,
       )}
     >

@@ -147,3 +147,92 @@ export const DIAGNOSTICS: { debug_enabled: boolean; version: string; started_at:
     { name: '存储根目录可写', ok: true, detail: '/var/lib/sc2clud/images（只读探针写入 1 字节）', ms: 5 },
   ],
 };
+// ─────────────────────────────────────────────────────────────────────────────
+// D7 AI 帖子审核（唯一真源：完全重构/后端设计/d7-ai-review.md；拍板 §10 钉死四条）
+// 权限点沿用 site.setting —— **不新造权限点**（拍板 §10.3）。
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** GET /api/v1/admin/ai/config。**密钥永不回显**：这里只有 has_secret 与 secret_updated_at。 */
+export type AiConfig = {
+  enabled: boolean;
+  provider: 'deepseek' | 'openai_compatible';
+  base_url: string;
+  model: string;
+  timeout_ms: number;
+  max_body_chars: number;
+  /** 留空 = 用内置默认提示词（d7 §4） */
+  prompt: string;
+  has_secret: boolean;
+  secret_updated_at: string | null;
+  last_ok_at: string | null;
+  last_error: string;
+  last_error_at: string | null;
+};
+
+export const AI_CONFIG: AiConfig = {
+  enabled: true,
+  provider: 'deepseek',
+  base_url: 'https://api.deepseek.com',
+  model: 'deepseek-chat',
+  timeout_ms: 15000,
+  max_body_chars: 4000,
+  prompt: '',
+  has_secret: true,
+  secret_updated_at: '2026-10-01T03:20:00Z',
+  last_ok_at: '2026-10-12T13:20:00Z',
+  last_error: '超时 15000ms（POST https://api.deepseek.com/chat/completions）',
+  last_error_at: '2026-10-11T22:10:00Z',
+};
+
+export const AI_PROVIDERS: { key: AiConfig['provider']; label: string }[] = [
+  { key: 'deepseek', label: 'deepseek（默认）' },
+  { key: 'openai_compatible', label: 'openai_compatible（任何兼容 /chat/completions 的服务）' },
+];
+
+/** d7 §4 的内置默认提示词（ai_config.prompt 留空时用它）。集中放一份，界面只读展示要点。 */
+export const AI_BUILTIN_PROMPT = [
+  '你是中文社区（星际争霸战役作者社区）的内容审核员。判断下面这篇帖子是否适合公开发布。',
+  '拒绝（reject）—— 只在这些情况：广告/引流/站外交易；辱骂、人身攻击、歧视、色情、暴力威胁；违法违规；与本站主题完全无关的刷屏。',
+  '拿不准（review）—— 必须交人工：不确定是否违规；涉及争议话题、指控某人或真实身份；正文为空/噪声/机器乱码；任何无法判断的情境。',
+  '其余一律通过（approve）。宁可放过，不可错杀——误杀一篇正常帖子的代价远大于放过一篇边缘内容。',
+  '只输出 JSON：{"verdict":"...","reason":"...","categories":[...]}，不要输出任何其它文字。',
+].join('\n');
+
+/** GET /api/v1/admin/ai/stats：来自 review_events（source='ai'）与 ai_config.last_error。 */
+export type AiStats = {
+  window: '24h' | '7d';
+  calls: number;
+  approve: number;
+  reject: number;
+  /** 转人工（verdict=review） */
+  review: number;
+  avg_latency_ms: number;
+  failures: number;
+};
+
+export const AI_STATS: AiStats[] = [
+  { window: '24h', calls: 128, approve: 109, reject: 6, review: 13, avg_latency_ms: 1120, failures: 3 },
+  { window: '7d', calls: 862, approve: 742, reject: 41, review: 79, avg_latency_ms: 1180, failures: 17 },
+];
+
+/** 阈值放 site_settings（d7 §2.2），管理员可改、不用发版。 */
+export type AiThreshold = { key: string; label: string; value: number; min: number; max: number; hint: string };
+
+export const AI_THRESHOLDS: AiThreshold[] = [
+  { key: 'ai.review.report_threshold_1', label: '举报 → AI 复审阈值', value: 3, min: 1, max: 50, hint: '未处理举报累计到这么多条 → 用同一套提示词复审一次' },
+  { key: 'ai.review.report_threshold_2', label: '举报 → 直接转人工阈值', value: 5, min: 2, max: 100, hint: '累计到这么多条 → 直接进人工队列，不再调 AI（防举报风暴打爆额度）' },
+  { key: 'ai.review.daily_limit_per_topic', label: '单帖每日 AI 调用上限', value: 3, min: 1, max: 20, hint: '同一篇主题一天最多调几次，防刷（d7 §1 硬规则 3）' },
+];
+
+/** POST /api/v1/admin/ai/test 的三种回执。
+ *  mock：界面上「测试连通」连点会依次走 成功 → 401 → 超时，方便一次看全三种形态（真实实现只返回真结果）。 */
+export type AiTestResult =
+  | { kind: 'ok'; latency_ms: number; model: string; raw: string }
+  | { kind: 'auth'; status: number; message: string }
+  | { kind: 'net'; message: string; timeout_ms: number };
+
+export const AI_TEST_SEQUENCE: AiTestResult[] = [
+  { kind: 'ok', latency_ms: 842, model: 'deepseek-chat', raw: '{"verdict":"review","reason":"这是一次连通性测试，判为转人工以示返回可解析","categories":["other"]}' },
+  { kind: 'auth', status: 401, message: 'authentication_error: Invalid API key provided（Key 可能已撤销或粘贴时带了空格）' },
+  { kind: 'net', message: '请求超时：POST https://api.deepseek.com/chat/completions 在 15000ms 内没有响应', timeout_ms: 15000 },
+];

@@ -195,7 +195,7 @@ export function RewardsScreen() {
           <Panel title='改判与撤回' note='approved ↔ rejected 的改判必须留痕（audit_logs action=reward.verify）'>
             {!isSuper ? (
               <GateNote perm='is_super'>
-                「撤回他人的申报」不渲染：撤回是**申报人自己的动作**（12.7，置 withdrawn，不物理删）。
+                「撤回他人的申报」不渲染：撤回是<b>申报人自己的动作</b>（12.7，置 withdrawn，不物理删）。
                 管理员要改判就走核验（有 audit 留痕），超管才额外有强制撤回。
               </GateNote>
             ) : null}
@@ -222,7 +222,7 @@ export function RewardsScreen() {
           pending?.kind === 'approve'
             ? <span>核验 <b>{pending.ids.length}</b> 笔申报：确认收款人已实际收到款项。通过后会写审计 <code>reward.verify</code>；若作者同意公开，金额会进入公开统计。</span>
             : pending?.kind === 'reject'
-              ? <span>拒绝后状态置 rejected，双方都会收到通知。误判可以改判（approved ↔ rejected），但**每次改判都会留痕**。</span>
+              ? <span>拒绝后状态置 rejected，双方都会收到通知。误判可以改判（approved ↔ rejected），但<b>每次改判都会留痕</b>。</span>
               : <span>撤回把申报置 withdrawn（老站语义：不物理删）。</span>
         }
         onClose={() => setPending(null)}

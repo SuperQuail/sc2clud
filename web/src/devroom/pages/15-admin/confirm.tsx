@@ -48,6 +48,7 @@ export function ConfirmDialog({
             label={reasonLabel}
             multiline
             rows={2}
+            inputClassName='!h-[64px]'
             value={reason}
             onChange={(e) => setReason(e.target.value)}
             error={reasonRequired && reason.trim() === '' ? '必填：理由会写进审计日志' : undefined}

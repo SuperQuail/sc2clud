@@ -2,7 +2,7 @@ import Button from '@jetbrains/ring-ui-built/components/button/button';
 import Island from '@jetbrains/ring-ui-built/components/island/island';
 import Tag, { TagType } from '@jetbrains/ring-ui-built/components/tag/tag';
 import { useState } from 'react';
-import { FolderOpen, Heart, Image as ImageIcon, MapPin, MessageSquare, MoreHorizontal, Star, UserPlus, UserRound } from 'lucide-react';
+import { Check, ChevronDown, ChevronUp, Coffee, FolderOpen, Heart, Image as ImageIcon, MapPin, MessageSquare, MoreHorizontal, QrCode, Star, UserPlus, UserRound } from 'lucide-react';
 import { assetUrl } from '@/lib/url';
 import { icon16 } from '@/ui/icons';
 import { UserAvatar } from '@/ui/user/avatar';
@@ -57,6 +57,93 @@ const TABS: IconTabItem[] = [
 ];
 
 const FOLLOWING = ['林诗', '某小X', '新来的', '夜航星'];
+
+// 赞助入口（对照 12.4–12.7 的展示侧 + 用户反馈「主页没有赞助按钮」）。
+// 与帖子页的 reward-panel **同款**：一大颗 --vivid-accent 按钮（白字、≥44px、15px）+ 一行 11px 说明，
+// 点开后**在这个格子里就地展开**（渠道 → 收款码 → 文案 → 登记），不跳转、也不是常驻红块。
+const SPONSOR_CHANNELS = [
+  { id: 'wechat', label: '微信', notice: '扫码后请在备注里写上你的昵称，作者好对上号。' },
+  { id: 'alipay', label: '支付宝', notice: '支付宝扫码，备注可以留空。' },
+  { id: 'afdian', label: '爱发电', notice: '爱发电支持一次性与按月两种，随你方便。' },
+];
+
+// mock：想看「作者没有收款码」的空态，把下面 channels 换成 []（真实实现来自 /api/v1/users/{handle}/channels）。
+function SponsorCard() {
+  const channels = SPONSOR_CHANNELS;
+  const [open, setOpen] = useState(false);
+  const [activeId, setActiveId] = useState(channels[0]?.id ?? '');
+  const [confirmed, setConfirmed] = useState(false);
+  const active = channels.find((c) => c.id === activeId) ?? channels[0];
+  const hasChannel = channels.length > 0;
+
+  return (
+    <Island withoutPaddings>
+      <div className='flex flex-col gap-2 p-4'>
+        <span className='text-[12px] font-medium tracking-wide text-muted-foreground'>赞助 TA</span>
+        {/* 大按钮：图标走 children 里的 span（icon16 会把它压成 16px），字号与高度用 ! 覆盖 Ring 的默认值 */}
+        <Button
+          inline={false}
+          primary
+          aria-expanded={open}
+          disabled={!hasChannel}
+          title={hasChannel ? undefined : 'TA 还没有开启收款码：等作者在个人设置里挂了渠道，这里就能用'}
+          iconRight={hasChannel ? icon16(open ? ChevronUp : ChevronDown) : undefined}
+          onClick={() => setOpen((v) => !v)}
+          className='!h-11 w-full !border-[var(--vivid-accent)] !bg-[var(--vivid-accent)] !text-[15px] !text-white'
+        >
+          <span className='inline-flex items-center gap-2'>
+            <Coffee aria-hidden className='size-5' />
+            赞助 TA
+          </span>
+        </Button>
+        <p className='text-[11px] leading-relaxed text-muted-foreground'>打赏是纯自愿的，不解锁任何东西。</p>
+
+        {!hasChannel ? (
+          <p className='text-[11px] leading-relaxed text-muted-foreground'>
+            TA 还没开启收款码。按钮保留但禁用——入口本身说明「这个站点可以打赏」，藏掉它作者就永远等不到想支持的人。
+          </p>
+        ) : open ? (
+          <div className='flex flex-col gap-3 border-t border-border pt-3'>
+            <span className='flex flex-wrap items-center gap-1.5'>
+              {channels.map((c) => (
+                <Button key={c.id} ghost active={c.id === active?.id} onClick={() => setActiveId(c.id)}>
+                  {c.label}
+                </Button>
+              ))}
+            </span>
+
+            <span className='flex flex-col items-center gap-2'>
+              <span aria-hidden className='grid h-[132px] w-[132px] place-items-center rounded-md bg-muted ring-1 ring-border'>
+                <QrCode aria-hidden className='size-16 text-muted-foreground' />
+              </span>
+              <span className='inline-flex items-center gap-1 text-[11px] text-muted-foreground'>
+                <QrCode aria-hidden className='size-3' />
+                {active?.label}收款码 · 扫码或长按识别
+              </span>
+            </span>
+
+            <p className='rounded-md bg-muted/50 px-2 py-2 text-[11px] leading-relaxed text-muted-foreground'>{active?.notice}</p>
+
+            <Button
+              inline={false}
+              icon={confirmed ? icon16(Check) : undefined}
+              disabled={confirmed}
+              onClick={() => setConfirmed(true)}
+              className='w-full'
+            >
+              {confirmed ? '已登记，等作者核对' : '我已完成打赏'}
+            </Button>
+            {confirmed ? (
+              <p className='text-[11px] leading-relaxed text-muted-foreground'>
+                已生成一条 pending 申报（POST /api/v1/rewards），作者确认收款、管理员核验后才会出现在 TA 的主页收入里。
+              </p>
+            ) : null}
+          </div>
+        ) : null}
+      </div>
+    </Island>
+  );
+}
 
 export default function ProfilePage() {
   const [tab, setTab] = useState('posts');
@@ -179,8 +266,11 @@ export default function ProfilePage() {
           ) : null}
         </div>
 
-        {/* 右栏：徽章与关系 —— 个人页的信息补充位 */}
+        {/* 右栏：赞助 → 徽章 → 关系。
+            赞助放第一格：它是这个页面唯一的转化点（读完之后「想支持一下」的那一秒），
+            徽章与关注的人是补充信息，晚一步看到不影响什么。 */}
         <aside className='flex flex-col gap-3'>
+          <SponsorCard />
           <Island withoutPaddings>
             <div className='flex flex-col gap-3 p-4'>
               <span className='text-[12px] font-medium tracking-wide text-muted-foreground'>徽章</span>

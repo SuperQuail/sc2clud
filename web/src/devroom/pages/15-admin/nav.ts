@@ -1,7 +1,7 @@
 // 后台的分组导航定义。单独一个文件：组件文件里混着常量导出会被 react-refresh/only-export-components 警告。
 export type ScreenKey =
   | 'users' | 'roles' | 'boards' | 'review' | 'reports' | 'rewards'
-  | 'titles' | 'mail' | 'settings' | 'audit' | 'diagnostics';
+  | 'titles' | 'mail' | 'ai' | 'settings' | 'audit' | 'diagnostics';
 
 export const NAV: { grp: string; items: { key: ScreenKey; title: string; note: string; badge?: string }[] }[] = [
   {
@@ -30,6 +30,7 @@ export const NAV: { grp: string; items: { key: ScreenKey; title: string; note: s
   {
     grp: '系统',
     items: [
+      { key: 'ai', title: 'AI 审核', note: 'd7 判定来源 / 配置 / 密钥只写不回显 / 用量' },
       { key: 'settings', title: '站点设置', note: '13.15 文案键值 · 13.14 域名（只读）' },
       { key: 'audit', title: '审计日志', note: '13.13 actor / action / target / detail' },
       { key: 'diagnostics', title: '自检面板', note: '13.12 debug 开关门控的只读结果' },

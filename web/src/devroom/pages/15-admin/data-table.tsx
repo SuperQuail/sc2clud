@@ -53,6 +53,8 @@ export type DataTableProps<T> = {
   minWidth?: number;
   /** 行高：compact 用于审核/日志这类密集列表 */
   density?: 'normal' | 'compact';
+  /** 整行提示（例如「AI 转人工」这一行要一眼看出来）；返回 undefined 表示不加 */
+  rowClassName?: (row: T) => string | undefined;
 };
 
 export function DataTable<T>({
@@ -72,6 +74,7 @@ export function DataTable<T>({
   empty = '没有数据',
   minWidth = 720,
   density = 'normal',
+  rowClassName,
 }: DataTableProps<T>) {
   const sorted = useMemo(() => {
     if (!sort) return rows;
@@ -176,6 +179,7 @@ export function DataTable<T>({
                   pad,
                   onRowClick && 'cursor-pointer',
                   active ? 'bg-primary/8' : 'hover:bg-muted/50',
+                  rowClassName?.(row),
                 )}
                 style={{ gridTemplateColumns: tracks }}
               >

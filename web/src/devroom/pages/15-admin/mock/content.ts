@@ -91,6 +91,23 @@ export type ReviewItem = {
   review_note: string;
   reviewer: UserSummary | null;
   reviewed_at: string | null;
+  /** d7 §5.1：这一轮的判定来源；NULL = AI 未判定（调用失败/没配密钥 → 留 pending 进人工队列） */
+  review_source: 'ai' | 'manual' | 'trusted' | null;
+  /** 最近一次判定的 verdict：ai + review = **AI 转人工**（队列里要高亮） */
+  review_verdict: 'approve' | 'reject' | 'review';
+};
+
+/** d7 §5.2 review_events：审核是**一串事件**，只增不改。倒序展示（新 → 旧）。 */
+export type ReviewEvent = {
+  id: string;
+  trigger: 'create' | 'report' | 'manual';
+  source: 'ai' | 'manual' | 'trusted';
+  verdict: 'approve' | 'reject' | 'review';
+  reason: string;
+  model: string;
+  latency_ms: number;
+  actor: UserSummary | null;
+  created_at: string;
 };
 
 export const REVIEW_QUEUE: ReviewItem[] = [
@@ -99,36 +116,42 @@ export const REVIEW_QUEUE: ReviewItem[] = [
     kind: 'resource', author: sum(u('mapmaker')), author_trusted: true, created_at: '2026-10-12T11:02:00Z',
     excerpt: '第三章加入了新的指挥官技能树与三个可选支线。安装方式见文末，压缩包内附校验值……',
     images: 4, state: 'pending', review_note: '', reviewer: null, reviewed_at: null,
+    review_source: 'ai', review_verdict: 'review',
   },
   {
     id: 'tp_02', title: '关于合作模式 AI 波次缩放的几点想法', board: { slug: 'mapping', name: '地图制作' },
     kind: 'discussion', author: sum(u('chenxi')), author_trusted: false, created_at: '2026-10-12T09:41:00Z',
     excerpt: '我试着把波次数量做成随难度递增的曲线，但发现 8 分钟后的第一波会同时压到两个路口……',
     images: 1, state: 'pending', review_note: '', reviewer: null, reviewed_at: null,
+    review_source: 'ai', review_verdict: 'review',
   },
   {
     id: 'tp_03', title: '免费领取优惠券，点击进入', board: { slug: 'meta', name: '站务讨论' },
     kind: 'discussion', author: sum(u('adbot9000')), author_trusted: false, created_at: '2026-10-12T08:15:00Z',
     excerpt: '限时活动，先到先得……',
     images: 0, state: 'pending', review_note: '', reviewer: null, reviewed_at: null,
+    review_source: null, review_verdict: 'review',
   },
   {
     id: 'tp_04', title: '【资源】高清地形纹理包 v3（含夜间变体）', board: { slug: 'resources', name: '资源分享' },
     kind: 'resource', author: sum(u('artofwar')), author_trusted: true, created_at: '2026-10-11T20:30:00Z',
     excerpt: '在 v2 基础上重做了 14 张地形贴图，新增夜间变体；体积从 480MB 降到 310MB……',
     images: 6, state: 'pending', review_note: '', reviewer: null, reviewed_at: null,
+    review_source: 'ai', review_verdict: 'review',
   },
   {
     id: 'tp_05', title: '启动器 0.7.2 更新说明（外部直链）', board: { slug: 'announce', name: '公告与活动' },
     kind: 'repost', author: sum(u('linkai')), author_trusted: true, created_at: '2026-10-11T02:10:00Z',
     excerpt: '本次更新修复了中文路径导致的校验失败……',
     images: 0, state: 'normal', review_note: '', reviewer: sum(u('tangtian')), reviewed_at: '2026-10-11T02:20:00Z',
+    review_source: 'manual', review_verdict: 'approve',
   },
   {
     id: 'tp_06', title: '第一次做战役，请大佬看看方向对不对', board: { slug: 'campaign', name: '自制战役' },
     kind: 'discussion', author: sum(u('rookie')), author_trusted: false, created_at: '2026-10-10T16:00:00Z',
     excerpt: '目前做了两关，主要是想让玩家在第二关自己发现基地被渗透……',
-    images: 2, state: 'normal', review_note: '', reviewer: sum(u('tangtian')), reviewed_at: '2026-10-10T17:12:00Z',
+    images: 2, state: 'normal', review_note: '正常创作讨论，无违规特征。', reviewer: null, reviewed_at: '2026-10-10T17:12:00Z',
+    review_source: 'ai', review_verdict: 'approve',
   },
   {
     id: 'tp_07', title: '出售代练账号，私聊', board: { slug: 'meta', name: '站务讨论' },
@@ -136,13 +159,15 @@ export const REVIEW_QUEUE: ReviewItem[] = [
     excerpt: '价格好商量……',
     images: 0, state: 'rejected', review_note: '违反站规第 4 条（交易账号），已拒绝并警告作者。',
     reviewer: sum(u('tangtian')), reviewed_at: '2026-10-09T12:30:00Z',
+    review_source: 'manual', review_verdict: 'reject',
   },
   {
     id: 'tp_08', title: '自制的合作指挥官：斯台特曼改版', board: { slug: 'resources', name: '资源分享' },
     kind: 'resource', author: sum(u('silentsheep')), author_trusted: false, created_at: '2026-10-08T03:00:00Z',
     excerpt: '技能数值还没调好，先发出来征求意见……',
-    images: 3, state: 'rejected', review_note: '请补充安装说明与版本号后重新提交。',
-    reviewer: sum(u('tangtian')), reviewed_at: '2026-10-08T09:40:00Z',
+    images: 3, state: 'rejected', review_note: '正文只有一句话，且附带了未授权的素材网盘链接，请补充安装说明与来源。',
+    reviewer: null, reviewed_at: '2026-10-08T09:40:00Z',
+    review_source: 'ai', review_verdict: 'reject',
   },
 ];
 
@@ -197,6 +222,59 @@ export const REPORTS: ReportItem[] = [
     handle_note: '不构成违规，驳回举报。',
   },
 ];
+
+
+/** d7 §5.2：每帖的判定历史（倒序展示）。tp_01 走的是「创建时 trusted 免审 → 被 3 人举报 → AI 复审转人工」。 */
+export const REVIEW_EVENTS: Record<string, ReviewEvent[]> = {
+  tp_01: [
+    { id: 'ev_1_3', trigger: 'report', source: 'ai', verdict: 'review', model: 'deepseek-chat', latency_ms: 1180, actor: null,
+      reason: '已被 3 人举报，重点复核资源来源与授权；AI 无法确认素材版权，交人工。', created_at: '2026-10-12T11:02:00Z' },
+    { id: 'ev_1_2', trigger: 'create', source: 'trusted', verdict: 'approve', model: '', latency_ms: 0, actor: null,
+      reason: '作者 trusted=true：发帖免审直接发布。', created_at: '2026-10-12T10:45:00Z' },
+  ],
+  tp_02: [
+    { id: 'ev_2_1', trigger: 'create', source: 'ai', verdict: 'review', model: 'deepseek-chat', latency_ms: 940, actor: null,
+      reason: '正文点名某位作者的关卡设计并带有比较性评价，按提示词「涉及指控某人」交人工。', created_at: '2026-10-12T09:41:20Z' },
+  ],
+  tp_03: [
+    { id: 'ev_3_2', trigger: 'create', source: 'ai', verdict: 'review', model: 'deepseek-chat', latency_ms: 15000, actor: null,
+      reason: '调用超时（timeout_ms=15000）：退避重试 2 次仍失败，按 d7「AI 失败不挡发帖」留在 pending 交人工。', created_at: '2026-10-12T08:16:00Z' },
+    { id: 'ev_3_1', trigger: 'create', source: 'ai', verdict: 'review', model: 'deepseek-chat', latency_ms: 15000, actor: null,
+      reason: '第一次尝试超时，进入退避重试。', created_at: '2026-10-12T08:15:30Z' },
+  ],
+  tp_04: [
+    { id: 'ev_4_1', trigger: 'create', source: 'ai', verdict: 'review', model: 'deepseek-chat', latency_ms: 1320, actor: null,
+      reason: '正文含网盘直链与提取码，需人工确认无侵权与无引流。', created_at: '2026-10-11T20:31:00Z' },
+  ],
+  tp_05: [
+    { id: 'ev_5_2', trigger: 'manual', source: 'manual', verdict: 'approve', model: '', latency_ms: 0, actor: sum(u('tangtian')),
+      reason: '与作者确认后放行：直链属启动器正式发布内容。', created_at: '2026-10-11T02:20:00Z' },
+    { id: 'ev_5_1', trigger: 'create', source: 'ai', verdict: 'approve', model: 'deepseek-chat', latency_ms: 700, actor: null,
+      reason: '正常发布说明，无违规特征。', created_at: '2026-10-11T02:10:20Z' },
+  ],
+  tp_06: [
+    { id: 'ev_6_1', trigger: 'create', source: 'ai', verdict: 'approve', model: 'deepseek-chat', latency_ms: 860, actor: null,
+      reason: '正常创作讨论，无违规特征；作者 trusted=false，由 AI 自动放行。', created_at: '2026-10-10T16:01:00Z' },
+  ],
+  tp_07: [
+    { id: 'ev_7_2', trigger: 'manual', source: 'manual', verdict: 'reject', model: '', latency_ms: 0, actor: sum(u('tangtian')),
+      reason: '违反站规第 4 条（交易账号），拒绝并警告作者。', created_at: '2026-10-09T12:30:00Z' },
+    { id: 'ev_7_1', trigger: 'create', source: 'ai', verdict: 'review', model: 'deepseek-chat', latency_ms: 990, actor: null,
+      reason: '疑似站外交易，但表述含糊，转人工确认。', created_at: '2026-10-09T12:02:00Z' },
+  ],
+  tp_08: [
+    { id: 'ev_8_1', trigger: 'create', source: 'ai', verdict: 'reject', model: 'deepseek-chat', latency_ms: 1080, actor: null,
+      reason: '正文只有一句话且附未授权素材链接，无法判断安装方式与来源；拒绝并请作者补充。', created_at: '2026-10-08T09:38:00Z' },
+  ],
+};
+
+export const REVIEW_SOURCE_LABEL: Record<'ai' | 'manual' | 'trusted', string> = {
+  ai: 'AI 判定', manual: '人工判定', trusted: '免审',
+};
+
+export const REVIEW_TRIGGER_LABEL: Record<ReviewEvent['trigger'], string> = {
+  create: '新帖首发', report: '举报复审', manual: '人工处理',
+};
 
 export const REPORT_REASON: Record<ReportItem['reason'], string> = {
   spam: '垃圾广告', abuse: '人身攻击', illegal: '侵权 / 违规内容', offtopic: '与分区主题无关', other: '其它',
