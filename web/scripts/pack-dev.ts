@@ -11,9 +11,11 @@ const sha = process.argv[2] ?? 'dev';
 const out = join(repo, '.tools', 'out');
 const goBin = process.env.GO_BIN ?? 'go';
 
-function run(label: string, cmd: string, args: string[], cwd: string, env: Record<string, string> = {}) {
+// shell 只在需要时开：Windows 上 pnpm 是 .cmd 必须走 shell；
+// 而 go/tar 走 shell 会把带空格的参数（如 -ldflags "-s -w …"）拆成多个参数，报「flag provided but not defined: -w」。
+function run(label: string, cmd: string, args: string[], cwd: string, env: Record<string, string> = {}, shell = false) {
   process.stdout.write('· ' + label + ' … ');
-  const r = spawnSync(cmd, args, { cwd, stdio: 'pipe', shell: true, env: { ...process.env, ...env }, encoding: 'utf8' });
+  const r = spawnSync(cmd, args, { cwd, stdio: 'pipe', shell, env: { ...process.env, ...env }, encoding: 'utf8' });
   if (r.status !== 0) {
     console.error('失败');
     console.error((r.stdout ?? '') + (r.stderr ?? ''));
@@ -29,8 +31,8 @@ function assert(ok: boolean, msg: string) {
   }
 }
 
-run('产品构建（带 dev 入口）', 'pnpm', ['build'], web, { VITE_DEVROOM: '1' });
-run('DevRoom 构建', 'pnpm', ['preview:build'], web);
+run('产品构建（带 dev 入口）', 'pnpm', ['build'], web, { VITE_DEVROOM: '1' }, true);
+run('DevRoom 构建', 'pnpm', ['preview:build'], web, {}, true);
 
 // DevRoom 作为子应用塞进 dist —— **必须在最后一次构建之后**，build 会清空 dist
 const devDir = join(web, 'dist', 'devroom');
@@ -59,7 +61,7 @@ const pkg = join(out, 'forum-' + sha + '-dev.tar.gz');
 run('打包', 'tar', ['-czf', pkg, 'bin', 'dist'], stage);
 
 // 回读校验：包内容不对就不许部署
-const listing = spawnSync('tar', ['-tzf', pkg], { encoding: 'utf8', shell: true }).stdout ?? '';
+const listing = spawnSync('tar', ['-tzf', pkg], { encoding: 'utf8' }).stdout ?? '';
 for (const must of ['bin/forum', 'dist/index.html', 'dist/devroom/index.html']) {
   assert(listing.includes(must), '包内缺少 ' + must);
 }

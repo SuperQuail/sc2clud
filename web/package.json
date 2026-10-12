@@ -16,7 +16,7 @@
     "test": "vitest run",
     "gate:size": "node scripts/check-size.ts",
     "gate:budget": "node scripts/check-budget.ts",
-    "check": "pnpm typecheck && pnpm lint && pnpm gate:ui && pnpm gate:tokens && pnpm gate:urls && pnpm gate:controls && pnpm test && pnpm gate:size && pnpm build && pnpm gate:budget",
+    "check": "pnpm typecheck && pnpm lint && pnpm gate:ui && pnpm gate:tokens && pnpm gate:urls && pnpm gate:controls && pnpm test && pnpm gate:size && pnpm build && pnpm gate:budget && pnpm gate:conventions",
     "gate:ui": "node scripts/check-ui-usage.ts",
     "preview:dev": "vite --config vite.preview.config.ts",
     "preview:build": "vite build --config vite.preview.config.ts",
@@ -27,7 +27,8 @@
     "gate:tokens": "node scripts/check-tokens.ts",
     "gate:urls": "node scripts/check-urls.ts",
     "gate:bundle": "node scripts/check-bundle.ts",
-    "pack:dev": "node scripts/pack-dev.ts"
+    "pack:dev": "node scripts/pack-dev.ts",
+    "gate:conventions": "node scripts/check-conventions.ts"
   },
   "dependencies": {
     "@hookform/resolvers": "^5.9.1",
