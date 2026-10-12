@@ -11,10 +11,11 @@ import { Username } from '@/ui/user/username';
 //   · 未激活（users.activated_at 为空）置灰 + 划掉 + 标注。
 const A = (p: string) => assetUrl(p);
 
-const SUPER = { key: 'superadmin', name: '超级管理员' };
-const ADMIN = { key: 'admin', name: '管理员' };
-const CREATOR = { key: 'creator', name: '认证创作者' };
-const USER = { key: 'user', name: '普通用户' };
+// 角色的 color 是**数据**（将来 roles 表加一列即可），不是控件里写死的；不配就是中性徽标。
+const SUPER = { key: 'superadmin', name: '超级管理员', color: '#dc2626' };
+const ADMIN = { key: 'admin', name: '管理员', color: '#2563eb' };
+const CREATOR = { key: 'creator', name: '认证创作者', color: '#7c3aed' };
+const USER = { key: 'user', name: '普通用户' }; // 不配色 → 中性徽标
 
 function Row({ label, hint, children }: { label: string; hint?: string; children: React.ReactNode }) {
   return (
@@ -42,17 +43,19 @@ export default function UserControlsPage() {
   return (
     <div className='flex flex-col gap-4'>
       <Card
-        name='Username（用户名）· 默认色 + 字重'
+        name='Username（用户名）· 默认色 + 可选自定义色'
         note='只渲染名字。不按角色上色；需要更强层级时用 strong 加粗，而不是配色。'
       >
-        <Row label='常规 / 加粗（作者位）'>
+        <Row label='常规 / 加粗（作者位）/ 自定义颜色' hint='不给 color 就是默认前景色'>
           <Username nickname='普通用户' />
           <Username nickname='唐天' strong />
-          <Username nickname='林诗' />
+          <Username nickname='唐天' color='#2563eb' />
+          <Username nickname='林诗' color={CREATOR.color} />
         </Row>
-        <Row label='未激活（users.activated_at 为空）' hint='置灰 + 划掉 + 标注，不做其它处理'>
+        <Row label='未激活（users.activated_at 为空）' hint='只是暗色——不加文字标记、不加横线'>
           <Username nickname='未激活的人' state='inactive' />
           <Username nickname='唐天' state='inactive' />
+          <Username nickname='唐天' state='inactive' color='#2563eb' />
         </Row>
         <Row label='尺寸 / @handle / 超长昵称'>
           <Username nickname='唐天' size='sm' />
@@ -63,16 +66,16 @@ export default function UserControlsPage() {
       </Card>
 
       <Card
-        name='RoleBadge（权限）· 中性，只靠文字区分'
-        note='不配色：颜色留给头衔。权限树增减只影响数据，不影响这个控件；多角色时渲染多个。'
+        name='RoleBadge（权限）· 颜色可选，由数据给'
+        note='颜色可选、由数据给（roles 记录里的配色字段）。不配就是中性；权限树增减不影响控件；多角色渲染多个。'
       >
-        <Row label='当前权限树' hint='超级管理员 / 管理员 / 认证创作者 / 普通用户'>
+        <Row label='自定义配色（数据给）' hint='前三个配了颜色，普通用户没配 → 中性。配色是数据，不是控件里的表'>
           <RoleBadge role={SUPER} />
           <RoleBadge role={ADMIN} />
           <RoleBadge role={CREATOR} />
           <RoleBadge role={USER} />
         </Row>
-        <Row label='将来加角色' hint='只给 key 和 name，不需要配色，也不用改控件'>
+        <Row label='将来加角色' hint='只给 key 和 name 就是中性徽标；要配色就多给一个 color'>
           <RoleBadge role={{ key: 'translator', name: '翻译组' }} />
         </Row>
         <Row label='多角色同时拥有'>
