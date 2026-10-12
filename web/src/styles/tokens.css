@@ -12,6 +12,11 @@
   /* 设计语言 B 的强调色（赞赏/活动这类要跳出来的动作） */
   --vivid-accent: #f97316;
 
+  /* 开关旋钮：**两种主题下都必须浅色**——它模拟物理开关的滑块，
+     用 --background 会在夜间变成黑色（踩过）。 */
+  --switch-knob: #ffffff;
+  --switch-track: var(--muted);
+
   /* ── 表面与文字 ── */
   --background: var(--ring-content-background-color);
   --foreground: var(--ring-text-color);

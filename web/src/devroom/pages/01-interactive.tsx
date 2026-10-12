@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import Button from '@jetbrains/ring-ui-built/components/button/button';
 import Toggle from '@jetbrains/ring-ui-built/components/toggle/toggle';
-import { DropdownPanel } from '@/ui/dropdown-panel';
+import { DropdownItem, DropdownPanel } from '@/ui/dropdown-panel';
 import { VividSwitch } from '@/ui/vivid/switch';
 import Input from '@jetbrains/ring-ui-built/components/input/input';
 import { ControlsHeight } from '@jetbrains/ring-ui-built/components/global/controls-height';
@@ -180,16 +180,14 @@ export default function InteractivePage() {
 
       <Pair
         name='下拉面板 DropdownPanel（我们自己的）'
-        note='点触发器本身展开，面板在下方；Esc 或点外部关闭；aria-expanded/haspopup 齐全。两侧都用它——它是语言无关的基础件。'
+        note='触发器右侧有可点三角（展开时翻转）；面板有表头与条目 hover 态；**direction=auto 时下方放不下会向上弹**；Esc/点外部关闭。两侧共用同一个控件。'
         user={
           <>
             <Line label='点徽标/按钮展开'>
-              <DropdownPanel label='排序方式' width='w-56' trigger={<VividButton tone='soft'>排序</VividButton>}>
-                <span className='flex flex-col gap-1.5'>
-                  <span className='text-foreground'>最新回复</span>
-                  <span className='text-foreground'>最新发布</span>
-                  <span className='text-foreground'>最多回复</span>
-                </span>
+              <DropdownPanel label='排序方式' width='w-52' trigger={<VividButton tone='soft'>排序</VividButton>}>
+                <DropdownItem onClick={() => {}}>最新回复</DropdownItem>
+                <DropdownItem onClick={() => {}}>最新发布</DropdownItem>
+                <DropdownItem onClick={() => {}}>最多回复</DropdownItem>
               </DropdownPanel>
             </Line>
           </>
@@ -197,12 +195,10 @@ export default function InteractivePage() {
         dev={
           <>
             <Line label='点按钮展开'>
-              <DropdownPanel label='排序方式' width='w-56' trigger={<Button dropdown>排序</Button>}>
-                <span className='flex flex-col gap-1.5'>
-                  <span className='text-foreground'>最新回复</span>
-                  <span className='text-foreground'>最新发布</span>
-                  <span className='text-foreground'>最多回复</span>
-                </span>
+              <DropdownPanel label='排序方式' width='w-52' trigger={<Button dropdown>排序</Button>}>
+                <DropdownItem onClick={() => {}}>最新回复</DropdownItem>
+                <DropdownItem onClick={() => {}}>最新发布</DropdownItem>
+                <DropdownItem onClick={() => {}}>最多回复</DropdownItem>
               </DropdownPanel>
             </Line>
           </>
