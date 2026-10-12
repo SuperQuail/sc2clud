@@ -15,6 +15,7 @@ import {
   Star,
   Sun,
 } from 'lucide-react';
+import Avatar from '@jetbrains/ring-ui-built/components/avatar/avatar';
 import Button from '@jetbrains/ring-ui-built/components/button/button';
 import Input, { Size } from '@jetbrains/ring-ui-built/components/input/input';
 import { cn } from '@/lib/utils';
@@ -221,7 +222,7 @@ function fakeTopics(cursor: string | null, limit: number, failFirst: boolean): P
 const INK = ['var(--primary)', 'var(--foreground)', 'var(--muted-foreground)'];
 
 /** 封面：用令牌变量画的抽象图（真实项目这里是 /img/<hash> 缩略图，≤60KB 由后端生成）。 */
-function coverImage(seed: number, label: string): string {
+function coverImage(seed: number): string {
   const ink = INK[seed % INK.length];
   const svg =
     '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 800">' +
@@ -229,32 +230,15 @@ function coverImage(seed: number, label: string): string {
     '<path d="M64 0H0V64" fill="none" stroke="' + ink + '" stroke-opacity=".14"/></pattern></defs>' +
     '<rect width="1200" height="800" fill="' + ink + '" fill-opacity=".08"/>' +
     '<rect width="1200" height="800" fill="url(#p)"/>' +
-    '<text x="56" y="112" font-family="ui-monospace,monospace" font-size="58" fill="' + ink +
-    '" fill-opacity=".6">' + label + '</text>' +
     '<circle cx="' + String(280 + (seed % 5) * 130) + '" cy="430" r="220" fill="none" stroke="' + ink +
     '" stroke-opacity=".5" stroke-width="22"/>' +
     '<circle cx="' + String(820 - (seed % 4) * 90) + '" cy="500" r="150" fill="none" stroke="' + ink +
     '" stroke-opacity=".32" stroke-width="14"/>' +
     '<path d="M0 706L1200 528" stroke="' + ink + '" stroke-opacity=".28" stroke-width="10"/>' +
     '</svg>';
-  return 'data:image/svg+xml,' + encodeURIComponent(svg);
+  return dataUrl(svg);
 }
 
-/** 头像：首字母 + 令牌色块；离线可渲染、无外部域（真实项目这里是 /img/<hash>）。 */
-function avatarImage(handle: string, seed: number): string {
-  const ink = INK[seed % INK.length];
-  const svg =
-    '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 96 96">' +
-    '<rect width="96" height="96" rx="28" fill="' + ink + '" fill-opacity=".16"/>' +
-    '<circle cx="48" cy="48" r="30" fill="none" stroke="' + ink +
-    '" stroke-opacity=".55" stroke-width="3"/>' +
-    '<text x="48" y="60" text-anchor="middle" font-family="ui-monospace,monospace" font-size="34" fill="' +
-    ink +
-    '">' +
-    handle.slice(0, 1).toUpperCase() +
-    '</text></svg>';
-  return 'data:image/svg+xml,' + encodeURIComponent(svg);
-}
 
 function seedOf(text: string): number {
   let n = 0;
@@ -264,6 +248,11 @@ function seedOf(text: string): number {
 
 const compact = new Intl.NumberFormat('zh-CN', { notation: 'compact', maximumFractionDigits: 1 });
 const wall = new Intl.DateTimeFormat('zh-CN', { month: 'numeric', day: 'numeric' });
+
+/** 数据 URL 的手工编码：encodeURIComponent 会把中文与 < > 一起码掉，体积翻三倍。 */
+function dataUrl(svg: string): string {
+  return 'data:image/svg+xml,' + svg.split('#').join('%23').split('\n').join('');
+}
 
 /** 只做「UTC ISO → 相对时间」的展示换算，本地时区只在这里出现。 */
 function relative(iso: string, now: number): string {
@@ -283,17 +272,24 @@ const KIND: Record<TopicKind, { text: string; cls: string }> = {
 
 /* ── 展示组件 ───────────────────────────────────────────────────────────── */
 
-function Avatar({ topic, size }: { topic: TopicItem; size: number }) {
-  return (
-    <img
-      alt={topic.author.nickname + ' 的头像'}
-      className='shrink-0 rounded-full'
-      height={size}
-      src={avatarImage(topic.author.handle, seedOf(topic.author.handle))}
-      style={{ width: size, height: size }}
-      width={size}
-    />
-  );
+/** 头像直接用 Ring UI 的 Avatar（库已有，不自建）；url 失败时它会回落到首字母。 */
+function UserAvatar({ handle, nickname, size }: { handle: string; nickname: string; size: number }) {
+  return <Avatar className='shrink-0' round size={size} url={avatarUrl(handle)} username={nickname} />;
+}
+
+/** 演示头像：真实项目这里是 /img/<hash>（后端生成的缩略图）。 */
+function avatarUrl(handle: string): string {
+  const ink = INK[seedOf(handle) % INK.length];
+  const svg =
+    '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 96 96">' +
+    '<rect width="96" height="96" rx="28" fill="' + ink + '" fill-opacity=".16"/>' +
+    '<circle cx="48" cy="48" r="30" fill="none" stroke="' + ink + '" stroke-opacity=".55" stroke-width="3"/>' +
+    '<text x="48" y="60" text-anchor="middle" font-family="ui-monospace,monospace" font-size="34" fill="' +
+    ink +
+    '">' +
+    handle.slice(0, 1).toUpperCase() +
+    '</text></svg>';
+  return dataUrl(svg);
 }
 
 function KindPill({ kind }: { kind: TopicKind }) {
@@ -334,13 +330,13 @@ function Marks({ topic }: { topic: TopicItem }) {
 function Cover({ topic, className }: { topic: TopicItem; className?: string }) {
   if (!topic.cover) return null;
   return (
-    <div className={cn('overflow-hidden rounded-md bg-muted', className)}>
+    <div className={cn('relative overflow-hidden rounded-md bg-muted', className)}>
       {/* 定宽高比容器：图未到时高度已占住，CLS 为 0（前端方案 §9.1） */}
       <img
         alt={''}
         className='size-full object-cover'
         loading='lazy'
-        src={coverImage(seedOf(topic.title), topic.board.name)}
+        src={coverImage(seedOf(topic.title))}
       />
     </div>
   );
@@ -383,7 +379,7 @@ function TopicRow({ topic, now }: { topic: TopicItem; now: number }) {
 
           <div className='mt-5 flex flex-wrap items-center gap-x-5 gap-y-2 text-[13px] text-muted-foreground'>
             <span className='flex items-center gap-2'>
-              <Avatar size={22} topic={topic} />
+              <UserAvatar handle={topic.author.handle} nickname={topic.author.nickname} size={22} />
               <span className='text-foreground'>{topic.author.nickname}</span>
             </span>
             <span className='flex items-center gap-1.5 tabular-nums'>
@@ -505,13 +501,7 @@ function TopBar({
           className='flex shrink-0 items-center gap-2 rounded-full p-0.5 pr-1 outline-none hover:bg-muted focus-visible:ring-[3px] focus-visible:ring-ring/50 sm:pr-3'
           href='#u/tangtian'
         >
-          <img
-            alt='唐天 的头像'
-            className='size-8 rounded-full'
-            height={32}
-            src={avatarImage('tangtian', 3)}
-            width={32}
-          />
+          <UserAvatar handle='tangtian' nickname='唐天' size={32} />
           <span className='hidden text-[13px] text-foreground sm:inline'>唐天</span>
         </a>
       </div>
