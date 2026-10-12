@@ -1,103 +1,167 @@
 import Button from '@jetbrains/ring-ui-built/components/button/button';
 import Input from '@jetbrains/ring-ui-built/components/input/input';
 import { ControlsHeight } from '@jetbrains/ring-ui-built/components/global/controls-height';
-import { icon16 } from '@/ui/icons';
 import add from '@jetbrains/icons/add-20px';
 import searchIcon from '@jetbrains/icons/search-20px';
-import { Trash2, ArrowRight } from 'lucide-react';
+import { Heart, Plus, Search, Send } from 'lucide-react';
+import { VividButton } from '@/ui/vivid/button';
+import { VividInput } from '@/ui/vivid/input';
 
 // DevRoom 01 · 交互与表单
-// 按「交互类型」组织，不按控件切小节：按钮一个区、输入一个区。
-// 每一格都是实测过的用法；登记见 src/devroom/registry.ts。
-function Area({ title, desc, children }: { title: string; desc: string; children: React.ReactNode }) {
+// **一种控件两种样式，左右对照**：左边用户向（B 系 · Tailwind），右边开发者向（A 系 · Ring UI）。
+// 不按「控件一页」也不按「人群一页」：选型时要在同一屏里比同一件事。
+function Pair({
+  name,
+  note,
+  user,
+  dev,
+}: {
+  name: string;
+  note: string;
+  user: React.ReactNode;
+  dev: React.ReactNode;
+}) {
   return (
-    <section className='flex flex-col gap-2 rounded-lg border border-border bg-card p-3'>
+    <section className='flex flex-col gap-2'>
       <div>
-        <h2 className='text-sm font-semibold text-foreground'>{title}</h2>
-        <p className='text-[12px] leading-relaxed text-muted-foreground'>{desc}</p>
+        <h2 className='text-sm font-semibold text-foreground'>{name}</h2>
+        <p className='text-[12px] leading-relaxed text-muted-foreground'>{note}</p>
       </div>
-      <div className='grid gap-2 sm:grid-cols-2 xl:grid-cols-4'>{children}</div>
+      <div className='grid gap-3 lg:grid-cols-2'>
+        <div className='flex flex-col gap-3 rounded-lg border border-border bg-card p-3'>
+          <div className='flex items-baseline gap-2'>
+            <span className='rounded-sm bg-primary/12 px-1.5 py-0.5 text-[11px] font-medium text-primary'>B 系 · 用户向</span>
+            <span className='text-[11px] text-muted-foreground'>首页 / 分区页 / 帖子页</span>
+          </div>
+          <div className='flex flex-col gap-4'>{user}</div>
+        </div>
+        <div className='flex flex-col gap-3 rounded-lg border border-border bg-card p-3'>
+          <div className='flex items-baseline gap-2'>
+            <span className='rounded-sm bg-muted px-1.5 py-0.5 text-[11px] font-medium text-muted-foreground'>A 系 · 开发者向</span>
+            <span className='text-[11px] text-muted-foreground'>发帖 / 管理 / 密集列表</span>
+          </div>
+          <div className='flex flex-col gap-4'>{dev}</div>
+        </div>
+      </div>
     </section>
   );
 }
 
-function Cell({ label, hint, children }: { label: string; hint?: string; children: React.ReactNode }) {
+function Line({ label, children }: { label: string; children: React.ReactNode }) {
   return (
-    <div className='flex min-w-0 flex-col gap-1.5 rounded-md border border-border p-2.5'>
-      <span className='flex min-w-0 flex-col gap-0.5'>
-        <span className='truncate text-[12px] font-medium text-foreground'>{label}</span>
-        {hint ? <span className='line-clamp-2 text-[11px] leading-snug text-muted-foreground'>{hint}</span> : null}
-      </span>
-      <span className='flex min-h-10 flex-wrap items-center gap-2'>{children}</span>
+    <div className='flex flex-col gap-1.5'>
+      <span className='text-[11px] text-muted-foreground'>{label}</span>
+      <span className='flex flex-wrap items-center gap-2'>{children}</span>
     </div>
   );
 }
 
 export default function InteractivePage() {
   return (
-    <div className='flex flex-col gap-4'>
-      <Area
-        title='按钮 · 常见场景'
-        desc='同屏 primary 只出现一次；图标优先用官方 @jetbrains/icons，lucide 必须 icon16() 包装。'
-      >
-        <Cell label='主操作 + 次操作' hint='primary 只有一个'>
-          <Button primary>发帖</Button>
-          <Button>取消</Button>
-        </Cell>
-        <Cell label='危险操作' hint='删除/封禁，配确认框'>
-          <Button danger>删除</Button>
-        </Cell>
-        <Cell label='幽灵 / 透明' hint='卡片、列表里的轻动作'>
-          <Button ghost>取消</Button>
-          <Button transparent>更多</Button>
-        </Cell>
-        <Cell label='禁用 / 提交中' hint='提交中用 loader，不要用「提交后禁用」防重'>
-          <Button disabled>禁用</Button>
-          <Button primary loader>提交中</Button>
-        </Cell>
-        <Cell label='带图标' hint='官方图标自带固有尺寸'>
-          <Button icon={add}>新建</Button>
-          <Button iconRight={icon16(ArrowRight)}>下一步</Button>
-        </Cell>
-        <Cell label='仅图标' hint='必须给 aria-label'>
-          <Button icon={add} aria-label='新建' />
-          <Button icon={icon16(Trash2)} aria-label='删除' />
-        </Cell>
-        <Cell label='链接按钮' hint='导航用 href，可中键新开'>
-          <Button href='/b/campaign'>进入分区</Button>
-        </Cell>
-        <Cell label='尺寸' hint='ControlsHeight.S / M / L'>
-          <Button height={ControlsHeight.S}>S</Button>
-          <Button height={ControlsHeight.M}>M</Button>
-          <Button height={ControlsHeight.L}>L</Button>
-        </Cell>
-        <Cell label='行内动作 / 紧凑' hint='正文里的动作、密集列表'>
-          <Button inline>展开</Button>
-          <Button short>短按钮</Button>
-        </Cell>
-      </Area>
+    <div className='flex flex-col gap-6'>
+      <Pair
+        name='按钮'
+        note='同一个动作，两种体量。B 系高 40/48px、全圆角、饱和；A 系 24px、克制、密集。'
+        user={
+          <>
+            <Line label='主操作 / 次操作'>
+              <VividButton icon={Plus}>发帖</VividButton>
+              <VividButton tone='soft'>收藏</VividButton>
+            </Line>
+            <Line label='强调 / 危险'>
+              <VividButton tone='accent' icon={Heart}>赞赏作者</VividButton>
+              <VividButton tone='danger'>删除</VividButton>
+            </Line>
+            <Line label='大号 / 幽灵 / 仅图标'>
+              <VividButton size='lg' icon={Send}>立即加入</VividButton>
+              <VividButton tone='ghost'>稍后再说</VividButton>
+              <VividButton size='icon' icon={Heart} aria-label='收藏' />
+            </Line>
+            <Line label='提交中 / 不可用'>
+              <VividButton loading>提交中</VividButton>
+              <VividButton disabled>不可用</VividButton>
+            </Line>
+          </>
+        }
+        dev={
+          <>
+            <Line label='主操作 / 次操作'>
+              <Button primary>发帖</Button>
+              <Button>取消</Button>
+            </Line>
+            <Line label='强调 / 危险'>
+              <Button danger>删除</Button>
+              <Button ghost>取消</Button>
+            </Line>
+            <Line label='尺寸 / 紧凑 / 仅图标'>
+              <Button height={ControlsHeight.S}>S</Button>
+              <Button height={ControlsHeight.M}>M</Button>
+              <Button height={ControlsHeight.L}>L</Button>
+              <Button short>紧凑</Button>
+              <Button icon={add} aria-label='新建' />
+            </Line>
+            <Line label='提交中 / 禁用 / 链接'>
+              <Button primary loader>提交中</Button>
+              <Button disabled>禁用</Button>
+              <Button href='/b/campaign'>进入分区</Button>
+            </Line>
+          </>
+        }
+      />
 
-      <Area
-        title='输入 · Input'
-        desc='label / error / help / icon / multiline 都是控件自带 prop，不要自己在外面拼标签与错误行。'
-      >
-        <Cell label='默认'><Input placeholder='搜索…' /></Cell>
-        <Cell label='带标签' hint='label prop'>
-          <Input label='标题' placeholder='给主题起个名字…' />
-        </Cell>
-        <Cell label='错误态' hint='error prop（服务端 fields 回填到这里）'>
-          <Input label='邮箱' value='abc' error='邮箱格式不正确' onChange={() => {}} />
-        </Cell>
-        <Cell label='带说明' hint='help prop'>
-          <Input label='用户名' help='登录名注册后不可修改' placeholder='3-24 位字母数字' />
-        </Cell>
-        <Cell label='带图标' hint='icon prop，官方图标'><Input icon={searchIcon} placeholder='搜索…' /></Cell>
-        <Cell label='多行' hint='multiline，用于回复框'>
-          <Input multiline placeholder='说点什么…' />
-        </Cell>
-        <Cell label='禁用'><Input disabled value='不可编辑' onChange={() => {}} /></Cell>
-        <Cell label='大尺寸'><Input height={ControlsHeight.L} placeholder='大尺寸输入' /></Cell>
-      </Area>
+      <Pair
+        name='输入框'
+        note='B 系自带标签与错误行、圆角更大；A 系更紧凑，label/error/help 也是控件自带。'
+        user={
+          <>
+            <Line label='默认 / 带图标'>
+              <VividInput placeholder='搜索…' aria-label='搜索' />
+              <VividInput placeholder='搜索…' icon={Search} aria-label='搜索' />
+            </Line>
+            <Line label='带标签 / 带说明'>
+              <VividInput label='标题' placeholder='给主题起个名字…' />
+              <VividInput label='用户名' hint='注册后不可修改' placeholder='3-24 位字母数字' />
+            </Line>
+            <Line label='错误态 / 大号 / 禁用'>
+              <div className='w-56'><VividInput label='邮箱' value='abc' error='邮箱格式不正确' onChange={() => {}} /></div>
+              <VividInput size='lg' placeholder='大号输入' aria-label='大号输入' />
+              <VividInput disabled value='不可编辑' onChange={() => {}} aria-label='禁用' />
+            </Line>
+          </>
+        }
+        dev={
+          <>
+            <Line label='默认 / 带图标'>
+              <Input placeholder='搜索…' />
+              <Input icon={searchIcon} placeholder='搜索…' />
+            </Line>
+            <Line label='带标签 / 带说明'>
+              <Input label='标题' placeholder='给主题起个名字…' />
+              <Input label='用户名' help='注册后不可修改' placeholder='3-24 位字母数字' />
+            </Line>
+            <Line label='错误态 / 大号 / 禁用'>
+              <Input label='邮箱' value='abc' error='邮箱格式不正确' onChange={() => {}} />
+              <Input height={ControlsHeight.L} placeholder='大号输入' />
+              <Input disabled value='不可编辑' onChange={() => {}} />
+            </Line>
+          </>
+        }
+      />
+
+      <section className='rounded-lg border border-dashed border-border p-3'>
+        <h2 className='text-sm font-semibold text-foreground'>还没做对照的控件</h2>
+        <p className='text-[12px] leading-relaxed text-muted-foreground'>
+          开关、下拉选择、复选/单选：B 系还没做（Ring UI 那侧已可用）。按这个页面的格式补上左右对照后，才允许在业务页面里用。
+        </p>
+        <div className='mt-2 flex flex-wrap items-center gap-2 text-[11px] text-muted-foreground'>
+          <span className='rounded-sm bg-muted px-1.5 py-0.5'>Toggle</span>
+          <span className='rounded-sm bg-muted px-1.5 py-0.5'>Select</span>
+          <span className='rounded-sm bg-muted px-1.5 py-0.5'>Dropdown</span>
+          <span className='rounded-sm bg-muted px-1.5 py-0.5'>Checkbox</span>
+          <span className='rounded-sm bg-muted px-1.5 py-0.5'>Radio</span>
+          <span className='text-muted-foreground'>另：图标工具 icon16 / 官方图标仍在第 05 页。</span>
+        </div>
+      </section>
     </div>
   );
 }

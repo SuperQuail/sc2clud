@@ -25,7 +25,7 @@ export function DevRoom({ page }: { page: string }) {
           </p>
           <nav aria-label='开发者房间页面' className='flex flex-wrap items-center gap-2 pt-1'>
             {Object.entries(PAGES).map(([key, p]) => (
-              <Button key={key} href={'/devroom.html?page=' + key} active={key === page}>
+              <Button key={key} href={'?page=' + key} active={key === page}>
                 {p.title}
               </Button>
             ))}
