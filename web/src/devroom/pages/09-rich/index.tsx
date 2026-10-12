@@ -18,6 +18,8 @@ const CANDIDATES = [
 export default function RichPage() {
   const [imgs10, setImgs10] = useState<UploadedImage[]>([]);
   const [imgs3, setImgs3] = useState<UploadedImage[]>([]);
+  const [avatar, setAvatar] = useState<UploadedImage[]>([]);
+  const [avatarB, setAvatarB] = useState<UploadedImage[]>([]);
   const [row, setRow] = useState<{ id: string; content_json: string; content_html: string; saved_at: string } | null>(null);
   const [busy, setBusy] = useState(false);
 
@@ -98,6 +100,16 @@ export default function RichPage() {
       >
         <Row label='只能压缩上传'>
           <ImageUploader images={imgs3} onChange={setImgs3} max={3} allowOriginal={false} compress />
+        </Row>
+      </Card>
+
+      <Card
+        name='图片上传控件 · 头像形态（单图）'
+        note='variant=avatar：强制 1 张、圆形预览、更换/移除。**换头像、封面这类单图位复用同一个控件**，不再写第二套。'
+      >
+        <Row label='未设置 / 已选 / 移除' hint='限额与压缩和其它形态是同一套规则'>
+          <ImageUploader images={avatar} onChange={setAvatar} variant='avatar' label='上传头像' />
+          <ImageUploader images={avatarB} onChange={setAvatarB} variant='avatar' label='上传封面' />
         </Row>
       </Card>
 

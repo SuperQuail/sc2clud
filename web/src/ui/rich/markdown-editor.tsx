@@ -26,6 +26,7 @@ import { MentionOption } from '@/ui/comment/mention-option';
 import type { MentionCandidate } from '@/ui/comment/mention-types';
 import { assetUrl } from '@/lib/url';
 import { ImageUploader, type UploadedImage } from './image-uploader';
+import { planImages, processImage } from './image-pipeline';
 import { theme } from './lexical/theme';
 import { $createMentionNode, MentionNode } from './lexical/mention-node';
 import { $createImageNode, ImageNode } from './lexical/image-node';
@@ -134,6 +135,7 @@ export function MarkdownEditor({
   compress?: boolean;
 }) {
   const [query, setQuery] = useState<string | null>(null);
+  const [dragging, setDragging] = useState(false);
   const editorRef = useRef<LexicalEditor | null>(null);
 
   const triggerFn = useBasicTypeaheadTriggerMatch('@', { minLength: 0 });
@@ -201,6 +203,32 @@ export function MarkdownEditor({
 
   // 同时给出**存储格式（JSON）**与**展示格式（HTML）**：
   //   JSON 是编辑真源（无损，含提及节点的 user_id）；HTML 给列表/搜索等只读场景用，服务端会再清洗一遍。
+  /** 拖拽图片进来：**与点选上传走同一条管线**（压缩、限额都一样），插到正文里 */
+  const onDropFiles = useCallback(
+    async (files: File[]) => {
+      const pics = files.filter((f) => f.type.startsWith('image/'));
+      if (pics.length === 0) return;
+      const opts = { existing: (images ?? []).length, max: maxImages, compress };
+      const { room } = planImages(pics.length, opts);
+      if (room === 0) return;
+      const accepted: UploadedImage[] = [];
+      for (const f of pics.slice(0, room)) {
+        const blob = await processImage(f, opts);
+        accepted.push({
+          id: Math.random().toString(36).slice(2),
+          name: f.name,
+          size: blob.size,
+          url: URL.createObjectURL(blob),
+          original: false,
+          file: blob,
+        });
+      }
+      onImagesChange?.([...(images ?? []), ...accepted]);
+      insertImages(accepted);
+    },
+    [compact, images, insertImages, maxImages, onImagesChange],
+  );
+
   const onEditorChange = useCallback(
     (state: EditorState) => {
       const editor = editorRef.current;
@@ -244,6 +272,21 @@ export function MarkdownEditor({
           placeholder={null}
           ErrorBoundary={LexicalErrorBoundary}
         />
+        <div
+          onDragOver={(e) => {
+            if (!onImagesChange) return;
+            e.preventDefault();
+            setDragging(true);
+          }}
+          onDragLeave={() => setDragging(false)}
+          onDrop={(e) => {
+            if (!onImagesChange) return;
+            e.preventDefault();
+            setDragging(false);
+            void onDropFiles(Array.from(e.dataTransfer.files));
+          }}
+          className={dragging ? 'rounded-lg ring-[3px] ring-ring/40' : undefined}
+        />
         <HistoryPlugin />
         <MarkdownShortcutPlugin transformers={SHORTCUT_TRANSFORMERS} />
         <OnChangePlugin onChange={onEditorChange} />
@@ -286,7 +329,7 @@ export function MarkdownEditor({
           max={maxImages}
           allowOriginal={allowOriginal}
           compress={compress}
-          showList={false}
+          showThumbnails={false}
         />
       ) : null}
     </div>
