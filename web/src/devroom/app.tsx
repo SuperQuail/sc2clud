@@ -2,12 +2,14 @@ import Button from '@jetbrains/ring-ui-built/components/button/button';
 import { VERIFIED } from './registry';
 import InteractivePage from './pages/01-interactive';
 import OurComponentsPage from './pages/05-our-components';
+import UserStylesPage from './pages/06-user-styles';
 import { ThemeSwitcher } from '@/ui/theme-switcher';
 
 // 开发者房间：控件在这里**逐件验证**；业务代码只允许使用登记过的控件。
 const PAGES: Record<string, { title: string; el: () => React.ReactNode }> = {
   '01-interactive': { title: '01 · 交互与表单', el: () => <InteractivePage /> },
   '05-our-components': { title: '05 · 我们的组合件', el: () => <OurComponentsPage /> },
+  '06-user-styles': { title: '06 · 用户向风格候选', el: () => <UserStylesPage /> },
 };
 
 export function DevRoom({ page }: { page: string }) {
