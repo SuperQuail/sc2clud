@@ -8,7 +8,9 @@ import type { UserRole } from './role-badge';
 const SIZE = { sm: 'text-[13px]', md: 'text-sm', lg: 'text-base', xl: 'text-lg' } as const;
 
 // 角色 → 视觉语气。只有 admin / moderator 有额外强调，其余一律默认色。
+// 角色 key 与数据库的内置 roles 一致：user / moderator / admin / superadmin
 const ROLE_TONE: Record<string, { text: string; pill: string; Icon: typeof Shield | null; weight: string }> = {
+  superadmin: { text: 'text-foreground', pill: 'bg-foreground/10 text-foreground', Icon: Shield, weight: 'font-bold' },
   admin: { text: 'text-destructive', pill: 'bg-destructive/12 text-destructive', Icon: Shield, weight: 'font-bold' },
   moderator: { text: 'text-primary', pill: 'bg-primary/12 text-primary', Icon: Star, weight: 'font-semibold' },
 };

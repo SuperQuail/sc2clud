@@ -11,7 +11,7 @@ const A = (p: string) => assetUrl(p);
 
 const ADMIN = { handle: 'tangtian', nickname: '唐天', role: { key: 'admin', name: '管理员' } };
 const MOD = { handle: 'linshi', nickname: '林诗', role: { key: 'moderator', name: '版主' } };
-const PLAIN = { handle: 'newbie', nickname: '新来的', role: { key: 'member', name: '会员' } };
+const PLAIN = { handle: 'newbie', nickname: '新来的', role: { key: 'user', name: '会员' } };
 const LONG = { handle: 'a-very-long-handle-here', nickname: '一个特别特别长的昵称用来压测截断行为', role: { key: 'member', name: '会员' } };
 const ALL = [ADMIN, MOD, PLAIN, LONG];
 
@@ -73,11 +73,12 @@ export default function UserControlsPage() {
         </Row>
       </Card>
 
-      <Card name='RoleBadge（权限）— 独立控件' note='自己就是一个组件；放在名字前、名字后、单独一行、表格列里都行，不需要为场景改它。'>
-        <Row label='四种角色' hint='admin / moderator / member / 未知兜底'>
+      <Card name='RoleBadge（权限）— 独立控件' note='自己就是一个组件；放名字前、名字后、单独一行、表格列都行。注意 user_roles 是关系表——一个用户可以同时有两个角色，使用方可能要渲染多个。'>
+        <Row label='四个真实角色' hint='数据库内置 roles：user / moderator / admin / superadmin；未知 key 走灰色兜底'>
           <RoleBadge role={{ key: 'admin', name: '管理员' }} />
           <RoleBadge role={{ key: 'moderator', name: '版主' }} />
-          <RoleBadge role={{ key: 'member', name: '会员' }} />
+          <RoleBadge role={{ key: 'user', name: '会员' }} />
+          <RoleBadge role={{ key: 'superadmin', name: '超级管理员' }} />
           <RoleBadge role={{ key: 'custom', name: '未知角色' }} />
         </Row>
         <Row label='与 Username 并排（由使用方决定顺序，不是控件的职责）'>
@@ -86,12 +87,39 @@ export default function UserControlsPage() {
         </Row>
       </Card>
 
-      <Card name='TitleBadge（头衔）— 独立控件' note='运营/活动给的称号，可自定义颜色；与权限互不影响，也不需要跟名字绑在一起。'>
-        <Row label='常见头衔 / 无颜色兜底'>
-          <TitleBadge title={{ name: '执政官', color: '#2563eb' }} />
-          <TitleBadge title={{ name: '精华作者', color: '#7c3aed' }} />
-          <TitleBadge title={{ name: '地图作者', color: '#059669' }} />
-          <TitleBadge title={{ name: '无颜色时用主色' }} />
+      <Card
+        name='TitleBadge（头衔）— 四版对照，挑一版'
+        note='数据来自 titles 表：key / name / color / description（用户只佩戴一个）。颜色只配一个，渐变与光晕都由它派生。'
+      >
+        <Row label='① plain（现在的样子 · 太素）' hint='平底色方块，与权限徽标抢不出层级'>
+          <TitleBadge title={{ name: '执政官', color: '#2563eb' }} variant='plain' />
+          <TitleBadge title={{ name: '精华作者', color: '#7c3aed' }} variant='plain' />
+          <TitleBadge title={{ name: '地图作者', color: '#059669' }} variant='plain' />
+        </Row>
+        <Row label='② gradient（渐变实心 + 内高光）' hint='最有份量；深色底上尤其清楚'>
+          <TitleBadge title={{ name: '执政官', color: '#2563eb' }} variant='gradient' />
+          <TitleBadge title={{ name: '精华作者', color: '#7c3aed' }} variant='gradient' />
+          <TitleBadge title={{ name: '地图作者', color: '#059669' }} variant='gradient' />
+          <TitleBadge title={{ name: '无颜色时用主色' }} variant='gradient' />
+        </Row>
+        <Row label='③ outline（描边 + 星标）' hint='最轻，适合密集列表里也放一个'>
+          <TitleBadge title={{ name: '执政官', color: '#2563eb' }} variant='outline' />
+          <TitleBadge title={{ name: '精华作者', color: '#7c3aed' }} variant='outline' />
+          <TitleBadge title={{ name: '地图作者', color: '#059669' }} variant='outline' />
+        </Row>
+        <Row label='④ glow（实色 + 外发光）' hint='最跳；适合站内极少数的特殊称号'>
+          <TitleBadge title={{ name: '执政官', color: '#2563eb' }} variant='glow' />
+          <TitleBadge title={{ name: '精华作者', color: '#7c3aed' }} variant='glow' />
+          <TitleBadge title={{ name: '地图作者', color: '#059669' }} variant='glow' />
+        </Row>
+        <Row label='尺寸 / 与用户名并排' hint='三种尺寸，以及和 Username 放在一起的实际观感'>
+          <TitleBadge title={{ name: '执政官', color: '#2563eb' }} size='sm' variant='gradient' />
+          <TitleBadge title={{ name: '执政官', color: '#2563eb' }} size='md' variant='gradient' />
+          <TitleBadge title={{ name: '执政官', color: '#2563eb' }} size='lg' variant='gradient' />
+        </Row>
+        <Row label='和名字一起（顺序由使用方决定）'>
+          <span className='flex items-center gap-1.5'><Username nickname='唐天' role={ADMIN.role} variant='weight' /><TitleBadge title={{ name: '执政官', color: '#2563eb' }} variant='gradient' /></span>
+          <span className='flex items-center gap-1.5'><TitleBadge title={{ name: '精华作者', color: '#7c3aed' }} variant='outline' /><Username nickname='林诗' role={MOD.role} variant='weight' /></span>
         </Row>
       </Card>
 
