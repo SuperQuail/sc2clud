@@ -3,6 +3,7 @@
 package main
 
 import (
+	"bytes"
 	"encoding/json"
 	"flag"
 	"log/slog"
@@ -19,13 +20,19 @@ var version = "dev"
 func main() {
 	addr := flag.String("addr", "127.0.0.1:8081", "监听地址")
 	web := flag.String("web", "./dist", "前端产物目录")
+	devroom := flag.String("devroom-link", "", "非空时在页面右下角注入一个临时开发页入口（只给 dev 用，生产不传）")
 	flag.Parse()
 
 	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelInfo}))
 	index := filepath.Join(*web, "index.html")
-	if _, err := os.Stat(index); err != nil {
+	raw, err := os.ReadFile(index)
+	if err != nil {
 		logger.Error("找不到前端产物，先跑 web 的 build", "path", index)
 		os.Exit(1)
+	}
+	page := injectDevroom(raw, *devroom)
+	if *devroom != "" {
+		logger.Info("已注入临时开发页入口", "href", *devroom)
 	}
 
 	mux := http.NewServeMux()
@@ -35,7 +42,12 @@ func main() {
 	})
 
 	files := http.FileServer(http.Dir(*web))
-	mux.Handle("/", spa(*web, files))
+	serveIndex := func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("content-type", "text/html; charset=utf-8")
+		w.Header().Set("cache-control", "no-store")
+		_, _ = w.Write(page)
+	}
+	mux.Handle("/", spa(*web, files, serveIndex))
 
 	srv := &http.Server{
 		Addr:              *addr,
@@ -49,8 +61,20 @@ func main() {
 	}
 }
 
+// injectDevroom 在 </body> 前塞一个固定的临时入口。dev 专用：生产不传 -devroom-link 就原样输出。
+func injectDevroom(html []byte, href string) []byte {
+	if href == "" {
+		return html
+	}
+	link := []byte(`<a href="` + href + `" style="position:fixed;right:16px;bottom:16px;z-index:9999;` +
+		`display:inline-flex;align-items:center;gap:6px;padding:10px 16px;border-radius:999px;` +
+		`background:#111827;color:#fff;font:600 14px/1 system-ui,sans-serif;text-decoration:none;` +
+		`box-shadow:0 6px 20px rgba(0,0,0,.28)">开发页面（临时）</a>`)
+	return bytes.Replace(html, []byte("</body>"), append(link, []byte("</body>")...), 1)
+}
+
 // spa：命中静态文件就发文件，否则交给 index.html（前端路由自己解析路径）。否则刷新 /b/campaign 会 404。
-func spa(root string, files http.Handler) http.Handler {
+func spa(root string, files http.Handler, serveIndex http.HandlerFunc) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodGet && r.Method != http.MethodHead {
 			w.WriteHeader(http.StatusMethodNotAllowed)
@@ -61,7 +85,7 @@ func spa(root string, files http.Handler) http.Handler {
 			files.ServeHTTP(w, r)
 			return
 		}
-		http.ServeFile(w, r, filepath.Join(root, "index.html"))
+		serveIndex(w, r)
 	})
 }
 
