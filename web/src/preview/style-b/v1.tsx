@@ -219,22 +219,23 @@ function fakeTopics(cursor: string | null, limit: number, fail: boolean): Promis
 
 /* ── 令牌内的绘图件：只有文字与几何，没有任何图片字节 ─────────────────────── */
 
-const INK = ['var(--primary)', 'var(--foreground)', 'var(--muted-foreground)'];
+/* 封面是 <img> 加载的 SVG：CSS 变量在 <img> 里解析不了（实测 --primary 会退成黑色），
+   所以图内一律用 currentColor，颜色由容器上的文字色类决定。 */
+const COVER_INK = ['text-primary', 'text-foreground', 'text-muted-foreground'];
 
 /** 封面：用令牌变量画的抽象图（真实项目这里是 /img/<hash> 缩略图，≤60KB 由后端生成）。 */
 function coverImage(seed: number): string {
-  const ink = INK[seed % INK.length];
   const svg =
     '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 800">' +
     '<defs><pattern id="p" width="64" height="64" patternUnits="userSpaceOnUse">' +
-    '<path d="M64 0H0V64" fill="none" stroke="' + ink + '" stroke-opacity=".14"/></pattern></defs>' +
-    '<rect width="1200" height="800" fill="' + ink + '" fill-opacity=".08"/>' +
+    '<path d="M64 0H0V64" fill="none" stroke="currentColor" stroke-opacity=".18"/></pattern></defs>' +
+    '<rect width="1200" height="800" fill="currentColor" fill-opacity=".08"/>' +
     '<rect width="1200" height="800" fill="url(#p)"/>' +
-    '<circle cx="' + String(280 + (seed % 5) * 130) + '" cy="430" r="220" fill="none" stroke="' + ink +
-    '" stroke-opacity=".5" stroke-width="22"/>' +
-    '<circle cx="' + String(820 - (seed % 4) * 90) + '" cy="500" r="150" fill="none" stroke="' + ink +
-    '" stroke-opacity=".32" stroke-width="14"/>' +
-    '<path d="M0 706L1200 528" stroke="' + ink + '" stroke-opacity=".28" stroke-width="10"/>' +
+    '<circle cx="' + String(280 + (seed % 5) * 130) + '" cy="430" r="220" fill="none" stroke="currentColor"' +
+    ' stroke-opacity=".55" stroke-width="22"/>' +
+    '<circle cx="' + String(820 - (seed % 4) * 90) + '" cy="500" r="150" fill="none" stroke="currentColor"' +
+    ' stroke-opacity=".38" stroke-width="14"/>' +
+    '<path d="M0 706L1200 528" stroke="currentColor" stroke-opacity=".3" stroke-width="10"/>' +
     '</svg>';
   return dataUrl(svg);
 }
@@ -272,24 +273,10 @@ const KIND: Record<TopicKind, { text: string; cls: string }> = {
 
 /* ── 展示组件 ───────────────────────────────────────────────────────────── */
 
-/** 头像直接用 Ring UI 的 Avatar（库已有，不自建）；url 失败时它会回落到首字母。 */
-function UserAvatar({ handle, nickname, size }: { handle: string; nickname: string; size: number }) {
-  return <Avatar className='shrink-0' round size={size} url={avatarUrl(handle)} username={nickname} />;
-}
-
-/** 演示头像：真实项目这里是 /img/<hash>（后端生成的缩略图）。 */
-function avatarUrl(handle: string): string {
-  const ink = INK[seedOf(handle) % INK.length];
-  const svg =
-    '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 96 96">' +
-    '<rect width="96" height="96" rx="28" fill="' + ink + '" fill-opacity=".16"/>' +
-    '<circle cx="48" cy="48" r="30" fill="none" stroke="' + ink + '" stroke-opacity=".55" stroke-width="3"/>' +
-    '<text x="48" y="60" text-anchor="middle" font-family="ui-monospace,monospace" font-size="34" fill="' +
-    ink +
-    '">' +
-    handle.slice(0, 1).toUpperCase() +
-    '</text></svg>';
-  return dataUrl(svg);
+/** 头像交给 Ring UI 的 Avatar：没给 url 时它自带 fallback（渐变 + 首字母），
+   真实项目只要把 url 换成 /img/<hash> 即可。演示数据不带头像，正好走 fallback。 */
+function UserAvatar({ nickname, size }: { nickname: string; size: number }) {
+  return <Avatar className='shrink-0' round size={size} username={nickname} />;
 }
 
 function KindPill({ kind }: { kind: TopicKind }) {
@@ -329,14 +316,15 @@ function Marks({ topic }: { topic: TopicItem }) {
 
 function Cover({ topic, className }: { topic: TopicItem; className?: string }) {
   if (!topic.cover) return null;
+  const seed = seedOf(topic.title);
   return (
-    <div className={cn('relative overflow-hidden rounded-md bg-muted', className)}>
+    <div className={cn('relative overflow-hidden rounded-md bg-muted', COVER_INK[seed % COVER_INK.length], className)}>
       {/* 定宽高比容器：图未到时高度已占住，CLS 为 0（前端方案 §9.1） */}
       <img
         alt={''}
         className='size-full object-cover'
         loading='lazy'
-        src={coverImage(seedOf(topic.title))}
+        src={coverImage(seed)}
       />
     </div>
   );
@@ -379,7 +367,7 @@ function TopicRow({ topic, now }: { topic: TopicItem; now: number }) {
 
           <div className='mt-5 flex flex-wrap items-center gap-x-5 gap-y-2 text-[13px] text-muted-foreground'>
             <span className='flex items-center gap-2'>
-              <UserAvatar handle={topic.author.handle} nickname={topic.author.nickname} size={22} />
+              <UserAvatar nickname={topic.author.nickname} size={22} />
               <span className='text-foreground'>{topic.author.nickname}</span>
             </span>
             <span className='flex items-center gap-1.5 tabular-nums'>
@@ -499,7 +487,7 @@ function TopBar({
           className='flex shrink-0 items-center gap-2 rounded-full p-0.5 pr-1 outline-none hover:bg-muted focus-visible:ring-[3px] focus-visible:ring-ring/50 sm:pr-3'
           href='#u/tangtian'
         >
-          <UserAvatar handle='tangtian' nickname='唐天' size={32} />
+          <UserAvatar nickname='唐天' size={32} />
           <span className='hidden text-[13px] text-foreground sm:inline'>唐天</span>
         </a>
       </div>
