@@ -45,6 +45,8 @@ const REPLIES: CommentData[] = [
   },
 ];
 
+const ME = { nickname: '唐天', avatar: A('miyin-portrait-320.webp') };
+
 const COMMENTS: CommentData[] = [
   {
     id: 'c1',
@@ -74,9 +76,9 @@ export default function CommentsPage() {
     <div className='flex flex-col gap-4'>
       <Card
         name='评论区（整块 · CommentList）'
-        note='表头是数量 + 排序（Ring UI Button）；每条评论点「回复」就在它下面出现回复框，楼中楼用左侧竖线表示层级。'
+        note='对照 B 站：表头「评论 N」+ 最热｜最新，下面常驻评论框；楼中楼不加竖线，靠缩进与间距表达层级。'
       >
-        <CommentList comments={COMMENTS} total={54} />
+        <CommentList comments={COMMENTS} total={54} me={ME} />
       </Card>
 
       <Card
@@ -97,9 +99,9 @@ export default function CommentsPage() {
             <CommentReplies replies={{ total: 5, items: REPLIES, previewCount: 2 }} />
           </div>
         </Row>
-        <Row label='ReplyBox（回复框）' hint='复用 Ring UI Input(multiline) 与 Button；空内容提交会给内联错误'>
+        <Row label='ReplyBox（回复框）' hint='复用 Ring UI Input（multiline + autogrow + 高度 L，能写长评论）；只有一个发布按钮，空内容不可点'>
           <div className='w-full max-w-xl'>
-            <ReplyBox replyingTo='某小X' />
+            <ReplyBox me={ME} replyingTo='某小X' />
           </div>
         </Row>
       </Card>
