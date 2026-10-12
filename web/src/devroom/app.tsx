@@ -1,5 +1,6 @@
 import Button from '@jetbrains/ring-ui-built/components/button/button';
 import { VERIFIED } from './registry';
+import { appPath } from '@/lib/url';
 import InteractivePage from './pages/01-interactive';
 import OurComponentsPage from './pages/05-our-components';
 import UserStylesPage from './pages/06-user-styles';
@@ -25,7 +26,7 @@ export function DevRoom({ page }: { page: string }) {
           </p>
           <nav aria-label='开发者房间页面' className='flex flex-wrap items-center gap-2 pt-1'>
             {Object.entries(PAGES).map(([key, p]) => (
-              <Button key={key} href={'?page=' + key} active={key === page}>
+              <Button key={key} href={appPath('?page=' + key)} active={key === page}>
                 {p.title}
               </Button>
             ))}

@@ -1,3 +1,4 @@
+import { assetUrl } from '@/lib/url';
 import { Heart, MessageCircle, Plus, Share2, ThumbsUp } from 'lucide-react';
 import { UserBadge, type UserSummary } from '@/ui/user/user-badge';
 import { VividButton } from '@/ui/vivid/button';
@@ -5,16 +6,15 @@ import { VividButton } from '@/ui/vivid/button';
 // DevRoom 06 · 用户向风格候选
 // 同一份内容（分区头 + 帖子卡 + 主题行），四套**排版与配色**。挑一个作为 B 系基线。
 // 关注点全在「文字像不像给普通人看的」：字号、行高、字重、层级、圆角、阴影、留白。
-const A = (p: string) => 'art/' + p;
 
 const AUTHOR: UserSummary = {
   handle: 'tangtian',
   nickname: '唐天',
-  avatar: A('miyin-portrait-320.webp'),
+  avatar: assetUrl('miyin-portrait-320.webp'),
   role: { key: 'moderator', name: '版主' },
   title: { name: '执政官', color: '#2563eb' },
 };
-const REPLIER: UserSummary = { handle: 'linshi', nickname: '林诗', avatar: A('miyin-chibi-160.webp') };
+const REPLIER: UserSummary = { handle: 'linshi', nickname: '林诗', avatar: assetUrl('miyin-chibi-160.webp') };
 
 // 内容用**人话**，不写参数名——预览要能看出文案气质
 const POST = {
@@ -57,7 +57,7 @@ export default function UserStylesPage() {
             <VividButton size='lg' icon={Plus} className='shadow-lg shadow-blue-500/25'>发帖</VividButton>
           </div>
           <article className='flex gap-4 rounded-3xl bg-slate-50 p-4'>
-            <img src={A('starcraft/sc2-battle.webp')} alt='' width={200} height={120} className='h-28 w-48 shrink-0 rounded-2xl object-cover' />
+            <img src={assetUrl('starcraft/sc2-battle.webp')} alt='' width={200} height={120} className='h-28 w-48 shrink-0 rounded-2xl object-cover' />
             <div className='flex min-w-0 flex-col gap-2'>
               <h4 className='text-xl font-bold leading-snug'>{POST.title}</h4>
               <p className='line-clamp-2 text-[15px] leading-relaxed text-slate-600'>{POST.excerpt}</p>
@@ -89,7 +89,7 @@ export default function UserStylesPage() {
             <VividButton size='lg' icon={Plus} className='bg-gradient-to-r from-cyan-500 to-blue-600 shadow-lg shadow-cyan-500/30'>发帖</VividButton>
           </div>
           <article className='flex gap-4 rounded-xl bg-slate-900 p-4 ring-1 ring-cyan-400/25'>
-            <img src={A('starcraft/sc2-battle.webp')} alt='' width={200} height={120} className='h-28 w-48 shrink-0 rounded-lg object-cover opacity-90' />
+            <img src={assetUrl('starcraft/sc2-battle.webp')} alt='' width={200} height={120} className='h-28 w-48 shrink-0 rounded-lg object-cover opacity-90' />
             <div className='flex min-w-0 flex-col gap-2'>
               <span className='w-fit rounded bg-cyan-400/15 px-1.5 py-0.5 text-[11px] font-semibold tracking-widest text-cyan-300'>置顶</span>
               <h4 className='text-xl font-bold leading-snug text-white'>{POST.title}</h4>
@@ -122,7 +122,7 @@ export default function UserStylesPage() {
           <div className='flex flex-col divide-y divide-slate-100'>
             {LIST.map((t) => (
               <article key={t.title} className='flex items-start gap-4 py-5 first:pt-0 last:pb-0'>
-                <img src={A('starcraft/sc2-battle.webp')} alt='' width={96} height={64} className='h-16 w-24 shrink-0 rounded-md object-cover' />
+                <img src={assetUrl('starcraft/sc2-battle.webp')} alt='' width={96} height={64} className='h-16 w-24 shrink-0 rounded-md object-cover' />
                 <div className='flex min-w-0 flex-col gap-1.5'>
                   <h4 className='text-[17px] font-medium leading-7 text-slate-900'>{t.title}</h4>
                   <div className='flex flex-wrap items-center gap-x-4 gap-y-1 text-[13px] text-slate-500'>
@@ -148,7 +148,7 @@ export default function UserStylesPage() {
             <VividButton size='lg' icon={Plus} className='bg-[#f97316] shadow-lg shadow-orange-500/25'>发帖</VividButton>
           </div>
           <article className='flex gap-4 rounded-2xl bg-white p-4 shadow-sm shadow-orange-900/5'>
-            <img src={A('starcraft/sc2-battle.webp')} alt='' width={200} height={120} className='h-28 w-48 shrink-0 rounded-xl object-cover' />
+            <img src={assetUrl('starcraft/sc2-battle.webp')} alt='' width={200} height={120} className='h-28 w-48 shrink-0 rounded-xl object-cover' />
             <div className='flex min-w-0 flex-col gap-2'>
               <h4 className='text-xl font-bold leading-relaxed'>{POST.title}</h4>
               <p className='line-clamp-2 text-[15px] leading-relaxed text-stone-600'>{POST.excerpt}</p>

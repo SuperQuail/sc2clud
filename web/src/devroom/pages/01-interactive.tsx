@@ -4,6 +4,7 @@ import { ControlsHeight } from '@jetbrains/ring-ui-built/components/global/contr
 import add from '@jetbrains/icons/add-20px';
 import searchIcon from '@jetbrains/icons/search-20px';
 import { Heart, Plus, Search, Send } from 'lucide-react';
+import { appPath } from '@/lib/url';
 import { VividButton } from '@/ui/vivid/button';
 import { VividInput } from '@/ui/vivid/input';
 
@@ -103,7 +104,7 @@ export default function InteractivePage() {
             <Line label='提交中 / 禁用 / 链接'>
               <Button primary loader>提交中</Button>
               <Button disabled>禁用</Button>
-              <Button href='/b/campaign'>进入分区</Button>
+              <Button href={appPath('b/campaign')}>进入分区</Button>
             </Line>
           </>
         }

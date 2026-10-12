@@ -1,3 +1,4 @@
+import { assetUrl } from '@/lib/url';
 import { Heart, Plus, Send } from 'lucide-react';
 import { ThemeSwitcher } from '@/ui/theme-switcher';
 import { UserAvatar } from '@/ui/user/avatar';
@@ -9,7 +10,6 @@ import { VividButton } from '@/ui/vivid/button';
 // DevRoom 05 · 我们自己的组合件 + 美术资产
 // 原则：拆成小控件 + 换排布，不为每个场景重新设计。
 // 图片用**相对路径**（art/...）：生产在 /、dev 在 /dev/，靠 <base href> 解析，两处都对。
-const A = (p: string) => 'art/' + p;
 
 function Area({ title, desc, children }: { title: string; desc: string; children: React.ReactNode }) {
   return (
@@ -26,7 +26,7 @@ function Area({ title, desc, children }: { title: string; desc: string; children
 const ME: UserSummary = {
   handle: 'tangtian',
   nickname: '唐天',
-  avatar: A('miyin-portrait-320.webp'),
+  avatar: assetUrl('miyin-portrait-320.webp'),
   role: { key: 'admin', name: '管理员' },
   title: { name: '执政官', color: '#2563eb' },
 };
@@ -41,9 +41,9 @@ export default function OurComponentsPage() {
       </Area>
 
       <Area title='头像（自建，用户向）' desc='四档尺寸；有真图用真图，没有就按昵称取稳定色。'>
-        <UserAvatar name='唐天' src={A('miyin-portrait-320.webp')} size='sm' />
-        <UserAvatar name='唐天' src={A('miyin-portrait-320.webp')} size='md' />
-        <UserAvatar name='林诗' src={A('miyin-chibi-160.webp')} size='lg' />
+        <UserAvatar name='唐天' src={assetUrl('miyin-portrait-320.webp')} size='sm' />
+        <UserAvatar name='唐天' src={assetUrl('miyin-portrait-320.webp')} size='md' />
+        <UserAvatar name='林诗' src={assetUrl('miyin-chibi-160.webp')} size='lg' />
         <UserAvatar name='新来的' size='xl' />
       </Area>
 
@@ -78,11 +78,11 @@ export default function OurComponentsPage() {
         title='美术资产 · 星海（复用老项目，Blizzard 官方素材）'
         desc='来源与授权见 public/art/starcraft/SOURCES.md：仅作等比缩小与 WebP 压缩，版权归 Blizzard。'
       >
-        <img src={A('starcraft/sc2-logo.webp')} alt='StarCraft II' width={180} height={52} className='h-10 w-auto' />
-        <img src={A('starcraft/terran.webp')} alt='人类' width={48} height={48} className='size-10' />
-        <img src={A('starcraft/protoss.webp')} alt='神族' width={48} height={48} className='size-10' />
-        <img src={A('starcraft/zerg.webp')} alt='虫族' width={48} height={48} className='size-10' />
-        <img src={A('starcraft/sc2-battle.webp')} alt='对战场景' width={320} height={120} className='h-24 w-64 rounded-md object-cover' />
+        <img src={assetUrl('starcraft/sc2-logo.webp')} alt='StarCraft II' width={180} height={52} className='h-10 w-auto' />
+        <img src={assetUrl('starcraft/terran.webp')} alt='人类' width={48} height={48} className='size-10' />
+        <img src={assetUrl('starcraft/protoss.webp')} alt='神族' width={48} height={48} className='size-10' />
+        <img src={assetUrl('starcraft/zerg.webp')} alt='虫族' width={48} height={48} className='size-10' />
+        <img src={assetUrl('starcraft/sc2-battle.webp')} alt='对战场景' width={320} height={120} className='h-24 w-64 rounded-md object-cover' />
       </Area>
 
       <Area
@@ -91,7 +91,7 @@ export default function OurComponentsPage() {
       >
         {['nav-custom_campaign', 'nav-tool_dev', 'nav-tool_player', 'nav-vanilla_mod', 'nav-profile', 'nav-bookmarks', 'nav-announcement', 'nav-admin'].map((n) => (
           <span key={n} className='flex flex-col items-center gap-1'>
-            <img src={A('starcraft/' + n + '.webp')} alt={n} width={40} height={40} className='size-10 rounded-md object-contain' />
+            <img src={assetUrl('starcraft/' + n + '.webp')} alt={n} width={40} height={40} className='size-10 rounded-md object-contain' />
             <span className='text-[10px] text-muted-foreground'>{n.replace('nav-', '')}</span>
           </span>
         ))}
@@ -103,7 +103,7 @@ export default function OurComponentsPage() {
       >
         {[['welcome-400', '注册欢迎'], ['wink-520', '首页欢迎'], ['wisdom-160', '搜索无结果'], ['smile-160', '空状态'], ['genius-160', '创作提示'], ['image-unavailable-480', '配图失败占位']].map(([f, label]) => (
           <span key={f} className='flex w-28 flex-col items-center gap-1'>
-            <img src={A('miyin/' + f + '.webp')} alt={label} width={96} height={96} className='h-20 w-20 object-contain' />
+            <img src={assetUrl('miyin/' + f + '.webp')} alt={label} width={96} height={96} className='h-20 w-20 object-contain' />
             <span className='text-[10px] text-muted-foreground'>{label}</span>
           </span>
         ))}
