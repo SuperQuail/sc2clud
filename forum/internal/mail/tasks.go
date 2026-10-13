@@ -59,9 +59,9 @@ func (s *Service) HandleMailSend(ctx context.Context, payload []byte) error {
 	})
 
 	var opts []pgmail.SendOption
-	if lg.QuotaAccountID != nil && lg.QuotaIsToday {
+	if day, ok := lg.QuotaDay(); ok && lg.QuotaAccountID != nil && lg.QuotaIsToday {
 		// 上次已经占过额度，且还是该账号的今天 → 复用，不再 +1（这就是「一次投递」）
-		opts = append(opts, pgmail.WithHeld(pgmail.Hold{AccountID: *lg.QuotaAccountID, Day: lg.QuotaDay}))
+		opts = append(opts, pgmail.WithHeld(pgmail.Hold{AccountID: *lg.QuotaAccountID, Day: day}))
 	}
 
 	switch err := r.Send(ctx, msg, opts...); {
@@ -150,7 +150,7 @@ type bindStore struct {
 
 // BindQuota 只在 Router 本次**新占**额度时被调用：把占用写回投递记录，下次重试才认得出。
 func (b bindStore) BindQuota(ctx context.Context, accountID int64, day string) error {
-	return b.svc.pg.BindQuota(ctx, b.logID, accountID, day)
+	return b.svc.pg.BindQuota(ctx, b.logID, accountID, day, b.svc.clk.Now())
 }
 
 // Report 记账号健康（成功写 last_ok_at，失败写 last_error）。写失败不冒泡：

@@ -89,9 +89,6 @@ func (s *Service) HasUsable(ctx context.Context) (bool, error) {
 	return false, nil
 }
 
-// MailLogID 方便别的模块只拿 id（本模块的唯一入队入口是 EnqueueTx）。
-func (s *Service) MailLogID() {}
-
 // enabled 读站点总开关。没有 site 实现时按开启处理：关站是显式动作，缺实现不该把发信锁死。
 func (s *Service) enabled(ctx context.Context) bool {
 	return s.set == nil || s.set.SettingBool(ctx, settingEnabled)
