@@ -274,7 +274,7 @@ export default function ProfilePage() {
         <img src={cover} alt='' className='pointer-events-none absolute inset-0 -z-10 h-full w-full object-cover' />
         <span
           aria-hidden
-          className='pointer-events-none absolute inset-0 -z-10 bg-gradient-to-b from-background/0 via-background/30 via-52% to-background'
+          className='pointer-events-none absolute inset-0 -z-10 bg-gradient-to-b from-background/0 from-80% to-background/95'
         />
         {/* 撑高用的占位条：壁纸是绝对定位、不参与布局，少了它 hero 只能由身份卡撑，
             身份卡的 -mt-20 就会把它自己顶到 hero 之外（头像行被裁剪）。144px（h-36）= 身份卡上方的
@@ -293,22 +293,27 @@ export default function ProfilePage() {
           </Button>
         </span>
 
-        {/* 身份卡：**从上到下的透明渐变**（用户要求：头像区要能看清壁纸，从上到下由透到实）。
-            数值是按卡内各行的实际高度定的（卡片 276px 高，位置用 CDP 量过、写在这里免得后人瞎调）：
-              头像 21–85、名字+徽标 105–133、简介 171–195、统计行 215–255。
-            **踩过的坑：头像带上有两层半透明，它们相乘不是相加** ——
-              壁纸遮罩层（上面那个 from-background/0 via-background/30 via-52%）
-              与这张卡的渐变（from-background/10 via-background/85 via-42%）。
-            上一版是 /35 与 /50，相乘后头像带只剩 (1-0.35)*(1-0.50) ≈ 32% 壁纸可见，
-            单看每一层都不重、合起来就是「看不清背景」——所以**要放开顶部必须两层一起放**，
-            只降一层，另一层还压着（2026-10-13 用户报「头像区域透明度太低」的根因）。
-            现在头像带大约 65% → 26%（自上而下），名字带约 11%：
-              from-background/10   → 头像那条带子基本透出壁纸；
-              via-background/85    → 名字与徽标落在 85% 处（via-42% 把这一档压在名字带上）；
-              to-background        → 统计行整行在实底上（数字必须清楚，它是这一页的信息密度最高处）。
-            backdrop-blur-lg 保留：壁纸细节多，不模糊时 22px 的名字会与纹理打架（上一轮结论）。
+        {/* 身份卡：**从上到下的透明渐变**（用户 2026-10-13 定稿口径：
+            「平均透明度 60% 透」= 卡片整高的**平均 alpha ≈ 0.4**；顶部最透、往下逐渐收紧、任何位置都不到实色；
+            深浅色**共用这一套值**，不做 dark: 变体）。
+            形状（0–35% 持平 0 → 65% 到 via → 100% 到 to）：
+              from-background/0  from-35%  → 卡片的 0–35%（含头像带 7%–31%）**完全不遮挡**，壁纸原样透出来；
+              via-background/70  via-65%  → 名字带（38%–48%）落在爬升段，中段值 0.70；
+              to-background/95            → 统计行（78%–93%）落在接近实底的带上，但**不是实色**（0.95，不到 1.0）。
+            平均 alpha 是这个形状算出来的，不是拍的：mean = 0.325·via + 0.175·to（前 35% 为 0、
+            35–65% 线性爬升、65–100% 线性收口）→ 0.325×0.70 + 0.175×0.95 = **0.394**，落在用户要的 0.35–0.45。
+            壁纸遮罩层（上面那一层）只在**底部 80%–100%** 收口（0 → 0.95），它的平均 alpha 只有 ~0.09，
+            所以合成平均 ≈ **0.403**（两层相乘，合成值也算过）；底部收口的用处是让 hero 底边不出现硬边。
+            **为什么「先持平再爬升」**：上一版是 from-background/10 → via-42%，0→42% 一直在爬，
+            头像正好卡在爬升段中间（当时不透明度已 ~0.65），壁纸被冲淡成一层灰 —— 现在是 0–35% 恒为 0。
+            **为什么整卡不再用 backdrop-blur**：原来是 backdrop-blur-lg（16px），把壁纸细节平均掉了，
+            卡内只剩中性灰 —— 用户说「看不清背景」指的就是这个。模糊只留给真正需要的两处：
+            右上「更换封面」按钮自带 backdrop-blur-sm 底、右侧「关注 / 发私信」按钮组自带 bg-background/70 底。
+            已知取舍（2026-10-13 如实记录）：浅色主题下名字/@handle/简介 这三行压在壁纸的暗部上，读起来偏弱
+            （统计行、徽标、按钮都清楚）。在「平均 0.4 + 顶部全透 + 不到实色」三条约束下中段拿不到浅底，
+            要更清楚只能抬平均、换封面素材，或给文字加局部底（用户已否决）。
             mb-2 而不是 mb-4：hero 还要装 144px 壁纸条，这 8px 是补给首屏预算的（见上面的警告，**不要改 padding/gap**）。 */}
-        <div className='relative z-10 mx-4 -mt-20 mb-2 flex flex-col gap-5 rounded-xl border-x border-b border-border bg-gradient-to-b from-background/10 via-background/85 via-42% to-background p-5 backdrop-blur-lg'>
+        <div className='relative z-10 mx-4 -mt-20 mb-2 flex flex-col gap-5 rounded-xl border-x border-b border-border bg-gradient-to-b from-background/0 from-35% via-background/70 via-65% to-background/95 p-5'>
           <div className='flex flex-wrap items-end justify-between gap-4'>
             {/* 头像外圈原来用实色 ring-background：在渐变里它是一枚不透明的白/黑环，
                 和身后 50% 的渐变一比就像贴上去的圆片。改成 /60 让环与身后的底同一档透明度，
@@ -316,7 +321,8 @@ export default function ProfilePage() {
             <span className='rounded-full ring-4 ring-background/60'>
               <UserAvatar name='示范管理员' src={assetUrl('miyin/smile-160.webp')} size='xl' />
             </span>
-            <span className='flex flex-nowrap items-center gap-2'>
+            {/* 右侧动作组自己带一层底：整卡不再模糊之后，压在壁纸上的按钮要自己保证可读 */}
+            <span className='flex flex-nowrap items-center gap-2 rounded-md bg-background/70 p-1'>
               <Button primary icon={icon16(UserPlus)}>关注</Button>
               <Button icon={icon16(MessageSquare)}>发私信</Button>
               <Button icon={icon16(MoreHorizontal)} aria-label='更多操作' />
