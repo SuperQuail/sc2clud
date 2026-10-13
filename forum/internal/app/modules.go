@@ -1,0 +1,196 @@
+package app
+
+import (
+	"context"
+	"errors"
+	"strconv"
+	"time"
+
+	"github.com/gin-gonic/gin"
+
+	"forum/internal/auth"
+	"forum/internal/config"
+	"forum/internal/forum"
+	forumpgsql "forum/internal/forum/pgsql"
+	"forum/internal/mail"
+	"forum/internal/media"
+	"forum/internal/message"
+	messagepgsql "forum/internal/message/pgsql"
+	"forum/internal/notify"
+	notifypgsql "forum/internal/notify/pgsql"
+	"forum/internal/platform/apperr"
+	"forum/internal/platform/audit"
+	"forum/internal/platform/httpx"
+	"forum/internal/platform/image/localstore"
+	searchpgsql "forum/internal/platform/search/pgsql"
+	"forum/internal/release"
+	"forum/internal/report"
+	"forum/internal/reward"
+	"forum/internal/site"
+	"forum/internal/title"
+	"forum/internal/user"
+)
+
+// minFreeBytes 是图片落盘前的磁盘余量闸门（localstore.Put 检查它）。
+const minFreeBytes = 512 << 20
+
+// Modules 是各域 Service 与它们之间适配器的组装结果。
+//
+// 它是**整个进程里唯一认识所有域的地方**（上线设计 §2 P1 决策 1/2）：http.go 只拿它挂路由，
+// 各域 deps.go 的小接口在这里被适配器接上，业务模块之间不互相 import。
+type Modules struct {
+	Auth    *auth.Service
+	User    *user.Service
+	Forum   *forum.Service
+	Media   *media.Service
+	Release *release.Service
+	Reward  *reward.Service
+	Notify  *notify.Service
+	Message *message.Service
+	Title   *title.Service
+	Site    *site.Service
+	Mail    *mail.Service
+	Report  *report.Service
+
+	in    *Infra
+	audit *audit.Writer
+	// fstore 是 forum 的 SQL 落点：举报的目标解析与 search:index 都要按 id 读主题 / 楼层，
+	// 那些 SQL 已经在 forum/pgsql 里，app 层不重写一份（开发必读 §1 第 8 条）。
+	fstore *forumpgsql.Store
+}
+
+// newModules 按依赖顺序构造全部域。任何一步失败都返回错误：**启动即失败**，
+// 不让进程带着半个装配跑起来（上线设计 §2 P1 决策 5）。
+func newModules(ctx context.Context, cfg *config.Config, in *Infra) (*Modules, error) {
+	m := &Modules{in: in}
+	m.audit = audit.New(in.DB, in.Clock)
+	m.fstore = forumpgsql.NewStore(in.DB)
+
+	store, err := localstore.New(cfg.Image.Root, minFreeBytes)
+	if err != nil {
+		return nil, err
+	}
+	m.Media = media.NewService(media.Config{
+		AvatarMax:    cfg.Image.AvatarMax,
+		PostMax:      cfg.Image.PostMax,
+		PaymentMax:   cfg.Image.PaymentMax,
+		ServeLocally: cfg.Image.ServeLocally,
+	}, in.DB, store, in.Clock, in.Log)
+
+	// site 先于 mail：mail 每次投递读 site.name 与 mail.enabled（d6 §5.4）。
+	m.Site = site.NewService(in.DB, cfg.Site.BaseURL, m.audit, in.Clock, in.Log)
+	if err := m.Site.RegisterBaseDomain(ctx); err != nil {
+		return nil, err
+	}
+	m.Mail = mail.NewService(in.DB,
+		mail.Keys{KeyHex: cfg.Mail.KeyHex, OldKeysHex: cfg.Mail.OldKeyHex},
+		in.Queue, m.Site, m.audit, in.Clock, in.Log)
+
+	// user 的头像 URL 由 media 拼（U15：/img/<hash> 只有那一个拼接点）。
+	m.User = user.NewService(in.DB, m.Media, in.Clock, user.Config{})
+
+	// captcha 模块还没实现：mode=always 时 auth 会拿到 nil 实现并 panic，
+	// 所以那种配置在启动时直接拒绝，而不是等第一个注册请求 500。
+	if cfg.Captcha.Mode == "always" {
+		return nil, errors.New("装配: captcha.mode=always 需要 captcha 模块，而它还没实现（改成 off）")
+	}
+	m.Auth, err = auth.NewService(cfg, in.DB, in.Clock, auth.Deps{
+		Users: m.User, Mail: m.Mail, Mailer: m.Mail, Captcha: nil,
+		Limiter: in.Limiter, Queue: in.Queue, Log: in.Log,
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	m.Forum = forum.NewService(in.DB, in.Clock, in.Counter, entQueue{in.Queue}, forum.Deps{
+		// Render 是唯一的 Markdown 出口。Users 在本域没有调用点（SQL 里 JOIN 了 users），留 nil。
+		Render: mdRenderer{}, Queue: entQueue{in.Queue},
+		Counter: in.Counter, Limit: in.Limiter,
+	})
+	// release 的下载计数与 forum 的浏览量共用一个缓冲：pgcounter 一条语句写两张表。
+	m.Release = release.NewService(in.DB, in.Counter, in.Clock, in.Log)
+	m.Reward = reward.NewService(in.DB, entQueue{in.Queue}, rewardUsers{m}, m.Site,
+		rewardAudit{m.audit}, in.Clock, in.Log)
+	notifyDB := notifypgsql.New(in.DB)
+	m.Notify = notify.NewService(in.DB, in.Clock, notifyDB, notify.NewNoticeSettings(notifyDB))
+	m.Message = message.NewService(in.DB, in.Clock, messagepgsql.New(in.DB), msgUsers{m}, m.Forum)
+	m.Title = title.NewService(in.DB, in.DB, in.Clock, titleAudit{m})
+	// review=nil：审核域（AI 复核）还没实现，report 对 nil 有显式分支（reports.go:69），
+	// 举报本身照常成立。
+	m.Report = report.NewService(in.DB, reportTargets{m}, reportUsers{m}, m.Site, nil,
+		m.audit, in.Clock, in.Log)
+	return m, nil
+}
+
+// ── 中间件工厂：域只认这些形状，不认识 auth 包（各自 Register 的入参就是它们） ──
+
+// requireLogin 给「要一个中间件值」的域（forum / notify / message / title / auth 自己）。
+func (m *Modules) requireLogin() gin.HandlerFunc { return m.Auth.RequireLogin() }
+
+// requireLoginFn 给「要一个工厂」的域：media / release / reward 的 Register 收的是
+// func(...string) gin.HandlerFunc，并在内部用 requireLogin() 零参数调用它。
+func (m *Modules) requireLoginFn(...string) gin.HandlerFunc { return m.Auth.RequireLogin() }
+
+// perm 是全局权限点中间件（默认 AND）。
+func (m *Modules) perm(perms ...string) gin.HandlerFunc { return m.Auth.Perm(perms...) }
+
+// perm1 给 forum：它的 Register 收 perm func(string) gin.HandlerFunc。
+func (m *Modules) perm1(perm string) gin.HandlerFunc { return m.Auth.Perm(perm) }
+
+// endpointLimits 是「按端点限流」的额度表（v2 §9.4）。键由域在 Register 里给，
+// 额度在这里定：域不 import 平台限流包，所以额度表只有这一份。
+var endpointLimits = map[string]struct {
+	limit  int
+	window time.Duration
+}{
+	"report:create": {10, time.Hour}, // d6 §5.6 第 5 条
+	"reward:create": {10, time.Hour}, // d6 §4 第 8 条
+	"reward:verify": {60, time.Hour}, // 核验是管理动作，额度放宽
+}
+
+// defaultRate 是没上表的键的兜底：宁可慢一点，也不要「没配 = 不限流」。
+var defaultRate = struct {
+	limit  int
+	window time.Duration
+}{30, time.Hour}
+
+// limit 是 reward / report 要的限流中间件工厂：键 + 当前用户 → 429。
+// 判定与拒绝形状与 auth 的 allow 一致（同一个 RateLimiter，同一个错误码）。
+func (m *Modules) limit(key string, h gin.HandlerFunc) gin.HandlerFunc {
+	rate, ok := endpointLimits[key]
+	if !ok {
+		rate = defaultRate
+		m.in.Log.Warn("装配: 限流键没上表，按兜底额度", "key", key, "limit", rate.limit)
+	}
+	return func(c *gin.Context) {
+		actor, ok := auth.FromGin(c)
+		if !ok || actor.UserID == 0 {
+			// 路由挂了 requireLogin（域自己保证）；取不到身份是路由写错了，拒绝放行。
+			httpx.Fail(c, apperr.ErrUnauthorized)
+			return
+		}
+		k := key + ":user:" + strconv.FormatInt(actor.UserID, 10)
+		pass, retry, err := m.in.Limiter.Allow(c.Request.Context(), k, rate.limit, rate.window)
+		if err != nil {
+			// 限流后端不可用 = 拒绝放行（platform/kv 的约定），否则它是「一挂就没有限流」。
+			m.in.Log.Error("装配: 限流后端不可用", "key", k, "err", err.Error())
+			httpx.Fail(c, apperr.ErrRateLimited.WithMsg("限流服务不可用，请稍后再试"))
+			return
+		}
+		if !pass {
+			secs := int(retry.Seconds())
+			if secs < 1 {
+				secs = 1
+			}
+			httpx.Fail(c, apperr.ErrRateLimited.WithMsg("操作太频繁，请 "+strconv.Itoa(secs)+" 秒后再试"))
+			return
+		}
+		h(c)
+	}
+}
+
+// searchIndex 是 platform/search 的 PostgreSQL 实现（search:index 任务写它）。
+func (m *Modules) searchIndex() *searchpgsql.Searcher { return searchpgsql.New(m.in.DB) }
+
+// titleUsers 给 title 的 handler：它自己要把 handle / public_id 换成内部 id。
+func (m *Modules) titleUsers() title.UserLookup { return titleUsers{m} }

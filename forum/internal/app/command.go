@@ -16,7 +16,7 @@ const Usage = "usage: forum <run|migrate|check|create-admin|backup> [-config pat
 	"  run           -listen addr -web dir\n" +
 	"  migrate\n" +
 	"  check\n" +
-	"  create-admin  -username name   （口令从 stdin 读；-password 仅供开发）\n" +
+	"  create-admin  -username name [-email addr]   （口令从 stdin 读；-password 仅供开发）\n" +
 	"  backup        -out file.dump\n"
 
 // Main 解析子命令并分发。main() 只调它一次，所以子命令名单只有这一处。
@@ -33,6 +33,7 @@ func Main(args []string, version string) int {
 	web := fs.String("web", "", "覆盖 web.dist_dir")
 	out := fs.String("out", "", "backup: 输出文件")
 	username := fs.String("username", "", "create-admin: 用户名")
+	email := fs.String("email", "", "create-admin: 邮箱（默认 <username>@sc2clud.local）")
 	password := fs.String("password", "", "create-admin: 口令（默认从 stdin 读）")
 	if err := fs.Parse(args[2:]); err != nil {
 		return 2
@@ -66,7 +67,7 @@ func Main(args []string, version string) int {
 			pw, err = readPassword(os.Stdin)
 		}
 		if err == nil {
-			err = CreateAdmin(ctx, cfg, *username, pw)
+			err = CreateAdmin(ctx, cfg, *username, *email, pw)
 		}
 	case "backup":
 		err = Backup(ctx, cfg, *out)

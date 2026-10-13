@@ -7,7 +7,8 @@ import (
 	"forum/internal/platform/queue"
 )
 
-// runCron 是定时入队器：它只负责「该产生任务了」，业务逻辑全在处理函数里。
+// runCron 是定时入队器：它只负责「该产生任务了」，业务逻辑全在处理函数里
+// （queue:cleanup 的处理函数在 tasks.go：通知 / 私信清理、会话与令牌清理、图片 GC 入队）。
 // ctx 取消后等本轮结束（备份的临时文件要清掉）再返回（关闭顺序第 3 步）。
 func runCron(ctx context.Context, in *Infra) error {
 	cleanup := time.NewTicker(time.Hour)

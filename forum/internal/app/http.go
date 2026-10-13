@@ -8,9 +8,21 @@ import (
 
 	"github.com/gin-gonic/gin"
 
+	"forum/internal/auth"
 	"forum/internal/config"
+	"forum/internal/forum"
+	"forum/internal/mail"
+	"forum/internal/media"
+	"forum/internal/message"
+	"forum/internal/notify"
 	"forum/internal/platform/db"
 	"forum/internal/platform/httpx"
+	"forum/internal/release"
+	"forum/internal/report"
+	"forum/internal/reward"
+	"forum/internal/site"
+	"forum/internal/title"
+	"forum/internal/user"
 )
 
 // HTTPServer 把 gin 引擎与 http.Server 绑在一起，供 run 的关闭流程使用。
@@ -21,7 +33,7 @@ type HTTPServer struct {
 
 // newHTTPServer 建引擎、挂中间件与路由。顺序写死（d1 §4.3）：
 // requestid → accesslog → recover → （LoadPrincipal：D2）→ ratelimit → Perm → handler。
-func newHTTPServer(cfg *config.Config, in *Infra, bi BuildInfo) (*HTTPServer, error) {
+func newHTTPServer(cfg *config.Config, in *Infra, m *Modules, bi BuildInfo) (*HTTPServer, error) {
 	if cfg.Env == "prod" {
 		gin.SetMode(gin.ReleaseMode)
 	}
@@ -47,7 +59,7 @@ func newHTTPServer(cfg *config.Config, in *Infra, bi BuildInfo) (*HTTPServer, er
 	}
 	probe.Register(r)
 
-	registerAPIRoutes(r, cfg, in)
+	registerAPIRoutes(r, cfg, m)
 
 	if err := registerStatic(r, cfg, bi); err != nil {
 		return nil, err
@@ -65,12 +77,32 @@ func newHTTPServer(cfg *config.Config, in *Infra, bi BuildInfo) (*HTTPServer, er
 	return &HTTPServer{Engine: r, Srv: srv}, nil
 }
 
-// registerAPIRoutes 挂 /api/v1 下的路由。
-// P0 只有分组本身；D2/D3 的业务路由按同样的形状挂上来（handler.Register(rg)）。
-func registerAPIRoutes(r *gin.Engine, cfg *config.Config, in *Infra) {
+// registerAPIRoutes 把各域的路由挂到 /api/v1 上。
+//
+// 这里**只写路由**：依赖细节（谁实现谁的 deps.go、各域的中间件工厂）全在 modules.go。
+// auth 先挂：它自己 v1.Use(LoadPrincipal)，其余域的路由都要排在它后面才拿得到身份。
+func registerAPIRoutes(r *gin.Engine, cfg *config.Config, m *Modules) {
 	v1 := r.Group("/api/v1", httpx.BodyLimit(cfg.HTTP.BodyLimit()))
-	_ = v1
-	_ = in
+
+	// 图片读路径不在 /api/v1 下（d5 §1.4）：/img/<hash>。游客可读，可见性在 service 里判。
+	mediaHandler := media.NewHandler(m.Media, auth.FromGin)
+	r.GET("/img/:hash", mediaHandler.ServeImage)
+
+	// 认证与会话（含 /me 与 /admin 的角色权限）。
+	auth.NewHandler(m.Auth).Register(v1)
+	// 公开资料：/users/search 与 /users/:handle。
+	user.NewHandler(m.User).Register(v1)
+
+	forum.NewHandler(m.Forum, actorOf).Register(v1, m.requireLogin(), m.perm1)
+	mediaHandler.Register(v1, m.requireLoginFn, m.perm, httpx.BodyLimit)
+	release.NewHandler(m.Release, auth.FromGin).Register(v1, m.requireLoginFn, m.perm)
+	reward.NewHandler(m.Reward, auth.FromGin).Register(v1, m.requireLoginFn, m.perm, m.limit)
+	notify.NewHandler(m.Notify, auth.FromGin).Register(v1, m.requireLogin())
+	message.NewHandler(m.Message, auth.FromGin).Register(v1, m.requireLogin())
+	title.NewHandler(m.Title, m.titleUsers(), auth.FromGin).Register(v1, m.requireLogin(), m.perm)
+	site.NewHandler(m.Site, auth.FromGin).Register(v1, m.requireLogin, m.perm)
+	mail.NewHandler(m.Mail, auth.FromGin).Register(v1, m.requireLogin, m.perm)
+	report.NewHandler(m.Report, auth.FromGin).Register(v1, m.requireLogin, m.perm, m.limit)
 }
 
 // registerStatic 挂静态托管与 SPA 回退。
