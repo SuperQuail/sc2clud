@@ -48,7 +48,15 @@ load_env() {
   hostpart="${rest#*@}"
   export PGUSER="${creds%%:*}"
   export PGPASSWORD="${creds#*:}"
-  export PGHOST="${hostpart%%/*}"
+  # hostpart 是 host:port/db。**端口必须从 host 里拆出来**：
+  # 直接 PGHOST="${hostpart%%/*}" 会得到 "127.0.0.1:5432"，libpq 把它当主机名去解析，
+  # 报 'could not translate host name "127.0.0.1:5432" to address' —— 2026-10-13 第一次 dev 部署就死在这。
+  hostport="${hostpart%%/*}"
+  export PGHOST="${hostport%%:*}"
+  # 只有真写了端口才设 PGPORT（设成空串会让 libpq 报错）
+  case "$hostport" in
+    *:*) export PGPORT="${hostport##*:}" ;;
+  esac
   db="${hostpart##*/}"
   export PGDATABASE="${db%%\?*}"
 }
