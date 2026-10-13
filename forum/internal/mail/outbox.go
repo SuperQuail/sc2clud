@@ -33,10 +33,10 @@ func (s *Service) EnqueueTx(ctx context.Context, tx *ent.Tx, in EnqueueInput) er
 // 万一同一用户又抽到同一串数字，那就是同一封信，复用旧行也正是对的（旧邮件里就是这串数字）。
 func (s *Service) SendVerifyCode(ctx context.Context, userID int64, to, code, template string) (int64, error) {
 	id, _, err := s.insertLog(ctx, s.pg, EnqueueInput{
-		RecipientID: userID,
-		ToAddress:   to,
-		Template:    template,
-		Data:        pgmail.Data{Code: code},
+		RecipientID:    userID,
+		ToAddress:      to,
+		Template:       template,
+		Data:           pgmail.Data{Code: code},
 		IdempotencyKey: fmt.Sprintf("%s:%d:%s", template, userID, code),
 	})
 	return id, err

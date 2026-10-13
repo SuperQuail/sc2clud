@@ -25,25 +25,25 @@ type EnqueueInput struct {
 // **凭据只写不读**：这里根本没有 secret_cipher / secret_nonce 字段 —— 不是查询时 select 掉，
 // 没有字段就不会漏（d6 §6.10）。只有 secret_configured 与 secret_updated_at。
 type AdminAccount struct {
-	ID               string     `json:"id"`
-	Name             string     `json:"name"`
-	Provider         string     `json:"provider"`
-	Priority         int        `json:"priority"`
-	DailyLimit       int        `json:"daily_limit"`
-	SentToday        int        `json:"sent_today"`
-	ResetTZ          string     `json:"reset_tz"`
-	FromAddress      string     `json:"from_address"`
-	FromName         string     `json:"from_name"`
+	ID               string          `json:"id"`
+	Name             string          `json:"name"`
+	Provider         string          `json:"provider"`
+	Priority         int             `json:"priority"`
+	DailyLimit       int             `json:"daily_limit"`
+	SentToday        int             `json:"sent_today"`
+	ResetTZ          string          `json:"reset_tz"`
+	FromAddress      string          `json:"from_address"`
+	FromName         string          `json:"from_name"`
 	Options          json.RawMessage `json:"options_json"`
-	Enabled          bool       `json:"enabled"`
-	Status           string     `json:"status"`
-	SecretConfigured bool       `json:"secret_configured"`
-	SecretUpdatedAt  *time.Time `json:"secret_updated_at"`
-	LastOKAt         *time.Time `json:"last_ok_at"`
-	LastError        string     `json:"last_error"`
-	LastErrorAt      *time.Time `json:"last_error_at"`
-	CreatedAt        time.Time  `json:"created_at"`
-	UpdatedAt        time.Time  `json:"updated_at"`
+	Enabled          bool            `json:"enabled"`
+	Status           string          `json:"status"`
+	SecretConfigured bool            `json:"secret_configured"`
+	SecretUpdatedAt  *time.Time      `json:"secret_updated_at"`
+	LastOKAt         *time.Time      `json:"last_ok_at"`
+	LastError        string          `json:"last_error"`
+	LastErrorAt      *time.Time      `json:"last_error_at"`
+	CreatedAt        time.Time       `json:"created_at"`
+	UpdatedAt        time.Time       `json:"updated_at"`
 }
 
 // AccountInput 是新建发信账号的入参。Secret 是**明文凭据对象**（resend: {"api_key":…}；

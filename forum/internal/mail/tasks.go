@@ -79,6 +79,19 @@ func (s *Service) HandleMailSend(ctx context.Context, payload []byte) error {
 			// 一个可用账号都没有 = 配置问题（管理员建号后这次重试就能成功）→ 退避重试，不排到明天
 			return s.retryLater(ctx, lg.ID, err.Error(), err)
 		}
+		// 有可用账号却一个都没挑中，两种可能，别混：
+		//   - 这个账号今天的额度满了 → 排到下一个重置点；
+		//   - 刚才用的就是它、只是临时失败（Router 会把试过的账号排除掉，于是报 ErrNoProvider）
+		//     → 额度没满，退避重试即可（排到明天会把一封验证码邮件压一整天）。
+		if lg.QuotaIsToday && lg.QuotaAccountID != nil {
+			full, ferr := s.pg.QuotaFull(ctx, *lg.QuotaAccountID, s.clk.Now())
+			if ferr != nil {
+				return ferr
+			}
+			if !full {
+				return s.retryLater(ctx, lg.ID, err.Error(), err)
+			}
+		}
 		return s.requeueTomorrow(ctx, lg, err.Error())
 	default:
 		// ErrTemporary（网络 / 5xx）与其它未知错误：保持 pending，交给队列退避
@@ -153,10 +166,11 @@ func (b bindStore) BindQuota(ctx context.Context, accountID int64, day string) e
 	return b.svc.pg.BindQuota(ctx, b.logID, accountID, day, b.svc.clk.Now())
 }
 
-// Report 记账号健康（成功写 last_ok_at，失败写 last_error）。写失败不冒泡：
-// Router 自己会 Warn 掉（信已经交出去了，健康状态是排障信息）。
+// Report 记账号健康（成功写 last_ok_at，失败写 last_error），并在**失败时**把这封信绑到
+// 刚刚为它花掉的那个额度上（否则重试会再占一次，见 pgsql.ReportAttempt 的说明）。
+// 写失败不冒泡：Router 自己会 Warn 掉（信已经交出去了，健康状态是排障信息）。
 func (b bindStore) Report(ctx context.Context, accountID int64, sendErr error) error {
-	return b.svc.pg.ReportAccount(ctx, accountID, sendErr, b.svc.clk.Now())
+	return b.svc.pg.ReportAttempt(ctx, b.logID, accountID, sendErr, b.svc.clk.Now())
 }
 
 // nextReset 是「下一个额度重置点」：该账号 reset_tz 的下一个自然日 00:00 + 宽限 35 分钟（= 00:35）。

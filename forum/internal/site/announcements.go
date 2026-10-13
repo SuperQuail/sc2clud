@@ -10,8 +10,8 @@ import (
 	"forum/internal/ent/announcement"
 	"forum/internal/platform/apperr"
 	"forum/internal/platform/audit"
-	"forum/internal/platform/idgen"
 	platformdb "forum/internal/platform/db"
+	"forum/internal/platform/idgen"
 )
 
 // ListAnnouncements 是后台列表：含草稿与停用的（首页那条路只给已发布的）。

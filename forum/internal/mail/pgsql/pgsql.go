@@ -110,6 +110,23 @@ func (q *Queries) SentToday(ctx context.Context, ids []int64, now time.Time) (ma
 	return out, rows.Err()
 }
 
+const quotaFullSQL = `SELECT COALESCE(q.count, 0) >= a.daily_limit
+  FROM mail_accounts a
+  LEFT JOIN mail_quota q
+    ON q.account_id = a.id AND q.day = ($1::timestamptz AT TIME ZONE a.reset_tz)::date
+ WHERE a.id = $2::bigint`
+
+// QuotaFull 回答「这个账号今天的额度是不是已经满了」。
+// 它只在 ErrNoProvider 这条罕见路径上用：区分「额度真的用尽（排到明天）」与
+// 「刚试过的账号临时失败、又被 Router 排除掉了（退避重试）」。
+func (q *Queries) QuotaFull(ctx context.Context, accountID int64, now time.Time) (bool, error) {
+	var full bool
+	if err := q.scanOne(ctx, []any{&full}, quotaFullSQL, now.UTC(), accountID); err != nil {
+		return false, fmt.Errorf("读账号额度是否用尽: %w", err)
+	}
+	return full, nil
+}
+
 const referencedByLogsSQL = `SELECT EXISTS (SELECT 1 FROM mail_logs WHERE quota_account_id = $1::bigint)`
 
 // ReferencedByLogs：删账号时用它决定「硬删」还是「归档」。
@@ -140,9 +157,20 @@ const reportErrSQL = `UPDATE mail_accounts
    SET last_error = $2::text, last_error_at = $3::timestamptz
  WHERE id = $1::bigint`
 
-// ReportAccount 记账号健康（platform/mail.Store.Report 的落点）。
-// 错误串截到 2000 字：SMTP 的报错可以很长，而这一列是给人看的排障信息。
-func (q *Queries) ReportAccount(ctx context.Context, accountID int64, sendErr error, now time.Time) error {
+const bindFailedAttemptSQL = `UPDATE mail_logs l
+   SET quota_account_id = a.id,
+       quota_day = (($3::timestamptz AT TIME ZONE a.reset_tz)::date),
+       updated_at = $3::timestamptz
+  FROM mail_accounts a
+ WHERE l.id = $2::bigint AND a.id = $1::bigint`
+
+// ReportAttempt 是 platform/mail.Store.Report 的落点，做两件事：
+//
+//  1. 记账号健康（错误串截到 2000 字：SMTP 的报错可以很长，而这一列是给人看的排障信息）；
+//  2. **投递失败时把这封信绑到刚刚为它花掉的那个额度上**。平台的 BindQuota 只在发送成功时被调用，
+//     而失败的那次尝试同样已经把额度 +1 了（Router 是先占额度再发）—— 不绑的话重试会再花一次，
+//     「一次投递占一次额度」就在失败路径上破了。绑定之后重试走 reuse 分支，不再 +1。
+func (q *Queries) ReportAttempt(ctx context.Context, logID, accountID int64, sendErr error, now time.Time) error {
 	if sendErr == nil {
 		if _, err := q.db.ExecContext(ctx, reportOKSQL, accountID, now.UTC()); err != nil {
 			return fmt.Errorf("记账号健康状态: %w", err)
@@ -155,6 +183,9 @@ func (q *Queries) ReportAccount(ctx context.Context, accountID int64, sendErr er
 	}
 	if _, err := q.db.ExecContext(ctx, reportErrSQL, accountID, msg, now.UTC()); err != nil {
 		return fmt.Errorf("记账号失败原因: %w", err)
+	}
+	if _, err := q.db.ExecContext(ctx, bindFailedAttemptSQL, accountID, logID, now.UTC()); err != nil {
+		return fmt.Errorf("写回失败尝试占用的额度: %w", err)
 	}
 	return nil
 }
@@ -196,14 +227,14 @@ func (q *Queries) InsertLog(ctx context.Context, in NewLog) (int64, bool, error)
 
 // LogRow 是 mail:send 处理函数要看的那几列（d6 §7.4 的查询）。
 type LogRow struct {
-	ID          int64
-	Status      string
-	Attempts    int
-	Template    string
-	Payload     json.RawMessage
-	ToAddress   string
-	ResetTZ     string // 绑定账号的时区；没绑定时是空串（调用方按默认值兜）
-	QuotaIsToday bool  // quota_day 是否仍是该账号的今天（跨过午夜就不算）
+	ID           int64
+	Status       string
+	Attempts     int
+	Template     string
+	Payload      json.RawMessage
+	ToAddress    string
+	ResetTZ      string // 绑定账号的时区；没绑定时是空串（调用方按默认值兜）
+	QuotaIsToday bool   // quota_day 是否仍是该账号的今天（跨过午夜就不算）
 
 	QuotaAccountID *int64
 	QuotaDayText   string // "2006-01-02"；没绑定是空串
