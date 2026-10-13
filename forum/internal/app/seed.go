@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strconv"
 	"time"
 
 	"forum/internal/auth"
@@ -12,6 +13,7 @@ import (
 	"forum/internal/config"
 	"forum/internal/ent"
 	"forum/internal/ent/board"
+	"forum/internal/ent/post"
 	"forum/internal/ent/user"
 	"forum/internal/forum"
 	"forum/internal/platform/clock"
@@ -74,8 +76,34 @@ func Seed(ctx context.Context, cfg *config.Config) error {
 	if err != nil {
 		return err
 	}
+	if err := assertNoDuplicateTokens(ctx, in.DB); err != nil {
+		return err
+	}
 	fmt.Printf("seed: ok, boards=%d users=%d topics=%d posts=%d\n",
 		len(seedBoardRows), len(accounts), topics, posts)
+	return nil
+}
+
+// assertNoDuplicateTokens 是 seed 的自查：同一个 (作者, client_token) 不允许有两行。
+//
+// 这条不变量本该由部分唯一索引 uq_posts_author_client_token 保证，而它现在**没有建**
+// （0004 建的是普通索引，见回报的缺陷 2）。在索引补上之前，这一步让「重放不涨数据」这件事
+// 当场失败，而不是等下一次有人去数行数 —— 检查必须会红，才算检查。
+func assertNoDuplicateTokens(ctx context.Context, db *ent.Client) error {
+	rows, err := db.Post.Query().Where(post.ClientTokenNEQ("")).
+		Select(post.FieldAuthorID, post.FieldClientToken).All(ctx)
+	if err != nil {
+		return fmt.Errorf("seed: 自查读楼层: %w", err)
+	}
+	seen := make(map[string]struct{}, len(rows))
+	for _, r := range rows {
+		k := strconv.FormatInt(r.AuthorID, 10) + ":" + r.ClientToken
+		if _, dup := seen[k]; dup {
+			return fmt.Errorf("seed: 幂等键重复：作者 %d 的 token %q 在 posts 里有两行"+
+				"（先补上 uq_posts_author_client_token 索引，或清掉重复行，再跑 seed）", r.AuthorID, r.ClientToken)
+		}
+		seen[k] = struct{}{}
+	}
 	return nil
 }
 
@@ -244,6 +272,15 @@ func seedTopics(ctx context.Context, m *Modules, fs *forum.Service, clk *clock.F
 			}
 			clk.T = at.Add(time.Duration(r.hoursAfter) * time.Hour)
 			in := forum.CreatePostInput{ContentMD: r.body, ClientToken: fmt.Sprintf("%s-r%d", t.token, i+1)}
+			// 先按 token 回查一次。CreatePost 的幂等**完全依赖** posts 上的部分唯一索引
+			// uq_posts_author_client_token，而那条索引库里还没有（0004 建的是普通索引，见回报的缺陷 2）——
+			// 缺了它，重放会把每条回复再插一遍（实测第二遍 +75 行）。
+			// 这一查与 CreateTopic 开头那次回查是同一个形状；索引补上之后它只是少开一个事务。
+			if _, publicID, err := m.fstore.PostIDByClientToken(ctx, who.id, in.ClientToken); err == nil {
+				postIDs[i] = publicID
+				nPosts++
+				continue
+			}
 			if r.parent >= 0 {
 				parentID, ok := postIDs[r.parent]
 				if !ok {
