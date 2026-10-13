@@ -9,18 +9,20 @@ import (
 
 // TopicRow 是列表项的全部列（d3-forum §3.2 Q1 的 SELECT 列表 + 游标排序键）。
 type TopicRow struct {
-	ID           int64
-	PublicID     string
-	Kind         string
-	Title        string
-	Excerpt      string
-	Visibility   string
-	ReviewState  string
-	ReplyCount   int
-	LikeCount    int
-	ViewCount    int64
-	LastReplyAt  time.Time
-	CreatedAt    time.Time
+	ID          int64
+	PublicID    string
+	Kind        string
+	Title       string
+	Excerpt     string
+	Visibility  string
+	ReviewState string
+	ReplyCount  int
+	LikeCount   int
+	ViewCount   int64
+	LastReplyAt time.Time
+	CreatedAt   time.Time
+	// UpdatedAt 是**编辑时间**（盲测发现详情接口一直返回 Go 零值 —— 列清单里根本没选它）。
+	UpdatedAt    time.Time
 	Pinned       bool
 	Featured     bool
 	Locked       bool
@@ -62,7 +64,7 @@ const boardJoin = `
 // topicColumns 是列表项列清单，顺序即 scanTopicRow 的扫描顺序。
 const topicColumns = `t.id, t.public_id, t.kind, t.title, t.excerpt,
        t.visibility, t.review_state,
-       t.reply_count, t.like_count, t.view_count, t.last_reply_at, t.created_at,
+       t.reply_count, t.like_count, t.view_count, t.last_reply_at, t.created_at, t.updated_at,
        (t.pinned_at IS NOT NULL) AS pinned, (t.featured_at IS NOT NULL) AS featured,
        (t.locked_at IS NOT NULL) AS locked,
        b.slug, b.name,
@@ -76,7 +78,7 @@ func scanTopicRow(rows *sql.Rows, r *TopicRow, extra ...any) error {
 	dest := []any{
 		&r.ID, &r.PublicID, &r.Kind, &r.Title, &r.Excerpt,
 		&r.Visibility, &r.ReviewState,
-		&r.ReplyCount, &r.LikeCount, &r.ViewCount, &r.LastReplyAt, &r.CreatedAt,
+		&r.ReplyCount, &r.LikeCount, &r.ViewCount, &r.LastReplyAt, &r.CreatedAt, &r.UpdatedAt,
 		&r.Pinned, &r.Featured, &r.Locked,
 		&r.BoardSlug, &r.BoardName,
 		&r.Author.ID, &r.Author.PublicID, &r.Author.Handle, &r.Author.Nickname, &avatar, &avatarSmall, &r.Author.Status,
@@ -255,7 +257,7 @@ func (s *Store) TopicDetail(ctx context.Context, publicID string, viewerID int64
 		dest := []any{
 			&r.ID, &r.PublicID, &r.Kind, &r.Title, &r.Excerpt,
 			&r.Visibility, &r.ReviewState,
-			&r.ReplyCount, &r.LikeCount, &r.ViewCount, &r.LastReplyAt, &r.CreatedAt,
+			&r.ReplyCount, &r.LikeCount, &r.ViewCount, &r.LastReplyAt, &r.CreatedAt, &r.UpdatedAt,
 			&r.Pinned, &r.Featured, &r.Locked,
 			&r.BoardSlug, &r.BoardName,
 			&r.Author.ID, &r.Author.PublicID, &r.Author.Handle, &r.Author.Nickname, &avatar, &avatarSmall, &r.Author.Status,

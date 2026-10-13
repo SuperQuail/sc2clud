@@ -20,7 +20,8 @@ import { Empty, ErrorState, Loading } from './_parts/state';
 // 只做**有三个态、有真实端点**的几块：资料、密码、会话退出。
 // 头像（POST /me/avatar，要字节与压缩管线）、收款码（/me/payment-channels）、登录设备列表
 // （GET /me/sessions 有契约但本轮不排）都没做，记进回报 —— 不画点了没反应的入口。
-const NICK_MAX = 32;
+// 20 = users.nickname varchar(20) / auth.nicknameMaxLen（写死 32 会让 21-32 字的昵称在服务端被拒）
+const NICK_MAX = 20;
 const BIO_MAX = 200;
 
 export function SettingsPage() {

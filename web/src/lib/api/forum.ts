@@ -134,8 +134,13 @@ export function fetchPosts(topicId: string, q: PageQuery = {}, signal?: AbortSig
   return apiPage<Post>('topics/' + encodeURIComponent(topicId) + '/posts', { query: pageQuery(q), signal });
 }
 
+// **字段名是 `board`，值是 slug** —— 不是 `board_id`。
+//
+// 2026-10-13 盲测实测：这里原本写 `board_id`，而后端 `createTopicBody` 只认 `board` 且 `binding:"required"`，
+// 于是「发帖」按钮按下去**必然 400**（fields.board「不能为空」），UI 上发帖 100% 失败。
+// 与 D2/D11 同族：契约两侧各写一份，各自的测试都过。
 export function createTopic(body: {
-  board_id: string;
+  board: string;
   kind: TopicKind;
   title: string;
   content_md: string;

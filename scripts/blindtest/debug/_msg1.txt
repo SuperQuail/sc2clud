@@ -1,0 +1,7 @@
+盲测完成：**写操作主链路**（dev http://191.40.41.97/dev/ ，跑在版本 c51f9eb）。
+
+## 数字
+- **跑了 106 条断言，通过 105，失败 1，0 条因限流未验证**（你列的 13 步全覆盖 + 收尾清理）。
+- 脚本 scripts/blindtest/blindtest_write.py（可重复跑）+ 驱动 scripts/blindtest/remote.ps1；完整输出 scripts/blindtest/last-run.log；说明 scripts/blindtest/readme.md。
+- 报告：完全重构/盲测-自动化.md（总表 + 失败明细 + 第③类清单 + 我不确定的地方）。
+

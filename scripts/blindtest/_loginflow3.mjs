@@ -1,0 +1,25 @@
+import { spawn } from 'node:child_process';
+import fs from 'node:fs'; import path from 'node:path';
+import { cdp } from './miniws.mjs';
+const PORT=9256;
+const udd = path.join(process.cwd(),'.tools','bt-chrome-'+PORT);
+fs.rmSync(udd,{recursive:true,force:true});
+spawn('C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe',['--headless=new','--disable-gpu','--no-first-run','--window-size=1440,900','--remote-debugging-port='+PORT,'--user-data-dir='+udd,'about:blank'],{stdio:'ignore'});
+let page;
+for(let i=0;i<80;i++){try{const l=await (await fetch('http://127.0.0.1:'+PORT+'/json/list')).json();page=l.find(t=>t.type==='page');if(page)break;}catch{} await new Promise(r=>setTimeout(r,250));}
+const c=cdp(page.webSocketDebuggerUrl);
+await c.send('Page.enable'); await c.send('Network.enable'); await c.send('Runtime.enable');
+await c.send('Network.setExtraHTTPHeaders',{headers:{'X-Forwarded-For':'192.0.2.153'}});
+const posted=[];
+c.on(m=>{ if(m.method==='Network.requestWillBeSent' && m.params.request.url.includes('auth/login')) posted.push(m.params.request.postData); });
+const EV = (e) => c.send('Runtime.evaluate',{expression:e,returnByValue:true}).then(r=>r.result.value);
+await c.send('Page.navigate',{url:'http://127.0.0.1:19999/dev/login?theme=light'});
+await new Promise(r=>setTimeout(r,7000));
+const before = await EV('JSON.stringify({formHtml:document.querySelector("form")?document.querySelector("form").outerHTML.slice(0,700):null})');
+await EV('window.__bt={u:"probe-admin",p:"Probe-Dev-2026!"}; 1');
+const FILL = ['(()=>{','const set=Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype,"value").set;','const ins=[...document.querySelectorAll("input")];','const U=ins[0], P=ins.find(i=>i.type==="password");','set.call(U, window.__bt.u); U.dispatchEvent(new Event("input",{bubbles:true}));','set.call(P, window.__bt.p); P.dispatchEvent(new Event("input",{bubbles:true}));','const f=document.querySelector("form");','setTimeout(()=>{ document.querySelectorAll("form button").forEach(b=>{ if(b.type==="submit") b.click(); }); }, 300);','return JSON.stringify({formData:[...new FormData(f).entries()]});','})()'].join('\n');
+const r1 = await EV(FILL);
+await new Promise(r=>setTimeout(r,5000));
+const after = await EV('JSON.stringify({captchaShown:/图形验证码/.test(document.body.innerText),text:document.body.innerText.slice(0,200)})');
+fs.writeFileSync('shots/blindtest/_loginflow3.json', JSON.stringify({before:JSON.parse(before), fill:r1, after:JSON.parse(after), posted},null,1),'utf8');
+c.close(); process.exit(0);

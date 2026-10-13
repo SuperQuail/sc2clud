@@ -50,7 +50,9 @@ func (s *Service) topicDetailDTO(r pgsql.TopicDetailRow, sources []pgsql.SourceR
 		ViewCount:      r.ViewCount + s.count.Get(counterTopicViewKey(r.ID)),
 		IssueOpenCount: r.IssueOpenCount,
 		Pinned:         r.Pinned, Featured: r.Featured, Locked: r.Locked,
-		CreatedAt: r.CreatedAt.UTC(), LastReplyAt: r.LastReplyAt.UTC(),
+		// UpdatedAt 以前**从没赋值**（dto.go 声明了它）—— 于是接口永远返回 Go 零值 `0001-01-01T00:00:00Z`，
+		// 而库里其实更新了：盲测 PATCH 主题后标题与正文真的变了、DB 里 updated_at 也变了，只有响应是零值。
+		CreatedAt: r.CreatedAt.UTC(), UpdatedAt: r.UpdatedAt.UTC(), LastReplyAt: r.LastReplyAt.UTC(),
 		ReviewState: r.ReviewState,
 		Viewer:      ViewerDTO{Liked: r.MyVote == 1, Bookmarked: r.Bookmarked},
 		Sources:     sourceDTOs(sources),

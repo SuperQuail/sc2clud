@@ -46,7 +46,7 @@ export function ComposePage() {
   const [doc, setDoc] = useState({ json: '', html: '', length: 0 });
 
   const submit = useMutation({
-    mutationFn: () => createTopic({ board_id: board, kind, title: title.trim(), content_md: doc.json }),
+    mutationFn: () => createTopic({ board, kind, title: title.trim(), content_md: doc.json }),
     onSuccess: (t) => void navigate(appPath('t/' + encodeURIComponent(t.id)), { replace: true }),
   });
 

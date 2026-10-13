@@ -1,0 +1,22 @@
+盲测抓到的两个 bug 修掉：发帖按钮必然 400 + 详情 updated_at 恒为零值
+
+① 发帖必然 400（P0，**核心动作是坏的**）
+   前端 createTopic 送 `board_id`（值是 slug），而后端 createTopicBody 只认 `board` 且 `binding:"required"`。
+   盲测实测：board_id=custom-campaign -> 400 fields.board「不能为空」；board=custom-campaign -> 201。
+   改：前端字段名改成 board（lib/api/forum.ts 的入参类型 + compose.tsx 的调用点）。
+   与 D2/D11 同族：契约两侧各写一份，各自的测试都过。
+
+② GET /topics/{id} 的 updated_at 恒为 0001-01-01T00:00:00Z（盲测抓到的唯一功能缺陷）
+   库里真的更新了、PATCH 也 200，但响应永远是 Go 零值 —— topicDetailDTO 从没给 d.UpdatedAt 赋值。
+   补的时候发现不止一行：TopicRow 没有这个字段、topicColumns 也没选 t.updated_at。
+   改四处：列清单加 t.updated_at（紧跟 t.created_at）+ TopicRow 加字段 + **两处**扫描位（scanTopicRow 与详情各自一份 dest）。
+
+盲测产出（施工者交付，Lead 提交）：
+- scripts/blindtest/blindtest_write.py + remote.ps1 + last-run.log + readme.md（106 条断言 / 105 通过 / 1 失败）
+- 完全重构/盲测-自动化.md（总表 + 失败明细 + 第③类清单）
+
+仍待办（盲测第②类，**不是一行**）：四个入口在界面上不存在 —— 编辑/删除自己的内容、举报、我的收藏、我的举报。
+接口全部可用且实测通过，但前端连函数都没有（搜 deleteTopic|updateTopic|createReport 等只有定义处、0 个调用方），
+举报弹层只躺在 devroom 里、router.tsx 里也没有收藏页。
+
+测试：go build 0 / vet 0 / forum+app+user+message+notify+report 全 ok。

@@ -1,0 +1,20 @@
+import { spawn } from 'node:child_process';
+import fs from 'node:fs';
+import path from 'node:path';
+import { cdp } from './miniws.mjs';
+const CHROME='C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe';
+const PORT=9227;
+const udd = path.join(process.cwd(),'.tools','bt-chrome-'+PORT);
+fs.rmSync(udd,{recursive:true,force:true});
+spawn(CHROME,['--headless=new','--disable-gpu','--no-first-run','--window-size=1440,900','--remote-debugging-port='+PORT,'--user-data-dir='+udd,'about:blank'],{stdio:'ignore'});
+let page;
+for(let i=0;i<60;i++){try{const l=await (await fetch('http://127.0.0.1:'+PORT+'/json/list')).json();page=l.find(t=>t.type==='page');if(page)break;}catch{} await new Promise(r=>setTimeout(r,250));}
+const c=cdp(page.webSocketDebuggerUrl);
+await c.send('Page.enable'); await c.send('Network.enable'); await c.send('Runtime.enable'); await c.send('Log.enable');
+const hits=[];
+c.on(m=>{ const s=JSON.stringify(m); if(s.includes('/art/')) hits.push({method:m.method, url:m.params?.request?.url||m.params?.response?.url||m.params?.entry?.url, initiator:m.params?.initiator, doc:m.params?.documentURL, type:m.params?.type, text:m.params?.entry?.text}); });
+await c.send('Page.navigate',{url:'http://127.0.0.1:19999/dev/?theme=light'});
+await new Promise(r=>setTimeout(r,7000));
+const ev = await c.send('Runtime.evaluate',{expression:"JSON.stringify([...document.querySelectorAll('img')].map(i=>({src:i.currentSrc||i.src, w:i.naturalWidth})))",returnByValue:true});
+fs.writeFileSync('shots/blindtest/_trace-art.json', JSON.stringify({hits: hits.map(h=>({method:h.method,url:h.url,type:h.type,doc:h.doc,stack:(h.initiator?.stack?.callFrames||[]).slice(0,5).map(f=>f.url+':'+f.lineNumber)})), imgs: JSON.parse(ev.result.value)},null,1),'utf8');
+c.close(); process.exit(0);
