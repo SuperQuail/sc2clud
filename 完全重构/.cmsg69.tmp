@@ -1,0 +1,15 @@
+帖子页右栏换成设计稿的四件（12-topic）；AI 审核打了半截先收干净
+
+按用户要求：设计稿有的就用设计稿的，不要自己再拼一份。
+帖子页右栏原来是产品页自拼的「关于作者 / 分区」两张卡 —— 现在换成设计稿 12-topic 的四件：
+  BoardSummary（分区简介 + 四个统计）· AuthorCard（大头像 + 头衔 + 等级条 + 三统计）
+  RewardPanel（赞助入口）· IssueNudge（问题反馈入口）
+它们是 prop 驱动的，所以直接接真数据（/boards/{slug} + /users/{handle}）。
+缺的字段用 shortcut 注释点名：分区封面字段名对不上、/users/{handle} 不回角色与 exp/exp_max、
+/users/{handle}/channels 没接（所以赞助入口恒不画）、主题详情没回 issue_open_count。
+
+AI 审核（上线刚需）：写到一半发现 Infra 上没有 Cfg 字段，时间不够，
+把整段撤出代码树、原样存到 完全重构/待办-AI审核-ai_review.go.txt，明天接着做。
+config 里的 AI 段留着（enabled/key/endpoint/model/prompt/interval/timeout，默认关着、空 key 不外呼）。
+
+构建：go build 0 / tsc 0。

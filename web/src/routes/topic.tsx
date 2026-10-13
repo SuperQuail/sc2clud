@@ -22,6 +22,17 @@ import {
   setTopicLike,
 } from '@/lib/api/forum';
 import { ReportPanel } from './_parts/report-panel';
+import { fetchUserProfile } from '@/lib/api/user';
+import { fetchBoard } from '@/lib/api/forum';
+// **右栏照设计稿 12-topic 的四件来**（用户拍板：设计稿有的就用设计稿的，不要自己再拼一份）。
+// 这三件都是 prop 驱动的，所以能直接接真数据：
+//   BoardSummary（分区简介 + 四个统计）· AuthorCard（大头像 + 头衔 + 等级条 + 三个统计）
+//   RewardPanel（赞助入口）· IssueNudge（问题反馈入口）
+import { BoardSummary } from '@/devroom/pages/12-topic/board-summary';
+import { AuthorCard } from '@/devroom/pages/12-topic/author-card';
+import { RewardPanel } from '@/devroom/pages/12-topic/reward-panel';
+import { IssueNudge } from '@/devroom/pages/12-topic/issue-nudge';
+import type { Board as DesignBoard, PaymentChannel, TopicAuthor } from '@/devroom/pages/12-topic/types';
 import { TopicBody } from '@/devroom/pages/12-topic/topic-body';
 import { TopicKindTag, TopicMark } from '@/devroom/pages/14-home/topic-parts';
 import { formatTime } from '@/lib/format';
@@ -87,6 +98,23 @@ export function TopicPage() {
     },
   });
 
+  // 右栏那四件要的数据：分区详情（简介 + 四个统计）与作者资料（等级/经验/头衔/统计）。
+  // 主题详情里的 board 只有 slug+name，author 只有三字段 —— 所以这里各补一个请求。
+  const authorHandle = topic.data?.author.handle ?? '';
+  const boardSlug = topic.data?.board.slug ?? '';
+  const boardDetail = useQuery({
+    queryKey: qk.board(boardSlug),
+    queryFn: ({ signal }) => fetchBoard(boardSlug, signal),
+    enabled: boardSlug !== '',
+    staleTime: 10 * 60_000,
+  });
+  const authorProfile = useQuery({
+    queryKey: qk.profile(authorHandle),
+    queryFn: ({ signal }) => fetchUserProfile(authorHandle, signal),
+    enabled: authorHandle !== '',
+    staleTime: 60_000,
+  });
+
   if (topic.isPending) return <Loading what='帖子' />;
   if (topic.isError) {
     return (
@@ -99,6 +127,43 @@ export function TopicPage() {
   }
 
   const t = topic.data;
+
+  // ---- 右栏四件要的形状（devroom/pages/12-topic/types.ts）→ 用现成端点适配 ----
+  // 缺什么就给安全默认值，并在这一行点名 —— 不假装后端有那些字段。
+  const bd = boardDetail.data;
+  const designBoard: DesignBoard = {
+    slug: t.board.slug as DesignBoard['slug'],
+    name: t.board.name,
+    // shortcut: 分区封面字段名与 BoardDetail 对不上（后端没有 cover_hash），先留空。
+    cover: '',
+    description: bd?.description ?? '',
+    topic_count: bd?.topic_count ?? 0,
+    post_count: bd?.post_count ?? 0,
+    member_count: bd?.member_count ?? 0,
+    today_count: bd?.today_count ?? 0,
+    joined: false, // shortcut: 「关注分区」后端没有端点，先恒为未关注（按钮会显示未关注态）
+    hint: '',
+  };
+  const ap = authorProfile.data;
+  const designAuthor: TopicAuthor = {
+    handle: t.author.handle,
+    nickname: t.author.nickname,
+    avatar: t.author.avatar ?? '',
+    role: null, // shortcut: /users/{handle} 不回角色；要显示角色徽标得让它带上 role
+    title: null, // shortcut: 头衔在 GET /users/{handle}/titles，这一版没接
+    bio: t.author.bio ?? '',
+    level: t.author.level ?? 1,
+    // shortcut: UserProfile 的类型里没有 exp/exp_max（接口实际会回），先按 0/1 走，等级条不跳。
+    exp: 0,
+    exp_max: 1,
+    topic_count: ap?.stats?.topic_count ?? 0,
+    like_received: ap?.stats?.like_received ?? 0,
+    joined_at: t.author.joined_at ?? '',
+  };
+  // shortcut: /users/{handle}/channels 没接，所以赞助入口在「有渠道」时才画（现在恒不画）。
+  const channels: PaymentChannel[] = [];
+  const issueCount = 0; // shortcut: 主题详情没回 issue_open_count，先按 0
+
   const comments = toComments(posts.data?.items ?? []);
   const loggedIn = session.isLoggedIn;
   // 编辑/删除只给自己看：句柄相等即本人（服务端另有 post.update_own / post.delete_own 兜底）。
@@ -284,30 +349,13 @@ export function TopicPage() {
         {reply.isError ? <ErrorState what='回复' error={reply.error} /> : null}
       </div>
 
+      {/* 右栏 = 设计稿 12-topic 的四件（顺序也照设计稿）：分区简介 → 发帖者卡片 → 赞助入口 → 问题反馈入口。
+          原来这里是产品页自己拼的两张卡（关于作者 / 分区）——用户拍板：设计稿有的就用设计稿的。 */}
       <aside className='flex flex-col gap-3'>
-        <section className='flex flex-col gap-2 rounded-lg border border-border bg-card p-4'>
-          <h2 className='m-0 text-[13px] font-semibold text-foreground'>关于作者</h2>
-          <UserBadge user={t.author} layout='stacked' size='lg' showHandle badges='below' />
-          {t.author.bio ? <p className='m-0 text-[12px] leading-relaxed text-muted-foreground'>{t.author.bio}</p> : null}
-          <p className='m-0 text-[12px] text-muted-foreground'>
-            {t.author.level != null ? 'Lv.' + t.author.level + ' · ' : ''}
-            {t.author.joined_at ? t.author.joined_at + ' 加入' : ''}
-          </p>
-          <Button inline={false} height={ControlsHeight.S} href={appPath('u/' + encodeURIComponent(t.author.handle))}>
-            查看主页
-          </Button>
-        </section>
-
-        <section className='flex flex-col gap-2 rounded-lg border border-border bg-card p-4'>
-          <h2 className='m-0 text-[13px] font-semibold text-foreground'>分区</h2>
-          <Link
-            to={routePath('b/' + encodeURIComponent(t.board.slug))}
-            className='w-fit rounded-[3px] text-[13px] text-foreground outline-none hover:text-primary focus-visible:ring-[3px] focus-visible:ring-ring/50'
-          >
-            {t.board.name}
-          </Link>
-          <span className='text-[11px] text-muted-foreground'>同一分区的其它帖子都在这个链接下</span>
-        </section>
+        <BoardSummary board={designBoard} />
+        <AuthorCard author={designAuthor} />
+        {channels.length > 0 ? <RewardPanel channels={channels} /> : null}
+        <IssueNudge variant='rail' issueCount={issueCount} />
       </aside>
     </div>
   );

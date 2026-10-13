@@ -20,6 +20,21 @@ type Config struct {
 	Site     Site     `yaml:"site" koanf:"site"`
 	Web      Web      `yaml:"web" koanf:"web"`
 	Capacity Capacity `yaml:"capacity" koanf:"capacity"`
+	AI       AI       `yaml:"ai" koanf:"ai"`
+}
+
+// AI 是发帖审核（2026-10-13 上线刚需）。
+//
+// **留空 = 不启用**：此时一个外呼都不发（enabled=false 或 key 为空都算不启用）。
+// endpoint 走 OpenAI 兼容的 POST {endpoint}/chat/completions（老站指向 api.deepseek.com）。
+type AI struct {
+	Enabled  bool          `yaml:"enabled" koanf:"enabled"`
+	Key      string        `yaml:"key" koanf:"key"` // 从 env 给：FORUM_AI__KEY（不进仓库）
+	Endpoint string        `yaml:"endpoint" koanf:"endpoint"`
+	Model    string        `yaml:"model" koanf:"model"`
+	Prompt   string        `yaml:"prompt" koanf:"prompt"`
+	Interval time.Duration `yaml:"interval" koanf:"interval"` // 扫待审队列的间隔
+	Timeout  time.Duration `yaml:"timeout" koanf:"timeout"`
 }
 
 // HTTP：监听、可信代理、跨站与请求体上限。

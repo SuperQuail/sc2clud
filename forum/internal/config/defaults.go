@@ -72,5 +72,13 @@ func Default() *Config {
 		Site:     Site{CookieName: "forum_session"},
 		Web:      Web{DistDir: "web/dist", BasePath: "/", ServeShell: true, ServeAssets: true},
 		Capacity: Capacity{Profile: "auto"},
+		// 审核默认**关着**：key 得由运维从 env 给（FORUM_AI__KEY），空 key 时一个外呼都不发。
+		AI: AI{
+			Endpoint: "https://api.deepseek.com",
+			Model:    "deepseek-chat",
+			Prompt:   "你是中型星际争霸 II 社区的内容审核员。判断下面这条帖子是否合规：广告与引流、来源不明的可执行文件、侵权转载、人身攻击与政治敏感都算不合规。只回一个 JSON：{\"ok\":true|false,\"reason\":\"一句话中文理由\"}。拿不准就给 ok=true。",
+			Interval: 2 * time.Minute,
+			Timeout:  30 * time.Second,
+		},
 	}
 }
