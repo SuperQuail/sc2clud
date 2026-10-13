@@ -10,8 +10,8 @@ const ISSUE = {
   status: 'open' as const,
   kind: 'bug' as const,
   labels: ['战役', '阻塞'],
-  authorNickname: '林诗',
-  authorHandle: 'linshi',
+  authorNickname: '陆战队员',
+  authorHandle: 'demo-marine',
 };
 const HIT = {
   ...ISSUE,
@@ -28,11 +28,11 @@ describe('tokenize', () => {
 
 describe('parseQuery', () => {
   it('解析 is / kind / label / author 四类限定词', () => {
-    const q = parseQuery('is:open kind:bug label:战役 author:@linshi 隐藏结局');
+    const q = parseQuery('is:open kind:bug label:战役 author:@demo-marine 隐藏结局');
     expect(q.status).toBe('open');
     expect(q.kind).toBe('bug');
     expect(q.labels).toEqual(['战役']);
-    expect(q.author).toBe('linshi');
+    expect(q.author).toBe('demo-marine');
     expect(q.text).toBe('隐藏结局');
     expect(q.unknown).toEqual([]);
   });
@@ -81,9 +81,9 @@ describe('matchesQuery', () => {
     expect(matchesQuery(parseQuery('is:closed'), HIT)).toBe(false);
     expect(matchesQuery(parseQuery('kind:bug'), HIT)).toBe(true);
     expect(matchesQuery(parseQuery('kind:feature'), HIT)).toBe(false);
-    expect(matchesQuery(parseQuery('author:linshi'), HIT)).toBe(true);
-    expect(matchesQuery(parseQuery('author:林诗'), HIT)).toBe(true);
-    expect(matchesQuery(parseQuery('author:tangtian'), HIT)).toBe(false);
+    expect(matchesQuery(parseQuery('author:demo-marine'), HIT)).toBe(true);
+    expect(matchesQuery(parseQuery('author:队员'), HIT)).toBe(true);
+    expect(matchesQuery(parseQuery('author:demo-admin'), HIT)).toBe(false);
   });
 
   it('标签命中：中文标签、kind 字面量、#编号', () => {

@@ -126,12 +126,12 @@ export default function UserControlsPage() {
           </span>
         </Row>
         <Row label='列表行（密集）' hint='角标在密集处最省地方'>
-          <span className='flex items-center gap-2'><UserAvatar name='唐天' src={A('miyin-portrait-320.webp')} size='sm' /><Username nickname='唐天' role={ADMIN} badge={badge} /><span className='text-xs text-muted-foreground'>2 小时前</span></span>
-          <span className='flex items-center gap-2'><UserAvatar name='林诗' src={A('miyin-chibi-160.webp')} size='sm' /><Username nickname='林诗' role={CREATOR} badge={badge} /></span>
-          <span className='flex items-center gap-2'><UserAvatar name='新来的' size='sm' /><Username nickname='新来的' role={USER} badge={badge} /></span>
+          <span className='flex items-center gap-2'><UserAvatar name='示范管理员' src={A('miyin-portrait-320.webp')} size='sm' /><Username nickname='示范管理员' role={ADMIN} badge={badge} /><span className='text-xs text-muted-foreground'>2 小时前</span></span>
+          <span className='flex items-center gap-2'><UserAvatar name='雷神' src={A('miyin-chibi-160.webp')} size='sm' /><Username nickname='雷神' role={CREATOR} badge={badge} /></span>
+          <span className='flex items-center gap-2'><UserAvatar name='工蜂' size='sm' /><Username nickname='工蜂' role={USER} badge={badge} /></span>
         </Row>
         <Row label='作者位（加粗）与超长昵称'>
-          <Username nickname='唐天' role={ADMIN} badge={badge} strong />
+          <Username nickname='示范管理员' role={ADMIN} badge={badge} strong />
           <Username nickname='一个特别特别长的昵称用来压测截断行为' role={ADMIN} badge={badge} className='max-w-56' />
         </Row>
       </Card>
@@ -143,8 +143,8 @@ export default function UserControlsPage() {
         {PAIRS.map((p) => (
           <Row key={p.n} label={'方案 ' + p.n + ' · ' + p.name} hint={p.note}>
             <span className='flex items-center gap-3'>
-              <UserAvatar name='唐天' src={A('miyin-portrait-320.webp')} size='sm' />
-              <Username nickname='唐天' strong />
+              <UserAvatar name='示范管理员' src={A('miyin-portrait-320.webp')} size='sm' />
+              <Username nickname='示范管理员' strong />
               <DropdownPanel label='权限明细' width='w-72' trigger={<RoleBadge role={ADMIN} design={p.role} />}>
                 <RolePanelBody />
               </DropdownPanel>
@@ -153,12 +153,12 @@ export default function UserControlsPage() {
               </DropdownPanel>
             </span>
             <span className='flex items-center gap-3'>
-              <Username nickname='林诗' />
+              <Username nickname='雷神' />
               <RoleBadge role={CREATOR} design={p.role} />
               <TitleBadge title={{ name: '精华作者', color: '#7c3aed' }} design={p.title} />
             </span>
             <span className='flex items-center gap-3'>
-              <Username nickname='新来的' />
+              <Username nickname='工蜂' />
               <RoleBadge role={USER} design={p.role} />
             </span>
           </Row>
@@ -167,53 +167,53 @@ export default function UserControlsPage() {
 
       <Card name='权限明细（点击徽标展开）' note='基线单角色 + 点对点追加（含到期）+ 分区授权。没有追加的人不显示可点状态。'>
         <Row label='有追加：可点' hint='点「管理员」看明细'>
-          <span className='flex items-center gap-2'><UserAvatar name='唐天' src={A('miyin-portrait-320.webp')} size='sm' /><Username nickname='唐天' /><DropdownPanel label='权限明细' trigger={<RoleBadge role={ADMIN} />}><RolePanelBody /></DropdownPanel></span>
+          <span className='flex items-center gap-2'><UserAvatar name='示范管理员' src={A('miyin-portrait-320.webp')} size='sm' /><Username nickname='示范管理员' /><DropdownPanel label='权限明细' trigger={<RoleBadge role={ADMIN} />}><RolePanelBody /></DropdownPanel></span>
         </Row>
         <Row label='无追加：不可点' hint='只有基线角色，没有可展开的内容'>
-          <span className='flex items-center gap-2'><UserAvatar name='新来的' size='sm' /><Username nickname='新来的' /><RoleBadge role={USER} /></span>
+          <span className='flex items-center gap-2'><UserAvatar name='工蜂' size='sm' /><Username nickname='工蜂' /><RoleBadge role={USER} /></span>
         </Row>
       </Card>
 
       <Card name='Username（用户名）' note='只渲染名字；默认前景色，可选自定义色；未激活只做暗色。'>
         <Row label='常规 / 加粗 / 自定义色 / 未激活'>
-          <Username nickname='普通用户' />
-          <Username nickname='唐天' strong />
-          <Username nickname='唐天' color='#2563eb' />
-          <Username nickname='未激活的人' state='inactive' />
+          <Username nickname='矿骡' />
+          <Username nickname='示范管理员' strong />
+          <Username nickname='示范管理员' color='#2563eb' />
+          <Username nickname='蟑螂' state='inactive' />
         </Row>
         <Row label='尺寸 / @handle / 超长昵称'>
-          <Username nickname='唐天' size='sm' />
-          <Username nickname='唐天' size='lg' />
-          <Username nickname='唐天' handle='tangtian' />
+          <Username nickname='示范管理员' size='sm' />
+          <Username nickname='示范管理员' size='lg' />
+          <Username nickname='示范管理员' handle='demo-admin' />
           <span className='flex min-w-0 max-w-56'><Username nickname='一个特别特别长的昵称用来压测截断行为' /></span>
         </Row>
       </Card>
 
       <Card name='UserAvatar（头像）' note='四档尺寸；有图用图，无图按昵称取稳定色。'>
         <Row label='尺寸 / 真图 / 兜底'>
-          <UserAvatar name='唐天' src={A('miyin-portrait-320.webp')} size='sm' />
-          <UserAvatar name='唐天' src={A('miyin-portrait-320.webp')} size='md' />
-          <UserAvatar name='林诗' src={A('miyin-chibi-160.webp')} size='lg' />
-          <UserAvatar name='新来的' size='xl' />
+          <UserAvatar name='示范管理员' src={A('miyin-portrait-320.webp')} size='sm' />
+          <UserAvatar name='示范管理员' src={A('miyin-portrait-320.webp')} size='md' />
+          <UserAvatar name='雷神' src={A('miyin-chibi-160.webp')} size='lg' />
+          <UserAvatar name='工蜂' size='xl' />
         </Row>
       </Card>
 
       <Card name='复用：三种场景' note='全是上面几个控件拼的；顺序与排布由使用方决定。'>
         <Row label='① 列表行'>
-          <span className='flex items-center gap-2'><UserAvatar name='唐天' src={A('miyin-portrait-320.webp')} size='sm' /><Username nickname='唐天' /><span className='text-xs text-muted-foreground'>2 小时前</span></span>
+          <span className='flex items-center gap-2'><UserAvatar name='示范管理员' src={A('miyin-portrait-320.webp')} size='sm' /><Username nickname='示范管理员' /><span className='text-xs text-muted-foreground'>2 小时前</span></span>
         </Row>
         <Row label='② 个人主页头部'>
           <span className='flex items-center gap-3'>
-            <UserAvatar name='唐天' src={A('miyin-portrait-320.webp')} size='xl' />
+            <UserAvatar name='示范管理员' src={A('miyin-portrait-320.webp')} size='xl' />
             <span className='flex flex-col items-start gap-1'>
-              <Username nickname='唐天' handle='tangtian' size='lg' />
+              <Username nickname='示范管理员' handle='demo-admin' size='lg' />
               <span className='flex items-center gap-1.5'><RoleBadge role={ADMIN} /><TitleBadge title={{ name: '执政官', color: '#2563eb' }} /></span>
             </span>
           </span>
         </Row>
         <Row label='③ 管理表格'>
-          <span className='flex w-72 items-center justify-between gap-2 rounded border border-border px-2 py-1 text-sm'><Username nickname='林诗' /><RoleBadge role={CREATOR} /></span>
-          <span className='flex w-72 items-center justify-between gap-2 rounded border border-border px-2 py-1 text-sm'><Username nickname='未激活的人' state='inactive' /><RoleBadge role={USER} /></span>
+          <span className='flex w-72 items-center justify-between gap-2 rounded border border-border px-2 py-1 text-sm'><Username nickname='雷神' /><RoleBadge role={CREATOR} /></span>
+          <span className='flex w-72 items-center justify-between gap-2 rounded border border-border px-2 py-1 text-sm'><Username nickname='蟑螂' state='inactive' /><RoleBadge role={USER} /></span>
         </Row>
       </Card>
     </div>

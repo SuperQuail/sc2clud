@@ -8,16 +8,20 @@ import type { IssueComment, IssueDetail } from './types';
 const T = (daysAgo: number, hours = 0): string =>
   new Date(Date.UTC(2026, 9, 12, 12, 0, 0) - daysAgo * 86400_000 - hours * 3600_000).toISOString();
 
+// 假名单来自 完全重构/DevRoom-假数据规范.md（**唯一一份，不要自己另编**）：
+// 昵称用星际争霸兵种名，handle 一律 demo- 前缀（界面上就能看出是示例）。
+// 常量名（TANG/LIN/XIAO/HE/YUN）是旧名、与现在的值不对应 —— 值已全是假数据；
+// 重命名要动 index.tsx / query.test.ts，本任务是隐私清理不是重构，rename 留给 Lead 统一排。
 export const TANG = {
-  handle: 'tangtian',
-  nickname: '唐天',
+  handle: 'demo-admin',
+  nickname: '示范管理员',
   role: { key: 'admin', name: '管理员' },
   title: { name: '执政官', color: '#2563eb' },
 };
-export const LIN = { handle: 'linshi', nickname: '林诗', role: { key: 'creator', name: '认证创作者' } };
-export const XIAO = { handle: 'xiaox', nickname: '某小X' };
-export const HE = { handle: 'heshang', nickname: '和尚', role: { key: 'moderator', name: '版主' } };
-export const YUN = { handle: 'yunqi', nickname: '云起' };
+export const LIN = { handle: 'demo-marine', nickname: '陆战队员', role: { key: 'creator', name: '认证创作者' } };
+export const XIAO = { handle: 'demo-voidray', nickname: '虚空辉光舰' };
+export const HE = { handle: 'demo-queen', nickname: '虫后', role: { key: 'moderator', name: '版主' } };
+export const YUN = { handle: 'demo-hydralisk', nickname: '刺蛇' };
 
 // 先定类型再收进数组：否则 TS 会把对象字面量推成不含 role 的形状，role 当场报错
 const USERS: UserSummary[] = [TANG, LIN, XIAO, HE, YUN];
@@ -39,7 +43,7 @@ function withStamp(i: RawIssue): IssueDetail {
 }
 
 /** 当前登录者（mock）。「我创建的 / 指派给我」按它的 handle 判。 */
-export const ME = { handle: 'linshi', nickname: '林诗' };
+export const ME = { handle: 'demo-marine', nickname: '陆战队员' };
 
 // id 直接用编号：W1 的 IssueCard 就以 issue.id 渲染「#编号」（契约里 issue 主键是 public_id）。
 // 原始时间先留 ISO：它单调，正好用来按 updatedAt 排序；展示串随后统一生成。

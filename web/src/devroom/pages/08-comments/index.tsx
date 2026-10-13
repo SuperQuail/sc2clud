@@ -16,20 +16,20 @@ import { Card, Row } from '@/devroom/kit';
 const A = (p: string) => assetUrl(p);
 
 const TANG = {
-  handle: 'tangtian',
-  nickname: '唐天',
+  handle: 'demo-admin',
+  nickname: '示范管理员',
   avatar: A('miyin-portrait-320.webp'),
   role: { key: 'admin', name: '管理员' },
   title: { name: '执政官', color: '#2563eb' },
 };
-const LIN = { handle: 'linshi', nickname: '林诗', avatar: A('miyin-chibi-160.webp'), role: { key: 'creator', name: '认证创作者' } };
-const XIAO = { handle: 'xiaox', nickname: '某小X' };
+const LIN = { handle: 'demo-thor', nickname: '雷神', avatar: A('miyin-chibi-160.webp'), role: { key: 'creator', name: '认证创作者' } };
+const XIAO = { handle: 'demo-marine', nickname: '陆战队员' };
 
 const REPLIES: CommentData[] = [
   {
     id: 'r1',
     author: LIN,
-    body: '这个思路对，但要注意前置依赖；<a href="' + appPath('u/58') + '" data-mention="58">@某小X</a> 上次直接覆盖 Maps 目录，结果旧存档读不出来。',
+    body: '这个思路对，但要注意前置依赖；<a href="' + appPath('u/58') + '" data-mention="58">@陆战队员</a> 上次直接覆盖 Maps 目录，结果旧存档读不出来。',
     createdAt: '2026-09-28 12:25',
     likes: 3,
     dislikes: 0,
@@ -66,21 +66,21 @@ const REPLIES: CommentData[] = [
   },
 ];
 
-const ME = { nickname: '唐天', avatar: A('miyin-portrait-320.webp') };
+const ME = { nickname: '示范管理员', avatar: A('miyin-portrait-320.webp') };
 
 // @ 提及候选（真实实现来自 GET /api/v1/users/search?q=）
 const CANDIDATES: MentionCandidate[] = [
-  { id: '12', nickname: '唐天', handle: 'tangtian', avatar: A('miyin-portrait-320.webp'), role: { key: 'admin', name: '管理员' } },
-  { id: '37', nickname: '林诗', handle: 'linshi', avatar: A('miyin-chibi-160.webp'), role: { key: 'creator', name: '认证创作者' } },
-  { id: '58', nickname: '某小X', handle: 'xiaox' },
-  { id: '91', nickname: '唐天（同名）', handle: 'tangtian2', duplicate: true },
+  { id: '12', nickname: '示范管理员', handle: 'demo-admin', avatar: A('miyin-portrait-320.webp'), role: { key: 'admin', name: '管理员' } },
+  { id: '37', nickname: '雷神', handle: 'demo-thor', avatar: A('miyin-chibi-160.webp'), role: { key: 'creator', name: '认证创作者' } },
+  { id: '58', nickname: '陆战队员', handle: 'demo-marine' },
+  { id: '91', nickname: '陆战队员（同名）', handle: 'demo-marine-2', duplicate: true },
 ];
 
 const COMMENTS: CommentData[] = [
   {
     id: 'c1',
     author: XIAO,
-    body: '？为什么不叫我，<a href="' + appPath('u/12') + '" data-mention="12">@唐天</a> 你说说看',
+    body: '？为什么不叫我，<a href="' + appPath('u/12') + '" data-mention="12">@示范管理员</a> 你说说看',
     createdAt: '2026-09-28 12:25',
     likes: 12,
     dislikes: 0,
@@ -174,7 +174,7 @@ export default function CommentsPage() {
         </Row>
         <Row label='ReplyBox（回复框）' hint='原生 textarea（Ring 的 Input 是表单小输入，装不下长评论）：默认 7 行、随输入长高；只有一个发布按钮，空内容不可点'>
           <div className='w-full max-w-xl'>
-            <ReplyBox me={ME} replyingTo='某小X' candidates={CANDIDATES} />
+            <ReplyBox me={ME} replyingTo='陆战队员' candidates={CANDIDATES} />
           </div>
         </Row>
       </Card>

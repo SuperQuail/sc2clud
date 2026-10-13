@@ -90,7 +90,7 @@ export function AuditScreen() {
         <Select
           type={SelectType.INPUT}
           label='操作者'
-          data={[{ key: 'all', label: '全部操作者' }, ...['tangtian', 'linkai'].map((h) => ({ key: h, label: h })), { key: 'system', label: '系统任务' }]}
+          data={[{ key: 'all', label: '全部操作者' }, ...['demo-admin', 'demo-overseer'].map((h) => ({ key: h, label: h })), { key: 'system', label: '系统任务' }]}
           selected={{ key: actor, label: actor === 'all' ? '全部操作者' : actor }}
           onSelect={(item) => { if (item) setActor(String(item.key)); }}
         />

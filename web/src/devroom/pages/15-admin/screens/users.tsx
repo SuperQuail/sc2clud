@@ -128,7 +128,7 @@ export function UsersScreen() {
     {
       key: 'actions', title: '就地操作', track: 'minmax(186px,1.3fr)',
       render: (u: AdminUser) => {
-        const self = u.username === 'tangtian';
+        const self = u.username === 'demo-admin';
         const isSuper = u.role.key === 'superadmin';
         const banWhy = !canBan ? '本账号没有 user.ban'
           : self ? '不能停用当前登录的账号'
@@ -181,7 +181,7 @@ export function UsersScreen() {
           icon={icon16(Search)}
           value={q}
           onChange={(e) => setQ(e.target.value)}
-          placeholder='例如 tangtian / 唐恬 / @sc2clud.cn'
+          placeholder='例如 demo-admin / 示范管理员 / @example.com'
         />
         <Select
           type={SelectType.INPUT}

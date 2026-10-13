@@ -24,14 +24,14 @@ function Area({ title, desc, children }: { title: string; desc: string; children
 }
 
 const ME: UserSummary = {
-  handle: 'tangtian',
-  nickname: '唐天',
+  handle: 'demo-admin',
+  nickname: '示范管理员',
   avatar: assetUrl('miyin-portrait-320.webp'),
   role: { key: 'admin', name: '管理员' },
   title: { name: '执政官', color: '#2563eb' },
 };
-const MOD: UserSummary = { handle: 'linshi', nickname: '林诗', role: { key: 'moderator', name: '版主' } };
-const PLAIN: UserSummary = { handle: 'newbie', nickname: '新来的' };
+const MOD: UserSummary = { handle: 'demo-queen', nickname: '虫后', role: { key: 'moderator', name: '版主' } };
+const PLAIN: UserSummary = { handle: 'demo-drone', nickname: '工蜂' };
 
 export default function OurComponentsPage() {
   return (
@@ -41,10 +41,10 @@ export default function OurComponentsPage() {
       </Area>
 
       <Area title='头像（自建，用户向）' desc='四档尺寸；有真图用真图，没有就按昵称取稳定色。'>
-        <UserAvatar name='唐天' src={assetUrl('miyin-portrait-320.webp')} size='sm' />
-        <UserAvatar name='唐天' src={assetUrl('miyin-portrait-320.webp')} size='md' />
-        <UserAvatar name='林诗' src={assetUrl('miyin-chibi-160.webp')} size='lg' />
-        <UserAvatar name='新来的' size='xl' />
+        <UserAvatar name='示范管理员' src={assetUrl('miyin-portrait-320.webp')} size='sm' />
+        <UserAvatar name='示范管理员' src={assetUrl('miyin-portrait-320.webp')} size='md' />
+        <UserAvatar name='雷神' src={assetUrl('miyin-chibi-160.webp')} size='lg' />
+        <UserAvatar name='工蜂' size='xl' />
       </Area>
 
       <Area title='权限徽标（独立控件）' desc='权限是角色，不是等级。未知角色走灰色兜底。'>

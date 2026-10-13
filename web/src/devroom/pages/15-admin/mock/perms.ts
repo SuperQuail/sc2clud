@@ -13,8 +13,8 @@
 
 // 值班管理员（role=admin 基线）**加上点对点追加**（RBAC权限树设计.md §1.2：追加带 reason 与 expires_at）。
 export const CURRENT_ADMIN = {
-  handle: 'tangtian',
-  nickname: '唐恬',
+  handle: 'demo-admin',
+  nickname: '示范管理员',
   role_key: 'admin',
   is_super: false,
   // 界面右上角「权限明细」要展示的东西：基线 + 追加（含到期时间与理由）

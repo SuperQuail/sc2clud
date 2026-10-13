@@ -59,7 +59,7 @@ export function parseQuery(input: string): ParsedQuery {
       free.push(word);
       continue;
     }
-    // author 以 @ 开头是习惯写法（author:@tangtian），去掉它更好匹配 handle
+    // author 以 @ 开头是习惯写法（author:@demo-marine），去掉它更好匹配 handle
     const value = key === 'author' ? word.slice(sep + 1).replace(/^@/, '') : word.slice(sep + 1);
     const token: QueryToken = { key, value, raw: word };
     tokens.push(token);

@@ -162,4 +162,26 @@ export const VERIFIED: VerifiedControl[] = [
   { name: 'notice-settings', path: '@/ui/message/notice-settings', page: '10-messages', verifiedOn: '2026-10-12', props: ['见组件注释：全部为数据驱动的通用 props'], notes: ['设置面板：模式驱动的 rows（radio/toggle/tags）'] },
   { name: 'notice-layout', path: '@/ui/message/notice-layout', page: '10-messages', verifiedOn: '2026-10-12', props: ['见组件注释：全部为数据驱动的通用 props'], notes: ['两栏骨架：nav + children'] },
   { name: 'topic-row', path: '@/ui/topic/topic-row', page: '11-profile', verifiedOn: '2026-10-12', props: ['topic: TopicRowData（id/title/tags/author/replies/views/lastReplyAt）'], notes: ['全站主题列表的唯一实现（分区页/搜索页/个人主页共用）；样板间里那份局部件应替换为它。'] },
+  {
+    name: 'password-field',
+    path: '@/ui/password-field',
+    page: '16-auth',
+    verifiedOn: '2026-10-13',
+    props: [
+      'label（必填）/ value + onChange（受控）',
+      'error / help：服务端 error.fields 与说明文案，直接喂 Input',
+      "name / placeholder / autoComplete（'off' | 'current-password' | 'new-password'，默认 'off'）",
+      '没有 size / height 参数：输入框固定 Size.FULL、眼睛固定 S 档（见 notes）',
+    ],
+    notes: [
+      '**为什么眼睛要绝对定位**：Ring 的 Input 没有尾部槽位（input.d.ts 只有前置 icon 与内建 clearButtonClassName），所以做法是「外层 relative + 给输入框留右内边距 + 绝对定位压上去」。',
+      '**垂直偏移是量出来的**：参照物是含 label 的外层容器，输入行距其顶部 20px = label 行盒 16px + .ring-control-label-label 的 margin-bottom 4px；help 与 error 都渲染在输入行**下方**，所以「有 label / 有 help / 有 error」三种情况量出来都是 20px —— 三种都成立才敢写死 top-[20px]。外层再套 h-7（= 输入行高 28px）做垂直居中，换 height 档位不必重算 top。',
+      "**右内边距必须 important**：inputClassName='pr-9!'（36px = 2px 缩进 + 28px 按钮 + 6px 间隙）。Ring 的 .ring-input-input 是**未分层** CSS，Tailwind 工具类在 @layer utilities 里，级联上未分层永远赢 —— 普通 pr-9 实测 padding-right 仍是库的 8px（45 位口令会跑到眼睛下面）。这一处用 !important 是有意的：库没给尾部槽位，右内边距是唯一能留位的手段。",
+      '**必须显式 inline={false}**：Ring 的 Button 只要带 icon 就默认 inline（button.js: isInline = inline ?? text ?? !!icon），.ring-button-inline 是 display:inline/padding:0/链接色，会**旁路 height**（实测恒为 24px 且看着像链接）。',
+      '**眼睛用 S 档（24px）**：输入行高 28px（Ring M），S 留出上下 2px，不贴边、不盖住输入框自己的边框与焦点环；M（28px）会与行等高，像嵌在框里的一块。',
+      "**autoComplete 默认 'off' 是给 DevRoom 演示页的**：那是公开部署的设计预览页，不该邀请密码管理器把访客真实口令填进来；**真页面**（routes/ 的登录/注册/重置）必须传 'current-password' / 'new-password'。演示页的调用点因此不传这个 prop —— 接线时别照抄演示页。",
+      '输入框固定 Size.FULL（库自带的 100%），别用 !w-full 压库样式；这样它与同表单其它输入框等宽（378）。',
+      '无障碍：aria-pressed 表达开关状态、aria-label/title 说明动作；Ring Button 是原生 <button>，Tab 可达、Enter/Space 可切换。眼睛不覆盖整行宽度，点输入区照常聚焦。',
+    ],
+  },
 ];

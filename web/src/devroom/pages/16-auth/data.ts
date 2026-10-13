@@ -66,13 +66,13 @@ export const FORGOT_SCENES: Array<Scene<ForgotScene>> = [
 /**
  * 页面里出现的假账号。
  *
- * ⚠️ **这里的每个值都必须是编的。** 2026-10-13：这个对象原来放的是 `tangtian@163.com`（真人的真实邮箱），
+ * ⚠️ **这里的每个值都必须是编的。** 2026-10-13：这个对象原来放的是某位社区成员的真实邮箱（从旧站截图抄来的），
  * 而它被构建进 bundle 后**公开部署在 /dev/devroom/** —— 一个真实邮箱挂在公网上会被爬去做垃圾邮件。
  * 注释当时还写着「邮箱是编的」，是假的。**往这个对象里填任何真实信息之前先想清楚它会被公开。**
  */
 export const MOCK_ACCOUNT = {
-  username: 'tangtian',
-  nickname: '唐天',
+  username: 'demo-admin',
+  nickname: '示范管理员',
   email: 'demo@example.com',
   /** 验证码有效期（§11.4） */
   codeTtlMinutes: 10,

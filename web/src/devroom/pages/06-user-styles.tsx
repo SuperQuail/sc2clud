@@ -8,13 +8,13 @@ import { VividButton } from '@/ui/vivid/button';
 // text-muted-foreground / bg-muted / border-border），需要偏离的地方用 dark: 变体（已接到 data-theme）。
 // 只有风格 2 是「无论昼夜都深色」——那是它的身份，属于设计选择而不是漏了夜间模式。
 const AUTHOR: UserSummary = {
-  handle: 'tangtian',
-  nickname: '唐天',
+  handle: 'demo-queen',
+  nickname: '虫后',
   avatar: assetUrl('miyin-portrait-320.webp'),
   role: { key: 'moderator', name: '版主' },
   title: { name: '执政官', color: '#2563eb' },
 };
-const REPLIER: UserSummary = { handle: 'linshi', nickname: '林诗', avatar: assetUrl('miyin-chibi-160.webp') };
+const REPLIER: UserSummary = { handle: 'demo-marine', nickname: '陆战队员', avatar: assetUrl('miyin-chibi-160.webp') };
 const COVER = assetUrl('starcraft/sc2-battle.webp');
 
 const POST = {

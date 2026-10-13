@@ -4,7 +4,7 @@ import Input, { Size } from '@jetbrains/ring-ui-built/components/input/input';
 import Checkbox from '@jetbrains/ring-ui-built/components/checkbox/checkbox';
 import { AuthShell } from './auth-shell';
 import { FormAlert } from './form-alert';
-import { PasswordField } from './password-field';
+import { PasswordField } from '@/ui/password-field';
 import { CaptchaField } from './captcha-field';
 import { ResendButton } from './resend-button';
 import { useCountdown } from './use-countdown';
@@ -149,7 +149,9 @@ export function LoginView({ scene, onScene, onView }: LoginViewProps) {
           value={password}
           onChange={setPassword}
           name='password'
-          autoComplete='current-password'
+          // DevRoom 是公开的设计预览页：**不传**凭据类 autoComplete（控件默认 'off'），
+          // 免得密码管理器把访客真实口令填进来。真页面（routes/）必须传
+          // 'current-password' / 'new-password'。
         />
         {scene === 'captcha' ? (
           <CaptchaField

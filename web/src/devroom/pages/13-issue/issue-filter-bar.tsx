@@ -108,7 +108,7 @@ export function IssueFilterBar({
       <Input
         value={query}
         onChange={(e) => onQuery(e.target.value)}
-        placeholder='搜索：标题、正文，或 is:open kind:bug label:界面 author:linshi'
+        placeholder='搜索：标题、正文，或 is:open kind:bug label:界面 author:demo-marine'
         aria-label='搜索反馈'
         inputRef={boxRef}
         icon={icon16(Search)}

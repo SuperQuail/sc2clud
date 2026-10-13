@@ -72,9 +72,9 @@ export function aclOf(boardId: string, roleId: string): BoardAcl {
 export type BoardModerator = { board_id: string; user: UserSummary; granted_at: string; expires_at: string | null };
 
 export const BOARD_MODERATORS: BoardModerator[] = [
-  { board_id: 'b_1', user: sum(u('helper')), granted_at: '2026-04-01T00:00:00Z', expires_at: null },
-  { board_id: 'b_1', user: sum(u('oldfriend')), granted_at: '2026-09-01T00:00:00Z', expires_at: '2026-12-01T15:59:59Z' },
-  { board_id: 'b_2', user: sum(u('mapmaker')), granted_at: '2026-02-10T00:00:00Z', expires_at: null },
+  { board_id: 'b_1', user: sum(u('demo-queen')), granted_at: '2026-04-01T00:00:00Z', expires_at: null },
+  { board_id: 'b_1', user: sum(u('demo-voidray')), granted_at: '2026-09-01T00:00:00Z', expires_at: '2026-12-01T15:59:59Z' },
+  { board_id: 'b_2', user: sum(u('demo-thor')), granted_at: '2026-02-10T00:00:00Z', expires_at: null },
 ];
 
 /** 帖子审核队列：topics.status ∈ pending / normal / rejected（DB §4.2）。 */
@@ -114,57 +114,57 @@ export type ReviewEvent = {
 export const REVIEW_QUEUE: ReviewItem[] = [
   {
     id: 'tp_01', title: '【战役】《灰烬余晖》第三章发布，共 12 关', board: { slug: 'campaign', name: '自制战役' },
-    kind: 'resource', author: sum(u('mapmaker')), author_trusted: true, created_at: '2026-10-12T11:02:00Z',
+    kind: 'resource', author: sum(u('demo-thor')), author_trusted: true, created_at: '2026-10-12T11:02:00Z',
     excerpt: '第三章加入了新的指挥官技能树与三个可选支线。安装方式见文末，压缩包内附校验值……',
     images: 4, state: 'pending', review_note: '', reviewer: null, reviewed_at: null,
     review_source: 'ai', review_verdict: 'review',
   },
   {
     id: 'tp_02', title: '关于合作模式 AI 波次缩放的几点想法', board: { slug: 'mapping', name: '地图制作' },
-    kind: 'discussion', author: sum(u('chenxi')), author_trusted: false, created_at: '2026-10-12T09:41:00Z',
+    kind: 'discussion', author: sum(u('demo-zealot')), author_trusted: false, created_at: '2026-10-12T09:41:00Z',
     excerpt: '我试着把波次数量做成随难度递增的曲线，但发现 8 分钟后的第一波会同时压到两个路口……',
     images: 1, state: 'pending', review_note: '', reviewer: null, reviewed_at: null,
     review_source: 'ai', review_verdict: 'review',
   },
   {
     id: 'tp_03', title: '免费领取优惠券，点击进入', board: { slug: 'meta', name: '站务讨论' },
-    kind: 'discussion', author: sum(u('adbot9000')), author_trusted: false, created_at: '2026-10-12T08:15:00Z',
+    kind: 'discussion', author: sum(u('demo-roach')), author_trusted: false, created_at: '2026-10-12T08:15:00Z',
     excerpt: '限时活动，先到先得……',
     images: 0, state: 'pending', review_note: '', reviewer: null, reviewed_at: null,
     review_source: null, review_verdict: 'review',
   },
   {
     id: 'tp_04', title: '【资源】高清地形纹理包 v3（含夜间变体）', board: { slug: 'resources', name: '资源分享' },
-    kind: 'resource', author: sum(u('artofwar')), author_trusted: true, created_at: '2026-10-11T20:30:00Z',
+    kind: 'resource', author: sum(u('demo-battlecruiser')), author_trusted: true, created_at: '2026-10-11T20:30:00Z',
     excerpt: '在 v2 基础上重做了 14 张地形贴图，新增夜间变体；体积从 480MB 降到 310MB……',
     images: 6, state: 'pending', review_note: '', reviewer: null, reviewed_at: null,
     review_source: 'ai', review_verdict: 'review',
   },
   {
     id: 'tp_05', title: '启动器 0.7.2 更新说明（外部直链）', board: { slug: 'announce', name: '公告与活动' },
-    kind: 'repost', author: sum(u('linkai')), author_trusted: true, created_at: '2026-10-11T02:10:00Z',
+    kind: 'repost', author: sum(u('demo-overseer')), author_trusted: true, created_at: '2026-10-11T02:10:00Z',
     excerpt: '本次更新修复了中文路径导致的校验失败……',
-    images: 0, state: 'normal', review_note: '', reviewer: sum(u('tangtian')), reviewed_at: '2026-10-11T02:20:00Z',
+    images: 0, state: 'normal', review_note: '', reviewer: sum(u('demo-admin')), reviewed_at: '2026-10-11T02:20:00Z',
     review_source: 'manual', review_verdict: 'approve',
   },
   {
     id: 'tp_06', title: '第一次做战役，请大佬看看方向对不对', board: { slug: 'campaign', name: '自制战役' },
-    kind: 'discussion', author: sum(u('rookie')), author_trusted: false, created_at: '2026-10-10T16:00:00Z',
+    kind: 'discussion', author: sum(u('demo-drone')), author_trusted: false, created_at: '2026-10-10T16:00:00Z',
     excerpt: '目前做了两关，主要是想让玩家在第二关自己发现基地被渗透……',
     images: 2, state: 'normal', review_note: '正常创作讨论，无违规特征。', reviewer: null, reviewed_at: '2026-10-10T17:12:00Z',
     review_source: 'ai', review_verdict: 'approve',
   },
   {
     id: 'tp_07', title: '出售代练账号，私聊', board: { slug: 'meta', name: '站务讨论' },
-    kind: 'discussion', author: sum(u('zergling')), author_trusted: false, created_at: '2026-10-09T12:00:00Z',
+    kind: 'discussion', author: sum(u('demo-infestor')), author_trusted: false, created_at: '2026-10-09T12:00:00Z',
     excerpt: '价格好商量……',
     images: 0, state: 'rejected', review_note: '违反站规第 4 条（交易账号），已拒绝并警告作者。',
-    reviewer: sum(u('tangtian')), reviewed_at: '2026-10-09T12:30:00Z',
+    reviewer: sum(u('demo-admin')), reviewed_at: '2026-10-09T12:30:00Z',
     review_source: 'manual', review_verdict: 'reject',
   },
   {
     id: 'tp_08', title: '自制的合作指挥官：斯台特曼改版', board: { slug: 'resources', name: '资源分享' },
-    kind: 'resource', author: sum(u('silentsheep')), author_trusted: false, created_at: '2026-10-08T03:00:00Z',
+    kind: 'resource', author: sum(u('demo-ghost')), author_trusted: false, created_at: '2026-10-08T03:00:00Z',
     excerpt: '技能数值还没调好，先发出来征求意见……',
     images: 3, state: 'rejected', review_note: '正文只有一句话，且附带了未授权的素材网盘链接，请补充安装说明与来源。',
     reviewer: null, reviewed_at: '2026-10-08T09:40:00Z',
@@ -191,35 +191,35 @@ export type ReportItem = {
 export const REPORTS: ReportItem[] = [
   {
     id: 'rp_01', target_type: 'topic', target_label: '免费领取优惠券，点击进入', board: { slug: 'meta', name: '站务讨论' },
-    reason: 'spam', detail: '同一个账号在两小时内发了 14 条同样的内容。', reporter: sum(u('chenxi')),
+    reason: 'spam', detail: '同一个账号在两小时内发了 14 条同样的内容。', reporter: sum(u('demo-zealot')),
     created_at: '2026-10-12T08:20:00Z', state: 'open', handler: null, handled_at: null, handle_note: '',
   },
   {
     id: 'rp_02', target_type: 'post', target_label: '回复 #42：你这种玩法就是菜', board: { slug: 'campaign', name: '自制战役' },
-    reason: 'abuse', detail: '人身攻击，已经不是第一次了。', reporter: sum(u('mapmaker')),
+    reason: 'abuse', detail: '人身攻击，已经不是第一次了。', reporter: sum(u('demo-thor')),
     created_at: '2026-10-12T07:05:00Z', state: 'open', handler: null, handled_at: null, handle_note: '',
   },
   {
     id: 'rp_03', target_type: 'topic', target_label: '【资源】高清地形纹理包 v3（含夜间变体）', board: { slug: 'resources', name: '资源分享' },
-    reason: 'illegal', detail: '压缩包里疑似带了其它作者的付费素材。', reporter: sum(u('oldfriend')),
+    reason: 'illegal', detail: '压缩包里疑似带了其它作者的付费素材。', reporter: sum(u('demo-voidray')),
     created_at: '2026-10-11T23:40:00Z', state: 'open', handler: null, handled_at: null, handle_note: '',
   },
   {
     id: 'rp_04', target_type: 'topic', target_label: '启动器 0.7.2 更新说明（外部直链）', board: { slug: 'announce', name: '公告与活动' },
-    reason: 'offtopic', detail: '公告区不应该出现下载讨论。', reporter: sum(u('zhangwei')),
-    created_at: '2026-10-11T03:00:00Z', state: 'handled', handler: sum(u('tangtian')), handled_at: '2026-10-11T03:30:00Z',
+    reason: 'offtopic', detail: '公告区不应该出现下载讨论。', reporter: sum(u('demo-hydralisk')),
+    created_at: '2026-10-11T03:00:00Z', state: 'handled', handler: sum(u('demo-admin')), handled_at: '2026-10-11T03:30:00Z',
     handle_note: '与作者确认后保留：直链属启动器正式发布内容。',
   },
   {
-    id: 'rp_05', target_type: 'user', target_label: '@zergling（小狗快跑）', board: null,
-    reason: 'spam', detail: '私信里发外站推广。', reporter: sum(u('chenxi')),
-    created_at: '2026-10-10T14:00:00Z', state: 'handled', handler: sum(u('tangtian')), handled_at: '2026-10-10T14:20:00Z',
+    id: 'rp_05', target_type: 'user', target_label: '@demo-infestor（感染虫）', board: null,
+    reason: 'spam', detail: '私信里发外站推广。', reporter: sum(u('demo-zealot')),
+    created_at: '2026-10-10T14:00:00Z', state: 'handled', handler: sum(u('demo-admin')), handled_at: '2026-10-10T14:20:00Z',
     handle_note: '已按站规封号（users.status=banned），并记入审计。',
   },
   {
     id: 'rp_06', target_type: 'post', target_label: '回复 #7：这地图也太简单了吧', board: { slug: 'mapping', name: '地图制作' },
-    reason: 'abuse', detail: '语气不好但没骂人。', reporter: sum(u('rookie')),
-    created_at: '2026-10-09T10:00:00Z', state: 'dismissed', handler: sum(u('helper')), handled_at: '2026-10-09T11:00:00Z',
+    reason: 'abuse', detail: '语气不好但没骂人。', reporter: sum(u('demo-drone')),
+    created_at: '2026-10-09T10:00:00Z', state: 'dismissed', handler: sum(u('demo-queen')), handled_at: '2026-10-09T11:00:00Z',
     handle_note: '不构成违规，驳回举报。',
   },
 ];
@@ -248,7 +248,7 @@ export const REVIEW_EVENTS: Record<string, ReviewEvent[]> = {
       reason: '正文含网盘直链与提取码，需人工确认无侵权与无引流。', created_at: '2026-10-11T20:31:00Z' },
   ],
   tp_05: [
-    { id: 'ev_5_2', trigger: 'manual', source: 'manual', verdict: 'approve', model: '', latency_ms: 0, actor: sum(u('tangtian')),
+    { id: 'ev_5_2', trigger: 'manual', source: 'manual', verdict: 'approve', model: '', latency_ms: 0, actor: sum(u('demo-admin')),
       reason: '与作者确认后放行：直链属启动器正式发布内容。', created_at: '2026-10-11T02:20:00Z' },
     { id: 'ev_5_1', trigger: 'create', source: 'ai', verdict: 'approve', model: 'deepseek-chat', latency_ms: 700, actor: null,
       reason: '正常发布说明，无违规特征。', created_at: '2026-10-11T02:10:20Z' },
@@ -258,7 +258,7 @@ export const REVIEW_EVENTS: Record<string, ReviewEvent[]> = {
       reason: '正常创作讨论，无违规特征；作者 trusted=false，由 AI 自动放行。', created_at: '2026-10-10T16:01:00Z' },
   ],
   tp_07: [
-    { id: 'ev_7_2', trigger: 'manual', source: 'manual', verdict: 'reject', model: '', latency_ms: 0, actor: sum(u('tangtian')),
+    { id: 'ev_7_2', trigger: 'manual', source: 'manual', verdict: 'reject', model: '', latency_ms: 0, actor: sum(u('demo-admin')),
       reason: '违反站规第 4 条（交易账号），拒绝并警告作者。', created_at: '2026-10-09T12:30:00Z' },
     { id: 'ev_7_1', trigger: 'create', source: 'ai', verdict: 'review', model: 'deepseek-chat', latency_ms: 990, actor: null,
       reason: '疑似站外交易，但表述含糊，转人工确认。', created_at: '2026-10-09T12:02:00Z' },

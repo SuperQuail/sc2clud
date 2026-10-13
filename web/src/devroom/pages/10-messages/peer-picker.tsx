@@ -49,7 +49,7 @@ export function PeerPicker({
           value={q}
           onChange={(e) => setQ(e.target.value)}
           label='搜索昵称或 handle'
-          placeholder='例：次寻白 或 cixunbai'
+          placeholder='例：陆战队员 或 demo-marine'
           icon={icon16(Search)}
           autoFocus
         />

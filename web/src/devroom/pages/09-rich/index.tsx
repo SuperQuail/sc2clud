@@ -10,10 +10,10 @@ import { countImageNodes } from '@/ui/rich/lexical/image-node';
 // DevRoom 09 · 富文本编辑器与图片上传（两个高复用控件）
 // 图片能力全部由属性控制：max（默认 10）、compress（默认开）、allowOriginal（默认关）。
 const CANDIDATES = [
-  { id: '12', nickname: '唐天', handle: 'tangtian', role: { key: 'admin', name: '管理员' } },
-  { id: '37', nickname: '林诗', handle: 'linshi', role: { key: 'creator', name: '认证创作者' } },
-  { id: '58', nickname: '某小X', handle: 'xiaox' },
-  { id: '91', nickname: '唐天（同名）', handle: 'tangtian2', duplicate: true },
+  { id: '12', nickname: '示范管理员', handle: 'demo-admin', role: { key: 'admin', name: '管理员' } },
+  { id: '37', nickname: '雷神', handle: 'demo-thor', role: { key: 'creator', name: '认证创作者' } },
+  { id: '58', nickname: '陆战队员', handle: 'demo-marine' },
+  { id: '91', nickname: '陆战队员（同名）', handle: 'demo-marine-2', duplicate: true },
 ];
 
 export default function RichPage() {

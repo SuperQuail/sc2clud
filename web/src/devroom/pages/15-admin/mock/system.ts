@@ -30,20 +30,20 @@ export type MailAccount = {
 export const MAIL_ACCOUNTS: MailAccount[] = [
   {
     id: 'ma_1', name: 'resend-main', provider: 'resend', priority: 100, daily_limit: 3000, sent_today: 412,
-    from_address: 'noreply@sc2clud.cn', from_name: 'SC2clud', enabled: true, status: 'active',
+    from_address: 'noreply@example.com', from_name: 'SC2clud', enabled: true, status: 'active',
     secret_configured: true, secret_updated_at: '2026-09-20T02:00:00Z',
     last_ok_at: '2026-10-12T13:20:00Z', last_error: null, last_error_at: null,
   },
   {
     id: 'ma_2', name: 'smtp-backup', provider: 'smtp', priority: 50, daily_limit: 500, sent_today: 0,
-    from_address: 'mail@sc2clud.cn', from_name: 'SC2clud 备用', enabled: true, status: 'active',
+    from_address: 'mail@example.com', from_name: 'SC2clud 备用', enabled: true, status: 'active',
     secret_configured: true, secret_updated_at: '2026-08-11T06:30:00Z',
     last_ok_at: '2026-10-01T09:00:00Z',
     last_error: '535 authentication failed（密码已轮换，待更新）', last_error_at: '2026-10-09T18:40:00Z',
   },
   {
     id: 'ma_3', name: 'old-sendgrid', provider: 'smtp', priority: 10, daily_limit: 200, sent_today: 0,
-    from_address: 'noreply@mail.sc2clud.cn', from_name: 'SC2clud 旧通道', enabled: false, status: 'archived',
+    from_address: 'noreply@mail.example.com', from_name: 'SC2clud 旧通道', enabled: false, status: 'archived',
     secret_configured: false, secret_updated_at: null,
     last_ok_at: '2026-03-02T01:00:00Z', last_error: '供应商已下线', last_error_at: '2026-03-02T01:00:00Z',
   },
@@ -77,9 +77,9 @@ export const SITE_SETTINGS: SiteSetting[] = [
 export type SiteDomain = { domain: string; is_primary: boolean };
 
 export const SITE_DOMAINS: SiteDomain[] = [
-  { domain: 'sc2clud.cn', is_primary: true },
-  { domain: 'www.sc2clud.cn', is_primary: false },
-  { domain: 'dev.sc2clud.cn', is_primary: false },
+  { domain: 'sc2clud.example', is_primary: true },
+  { domain: 'www.sc2clud.example', is_primary: false },
+  { domain: 'dev.sc2clud.example', is_primary: false },
 ];
 
 // 审计日志（DB §4.1 audit_logs）。escalation = 提权类，9.8 要求这类操作必须留痕。
@@ -115,18 +115,18 @@ export const ESCALATION_ACTIONS = [
 ];
 
 export const AUDIT_LOGS: AuditLog[] = [
-  { id: 'al_01', actor: sum(u('tangtian')), action: 'user.ban', target_type: 'user', target_id: 'u_03', detail: 'status: active → banned；原因：刷屏推广外站', ip: '203.0.113.24', created_at: '2026-10-10T14:20:00Z' },
-  { id: 'al_02', actor: sum(u('tangtian')), action: 'reward.verify', target_type: 'reward', target_id: 'rw_05', detail: 'state: pending → approved；amount_cents: 5000', ip: '203.0.113.24', created_at: '2026-10-05T13:00:00Z' },
-  { id: 'al_03', actor: sum(u('linkai')), action: 'user.permission.grant', target_type: 'user', target_id: 'u_01', detail: 'permissions: +user.ban, +board.manage；expires_at: null；reason: 值班管理员', ip: '198.51.100.7', created_at: '2026-10-01T02:00:00Z' },
-  { id: 'al_04', actor: sum(u('linkai')), action: 'role.edit', target_type: 'role', target_id: 'r_moderator', detail: 'permissions: +post.lock（矩阵变更）', ip: '198.51.100.7', created_at: '2026-09-28T08:12:00Z' },
-  { id: 'al_05', actor: sum(u('tangtian')), action: 'board.acl.update', target_type: 'board', target_id: 'b_5', detail: 'role r_creator: deny_reply false → true', ip: '203.0.113.24', created_at: '2026-09-25T10:40:00Z' },
-  { id: 'al_06', actor: sum(u('linkai')), action: 'board.moderate.grant', target_type: 'board', target_id: 'b_1', detail: 'user u_12（老友记）granted；expires_at: 2026-12-01', ip: '198.51.100.7', created_at: '2026-09-01T00:00:00Z' },
-  { id: 'al_07', actor: sum(u('tangtian')), action: 'site.setting.update', target_type: 'site', target_id: 'donation.notice_default', detail: 'value: （旧文案） → （新文案）', ip: '203.0.113.24', created_at: '2026-08-30T06:00:00Z' },
-  { id: 'al_08', actor: sum(u('linkai')), action: 'mail.account.update', target_type: 'mail_account', target_id: 'ma_2', detail: 'enabled: true；secret 轮换失败（535）', ip: '198.51.100.7', created_at: '2026-08-11T06:30:00Z' },
-  { id: 'al_09', actor: sum(u('tangtian')), action: 'report.handle', target_type: 'report', target_id: 'rp_05', detail: 'state: open → handled；note: 已封号', ip: '203.0.113.24', created_at: '2026-10-10T14:18:00Z' },
-  { id: 'al_10', actor: sum(u('tangtian')), action: 'title.grant', target_type: 'user', target_id: 'u_08', detail: 'title: campaign_author（战役作者）', ip: '203.0.113.24', created_at: '2026-07-02T05:00:00Z' },
+  { id: 'al_01', actor: sum(u('demo-admin')), action: 'user.ban', target_type: 'user', target_id: 'u_03', detail: 'status: active → banned；原因：刷屏推广外站', ip: '203.0.113.24', created_at: '2026-10-10T14:20:00Z' },
+  { id: 'al_02', actor: sum(u('demo-admin')), action: 'reward.verify', target_type: 'reward', target_id: 'rw_05', detail: 'state: pending → approved；amount_cents: 5000', ip: '203.0.113.24', created_at: '2026-10-05T13:00:00Z' },
+  { id: 'al_03', actor: sum(u('demo-overseer')), action: 'user.permission.grant', target_type: 'user', target_id: 'u_01', detail: 'permissions: +user.ban, +board.manage；expires_at: null；reason: 值班管理员', ip: '198.51.100.7', created_at: '2026-10-01T02:00:00Z' },
+  { id: 'al_04', actor: sum(u('demo-overseer')), action: 'role.edit', target_type: 'role', target_id: 'r_moderator', detail: 'permissions: +post.lock（矩阵变更）', ip: '198.51.100.7', created_at: '2026-09-28T08:12:00Z' },
+  { id: 'al_05', actor: sum(u('demo-admin')), action: 'board.acl.update', target_type: 'board', target_id: 'b_5', detail: 'role r_creator: deny_reply false → true', ip: '203.0.113.24', created_at: '2026-09-25T10:40:00Z' },
+  { id: 'al_06', actor: sum(u('demo-overseer')), action: 'board.moderate.grant', target_type: 'board', target_id: 'b_1', detail: 'user u_12（虚空辉光舰）granted；expires_at: 2026-12-01', ip: '198.51.100.7', created_at: '2026-09-01T00:00:00Z' },
+  { id: 'al_07', actor: sum(u('demo-admin')), action: 'site.setting.update', target_type: 'site', target_id: 'donation.notice_default', detail: 'value: （旧文案） → （新文案）', ip: '203.0.113.24', created_at: '2026-08-30T06:00:00Z' },
+  { id: 'al_08', actor: sum(u('demo-overseer')), action: 'mail.account.update', target_type: 'mail_account', target_id: 'ma_2', detail: 'enabled: true；secret 轮换失败（535）', ip: '198.51.100.7', created_at: '2026-08-11T06:30:00Z' },
+  { id: 'al_09', actor: sum(u('demo-admin')), action: 'report.handle', target_type: 'report', target_id: 'rp_05', detail: 'state: open → handled；note: 已封号', ip: '203.0.113.24', created_at: '2026-10-10T14:18:00Z' },
+  { id: 'al_10', actor: sum(u('demo-admin')), action: 'title.grant', target_type: 'user', target_id: 'u_08', detail: 'title: campaign_author（战役作者）', ip: '203.0.113.24', created_at: '2026-07-02T05:00:00Z' },
   { id: 'al_11', actor: null, action: 'user.permission.revoke', target_type: 'user', target_id: 'u_07', detail: '系统任务：回收已过期追加权限 post.review', ip: '127.0.0.1', created_at: '2026-10-01T00:05:00Z' },
-  { id: 'al_12', actor: sum(u('linkai')), action: 'user.role.change', target_type: 'user', target_id: 'u_04', detail: 'role: user → creator（认证通过）', ip: '198.51.100.7', created_at: '2026-06-20T09:00:00Z' },
+  { id: 'al_12', actor: sum(u('demo-overseer')), action: 'user.role.change', target_type: 'user', target_id: 'u_04', detail: 'role: user → creator（认证通过）', ip: '198.51.100.7', created_at: '2026-06-20T09:00:00Z' },
 ];
 
 // 自检面板（13.12 / §21.2 GET /admin/diagnostics：site.setting 且 debug 开关打开）

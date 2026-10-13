@@ -19,7 +19,10 @@ export function AuthorCard({ author }: { author: TopicAuthor }) {
           layout='stacked'
           size='xl'
           showHandle
-          badges='after'
+          {/* badges='below' 而不是 'after'：假名单里的昵称变长了（「示范管理员」「虚空辉光舰」），
+              inline 排法下昵称的可读宽度被角色/头衔徽标挤掉，会截成「示…」；
+              徽标换到名字下一行后昵称独占整行（截图发现的，不是猜的）。 */}
+          badges='below'
         />
       </div>
 

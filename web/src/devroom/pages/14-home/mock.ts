@@ -31,20 +31,23 @@ export type Topic = {
 export type BoardFilter = { key: string; label: string; count: number };
 
 const AV = {
-  tang: assetUrl('miyin-portrait-160.webp'),
+  portrait: assetUrl('miyin-portrait-160.webp'),
   chibi: assetUrl('miyin-chibi-160.webp'),
   smile: assetUrl('miyin/smile-160.webp'),
   genius: assetUrl('miyin/genius-160.webp'),
   wink: assetUrl('miyin/wink-520.webp'),
 };
 
+// 作者一律取自 完全重构/DevRoom-假数据规范.md 的统一名单：DevRoom 公开部署（无鉴权），
+// mock 会进 bundle —— 不许出现真实社区成员。里面故意留了长昵称（虚空辉光舰）与无头像的（走首字兜底），
+// 用来验证「名字长了会不会把卡片撑破」。
 const U = {
-  tang: { handle: 'tangtian', nickname: '唐天', avatar: AV.tang },
-  lin: { handle: 'linshi', nickname: '林诗', avatar: AV.chibi },
-  ye: { handle: 'yehangxing', nickname: '夜航星', avatar: AV.smile },
-  mo: { handle: 'moxiaox', nickname: '某小X', avatar: AV.genius },
-  xin: { handle: 'xinlaide', nickname: '新来的', avatar: AV.wink },
-  hai: { handle: 'hainei', nickname: '海内客', avatar: null },
+  admin: { handle: 'demo-admin', nickname: '示范管理员', avatar: AV.portrait },
+  marine: { handle: 'demo-marine', nickname: '陆战队员', avatar: AV.chibi },
+  zealot: { handle: 'demo-zealot', nickname: '狂热者', avatar: AV.smile },
+  battlecruiser: { handle: 'demo-battlecruiser', nickname: '大和号', avatar: AV.genius },
+  drone: { handle: 'demo-drone', nickname: '工蜂', avatar: AV.wink },
+  voidray: { handle: 'demo-voidray', nickname: '虚空辉光舰', avatar: null },
 } satisfies Record<string, UserSummary>;
 
 // 封面素材（public/art 下真的存在且能解码的图）。只挑够大的：
@@ -91,84 +94,84 @@ export const TOPICS: Topic[] = [
     id: '0192f0a1', board: { slug: 'campaign', name: '自制战役' }, kind: 'resource',
     title: '《余烬》第三章完整版发布：4 关战役 + 全语音 + 中英双语',
     excerpt: '三个月打磨的第三章今天上线。四关战役、9 段过场、全语音，安装包与更新说明都在帖子里。',
-    author: U.tang, reply_count: 128, like_count: 96, view_count: 4203,
+    author: U.admin, reply_count: 128, like_count: 96, view_count: 4203,
     created_at: ago(2880), last_reply_at: ago(3), cover: COVERS.battle, pinned: true, featured_at: '精华',
   },
   {
     id: '0192f0a2', board: { slug: 'terrain', name: '地图与地形' }, kind: 'discussion',
     title: '菌毯推进的手感是怎么调出来的？聊聊触发器与装饰物的配合',
     excerpt: '很多人问菌毯为什么看起来在「生长」而不是整片刷出来。核心是分块延迟 + 装饰物动画，不是特效。',
-    author: U.lin, reply_count: 64, like_count: 51, view_count: 3310,
+    author: U.marine, reply_count: 64, like_count: 51, view_count: 3310,
     created_at: ago(1440), last_reply_at: ago(26), cover: COVERS.wink,
   },
   {
     id: '0192f0a3', board: { slug: 'art', name: '美术与素材' }, kind: 'resource',
     title: '自制战役常用图标包 v3（重绘 128 个技能与单位图标）',
     excerpt: '统一描边、统一视角的一套图标，含 DDS 与 PNG 两种格式，附命名规范与授权说明。',
-    author: U.mo, reply_count: 42, like_count: 77, view_count: 1180,
+    author: U.battlecruiser, reply_count: 42, like_count: 77, view_count: 1180,
     created_at: ago(4320), last_reply_at: ago(95), cover: COVERS.welcome, featured_at: '精华',
   },
   {
     id: '0192f0a4', board: { slug: 'data', name: '数据与代码' }, kind: 'discussion',
     title: '触发器里做「动态难度」的三种写法，以及各自的性能代价',
     excerpt: '用周期事件轮询、用伤害事件回调、用自定义值缓存，实测在 200 单位规模下的帧率差别。',
-    author: U.ye, reply_count: 37, like_count: 29, view_count: 962,
+    author: U.zealot, reply_count: 37, like_count: 29, view_count: 962,
     created_at: ago(600), last_reply_at: ago(140), cover: COVERS.portrait,
   },
   {
     id: '0192f0a5', board: { slug: 'help', name: '求助答疑' }, kind: 'discussion',
     title: '导入自定义模型后角色变成紫色方块，是贴图路径还是材质的问题？',
     excerpt: '模型能进编辑器、能放进地图，但一进游戏就是紫方块。已经确认贴图是 DDS 且路径没中文。',
-    author: U.xin, reply_count: 18, like_count: 4, view_count: 420,
+    author: U.drone, reply_count: 18, like_count: 4, view_count: 420,
     created_at: ago(300), last_reply_at: ago(55), cover: null,
   },
   {
     id: '0192f0a6', board: { slug: 'campaign', name: '自制战役' }, kind: 'repost',
     title: '转载：国外作者 Kaldor 的「星海边境」第一章汉化版',
     excerpt: '已获得作者授权转载与汉化。文本量约 1.2 万字，欢迎校对，错别字直接回复即可。',
-    author: U.hai, reply_count: 23, like_count: 15, view_count: 640,
+    author: U.voidray, reply_count: 23, like_count: 15, view_count: 640,
     created_at: ago(2000), last_reply_at: ago(210), cover: COVERS.unavailable,
   },
   {
     id: '0192f0a7', board: { slug: 'terrain', name: '地图与地形' }, kind: 'resource',
     title: '沙漠地形包：可复用的 12 个崖体组件与 3 套光照预设',
     excerpt: '按「崖体拼接」的思路做的组件，拖进地图就能连成连续山脊；光照预设直接开箱可用。',
-    author: U.lin, reply_count: 31, like_count: 44, view_count: 890,
+    author: U.marine, reply_count: 31, like_count: 44, view_count: 890,
     created_at: ago(5200), last_reply_at: ago(300), cover: COVERS.wink,
   },
   {
     id: '0192f0a8', board: { slug: 'tool', name: '工具与插件' }, kind: 'resource',
     title: '汉化补丁生成器 0.9：从 GameStrings 自动产出对照表',
     excerpt: '扫描地图内的 GameStrings.txt，生成可直接翻译的对照表并回填；支持增量更新。',
-    author: U.ye, reply_count: 12, like_count: 33, view_count: 512,
+    author: U.zealot, reply_count: 12, like_count: 33, view_count: 512,
     created_at: ago(700), last_reply_at: ago(420), cover: COVERS.welcome,
   },
   {
     id: '0192f0a9', board: { slug: 'data', name: '数据与代码' }, kind: 'discussion',
     title: '同一张地图里同时存在合作指挥官与战役科技，会不会互相污染？',
     excerpt: '实验结论：需要给两套数据各自独立的目录与升级项，否则玩家的科技状态会串到另一套里。',
-    author: U.mo, reply_count: 26, like_count: 19, view_count: 733,
+    author: U.battlecruiser, reply_count: 26, like_count: 19, view_count: 733,
     created_at: ago(2600), last_reply_at: ago(500), cover: null,
   },
   {
     id: '0192f0aa', board: { slug: 'art', name: '美术与素材' }, kind: 'discussion',
     title: '战役过场里的镜头语言：三种便宜又有效的做法',
     excerpt: '不做电影化渲染也能有叙事感：用镜头推近、用单位朝向引导视线、用环境音过渡。',
-    author: U.tang, reply_count: 48, like_count: 62, view_count: 1520,
+    author: U.admin, reply_count: 48, like_count: 62, view_count: 1520,
     created_at: ago(3800), last_reply_at: ago(660), cover: COVERS.battle,
   },
   {
     id: '0192f0ab', board: { slug: 'help', name: '求助答疑' }, kind: 'discussion',
     title: '银行存档在多人模式下不同步，有排查思路吗？',
     excerpt: '本地单机存档正常，一进多人房间进度就各存各的。已排除版本不一致的可能。',
-    author: U.xin, reply_count: 9, like_count: 2, view_count: 288,
+    author: U.drone, reply_count: 9, like_count: 2, view_count: 288,
     created_at: ago(120), last_reply_at: ago(40), cover: null,
   },
   {
     id: '0192f0ac', board: { slug: 'campaign', name: '自制战役' }, kind: 'repost',
     title: '转载：老站「自制战役索引帖」里的 30 张经典地图链接整理',
     excerpt: '把老索引帖里还能下载的地图重新核对了一遍，失效链接已标注替代地址。',
-    author: U.hai, reply_count: 15, like_count: 21, view_count: 476,
+    author: U.voidray, reply_count: 15, like_count: 21, view_count: 476,
     created_at: ago(9000), last_reply_at: ago(1200), cover: COVERS.unavailable,
   },
 ];

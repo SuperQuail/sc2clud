@@ -77,10 +77,10 @@ export default function MessagesPage() {
       {panel === 'replies' ? (
         <NoticeList title='回复我的' hint='共 2 条'>
           <NoticeRow
-            actors={[{ nickname: '长司青' }]}
+            actors={[{ nickname: '虫后' }]}
             action='回复了我的评论'
-            body='回复 @Minecraft唐天：牛是谁，好奇请问一下'
-            excerpt='Minecraft唐天：还有牛的事[笑哭] 不过牛对月枫确实够意思'
+            body='回复 @陆战队员：菌毯推进那套触发器能开源吗'
+            excerpt='陆战队员：那张沙漠地形包我用了，崖体拼接很顺'
             time='2026年10月11日 19:20'
             actions={[
               { key: 'reply', label: '回复', icon: MessageSquare, onClick: () => {} },
@@ -88,10 +88,10 @@ export default function MessagesPage() {
             ]}
           />
           <NoticeRow
-            actors={[{ nickname: '林星尹', avatar: assetUrl('miyin-wink-260.webp') }]}
+            actors={[{ nickname: '刺蛇', avatar: assetUrl('miyin-wink-260.webp') }]}
             action='回复了我的评论'
-            body='回复 @Minecraft唐天：牛哥跟月枫结婚的时候记得来[汤圆]'
-            excerpt='Minecraft唐天：还有牛的事[笑哭] 不过牛对月枫确实够意思'
+            body='回复 @陆战队员：第三章的空投提示我按你的改了'
+            excerpt='陆战队员：那张沙漠地形包我用了，崖体拼接很顺'
             time='2026年10月10日 00:19'
             actions={[
               { key: 'reply', label: '回复', icon: MessageSquare, onClick: () => {} },
@@ -104,9 +104,9 @@ export default function MessagesPage() {
       {panel === 'mentions' ? (
         <NoticeList title='@ 我的' hint='共 1 条'>
           <NoticeRow
-            actors={[{ nickname: '秋枫了鸦' }]}
+            actors={[{ nickname: '狂热者' }]}
             action='在评论中@了我'
-            body='@废黄书 @起航之银lsitian @Minecraft唐天 @御坂14831号 @云隐dayo'
+            body='@工蜂 @虚空辉光舰 @陆战队员 @感染虫 @幽灵特工'
             time='2026年10月9日 20:17'
             actions={[{ key: 'reply', label: '回复', icon: MessageSquare, onClick: () => {} }]}
           />
@@ -116,12 +116,12 @@ export default function MessagesPage() {
       {panel === 'likes' ? (
         <NoticeList title='收到的赞' hint='共 3 条'>
           <NoticeRow
-            actors={[{ nickname: '台风法修' }, { nickname: '佚名用户xxx' }]}
+            actors={[{ nickname: '医疗兵' }, { nickname: '大和号' }]}
             action='等总计 1321 人赞了我的评论'
             time='今天 20:26'
           />
           <NoticeRow
-            actors={[{ nickname: 'Charles-坏坏' }, { nickname: '哈哈哈哈在吃鸽子' }]}
+            actors={[{ nickname: '雷神' }, { nickname: '不朽者' }]}
             action='等总计 13 人赞了我的评论'
             time='今天 19:48'
             actions={[
@@ -130,7 +130,7 @@ export default function MessagesPage() {
             ]}
           />
           <NoticeRow
-            actors={[{ nickname: '冰绒の某猫' }, { nickname: 'little白团子' }]}
+            actors={[{ nickname: '科学球' }, { nickname: '飞龙' }]}
             action='等总计 73 人赞了我的评论'
             time='今天 19:34'
           />
@@ -154,7 +154,7 @@ export default function MessagesPage() {
               <span className='text-[13px] tabular-nums text-muted-foreground'>2025年12月1日 06:11</span>
             </span>
             <p className='text-[15px] leading-[1.6] text-foreground'>
-              您好，您在 BV11KSkBjEq6 下评论被举报涉嫌违规，经核实已被移除。请自觉遵守社区公约，良好的社区氛围需要大家一起维护。
+              您好，您在主题 0192f0a1（自定义地图的触发器写法）下的评论被举报涉嫌违规，经核实已被移除。请自觉遵守社区公约，良好的社区氛围需要大家一起维护。
               <a href={appPath('rules')} className='ml-1 rounded-[3px] text-primary outline-none hover:underline focus-visible:ring-[3px] focus-visible:ring-ring/50'>查看详情</a>
             </p>
           </div>

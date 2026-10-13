@@ -4,7 +4,7 @@ import Input, { Size } from '@jetbrains/ring-ui-built/components/input/input';
 import { AuthShell } from './auth-shell';
 import { FormAlert } from './form-alert';
 import { CodeField } from './code-field';
-import { PasswordField } from './password-field';
+import { PasswordField } from '@/ui/password-field';
 import { ResendButton } from './resend-button';
 import { useCountdown } from './use-countdown';
 import { COPY, MOCK_ACCOUNT, type AuthView, type ForgotScene } from './data';
@@ -138,14 +138,18 @@ export function ForgotView({ scene, onScene, onView }: ForgotViewProps) {
           onChange={setPassword}
           help='8-128 位；不要和旧密码相同'
           name='new-password'
-          autoComplete='new-password'
+          // DevRoom 是公开的设计预览页：**不传**凭据类 autoComplete（控件默认 'off'），
+          // 免得密码管理器把访客真实口令填进来。真页面（routes/）必须传
+          // 'current-password' / 'new-password'。
         />
         <PasswordField
           label='确认新密码'
           value={confirm}
           onChange={setConfirm}
           name='confirm-password'
-          autoComplete='new-password'
+          // DevRoom 是公开的设计预览页：**不传**凭据类 autoComplete（控件默认 'off'），
+          // 免得密码管理器把访客真实口令填进来。真页面（routes/）必须传
+          // 'current-password' / 'new-password'。
           placeholder='再输一遍'
         />
         <Button type='submit' primary inline={false} disabled={busy || retry.left > 0} loader={busy} className='w-full'>

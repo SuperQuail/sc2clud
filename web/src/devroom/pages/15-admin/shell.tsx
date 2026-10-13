@@ -32,9 +32,9 @@ export function AdminShell({ screen, onScreen, meExtra, children }: {
           </Breadcrumbs>
         </span>
         <div className='flex items-center gap-2 rounded-md border border-border bg-card px-2 py-1'>
-          <UserAvatar name='唐恬' size='sm' />
+          <UserAvatar name='示范管理员' size='sm' />
           <span className='flex flex-col leading-tight'>
-            <Username nickname='唐恬' handle='tangtian' badge='none' size='sm' strong />
+            <Username nickname='示范管理员' handle='demo-admin' badge='none' size='sm' strong />
             <span className='text-[11px] text-muted-foreground'>当前管理员 · 基线角色</span>
           </span>
           <RoleBadge role={{ key: 'admin', name: '管理员', color: '#7c3aed' }} />

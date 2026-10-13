@@ -80,26 +80,30 @@ export const BOARD_NAV: BoardNav[] = [
   { key: 'announcement', label: '公告', count: 34 },
 ];
 
-const TANG = {
-  handle: 'tangtian',
-  nickname: '唐天',
+// 假名单来自 完全重构/DevRoom-假数据规范.md（**唯一一份，不要自己另编**）：
+// 昵称用星际争霸兵种名（通用词汇、不指向任何人），handle 一律 demo- 前缀。
+// 常量名沿用旧名（TANG 等）会误导后来人，但改名要动 5 个文件的 import —— 值已经全是假数据，
+// 名字留在这一版里，改名的重命名由 Lead 统一排（本任务是隐私清理，不是重构）。
+const ADMIN = {
+  handle: 'demo-admin',
+  nickname: '示范管理员',
   avatar: A('miyin-portrait-320.webp'),
   role: { key: 'admin', name: '管理员' },
   title: { name: '执政官', color: '#2563eb' },
 };
 
 /** 当前登录者（GET /api/v1/me 的最小一份）：评论框与「我的」标记用 */
-export const MY_ACCOUNT = { nickname: '林诗', avatar: A('miyin-chibi-160.webp') };
+export const MY_ACCOUNT = { nickname: '陆战队员', avatar: A('miyin-chibi-160.webp') };
 
 export const CANDIDATES: MentionCandidate[] = [
-  { id: '12', nickname: '唐天', handle: 'tangtian', avatar: TANG.avatar, role: { key: 'admin', name: '管理员' } },
-  { id: '37', nickname: '林诗', handle: 'linshi', avatar: MY_ACCOUNT.avatar, role: { key: 'creator', name: '认证创作者' } },
-  { id: '58', nickname: '某小X', handle: 'xiaox' },
-  { id: '91', nickname: '唐天（同名）', handle: 'tangtian2', duplicate: true },
+  { id: '12', nickname: '示范管理员', handle: 'demo-admin', avatar: ADMIN.avatar, role: { key: 'admin', name: '管理员' } },
+  { id: '37', nickname: '陆战队员', handle: 'demo-marine', avatar: MY_ACCOUNT.avatar, role: { key: 'creator', name: '认证创作者' } },
+  { id: '58', nickname: '虚空辉光舰', handle: 'demo-voidray' },
+  { id: '91', nickname: '陆战队员（同名）', handle: 'demo-marine-2', duplicate: true },
 ];
 
 export const AUTHOR = {
-  ...TANG,
+  ...ADMIN,
   bio: '战役作者，负责关卡设计与剧情。卡住、崩溃这类问题走反馈区，回复区只聊设计。',
   level: 27,
   exp: 640,
@@ -125,17 +129,17 @@ export function topicBody(appPath: (p: string) => string): string {
     '<h3>怎么装</h3>',
     '<p>解压后把 <code>Maps</code> 整个目录覆盖到 StarCraft II 的安装目录即可；装过第二章的直接进游戏，存档兼容。</p>',
     '<p>第 4 关的护送目标不能离你太远，超过两屏它会自己往回走——这是引擎行为，这次没改。',
-    '@<a href="' + appPath('u/12') + '" data-mention="12">唐天</a> 之前提过想改成 3 屏，我看影响面太大先搁置，有意见去 ',
+    '@<a href="' + appPath('u/12') + '" data-mention="12">示范管理员</a> 之前提过想改成 3 屏，我看影响面太大先搁置，有意见去 ',
     '<a href="' + appPath('?page=13-issue') + '">反馈区</a> 提。</p>',
     '<p>另外，进游戏前记得关掉别的战役 mod 的自动更新，不然中途被换掉版本会出现奇怪的寻路卡顿。</p>',
   ].join('');
 }
 
 export function topicComments(appPath: (p: string) => string): CommentData[] {
-  const REPLY_TO_TANG: CommentData = {
+  const REPLY_TO_ADMIN: CommentData = {
     id: 'r1',
-    author: { handle: 'xiaox', nickname: '某小X' },
-    body: '18 分钟才封顶是不是太晚了？我把主基地的防空全给打光了才顶住第一波。<a href="' + appPath('u/12') + '" data-mention="12">@唐天</a>',
+    author: { handle: 'demo-voidray', nickname: '虚空辉光舰' },
+    body: '18 分钟才封顶是不是太晚了？我把主基地的防空全给打光了才顶住第一波。<a href="' + appPath('u/12') + '" data-mention="12">@示范管理员</a>',
     createdAt: '2 小时前',
     likes: 6,
     dislikes: 0,
@@ -143,7 +147,7 @@ export function topicComments(appPath: (p: string) => string): CommentData[] {
   return [
     {
       id: 'c1',
-      author: { handle: 'linshi', nickname: '林诗', avatar: MY_ACCOUNT.avatar, role: { key: 'creator', name: '认证创作者' } },
+      author: { handle: 'demo-marine', nickname: '陆战队员', avatar: MY_ACCOUNT.avatar, role: { key: 'creator', name: '认证创作者' } },
       body: '改完的通了一遍，第 11 关终于不用背时间轴了。旧版是 6 分钟一到就必须把两队兵往左下角塞，现在有余量去开分矿。',
       createdAt: '3 小时前',
       likes: 42,
@@ -153,10 +157,10 @@ export function topicComments(appPath: (p: string) => string): CommentData[] {
         total: 3,
         previewCount: 2,
         items: [
-          REPLY_TO_TANG,
+          REPLY_TO_ADMIN,
           {
             id: 'r2',
-            author: TANG,
+            author: ADMIN,
             body: '封顶时间我试过 14 分钟，背板的人会觉得没挑战；18 分钟是取了中间值。真要更早的话可以自己在触发器里改常量，反馈区里有说明。',
             createdAt: '1 小时前',
             likes: 11,
@@ -169,7 +173,7 @@ export function topicComments(appPath: (p: string) => string): CommentData[] {
     },
     {
       id: 'c2',
-      author: TANG,
+      author: ADMIN,
       body: '补充一句：<strong>老存档</strong>在更新后重新进关卡就能生效，不需要重开战役。',
       createdAt: '5 小时前',
       likes: 88,
@@ -178,7 +182,7 @@ export function topicComments(appPath: (p: string) => string): CommentData[] {
     },
     {
       id: 'c3',
-      author: { handle: 'newcomer', nickname: '新来的' },
+      author: { handle: 'demo-drone', nickname: '工蜂' },
       body: [
         '<p>第一次通这关，说几个真会卡住人的地方：</p>',
         '<p>① 前 6 分钟别急着推，先把右下那个高能瓦斯占了，中期会非常缺气。</p>',

@@ -3,7 +3,7 @@ import Button from '@jetbrains/ring-ui-built/components/button/button';
 import Input, { Size } from '@jetbrains/ring-ui-built/components/input/input';
 import { AuthShell } from './auth-shell';
 import { FormAlert } from './form-alert';
-import { PasswordField } from './password-field';
+import { PasswordField } from '@/ui/password-field';
 import { CaptchaField } from './captcha-field';
 import { CAPTCHA_SAMPLES, COPY, MOCK_ACCOUNT, nextCaptcha, type AuthView, type RegisterScene } from './data';
 
@@ -22,7 +22,7 @@ const FIELD_ERRORS: Record<string, string> = {
 };
 
 export function RegisterView({ scene, onView }: RegisterViewProps) {
-  const [username, setUsername] = useState(scene === 'fieldErrors' ? 'tangtian' : '');
+  const [username, setUsername] = useState(scene === 'fieldErrors' ? MOCK_ACCOUNT.username : '');
   const [email, setEmail] = useState(scene === 'fieldErrors' ? MOCK_ACCOUNT.email : '');
   const [password, setPassword] = useState('');
   const [confirm, setConfirm] = useState('');
@@ -84,14 +84,18 @@ export function RegisterView({ scene, onView }: RegisterViewProps) {
           onChange={setPassword}
           help='8-128 位，别用其它站点用过的密码'
           name='new-password'
-          autoComplete='new-password'
+          // DevRoom 是公开的设计预览页：**不传**凭据类 autoComplete（控件默认 'off'），
+          // 免得密码管理器把访客真实口令填进来。真页面（routes/）必须传
+          // 'current-password' / 'new-password'。
         />
         <PasswordField
           label='确认密码'
           value={confirm}
           onChange={setConfirm}
           name='confirm-password'
-          autoComplete='new-password'
+          // DevRoom 是公开的设计预览页：**不传**凭据类 autoComplete（控件默认 'off'），
+          // 免得密码管理器把访客真实口令填进来。真页面（routes/）必须传
+          // 'current-password' / 'new-password'。
           placeholder='再输一遍'
         />
         <CaptchaField chars={chars} value={captcha} onChange={setCaptcha} onRefresh={() => setChars(nextCaptcha(chars))} />
