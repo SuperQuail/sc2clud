@@ -286,6 +286,8 @@ export default function ProfilePage() {
             壁纸一浅（sc2-battle 的天空）就看不清，所以补一层卡片色 + 轻微模糊把它托起来。 */}
         <span className='absolute right-3 top-3 z-20 rounded-md bg-background/85 backdrop-blur-sm'>
           <Button
+            inline={false}
+            height={ControlsHeight.S}
             data-testid='change-cover'
             icon={icon16(ImageIcon)}
             onClick={() => setCover((c) => (c.includes('sc2-battle') ? assetUrl('starcraft/sc2-logo.webp') : assetUrl('starcraft/sc2-battle.webp')))}

@@ -1,0 +1,13 @@
+inline 收口第一批：image-uploader + notice-row（按「热区 >= 24px」判据）
+
+清单来自全仓扫描（37 处 icon+文字缺 inline），分三组：
+  default/loader 22 处（padding 与 height 失效、点击区只有文字大）
+  primary/danger 7 处（填充被压掉、变蓝字）
+  ghost+icon+文字 8 处（很可能是有意为之，不直接改，先量热区）
+本轮由 W3 完成 src/ui 部分：
+- image-uploader.tsx 两处 -> inline=false + height=S（171x24 inline -> 181x24 block；所在行高不变）
+- notice-row.tsx 动态动作按钮 -> ghost + inline=false + height=S（46x22 -> 76x24，颜色从链接蓝回到正文色）
+- 按判据保留 inline：comment-actions 三颗（36x24/20x24/48x24）与 notice-settings（90x24），均 >= 24px
+
+覆盖性检查用 DOM 枚举「inline 且渲染文字」的按钮，跑 8 个页面，确认没有第三类漏网。
+印证了方法论盲点：「点踩」在计数为 0 时文字为空，会掉进「纯图标」桶 —— 静态按「有文字」扫必然漏，必须配 dump-dom。

@@ -6,6 +6,7 @@ import Tooltip from '@jetbrains/ring-ui-built/components/tooltip/tooltip';
 import { ArrowDown, ArrowUp, ChevronsUpDown, Inbox } from 'lucide-react';
 import { icon16 } from '@/ui/icons';
 import { cn } from '@/lib/utils';
+import { ControlsHeight } from '@jetbrains/ring-ui-built/components/global/controls-height';
 
 // 数据表格控件。
 // **待提升为 src/ui**：这是「列定义 + 行数据 + 排序指示 + 行选中 + 空态 + 加载态」的通用表格，
@@ -140,6 +141,8 @@ export function DataTable<T>({
               >
                 {c.sortable && onSortChange ? (
                   <Button
+                    inline={false}
+                    height={ControlsHeight.S}
                     transparent
                     active={active}
                     icon={icon16(SortIcon)}

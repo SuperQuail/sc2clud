@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import Button from '@jetbrains/ring-ui-built/components/button/button';
+import { ControlsHeight } from '@jetbrains/ring-ui-built/components/global/controls-height';
 import { ArrowLeft, Image, MessageSquarePlus, Settings, Smile, UserPlus } from 'lucide-react';
 import { appPath } from '@/lib/url';
 import { cn } from '@/lib/utils';
@@ -113,7 +114,7 @@ export function MessagesPanel({ initialPeer }: { initialPeer: string | null }) {
           {current ? (
             <>
               <div className='lg:hidden'>
-                <Button icon={icon16(ArrowLeft)} onClick={() => setPeerHandle(null)}>
+                <Button inline={false} height={ControlsHeight.S} icon={icon16(ArrowLeft)} onClick={() => setPeerHandle(null)}>
                   返回会话列表
                 </Button>
               </div>
@@ -179,7 +180,7 @@ function NoConversation({ onPick }: { onPick: () => void }) {
         在左边挑一个已有会话，或直接搜索站内用户发起新的私信；对方的昵称与主页会显示在聊天顶部。
       </span>
       <span className='mt-1'>
-        <Button primary icon={icon16(UserPlus)} onClick={onPick}>
+        <Button primary inline={false} height={ControlsHeight.M} icon={icon16(UserPlus)} onClick={onPick}>
           选择聊天对象
         </Button>
       </span>

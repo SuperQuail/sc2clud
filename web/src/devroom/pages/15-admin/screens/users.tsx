@@ -15,6 +15,7 @@ import { ConfirmDialog, DangerAction } from '../confirm';
 import { DisabledReason, GateNote, KV, Numbers, Panel, Pill, ScreenHead, Stat, StatRow, Toolbar } from '../bits';
 import { fmtDate, relTime, USERS, TITLES, type AdminUser } from '../mock';
 import { useCan } from '../mock/perms';
+import { ControlsHeight } from '@jetbrains/ring-ui-built/components/global/controls-height';
 
 // 屏 a：用户管理（13.2 用户管理 + 13.7 处罚 + 13.6 发头衔）。
 // 磁盘配额**不做**：D2 已定案放弃网盘，quota_bytes / used_bytes 不迁（见 admin-map.md）。
@@ -157,7 +158,7 @@ export function UsersScreen() {
         note='13.2：搜索登录名 / 昵称 / 邮箱，行内激活与停用、发头衔、批量选择；磁盘配额随网盘放弃（D2），不做。'
         actions={
           <>
-            <Button icon={icon16(Search)} onClick={() => setQ('')}>重置筛选</Button>
+            <Button inline={false} height={ControlsHeight.S} icon={icon16(Search)} onClick={() => setQ('')}>重置筛选</Button>
             <Button onClick={() => setSelected(rows.map((u) => u.id))}>全选本页</Button>
           </>
         }
@@ -301,7 +302,7 @@ export function UsersScreen() {
                 >
                   <span className='flex items-center gap-1'><Ban size={13} aria-hidden />停用账号</span>
                 </DangerAction>
-                <Button icon={icon16(ShieldCheck)} disabled={!canGrantTitle} onClick={() => setGrantTo(activeUser.id)}>发头衔</Button>
+                <Button inline={false} height={ControlsHeight.S} icon={icon16(ShieldCheck)} disabled={!canGrantTitle} onClick={() => setGrantTo(activeUser.id)}>发头衔</Button>
               </div>
               {!canGrantTitle ? <DisabledReason>没有 title.grant：发头衔按钮不可用</DisabledReason> : null}
             </Panel>

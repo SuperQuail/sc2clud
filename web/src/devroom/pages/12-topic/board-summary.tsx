@@ -1,4 +1,5 @@
 import Button from '@jetbrains/ring-ui-built/components/button/button';
+import { ControlsHeight } from '@jetbrains/ring-ui-built/components/global/controls-height';
 import { MessageSquare, Star, UserPlus } from 'lucide-react';
 import { appPath } from '@/lib/url';
 import { icon16 } from '@/ui/icons';
@@ -28,7 +29,9 @@ export function BoardSummary({ board }: { board: Board }) {
       </dl>
 
       <div className='flex flex-wrap items-center gap-2'>
-        <Button primary icon={icon16(board.joined ? Star : UserPlus)}>
+        {/* inline={false} 必须显式写：Ring UI 只要看到 icon 就把按钮排成 inline（链接样式），
+            primary 的填充会被压掉、height 档位也失效 —— 实测改前 bg 透明、颜色是链接蓝。 */}
+        <Button primary inline={false} height={ControlsHeight.S} icon={icon16(board.joined ? Star : UserPlus)}>
           {board.joined ? '已关注' : '关注分区'}
         </Button>
         <Button href={appPath('new')}>发帖</Button>

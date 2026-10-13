@@ -1,5 +1,6 @@
 import { useState, type ReactNode } from 'react';
 import Button from '@jetbrains/ring-ui-built/components/button/button';
+import { ControlsHeight } from '@jetbrains/ring-ui-built/components/global/controls-height';
 // ButtonSet 是**默认导出**（命名导出在这个包里不存在，typecheck 会直接报 TS2614）
 import ButtonSet from '@jetbrains/ring-ui-built/components/button-set/button-set';
 import { AlertTriangle, Clock3, Send, ShieldAlert } from 'lucide-react';
@@ -95,6 +96,8 @@ export function ReviewAppealButton({ onAppeal }: { onAppeal?: () => void }) {
   return (
     <span className='w-fit'>
       <Button
+        inline={false}
+        height={ControlsHeight.S}
         icon={icon16(AlertTriangle)}
         title='提交后进入人工复核队列，通常 1 个工作日内有结果'
         onClick={onAppeal}
@@ -166,6 +169,8 @@ export function ReviewStateDemoBar({
       ) : null}
       {value === 'rejected' ? (
         <Button
+          inline={false}
+          height={ControlsHeight.S}
           icon={icon16(Send)}
           disabled={appealed}
           onClick={() => {

@@ -69,6 +69,8 @@ export function RewardPanel({ channels }: { channels: PaymentChannel[] }) {
               </p>
 
               <Button
+                inline={false}
+                height={ControlsHeight.M}
                 icon={confirmed ? icon16(Check) : undefined}
                 disabled={confirmed}
                 onClick={() => setConfirmed(true)}

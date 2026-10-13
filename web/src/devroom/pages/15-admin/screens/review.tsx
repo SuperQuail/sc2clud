@@ -17,6 +17,7 @@ import {
   type ReviewEvent, type ReviewItem,
 } from '../mock';
 import { canInBoard, useCan } from '../mock/perms';
+import { ControlsHeight } from '@jetbrains/ring-ui-built/components/global/controls-height';
 
 // 屏 d：帖子审核队列（13.3）。topics.status ∈ pending / normal / rejected（DB §4.2）。
 // 归档不做独立动作：DB 里没有 archived 的帖子状态，归档=隐藏(hidden)，这里并入状态机说明。
@@ -108,7 +109,7 @@ export function ReviewScreen() {
         const open = r.state === 'pending';
         return (
           <span className='flex flex-wrap items-center gap-1.5' onClick={(e) => e.stopPropagation()}>
-            <Button primary={open} icon={icon16(CheckCheck)} disabled={Boolean(why) || !open} onClick={() => setPending({ kind: 'approve', ids: [r.id] })}>通过</Button>
+            <Button primary={open} inline={false} height={ControlsHeight.S} icon={icon16(CheckCheck)} disabled={Boolean(why) || !open} onClick={() => setPending({ kind: 'approve', ids: [r.id] })}>通过</Button>
             <DangerAction disabled={Boolean(why) || !open} why={open ? why : '只有待审的帖子能拒绝'} onClick={() => setPending({ kind: 'reject', ids: [r.id] })}>拒绝</DangerAction>
             <DropdownMenu
               anchor={<Button disabled={Boolean(why) || !open}>更多</Button>}
@@ -167,6 +168,8 @@ export function ReviewScreen() {
           onChange={(e) => setOnlyAiReview(e.target.checked)}
         />
         <Button
+          inline={false}
+          height={ControlsHeight.S}
           icon={icon16(CheckCheck)}
           disabled={!canReview || selected.length === 0}
           onClick={() => setPending({ kind: 'approve', ids: selected })}

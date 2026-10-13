@@ -12,6 +12,7 @@ import {
   fmtTime, relTime, type AiConfig, type AiTestResult,
 } from '../mock';
 import { useCan } from '../mock/perms';
+import { ControlsHeight } from '@jetbrains/ring-ui-built/components/global/controls-height';
 
 // D7 AI 帖子审核的管理端（d7 §8 + 拍板 §10）。
 // 三条设计纪律在这里要看得见：
@@ -163,6 +164,8 @@ export function AiReviewScreen() {
             </p>
             <Toolbar className='mt-2'>
               <Button
+                inline={false}
+                height={ControlsHeight.S}
                 icon={icon16(KeyRound)}
                 disabled={!canSetting || secret.trim() === ''}
                 onClick={() => setConfirmSecret(true)}
@@ -179,7 +182,7 @@ export function AiReviewScreen() {
           <Panel
             title='测试连通'
             note='POST /api/v1/admin/ai/test：真实调一次，返回耗时与模型原始回执（不含密钥）'
-            actions={<Button icon={icon16(PlugZap)} loader={testing} disabled={!canSetting} onClick={runTest}>测试连通</Button>}
+            actions={<Button inline={false} height={ControlsHeight.S} icon={icon16(PlugZap)} loader={testing} disabled={!canSetting} onClick={runTest}>测试连通</Button>}
           >
             {result === null && !testing ? (
               <p className='text-[12px] text-muted-foreground'>还没测过。上次成功：{relTime(cfg.last_ok_at)}。</p>
@@ -234,7 +237,7 @@ export function AiReviewScreen() {
       <Panel title='判定明细导出'>
         {canExport ? (
           <Toolbar>
-            <Button icon={icon16(Download)}>导出最近 7 天判定明细（CSV）</Button>
+            <Button inline={false} height={ControlsHeight.S} icon={icon16(Download)}>导出最近 7 天判定明细（CSV）</Button>
           </Toolbar>
         ) : (
           <GateNote perm='audit.export'>

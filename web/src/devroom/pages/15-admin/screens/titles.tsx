@@ -10,6 +10,7 @@ import { ConfirmDialog, DangerAction } from '../confirm';
 import { GateNote, KV, Panel, Pill, ScreenHead, Stat, StatRow } from '../bits';
 import { TITLES, type AdminTitle } from '../mock';
 import { useCan } from '../mock/perms';
+import { ControlsHeight } from '@jetbrains/ring-ui-built/components/global/controls-height';
 
 // 13.6 头衔目录管理。**归档而不是删除**（DB §4.11：archived_at 非空即归档；佩戴中的会被外键自动置空）。
 // 权限拆成两个：title.manage（维护目录）与 title.grant（发给用户）——本账号只有后者。
@@ -59,7 +60,7 @@ export function TitlesScreen() {
       <ScreenHead
         title='头衔目录'
         note='13.6：建 / 改 / 归档（不物理删）；佩戴的头衔只有一个，归档或删除时由外键自动置空（DB §4.11）。'
-        actions={canManage ? <Button icon={icon16(Plus)} onClick={() => setCreateOpen(true)}>新建头衔</Button> : null}
+        actions={canManage ? <Button inline={false} height={ControlsHeight.S} icon={icon16(Plus)} onClick={() => setCreateOpen(true)}>新建头衔</Button> : null}
       />
 
       <StatRow>

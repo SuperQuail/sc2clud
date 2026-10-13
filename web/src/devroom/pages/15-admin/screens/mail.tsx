@@ -10,6 +10,7 @@ import { ConfirmDialog, DangerAction } from '../confirm';
 import { GateNote, KV, Panel, Pill, ScreenHead, Stat, StatRow } from '../bits';
 import { fmtDate, MAIL_ACCOUNTS, relTime, type MailAccount } from '../mock';
 import { useCan } from '../mock/perms';
+import { ControlsHeight } from '@jetbrains/ring-ui-built/components/global/controls-height';
 
 // 13.9 发信账号管理（§8.2 + DB §4.8）。多账号按 priority 轮换，日额度用 mail_quota 记账。
 // 凭据（secret_cipher）**只写不回读**：界面只能说「已配置 + 更新时间」，永远不显示密钥。
@@ -76,6 +77,8 @@ export function MailScreen() {
       render: (a: MailAccount) => (
         <span className='flex flex-wrap items-center gap-1.5' onClick={(e) => e.stopPropagation()}>
           <Button
+            inline={false}
+            height={ControlsHeight.S}
             icon={icon16(Send)}
             loader={testing === a.id}
             disabled={!canMail || a.status === 'archived'}

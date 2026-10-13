@@ -73,7 +73,7 @@ export default function HomePage() {
           <h1 className='m-0 text-[20px] font-semibold text-foreground'>战役社区 · {boardLabel}</h1>
           <p className='m-0 text-[13px] text-muted-foreground'>{matched.length} 个帖子 · 今日新增 12 · 关注 3,204</p>
         </div>
-        <Button primary icon={icon16(Plus)}>
+        <Button primary inline={false} height={ControlsHeight.M} icon={icon16(Plus)}>
           发帖
         </Button>
       </section>
@@ -116,6 +116,8 @@ export default function HomePage() {
                 key={v.key}
                 data-testid={'view-' + v.key}
                 active={v.key === view}
+                ghost
+                inline={false}
                 height={ControlsHeight.S}
                 icon={icon16(v.icon)}
                 onClick={() => setView(v.key)}

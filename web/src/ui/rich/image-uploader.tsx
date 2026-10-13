@@ -1,5 +1,6 @@
 import { useRef, useState } from 'react';
 import Button from '@jetbrains/ring-ui-built/components/button/button';
+import { ControlsHeight } from '@jetbrains/ring-ui-built/components/global/controls-height';
 import Toggle from '@jetbrains/ring-ui-built/components/toggle/toggle';
 import { ImagePlus, X } from 'lucide-react';
 import { icon16 } from '@/ui/icons';
@@ -113,7 +114,16 @@ export function ImageUploader({
         )}
         <div className='flex flex-col gap-1.5'>
           <div className='flex items-center gap-2'>
-            <Button icon={icon16(ImagePlus)} disabled={busy} onClick={() => input.current?.click()}>
+            {/* icon + 文字时 Ring 会默认走 inline（isInline = inline ?? text ?? !!icon）：
+                那会变成 padding:0 的蓝字链接、height 档位失效。显式 inline={false} + S 档，
+                点击区才是「一颗按钮」的大小（实测 24px 高、带 padding）。 */}
+            <Button
+              inline={false}
+              height={ControlsHeight.S}
+              icon={icon16(ImagePlus)}
+              disabled={busy}
+              onClick={() => input.current?.click()}
+            >
               {busy ? '处理中…' : current ? '更换' : label}
             </Button>
             {current ? <Button onClick={() => onChange([])}>移除</Button> : null}
@@ -132,6 +142,8 @@ export function ImageUploader({
       {fileInput}
       <div className='flex flex-wrap items-center gap-2'>
         <Button
+          inline={false}
+          height={ControlsHeight.S}
           icon={icon16(ImagePlus)}
           disabled={room === 0 || busy}
           onClick={() => input.current?.click()}

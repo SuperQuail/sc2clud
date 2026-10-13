@@ -1,4 +1,5 @@
 import Button from '@jetbrains/ring-ui-built/components/button/button';
+import { ControlsHeight } from '@jetbrains/ring-ui-built/components/global/controls-height';
 import { UserPlus } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { icon16 } from '@/ui/icons';
@@ -28,7 +29,7 @@ export function ConversationList({
         <h2 className='text-[15px] font-semibold text-foreground'>私信</h2>
         {unread > 0 ? <CountBadge count={unread} /> : null}
         <span className='ml-auto'>
-          <Button data-testid='open-peer-picker' icon={icon16(UserPlus)} onClick={onOpenPicker}>
+          <Button data-testid='open-peer-picker' inline={false} height={ControlsHeight.S} icon={icon16(UserPlus)} onClick={onOpenPicker}>
             选择聊天对象
           </Button>
         </span>

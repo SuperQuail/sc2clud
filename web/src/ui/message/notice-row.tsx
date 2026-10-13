@@ -1,4 +1,5 @@
 import Button from '@jetbrains/ring-ui-built/components/button/button';
+import { ControlsHeight } from '@jetbrains/ring-ui-built/components/global/controls-height';
 import type { ReactNode } from 'react';
 import { icon16 } from '@/ui/icons';
 import { UserAvatar } from '@/ui/user/avatar';
@@ -72,9 +73,13 @@ export function NoticeRow({
         <span className='flex flex-wrap items-center gap-x-4 gap-y-1 text-[13px] text-muted-foreground'>
           <span className='tabular-nums'>{time}</span>
           {actions.map((a) => (
+            // 动态文案（{a.label}）的按钮：**纯静态扫描看不出它会渲染文字**，会误判成纯图标。
+            // 实测点击区 46x22（inline 把 padding 吃掉了），低于 24px 这一档 → 显式收口。
             <Button
               key={a.key}
               data-testid={'notice-action-' + a.key}
+              inline={false}
+              height={ControlsHeight.S}
               ghost
               icon={a.icon ? icon16(a.icon) : undefined}
               danger={a.danger}

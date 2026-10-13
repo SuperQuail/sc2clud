@@ -13,6 +13,7 @@ import { aclOf, BOARD_MODERATORS, BOARDS, fmtDate, ROLES, type AdminBoard, type 
 import { canInBoard, MOCK_MODERATED_BOARDS, useCan } from '../mock/perms';
 import { BoardAclPanel } from './boards-acl';
 import { NewBoardDialog, type NewBoard } from './boards-new';
+import { ControlsHeight } from '@jetbrains/ring-ui-built/components/global/controls-height';
 
 // 屏 c：分区管理 + BoardACL（13.4 + 14.3–14.4 + D6）。
 //
@@ -143,7 +144,7 @@ export function BoardsScreen() {
         note='13.4 + D6：分区表驱动（新增分区零代码改动）；发言权限落在 board_acls 上，boards.acl_enabled 关闭时整张表不生效。'
         actions={
           <>
-            <Button primary icon={icon16(Plus)} disabled={!canManage} onClick={() => setShowNew(true)}>
+            <Button primary inline={false} height={ControlsHeight.M} icon={icon16(Plus)} disabled={!canManage} onClick={() => setShowNew(true)}>
               新增分区
             </Button>
             {!canManage ? <DisabledReason>没有 board.manage：新增 / 归档 / 删除全部只读</DisabledReason> : null}
@@ -200,7 +201,7 @@ export function BoardsScreen() {
               <span className='flex h-10 w-14 items-center justify-center overflow-hidden rounded-sm border border-border bg-muted'>
                 <img src={assetUrl(board.cover_file)} alt='' width={56} height={40} className='object-cover' />
               </span>
-              <Button icon={icon16(ImageIcon)} disabled={!canManage}>更换封面</Button>
+              <Button inline={false} height={ControlsHeight.S} icon={icon16(ImageIcon)} disabled={!canManage}>更换封面</Button>
               <span className='text-[11px] text-muted-foreground'>cover_hash → /img/hash（nginx 直出）</span>
             </div>
             <div className='mt-2 border-t border-border pt-2'>
@@ -216,12 +217,13 @@ export function BoardsScreen() {
           <Panel
             title='分区排序'
             note='sort 是数字，但界面不让人手输：手输没法知道「10 和 20 之间还有没有位置」，上移/下移才是管理员的心智'
-            // 这里不用 ButtonSet 包：ButtonSet 容器带 font-size:0（消 inline-block 间隙的老写法），
-            // 而 Ring 的 inline 按钮是 font-size:inherit —— 文字会被算成 0 宽，只剩图标（实测：上移/下移 20px 宽）。
+            // 这里不用 ButtonSet 包：ButtonSet 容器带 font-size:0（消 inline-block 间隙的老写法）。
             actions={
+              // 这两颗原来落进 inline（icon + 文字）→ 文字被算成 0 宽，界面上只剩两个图标（实测 20px 宽）；
+              // 现在 inline={false} + height S：文字与点击区都回来了。
               <span className='flex items-center gap-1'>
-                <Button icon={icon16(ArrowUp)} disabled={!canManage || index === 0} onClick={() => move(-1)}>上移</Button>
-                <Button icon={icon16(ArrowDown)} disabled={!canManage || index === boards.length - 1} onClick={() => move(1)}>下移</Button>
+                <Button inline={false} height={ControlsHeight.S} icon={icon16(ArrowUp)} disabled={!canManage || index === 0} onClick={() => move(-1)}>上移</Button>
+                <Button inline={false} height={ControlsHeight.S} icon={icon16(ArrowDown)} disabled={!canManage || index === boards.length - 1} onClick={() => move(1)}>下移</Button>
               </span>
             }
           >
