@@ -14,9 +14,23 @@ mkdir -p "$SC2CLUD_DIR/releases" "$SC2CLUD_DIR/data" "$SC2CLUD_DIR/backups" "$SC
 
 # Releases are immutable by contract. Overwriting one is how 'which code is live'
 # became unanswerable on the old site.
+#
+# 2026-10-13: the contract as first written made a failed deploy unretryable -- the release was
+# published in step 5, a later step failed and rolled current back, and now the SAME version could
+# never be installed again ('already exists'). It bit three times in one afternoon and each retry
+# needed a throwaway commit just to get a new hash. So the boundary is now drawn where it matters:
+#   - refuse if the existing release is (or is being made) CURRENT -- that is what 'which code is live' means;
+#   - replace an existing NON-current release: it can only have come from an attempt that never got
+#     activated. Trade-off: a release you kept two generations back for a manual rollback can be
+#     overwritten by a re-install of the same version. Acceptable here; a rollback that matters
+#     targets the previous current, which this guard still protects.
 if [ -e "$SC2CLUD_DIR/releases/$version" ]; then
-  echo "release $version already exists on the server -- pick another version" >&2
-  exit 1
+  if [ "$(readlink "$SC2CLUD_DIR/current" 2>/dev/null || true)" = "releases/$version" ]; then
+    echo "release $version is the CURRENT release -- pick another version" >&2
+    exit 1
+  fi
+  echo "note: replacing existing non-current release $version (an earlier attempt that never activated)"
+  rm -rf "$SC2CLUD_DIR/releases/$version"
 fi
 
 staging="$SC2CLUD_DIR/releases/.staging-$version"
