@@ -13,7 +13,7 @@ import { cn } from '@/lib/utils';
 import { CompactTopicRow } from '@/devroom/pages/14-home/topic-compact-row';
 import { SquareTopicCard } from '@/devroom/pages/14-home/topic-square-card';
 import { ListEnd, SquareCardSkeleton } from '@/devroom/pages/14-home/states';
-import { SORTS } from '@/devroom/pages/14-home/mock';
+
 import { BoardRail, ComposeButton, PageHeader } from './_parts/layout';
 import { Empty, ErrorState } from './_parts/state';
 import { toCardTopic } from './_parts/mappers';
@@ -31,7 +31,22 @@ type View = keyof typeof GRID;
 export function HomePage() {
   const [params, setParams] = useSearchParams();
   const board = params.get('board') ?? '';
-  const sort = (SORTS.find((s) => s.key === params.get('sort'))?.key ?? 'latest') as 'latest' | 'new' | 'hot';
+  // 排序选项是**产品契约的一部分，不能来自设计房间的 mock**。
+//
+// 2026-10-13 用户实测：点「最热」整个列表报 **400 参数错误**。根因就是这个 import ——
+// `@/devroom/pages/14-home/mock` 的 SORTS 里有第三个键 `hot`，而后端 `parseTopicSort` 只认 latest / new，
+// 其余一律 `invalid("sort", "只能是 latest / new")`。设计稿的 mock 是「画出来给人看的」，不是契约。
+//
+// 「最热」要真正支持，缺的**不是一行**：schema 里没有任何热度列（like_count / reply_count / view_count 都是实时列），
+// 而游标分页的键是 (排序列, id)、且排序列被当作**时间戳**用（`(t.last_reply_at, t.id) < ($1, $2)`）——
+// 热度分不是时间，游标编码与索引都要跟着改。所以这一版**不提供**它，
+// 也**不把它静默映射成 latest**（那会让用户以为自己在看最热，其实是按时间排的）。
+const SORTS = [
+  { key: 'latest', label: '最新回复' },
+  { key: 'new', label: '最新发布' },
+] as const;
+
+const sort = (SORTS.find((s) => s.key === params.get('sort'))?.key ?? 'latest') as 'latest' | 'new';
   const view: View = params.get('view') === 'compact' ? 'compact' : 'card';
 
   const filter = { board: board || undefined, sort };

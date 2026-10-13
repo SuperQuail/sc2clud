@@ -1,0 +1,16 @@
+修「最热」排序必然 400：排序选项不能来自设计房间的 mock
+
+用户实测：帖子列表切到「最热」→ 整页「加载失败（帖子列表没能加载）/ 参数错误」。
+
+根因：web/src/routes/home.tsx **从 @/devroom/pages/14-home/mock 里 import SORTS**，
+而那个 mock（设计稿）有第三个键 `hot`；后端 parseTopicSort 只认 latest / new，
+其余一律 invalid("sort", "只能是 latest / new") -> 400。**设计稿的 mock 是画出来给人看的，不是契约。**
+
+改：产品侧自己定义排序选项（只提供后端真支持的 latest / new）。
+
+**没有实现「最热」，也拒绝静默映射成 latest** —— 那会让用户以为在看最热、其实按时间排。
+要真正支持它，缺的不是一行：schema 里没有任何热度列（like_count/reply_count/view_count 都是实时列），
+而游标分页的键是 (排序列, id) 且排序列被当作**时间戳**用（(t.last_reply_at, t.id) < ($1,$2)）——
+热度分不是时间，游标编码与索引都要跟着改。这一条留给「真正要实现最热」时做，已写进代码注释。
+
+门禁：pnpm check 全绿（78 测试 / 230 文件 0 超限 / 五条门禁 / 首屏 JS 135.2 KB）。
