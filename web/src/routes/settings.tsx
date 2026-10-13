@@ -7,7 +7,7 @@ import { Lock } from 'lucide-react';
 import { UserBadge } from '@/ui/user/user-badge';
 import { PasswordField } from '@/ui/password-field';
 import { FormAlert } from '@/devroom/pages/16-auth/form-alert';
-import { appPath } from '@/lib/url';
+import { appPath, routePath } from '@/lib/url';
 import { qk } from '@/lib/query/keys';
 import { useSession } from '@/lib/perms';
 import { api } from '@/lib/api/client';
@@ -64,7 +64,7 @@ export function SettingsPage() {
           title='你还没有登录'
           hint='设置页需要知道「你是谁」，登录后再回来；本页不会记住你填过的任何东西。'
           action={
-            <Button primary href={appPath('login?next=' + encodeURIComponent(appPath('settings')))}>去登录</Button>
+            <Button primary href={appPath('login?next=' + encodeURIComponent(routePath('settings')))}>去登录</Button>
           }
         />
       </div>

@@ -1,0 +1,18 @@
+修两个「契约两侧不一致」：登录送错字段名（浏览器里从来登不上）+ 路由双 dev 前缀
+
+① 登录必然 400「参数错误」（用户实测：填对用户名口令仍失败，错误码每次不同 —— 那是 request_id）
+   根因：前端 `login()` 送 **`username`**，而后端 `loginReq` 的字段是 **`login`**（handler.go:81-86，binding:required）。
+   于是 login 为空 -> **400 参数错误**（不是 401，所以看起来不像口令问题）。**浏览器里的登录从来就没成功过。**
+   改：出网时改名（入参名不变，调用点与既有测试不用动），与 withCaptcha 同一个套路；
+   顺带把 withCaptcha 改成泛型 —— 原来的签名只收 CaptchaInput，会把它之外的字段类型吞掉。
+   （curl 侧一直是对的：我早前用 {login,password,...} 验过 200，所以这个 bug 只在浏览器里暴露。）
+
+② 在 dev 区点分区路径会出现 **两个 dev**（用户实测 URL：/dev/dev/b/tool-dev）
+   根因：react-router 会把 **basename 前置**到绝对的 `to` 上，而 `appPath()` 返回的路径**已经含 BASE 前缀**（/dev/），
+   于是 <Link to={appPath('b/x')}> 在 dev 下变成 /dev + /dev/b/x。**BASE=/ 时看不出来，只在 dev 暴露。**
+   navigate() 同理（它也会前置 basename），?next= 参数同理。
+   改：lib/url.ts 新增 **routePath()**（basename 相对），并把 9 处 <Link to> + 5 处 navigate() + 5 处 next= 全换过去；
+   规则写进注释：**<a href> 用 appPath()；react-router 的 to/navigate/next 用 routePath()**。
+   login.tsx 的 `next ?? appPath('')` 改成 `?? '/'`（navigate('/') 在 basename 下就是 /dev/）。
+
+门禁：pnpm check 全绿（78 测试 / 230 文件 0 超限 / 五条门禁）。

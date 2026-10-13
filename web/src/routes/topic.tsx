@@ -8,7 +8,7 @@ import { icon16 } from '@/ui/icons';
 // 评论区按需加载：它是本页唯一引富文本编辑器（Lexical）的地方，而评论要等第二个请求才有内容
 const CommentList = lazy(() => import('./_parts/comments'));
 import { UserBadge } from '@/ui/user/user-badge';
-import { appPath } from '@/lib/url';
+import { appPath, routePath } from '@/lib/url';
 import { qk } from '@/lib/query/keys';
 import { can, useSession } from '@/lib/perms';
 import { isApiError } from '@/lib/api/errors';
@@ -134,7 +134,7 @@ export function TopicPage() {
           </span>
 
           <div className='border-b border-border pb-3'>
-            <Link to={appPath('u/' + encodeURIComponent(t.author.handle))} className='w-fit rounded-[3px] outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50'>
+            <Link to={routePath('u/' + encodeURIComponent(t.author.handle))} className='w-fit rounded-[3px] outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50'>
               <UserBadge user={t.author} size='md' showHandle />
             </Link>
           </div>
@@ -178,7 +178,7 @@ export function TopicPage() {
                   height={ControlsHeight.S}
                   icon={icon16(Pencil)}
                   title='编辑标题与正文'
-                  onClick={() => void navigate(appPath('new?edit=' + encodeURIComponent(t.id)))}
+                  onClick={() => void navigate(routePath('new?edit=' + encodeURIComponent(t.id)))}
                 >
                   编辑
                 </Button>
@@ -271,7 +271,7 @@ export function TopicPage() {
             </h2>
             <p className='flex flex-wrap items-center gap-2 rounded-lg border border-dashed border-border px-3 py-3 text-[13px] text-muted-foreground'>
               {loggedIn ? '你的账号还不能发帖回复（未激活或没有 post.create 权限）。' : '登录后可以回复、点赞与收藏。'}
-              <Button href={appPath('login?next=' + encodeURIComponent(appPath('t/' + t.id)))}>
+              <Button href={appPath('login?next=' + encodeURIComponent(routePath('t/' + t.id)))}>
                 {loggedIn ? '查看账号状态' : '去登录'}
               </Button>
             </p>
@@ -301,7 +301,7 @@ export function TopicPage() {
         <section className='flex flex-col gap-2 rounded-lg border border-border bg-card p-4'>
           <h2 className='m-0 text-[13px] font-semibold text-foreground'>分区</h2>
           <Link
-            to={appPath('b/' + encodeURIComponent(t.board.slug))}
+            to={routePath('b/' + encodeURIComponent(t.board.slug))}
             className='w-fit rounded-[3px] text-[13px] text-foreground outline-none hover:text-primary focus-visible:ring-[3px] focus-visible:ring-ring/50'
           >
             {t.board.name}

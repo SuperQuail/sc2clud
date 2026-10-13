@@ -8,7 +8,7 @@ import { ControlsHeight } from '@jetbrains/ring-ui-built/components/global/contr
 import { Lock } from 'lucide-react';
 import { MarkdownEditor } from '@/ui/rich/markdown-editor';
 import { FormAlert } from '@/devroom/pages/16-auth/form-alert';
-import { appPath } from '@/lib/url';
+import { appPath, routePath } from '@/lib/url';
 import { qk } from '@/lib/query/keys';
 import { can, useSession } from '@/lib/perms';
 import { isApiError } from '@/lib/api/errors';
@@ -71,7 +71,7 @@ export function ComposePage() {
       editing
         ? updateTopic(editId, { title: title.trim(), content_md: doc.json })
         : createTopic({ board, kind, title: title.trim(), content_md: doc.json }),
-    onSuccess: (t) => void navigate(appPath('t/' + encodeURIComponent(t.id)), { replace: true }),
+    onSuccess: (t) => void navigate(routePath('t/' + encodeURIComponent(t.id)), { replace: true }),
   });
 
   if (session.isLoading) return <Loading what='账号信息' />;
@@ -85,7 +85,7 @@ export function ComposePage() {
           icon={Lock}
           title='你还没有登录'
           hint='未登录可以照常浏览；发帖、回复、上传需要先登录并激活邮箱。'
-          action={<Button primary href={appPath('login?next=' + encodeURIComponent(appPath('new')))}>去登录</Button>}
+          action={<Button primary href={appPath('login?next=' + encodeURIComponent(routePath('new')))}>去登录</Button>}
         />
       </div>
     );

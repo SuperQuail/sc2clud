@@ -6,7 +6,7 @@ import Input, { Size } from '@jetbrains/ring-ui-built/components/input/input';
 import { AuthShell } from '@/devroom/pages/16-auth/auth-shell';
 import { FormAlert } from '@/devroom/pages/16-auth/form-alert';
 import { PasswordField } from '@/ui/password-field';
-import { appPath } from '@/lib/url';
+import { appPath, routePath } from '@/lib/url';
 import { isApiError } from '@/lib/api/errors';
 import { register } from '@/lib/api/auth';
 import { ProductCaptcha } from './login';
@@ -41,7 +41,7 @@ export function RegisterPage() {
         captcha: captcha || undefined,
         captcha_id: captchaId || undefined,
       }),
-    onSuccess: () => void navigate(appPath('register/verify?email=' + encodeURIComponent(email)), { replace: true }),
+    onSuccess: () => void navigate(routePath('register/verify?email=' + encodeURIComponent(email)), { replace: true }),
   });
 
   function onSubmit(e: FormEvent<HTMLFormElement>) {

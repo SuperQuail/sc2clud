@@ -5,7 +5,7 @@ import Button from '@jetbrains/ring-ui-built/components/button/button';
 import Input, { Size } from '@jetbrains/ring-ui-built/components/input/input';
 import { AuthShell } from '@/devroom/pages/16-auth/auth-shell';
 import { FormAlert } from '@/devroom/pages/16-auth/form-alert';
-import { appPath } from '@/lib/url';
+import { appPath, routePath } from '@/lib/url';
 import { isApiError } from '@/lib/api/errors';
 import { resendVerification, verifyEmail } from '@/lib/api/auth';
 
@@ -20,7 +20,7 @@ export function VerifyPage() {
 
   const submit = useMutation({
     mutationFn: () => verifyEmail(code.trim()),
-    onSuccess: () => void navigate(appPath('login'), { replace: true }),
+    onSuccess: () => void navigate(routePath('login'), { replace: true }),
   });
   const resend = useMutation({ mutationFn: () => resendVerification() });
 

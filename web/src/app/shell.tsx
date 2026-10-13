@@ -7,7 +7,7 @@ import { Bell, Download, MessageSquare, Search, Star } from 'lucide-react';
 import { icon16 } from '@/ui/icons';
 import { ThemeSwitcher } from '@/ui/theme-switcher';
 import { UserAvatar } from '@/ui/user/avatar';
-import { appPath } from '@/lib/url';
+import { appPath, routePath } from '@/lib/url';
 import { qk } from '@/lib/query/keys';
 import { fetchSite } from '@/lib/api/site';
 import { useSession } from '@/lib/perms';
@@ -28,7 +28,7 @@ export function Shell() {
     <div className='flex min-h-screen flex-col bg-background'>
       <header className='border-b border-border'>
         <div className='mx-auto flex h-14 w-full max-w-[1280px] items-center gap-6 px-4'>
-          <Link to={appPath('')} className='shrink-0 font-semibold text-foreground'>
+          <Link to={routePath('')} className='shrink-0 font-semibold text-foreground'>
             {site.data?.name ?? 'SC2clud'}
           </Link>
           <nav aria-label='主导航' className='hidden items-center gap-1 sm:flex'>
@@ -84,7 +84,7 @@ export function Shell() {
                   title='发帖'
                 />
                 <Link
-                  to={appPath('u/' + encodeURIComponent(session.session?.handle ?? ''))}
+                  to={routePath('u/' + encodeURIComponent(session.session?.handle ?? ''))}
                   className='flex items-center gap-2 rounded-md px-1 py-1 outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50'
                 >
                   <UserAvatar name={session.session?.nickname ?? ''} src={session.session?.avatar} size='sm' />

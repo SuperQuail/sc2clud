@@ -39,14 +39,25 @@ export function fetchCaptcha(signal?: AbortSignal): Promise<Captcha> {
 // mode=always / on_failure 就会永远校验不过。
 type CaptchaInput = { captcha?: string; captcha_id?: string };
 
-/** 入参沿用界面里的 captcha，出网时改成后端契约的 captcha_answer（auth/handler.go:77-85）。 */
-function withCaptcha(body: CaptchaInput): Record<string, unknown> {
+/**
+ * 入参沿用界面里的 captcha，出网时改成后端契约的 captcha_answer（auth/handler.go:77-85）。
+ *
+ * 泛型：调用方可以带自己的字段（例如 login 的 `login`），这里只做「改名」这一件事、
+ * 不吞掉调用方的字段类型（否则调用方传错字段名，类型检查反而看不见）。
+ */
+function withCaptcha<T extends CaptchaInput>(body: T): Omit<T, 'captcha'> & { captcha_answer?: string } {
   const { captcha, ...rest } = body;
-  return captcha === undefined ? rest : { ...rest, captcha_answer: captcha };
+  return (captcha === undefined ? rest : { ...rest, captcha_answer: captcha }) as Omit<T, 'captcha'> & { captcha_answer?: string };
 }
 
 export function login(body: { username: string; password: string } & CaptchaInput): Promise<Session> {
-  return api<Session>('auth/login', { method: 'POST', body: withCaptcha(body) });
+  // 后端 loginReq 的字段名是 **`login`**，不是 `username`（auth/handler.go:81-86，`binding:"required"`）。
+  // 送错名字 -> login 为空 -> **400 参数错误**（而不是 401），**浏览器里的登录从来就没成功过**。
+  // 2026-10-13 用户实测：填对用户名口令仍报「参数错误」，且错误码每次不同（那是 request_id）。
+  //
+  // 入参沿用界面里的 `username`（调用点不用改），只在这里改名 —— 与 withCaptcha 同一个套路。
+  const { username, ...rest } = body;
+  return api<Session>('auth/login', { method: 'POST', body: withCaptcha({ login: username, ...rest }) });
 }
 
 export function logout(): Promise<void> {

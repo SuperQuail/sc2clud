@@ -2,7 +2,7 @@ import { useSearchParams } from 'react-router';
 import { useQuery } from '@tanstack/react-query';
 import Button from '@jetbrains/ring-ui-built/components/button/button';
 import { ControlsHeight } from '@jetbrains/ring-ui-built/components/global/controls-height';
-import { appPath } from '@/lib/url';
+import { appPath, routePath } from '@/lib/url';
 import { useSession } from '@/lib/perms';
 import { formatTime } from '@/lib/format';
 import { TopicRow } from '@/ui/topic/topic-row';
@@ -54,7 +54,7 @@ export function MePage() {
         <Empty
           title='先登录'
           hint='收藏与举报都跟着账号走。'
-          action={<Button inline={false} height={ControlsHeight.S} href={appPath('login?next=' + encodeURIComponent(appPath('me')))}>去登录</Button>}
+          action={<Button inline={false} height={ControlsHeight.S} href={appPath('login?next=' + encodeURIComponent(routePath('me')))}>去登录</Button>}
         />
       </div>
     );

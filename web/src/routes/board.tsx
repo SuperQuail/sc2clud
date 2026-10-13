@@ -2,7 +2,7 @@ import { Link, useParams, useSearchParams } from 'react-router';
 import { useInfiniteQuery, useQuery } from '@tanstack/react-query';
 import Button from '@jetbrains/ring-ui-built/components/button/button';
 import { ControlsHeight } from '@jetbrains/ring-ui-built/components/global/controls-height';
-import { appPath } from '@/lib/url';
+import { appPath, routePath } from '@/lib/url';
 import { qk } from '@/lib/query/keys';
 import { fetchBoard, fetchTopics, type Topic as ApiTopic } from '@/lib/api/forum';
 import { ArrowLeft } from 'lucide-react';
@@ -93,7 +93,7 @@ export function BoardPage() {
           </Button>
         ))}
         <Link
-          to={appPath('')}
+          to={routePath('')}
           className='ml-auto inline-flex items-center gap-1 rounded-[3px] text-[12px] text-muted-foreground outline-none hover:text-primary focus-visible:ring-[3px] focus-visible:ring-ring/50'
         >
           <ArrowLeft aria-hidden className='size-3.5' />

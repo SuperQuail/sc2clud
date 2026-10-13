@@ -20,7 +20,8 @@ export function LoginPage() {
   const [params] = useSearchParams();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
-  const next = params.get('next') ?? appPath('');
+  // next 是 **basename 相对**的路径（生成处用 routePath()）—— navigate() 会自己前置 basename。
+  const next = params.get('next') ?? '/';
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [remember, setRemember] = useState(true);

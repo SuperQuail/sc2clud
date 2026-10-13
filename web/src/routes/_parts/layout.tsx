@@ -5,7 +5,7 @@ import { ControlsHeight } from '@jetbrains/ring-ui-built/components/global/contr
 import { useQuery } from '@tanstack/react-query';
 import { ArrowLeft, Plus } from 'lucide-react';
 import { icon16 } from '@/ui/icons';
-import { appPath } from '@/lib/url';
+import { appPath, routePath } from '@/lib/url';
 import { qk } from '@/lib/query/keys';
 import { fetchBoards } from '@/lib/api/forum';
 import { cn } from '@/lib/utils';
@@ -79,7 +79,7 @@ export function BoardRail({ current, className }: { current?: string; className?
         return (
           <Link
             key={b.slug}
-            to={appPath('b/' + encodeURIComponent(b.slug))}
+            to={routePath('b/' + encodeURIComponent(b.slug))}
             aria-current={isCurrent ? 'page' : undefined}
             className={cn(
               'flex items-center gap-2 rounded-md px-2 py-1.5 text-[13px] outline-none transition-colors focus-visible:ring-[3px] focus-visible:ring-ring/50',

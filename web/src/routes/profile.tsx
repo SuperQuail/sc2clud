@@ -7,7 +7,7 @@ import { CalendarDays, Heart, MessageSquare, Star } from 'lucide-react';
 import { icon16 } from '@/ui/icons';
 import { UserBadge } from '@/ui/user/user-badge';
 import { TopicRow } from '@/ui/topic/topic-row';
-import { appPath } from '@/lib/url';
+import { appPath, routePath } from '@/lib/url';
 import { qk } from '@/lib/query/keys';
 import { can, useSession } from '@/lib/perms';
 import { fetchUserProfile, fetchUserTopics } from '@/lib/api/user';
@@ -187,7 +187,7 @@ export function ProfilePage() {
       {isSelf && !can(session.session, 'post.create') ? (
         <p className='m-0 rounded-lg border border-dashed border-border px-3 py-2 text-[12px] text-muted-foreground'>
           你的账号现在不能发帖（未激活或没有 post.create 权限）。账号状态在{' '}
-          <Link to={appPath('settings')} className='underline'>
+          <Link to={routePath('settings')} className='underline'>
             账号设置
           </Link>
           。

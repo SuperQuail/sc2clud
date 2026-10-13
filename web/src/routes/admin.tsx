@@ -21,7 +21,7 @@ const SCREEN_COMPONENT: Record<ScreenKey, LazyExoticComponent<() => ReactNode>> 
 import Button from '@jetbrains/ring-ui-built/components/button/button';
 import { Lock, ShieldCheck } from 'lucide-react';
 import { FormAlert } from '@/devroom/pages/16-auth/form-alert';
-import { appPath } from '@/lib/url';
+import { appPath, routePath } from '@/lib/url';
 import { can, useSession } from '@/lib/perms';
 import { Empty, ErrorState, Loading } from './_parts/state';
 
@@ -89,11 +89,11 @@ export function AdminLayout() {
         icon={Lock}
         title='管理后台需要登录'
         hint='后台的每一项都要权限点，未登录时连列表都不请求（前端方案 §6）。'
-        action={<Button primary href={appPath('login?next=' + encodeURIComponent(appPath('admin/users')))}>去登录</Button>}
+        action={<Button primary href={appPath('login?next=' + encodeURIComponent(routePath('admin/users')))}>去登录</Button>}
       />
     );
   }
-  if (screen === null) return <Navigate to={appPath('admin/users')} replace />;
+  if (screen === null) return <Navigate to={routePath('admin/users')} replace />;
   if (!allowed(session.session, screen)) {
     return (
       <Empty
@@ -136,7 +136,7 @@ export function AdminLayout() {
         <SideNav
           ariaLabel='后台分组导航'
           value={screen}
-          onChange={(key) => void navigate(appPath('admin/' + key))}
+          onChange={(key) => void navigate(routePath('admin/' + key))}
           groups={NAV.map((g) => ({
             title: g.grp,
             items: g.items.map((i) => ({ key: i.key, label: i.title, count: i.badge ? Number(i.badge) : undefined })),
@@ -153,7 +153,7 @@ export function AdminLayout() {
 
 /** 旧的 /admin 入口（没有屏）也走同一个组件：它会把人送到 /admin/users */
 export function AdminIndex() {
-  return <Navigate to={appPath('admin/users')} replace />;
+  return <Navigate to={routePath('admin/users')} replace />;
 }
 
 // 顶栏那颗「管理后台」在 ./_parts/admin-entry.tsx —— 单独放是为了不让壳把 12 个后台屏拖进首屏。
