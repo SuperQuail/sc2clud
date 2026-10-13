@@ -8,6 +8,7 @@ import { Username } from '@/ui/user/username';
 import { RoleBadge } from '@/ui/user/role-badge';
 import { fmtDate } from './mock';
 import { NAV, type ScreenKey } from './nav';
+import { SideNav } from './side-nav';
 
 // 后台骨架：左侧分组导航 + 中栏 + 右栏（各屏自己组装中/右两栏），顶部面包屑与「当前管理员」。
 // 权限点只在**导航项**上做粗筛：没权限的屏在真实实现里直接 403（前端方案 §6），
@@ -52,24 +53,24 @@ export function AdminShell({ screen, onScreen, meExtra, children }: {
       </div>
 
       <div className='grid items-start gap-3 lg:grid-cols-[164px_minmax(0,1fr)]'>
-        <nav aria-label='后台分组导航' className='flex flex-col gap-3'>
-          {NAV.map((group) => (
-            <div key={group.grp} className='flex flex-col gap-1'>
-              <span className='px-1 text-[11px] font-medium tracking-wide text-muted-foreground'>{group.grp}</span>
-              {group.items.map((item) => (
-                <span key={item.key} className='flex items-center gap-1'>
-                  <Button active={screen === item.key} onClick={() => onScreen(item.key)} className='justify-start'>
-                    {item.title}
-                  </Button>
-                  {item.badge ? <span className='text-[11px] text-muted-foreground'>{item.badge}</span> : null}
-                </span>
-              ))}
-            </div>
-          ))}
-          <p className='px-1 text-[10px] leading-relaxed text-muted-foreground'>
+        <div className='flex flex-col gap-2'>
+          <SideNav
+            ariaLabel='后台分组导航'
+            value={screen}
+            onChange={(key) => onScreen(key as ScreenKey)}
+            groups={NAV.map((group) => ({
+              title: group.grp,
+              items: group.items.map((item) => ({
+                key: item.key,
+                label: item.title,
+                count: item.badge ? Number(item.badge) : undefined,
+              })),
+            }))}
+          />
+          <p className='px-2 text-[10px] leading-relaxed text-muted-foreground'>
             导航项在真实实现里按权限点渲染（前端方案 §6 /admin/* 声明权限点，缺权限渲染 403）。
           </p>
-        </nav>
+        </div>
         <div className='flex min-w-0 flex-col gap-3'>{children}</div>
       </div>
     </div>

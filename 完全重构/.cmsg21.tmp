@@ -1,0 +1,14 @@
+管理后台左导航重做 + 三组分段控件统一 + 一条「假绿」复核
+
+1) 左导航：新增 15-admin/side-nav.tsx（行用 Ring ghost Button、无边框、inline=false、height S；
+   选中 = bg-muted + 左侧 2px primary 色条 + font-medium；计数复用房子件 @/ui/message/count-badge；带 aria-current）。
+   shell.tsx 那排带框按钮换成 SideNav，栅格与内容区位置不变。
+   调研依据（可引用的）：shadcn Sidebar 的 SidebarMenuButton DOM 约定（rounded-md p-2 无边框、选中 data-active + 背景、GroupLabel、MenuBadge）、
+   Ant Design Menu 的选中态 token、Ant Design Pro v5 的侧栏尺寸改版。
+   GitHub / Vercel / Stripe 要登录、施工者**明确声明未能实测、不作为依据**（不拿印象冒充调研）。
+   选型理由对着场景：12 项一屏扫完（折叠收益为零）、条目按权限渲染（折叠状态会抖）、无业务图标集（不加图标）、窄屏折行。
+
+2) 14-home 三组分段控件（分区筛选/排序/视图）统一：选中 = primary 实心、未选中 = ghost 无框。
+   起因：Lead 给的那行 arbitrary variant className 在本项目**不生成规则**（施工者遍历 styleSheets 得 0 条 + 两个对照实验证明），
+   故改用可行方案。关键高度未变（分区身份行 56、工具条 42、首卡 top 478）。
+   边界：仅此形式未生成，早先见过 [&>*]:flex-1 是被生成的 —— 不要把结论扩大成「所有方括号变体都不行」。

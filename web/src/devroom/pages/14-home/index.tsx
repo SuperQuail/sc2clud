@@ -31,7 +31,11 @@ type View = 'card' | 'compact';
 // 为什么需要那两行 arbitrary variant：无框之后 Ring 自带的选中底是 rgb(245,248,254)，在白底上几乎看不出——
 // 而「选中态一眼看得出来」是分段控件的命门。用 [&.ring-button-active] 只选中库给选中项加的那个类名，
 // 不覆盖库的任何变量（规矩：只引用、不覆盖）。三组（分区筛选 / 排序 / 视图）共用这一个常量。
-const SEG_ACTIVE = '[&.ring-button-active]:bg-primary/12 [&.ring-button-active]:text-primary tracking-widest';
+// 选中态：用**库自带的变体**表达（选中 = primary 实心，未选中 = ghost 无框次要）。
+// 为什么不用 className 加强：实测这个项目的 Tailwind **不生成方括号变体**——
+// `[&.ring-button-active]:bg-primary/12` 与 `data-[state=on]:bg-primary/12` 写上去后，
+// 元素上有类名、控制台无报错、但样式表里根本没有对应规则（computed background 原样不变）。
+// 所以这里用 primary/ghost 两个库变体做对比，既满足「选中一眼看得出来」，也不碰库变量。
 
 const VIEWS: Array<{ key: View; label: string; icon: typeof LayoutGrid }> = [
   { key: 'card', label: '卡片', icon: LayoutGrid },
@@ -89,8 +93,8 @@ export default function HomePage() {
         {BOARDS.map((b) => (
           <Button
             key={b.key}
-            ghost
-            className={SEG_ACTIVE}
+            primary={b.key === board}
+            ghost={b.key !== board}
             active={b.key === board}
             height={ControlsHeight.S}
             onClick={() => {
@@ -111,7 +115,7 @@ export default function HomePage() {
               排序组与右边的视图组必须同一套写法，否则并排看就是「两组拼在一起」。 */}
           <ButtonSet>
             {SORTS.map((s) => (
-              <Button key={s.key} ghost className={SEG_ACTIVE} active={s.key === sort} height={ControlsHeight.S} onClick={() => setSort(s.key)}>
+              <Button key={s.key} primary={s.key === sort} ghost={s.key !== sort} active={s.key === sort} height={ControlsHeight.S} onClick={() => setSort(s.key)}>
                 {s.label}
               </Button>
             ))}
@@ -127,8 +131,8 @@ export default function HomePage() {
                 key={v.key}
                 data-testid={'view-' + v.key}
                 active={v.key === view}
-                ghost
-                className={SEG_ACTIVE}
+                primary={v.key === view}
+                ghost={v.key !== view}
                 inline={false}
                 height={ControlsHeight.S}
                 icon={icon16(v.icon)}
