@@ -7,7 +7,7 @@
   · 隧道走的是 nginx 上游同一个进程（127.0.0.1:8082），结论等价。
 不写库：本模块只做 GET/POST 到只读端点，唯一的写是登录。
 """
-import base64, http.cookiejar, json, ssl, sys, time, urllib.error, urllib.request
+import base64, http.cookiejar, json, os, ssl, sys, time, urllib.error, urllib.request
 
 BASE = "http://127.0.0.1:18082"          # 隧道 -> dev 实例
 HOST = "191.40.41.97"                     # nginx 传下来的 Host
@@ -72,11 +72,21 @@ def login(xff=None):
 
 # 登录后 cookie 在 _jar 里，后续 call() 自动带上
 def redis_get(key):
-    import subprocess
+    """读验证码答案（登录要过图形验证码）。
+
+    **口令不写在文件里**：它在服务器上的 /etc/sc2clud/dev.env（FORUM_KV__PASSWORD），
+    由远端 source 进来用。2026-10-13 这个文件里原本硬编码了一个 Redis 口令，
+    随脚本一起进了仓库（提交 9a7436f）—— 一条真事故：密钥入库。
+    """
+    import subprocess, shlex
+    remote = (
+        "set -a; . /etc/sc2clud/dev.env; set +a; "
+        'RED="redis-cli"; [ -n "$FORUM_KV__PASSWORD" ] && RED="redis-cli -a $FORUM_KV__PASSWORD --no-auth-warning"; '
+        "$RED --raw get " + shlex.quote(key)
+    )
     out = subprocess.run(
-        ["ssh", "-i", r"D:\Code\Rust\SC2clud\secrets\ssh\id_ed25519_deploy",
-         "-o", "StrictHostKeyChecking=no", "root@191.40.41.97",
-         "redis-cli -a afe033f8cc5ca7d65c5c68d5d6cb8a91f6b1cc10ccb5c4ee --no-auth-warning --raw get '%s'" % key],
+        ["ssh", "-i", os.environ.get("SC2CLUD_DEPLOY_KEY", r"D:\Code\Rust\SC2clud\secrets\ssh\id_ed25519_deploy"),
+         "-o", "StrictHostKeyChecking=no", "root@191.40.41.97", remote],
         capture_output=True, text=True, timeout=60)
     return out.stdout.strip()
 
