@@ -1,4 +1,4 @@
-import { act, render, screen } from '@testing-library/react';
+import { act, render, screen, waitFor } from '@testing-library/react';
 import { expect, it } from 'vitest';
 import ComposePage from './index';
 import { disabledReason, visibleLength } from './draft';
@@ -76,6 +76,21 @@ it('发帖页：?board= 带过来的分区被采纳，非法值回落到默认�
   try {
     render(<ComposePage />);
     expect(screen.getAllByText(BOARD_NAME[DEFAULT_BOARD]).length).toBeGreaterThan(0);
+  } finally {
+    window.history.pushState({}, '', '/');
+  }
+});
+
+it('正文字数：编辑器里真有了内容，计数器就跟着走（两个回调不许互相覆盖）', async () => {
+  // ?demo=mention 会在 400ms 后往编辑器里真插一个 '@'（走的是编辑器自己的 update 路径，不伪造状态）。
+  // 修之前：编辑器里 10 个字、计数器恒为 0 —— onChange 与 onLengthChange 同一次事件里先后调用，
+  // 各自拿同一份渲染期快照传值，后调用的那个把 length 覆盖回旧值。
+  window.history.pushState({}, '', '/devroom.html?page=18-compose&demo=mention');
+  try {
+    render(<ComposePage />);
+    await waitFor(() => expect(screen.getByTestId('compose-body-count').textContent).toContain('正文字数 1 /'), {
+      timeout: 3000,
+    });
   } finally {
     window.history.pushState({}, '', '/');
   }
