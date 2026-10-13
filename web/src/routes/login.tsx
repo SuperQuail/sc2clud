@@ -63,13 +63,8 @@ export function LoginPage() {
         <>
           忘记密码：重置链路（POST /auth/password/forgot）还没接，见回报的端点清单；现在可以请管理员帮你重置。
           <br />
-          <span className='inline-flex flex-wrap items-center gap-1'>
-            账号被封了（或被驳回了帖子）？
-            <a className='underline' href={appPath('appeal?type=ban')}>
-              提交申诉
-            </a>
-            （不用登录，填用户名 + 注册邮箱 + 验证码）
-          </span>
+          // 申诉入口**已撤**：后端 POST /api/v1/appeals 不存在，留着就是一个填完必然失败的表单。
+          <span>账号被封了（或被驳回了帖子）？请联系管理员。</span>
         </>
       }
     >

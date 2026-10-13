@@ -124,9 +124,7 @@ export function Shell() {
       <footer className='border-t border-border py-6'>
         <div className='mx-auto flex w-full max-w-[1280px] flex-wrap items-center justify-center gap-x-4 gap-y-1 px-4 text-xs text-muted-foreground'>
           <span>{site.data?.name ?? 'SC2clud'} · 星际争霸战役社区</span>
-          <a className='underline' href={appPath('appeal?type=other')}>
-            反馈与申诉
-          </a>
+          {/* 申诉入口已撤：后端 POST /api/v1/appeals 不存在（完全重构/UI与后端对齐.md 第二节） */}
           <a className='underline' href={appPath('download')}>
             启动器下载
           </a>
