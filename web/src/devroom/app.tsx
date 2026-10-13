@@ -1,25 +1,32 @@
-import { useEffect, useState } from 'react';
+import { Component, Suspense, lazy, useEffect, useState, type ReactNode } from 'react';
 import Button from '@jetbrains/ring-ui-built/components/button/button';
 import Island from '@jetbrains/ring-ui-built/components/island/island';
 import { VERIFIED } from './registry';
 import { appPath } from '@/lib/url';
-import ShowroomPage from './pages/00-showroom';
-import InteractivePage from './pages/01-interactive';
-import OverlayPage from './pages/02-overlay';
-import NavigationPage from './pages/03-navigation';
-import DisplayPage from './pages/04-display';
-import OurComponentsPage from './pages/05-our-components';
-import UserStylesPage from './pages/06-user-styles';
-import UserRenderPage from './pages/07-user-render';
-import CommentsPage from './pages/08-comments';
-import RichPage from './pages/09-rich';
-import MessagesPage from './pages/10-messages';
-import ProfilePage from './pages/11-profile';
-import TopicPage from './pages/12-topic';
-import IssuePage from './pages/13-issue';
-import HomePage from './pages/14-home';
-import AdminPage from './pages/15-admin';
-import AuthPage from './pages/16-auth';
+
+// 页面**按需加载**（React.lazy），不是全部静态 import。
+// 为什么（2026-10-13，房间因此白屏过多次）：静态 import 全部页面时，**任一页面里的一处模块错误**
+// （缺导出、类型不符、语法错）都会让整个 bundle 加载失败 —— 结果不是「那一页坏了」，而是「房间整个打不开」，
+// 连「哪一页坏了」都看不出来（并发施工时这不是小概率事件，一天撞了三次）。
+// 改成 lazy 之后：坏的那一页只在点开它时失败，其余页面照常可用。
+const ShowroomPage = lazy(() => import('./pages/00-showroom'));
+const InteractivePage = lazy(() => import('./pages/01-interactive'));
+const OverlayPage = lazy(() => import('./pages/02-overlay'));
+const NavigationPage = lazy(() => import('./pages/03-navigation'));
+const DisplayPage = lazy(() => import('./pages/04-display'));
+const OurComponentsPage = lazy(() => import('./pages/05-our-components'));
+const UserStylesPage = lazy(() => import('./pages/06-user-styles'));
+const UserRenderPage = lazy(() => import('./pages/07-user-render'));
+const CommentsPage = lazy(() => import('./pages/08-comments'));
+const RichPage = lazy(() => import('./pages/09-rich'));
+const MessagesPage = lazy(() => import('./pages/10-messages'));
+const ProfilePage = lazy(() => import('./pages/11-profile'));
+const TopicPage = lazy(() => import('./pages/12-topic'));
+const IssuePage = lazy(() => import('./pages/13-issue'));
+const HomePage = lazy(() => import('./pages/14-home'));
+const AdminPage = lazy(() => import('./pages/15-admin'));
+const AuthPage = lazy(() => import('./pages/16-auth'));
+const ComposePage = lazy(() => import('./pages/18-compose'));
 import { ThemeSwitcher } from '@/ui/theme-switcher';
 
 // 开发者房间：控件在这里**逐件验证**；业务代码只允许使用登记过的控件。
@@ -30,7 +37,32 @@ import { ThemeSwitcher } from '@/ui/theme-switcher';
 // 导航分三组，组内按编号升序。为什么分组而不是一大排：
 //   ① 顺序 == 编号（编号本身就是我们定的顺序；以前 12–15 插在 08 后面、09/10/11 甩在最后，
 //      看起来就是乱的）；② 页面只会继续变多，分组之后每组自己折行，不会把整排挤成一坨。
-type PageEntry = { key: string; title: string; el: () => React.ReactNode };
+type PageEntry = { key: string; title: string; el: () => ReactNode };
+
+// 一页坏了不该让整个房间打不开。
+// lazy 解决了「模块加载失败」（坏的那页只在点开它时失败），这一层解决「渲染时抛错」。
+// 两者都指向同一件事：**并发施工时，坏掉的范围要能被限制在一页之内**，
+// 而且要能看见「哪一页坏了、错在哪」—— 白屏什么信息都不给。
+class PageBoundary extends Component<{ pageKey: string; children: ReactNode }, { error: Error | null }> {
+  state: { error: Error | null } = { error: null };
+  static getDerivedStateFromError(error: Error) {
+    return { error };
+  }
+  componentDidUpdate(prev: { pageKey: string }) {
+    if (prev.pageKey !== this.props.pageKey && this.state.error) this.setState({ error: null });
+  }
+  render() {
+    if (this.state.error) {
+      return (
+        <div className='flex flex-col gap-2 rounded-lg border border-destructive/40 bg-destructive/8 p-4'>
+          <span className='text-[15px] font-medium text-foreground'>这一页渲染失败了，其它页面仍然可用。</span>
+          <pre className='whitespace-pre-wrap break-all text-[12px] text-muted-foreground'>{String(this.state.error)}</pre>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
 type NavGroup = { label: string; pages: PageEntry[] };
 
 const GROUPS: NavGroup[] = [
@@ -64,6 +96,9 @@ const GROUPS: NavGroup[] = [
       { key: '14-home', title: '14 · 首页信息流', el: () => <HomePage /> },
       { key: '15-admin', title: '15 · 管理后台', el: () => <AdminPage /> },
       { key: '16-auth', title: '16 · 登录与注册', el: () => <AuthPage /> },
+      // 18-compose（发帖页）的导航条目本来归 Lead 加：app.tsx 是共享文件。
+      // 这一条是施工者为「页面能被 ?page=18-compose 打开、能出图」加的，Lead 可原样保留或改文案。
+      { key: '18-compose', title: '18 · 发帖', el: () => <ComposePage /> },
     ],
   },
 ];
@@ -142,7 +177,12 @@ export function DevRoom({ page }: { page: string }) {
           </nav>
         </div>
       </header>
-      <main className='mx-auto flex w-full max-w-[1280px] flex-col gap-4 px-5 py-5'>{current.el()}</main>
+      <main className='mx-auto flex w-full max-w-[1280px] flex-col gap-4 px-5 py-5'>
+        {/* 加载态也要有明确文案：lazy 之后首次进某页会有一瞬空白，不给文案就等于白屏 */}
+        <Suspense fallback={<div className='p-4 text-[13px] text-muted-foreground'>正在加载这一页…</div>}>
+          <PageBoundary pageKey={current.key}>{current.el()}</PageBoundary>
+        </Suspense>
+      </main>
     </div>
   );
 }
