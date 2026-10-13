@@ -1,9 +1,0 @@
-排序表头改无框（ghost = ghost + flat）+ 分段控件统一形态
-
-data-table 排序表头：transparent 改 ghost。查证：Ring 的边框来自 .ring-button-block 的 --ring-button-default-border-color，
-无框写法是 .ring-button-flat，v7 里 ghost 就等于 ghost+flat，没有自造 class。
-行高 660 到 661 的 1px 不是边框造成的，是按钮自己的 24px 高度盒比 inline 文字行盒高 1px；
-为 1px 去改表头行 padding 会把表头行与按钮的职责搅在一起，故保持 661。
-
-14-home：排序组加 ghost 与视图组对齐（两组在变体/高度/间距/padding/选中底色/未选中底色/圆角 七项逐项相同）；
-顶部「分区筛选」组也收成 ghost（原先同页两种分段控件语言），选中态按令牌加强。

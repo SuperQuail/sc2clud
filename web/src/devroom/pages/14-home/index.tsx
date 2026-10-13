@@ -31,7 +31,7 @@ type View = 'card' | 'compact';
 // 为什么需要那两行 arbitrary variant：无框之后 Ring 自带的选中底是 rgb(245,248,254)，在白底上几乎看不出——
 // 而「选中态一眼看得出来」是分段控件的命门。用 [&.ring-button-active] 只选中库给选中项加的那个类名，
 // 不覆盖库的任何变量（规矩：只引用、不覆盖）。三组（分区筛选 / 排序 / 视图）共用这一个常量。
-const SEG_ACTIVE = '[&.ring-button-active]:bg-primary/12 [&.ring-button-active]:text-primary';
+const SEG_ACTIVE = '[&.ring-button-active]:bg-primary/12 [&.ring-button-active]:text-primary tracking-widest';
 
 const VIEWS: Array<{ key: View; label: string; icon: typeof LayoutGrid }> = [
   { key: 'card', label: '卡片', icon: LayoutGrid },
