@@ -274,7 +274,7 @@ export default function ProfilePage() {
         <img src={cover} alt='' className='pointer-events-none absolute inset-0 -z-10 h-full w-full object-cover' />
         <span
           aria-hidden
-          className='pointer-events-none absolute inset-0 -z-10 bg-gradient-to-b from-background/35 via-background/80 to-background'
+          className='pointer-events-none absolute inset-0 -z-10 bg-gradient-to-b from-background/0 via-background/30 via-52% to-background'
         />
         {/* 撑高用的占位条：壁纸是绝对定位、不参与布局，少了它 hero 只能由身份卡撑，
             身份卡的 -mt-20 就会把它自己顶到 hero 之外（头像行被裁剪）。144px（h-36）= 身份卡上方的
@@ -293,17 +293,22 @@ export default function ProfilePage() {
           </Button>
         </span>
 
-        {/* 身份卡：**从上到下的透明渐变**（用户要求：别用实色把壁纸挡死，但上半要透出壁纸）。
+        {/* 身份卡：**从上到下的透明渐变**（用户要求：头像区要能看清壁纸，从上到下由透到实）。
             数值是按卡内各行的实际高度定的（卡片 276px 高，位置用 CDP 量过、写在这里免得后人瞎调）：
               头像 21–85、名字+徽标 105–133、简介 171–195、统计行 215–255。
-            渐变停靠点（沿着 276px 折算）：
-              from-background/50  → 头像那条带子透出壁纸，但仍压掉一半，人物不糊；
-              via-background/85   → 名字与徽标落在 85% 处，壁纸花纹只留一点点；
-              to-background       → 统计行整行在实底上（数字必须清楚，它是这一页的信息密度最高处）。
-            为什么顶部是 /50 而不是 /0：壁纸是战场插画（细节多），全透时 22px 的名字会与画面纹理打架；
-            /50 + backdrop-blur-lg 之后文字边缘干净，同时仍能明显看出壁纸。
+            **踩过的坑：头像带上有两层半透明，它们相乘不是相加** ——
+              壁纸遮罩层（上面那个 from-background/0 via-background/30 via-52%）
+              与这张卡的渐变（from-background/10 via-background/85 via-42%）。
+            上一版是 /35 与 /50，相乘后头像带只剩 (1-0.35)*(1-0.50) ≈ 32% 壁纸可见，
+            单看每一层都不重、合起来就是「看不清背景」——所以**要放开顶部必须两层一起放**，
+            只降一层，另一层还压着（2026-10-13 用户报「头像区域透明度太低」的根因）。
+            现在头像带大约 65% → 26%（自上而下），名字带约 11%：
+              from-background/10   → 头像那条带子基本透出壁纸；
+              via-background/85    → 名字与徽标落在 85% 处（via-42% 把这一档压在名字带上）；
+              to-background        → 统计行整行在实底上（数字必须清楚，它是这一页的信息密度最高处）。
+            backdrop-blur-lg 保留：壁纸细节多，不模糊时 22px 的名字会与纹理打架（上一轮结论）。
             mb-2 而不是 mb-4：hero 还要装 144px 壁纸条，这 8px 是补给首屏预算的（见上面的警告，**不要改 padding/gap**）。 */}
-        <div className='relative z-10 mx-4 -mt-20 mb-2 flex flex-col gap-5 rounded-xl border-x border-b border-border bg-gradient-to-b from-background/50 via-background/85 to-background p-5 backdrop-blur-lg'>
+        <div className='relative z-10 mx-4 -mt-20 mb-2 flex flex-col gap-5 rounded-xl border-x border-b border-border bg-gradient-to-b from-background/10 via-background/85 via-42% to-background p-5 backdrop-blur-lg'>
           <div className='flex flex-wrap items-end justify-between gap-4'>
             {/* 头像外圈原来用实色 ring-background：在渐变里它是一枚不透明的白/黑环，
                 和身后 50% 的渐变一比就像贴上去的圆片。改成 /60 让环与身后的底同一档透明度，
