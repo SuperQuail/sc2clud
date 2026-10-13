@@ -256,7 +256,10 @@ function DraftFields({
   tags: ComposeTag[];
   onTags: (v: ComposeTag[]) => void;
   doc: { json: string; html: string; length: number };
-  onDoc: (v: { json: string; html: string; length: number }) => void;
+  /** 用**函数式更新**：onChange 与 onLengthChange 是在同一次编辑器事件里先后调用的，
+   *  各自拿到的 doc 是同一份渲染期快照 —— 传值时后调用的那个会把另一个刚写的字段覆盖回旧值
+   *  （实测：正文打了 10 个字，计数器仍显示 0/20000）。 */
+  onDoc: React.Dispatch<React.SetStateAction<{ json: string; html: string; length: number }>>;
   attachments: Attachment[];
   onAttachments: (v: Attachment[]) => void;
   disabled: boolean;
@@ -340,8 +343,8 @@ function DraftFields({
           maxImages={IMAGE_MAX}
           compress
           allowOriginal
-          onChange={(json, html) => onDoc({ ...doc, json, html })}
-          onLengthChange={(length) => onDoc({ ...doc, length })}
+          onChange={(json, html) => onDoc((d) => ({ ...d, json, html }))}
+          onLengthChange={(length) => onDoc((d) => ({ ...d, length }))}
           images={[]}
           onImagesChange={() => undefined}
         />
