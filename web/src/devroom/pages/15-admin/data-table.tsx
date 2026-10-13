@@ -140,10 +140,14 @@ export function DataTable<T>({
                 className={cn('flex min-w-0 items-center gap-1', c.align === 'end' && 'justify-end')}
               >
                 {c.sortable && onSortChange ? (
+                  /* 排序表头：**轻控件**（无框）+ 靠选中态与箭头表达状态。
+                     为什么是 ghost 而不是 transparent：Ring 的 .ring-button-transparent 只把背景设成透明，
+                     边框来自 .ring-button-block（--ring-button-default-border-color），所以 transparent **仍然有框**；
+                     库里的无框写法是 .ring-button-flat，而 ghost 就是 ghost+flat 的组合（与页面上其它轻控件一致）。 */
                   <Button
+                    ghost
                     inline={false}
                     height={ControlsHeight.S}
-                    transparent
                     active={active}
                     icon={icon16(SortIcon)}
                     onClick={() => onSortChange(active && sort?.dir === 'desc' ? null : { key: c.key, dir: active && sort?.dir === 'asc' ? 'desc' : 'asc' })}
