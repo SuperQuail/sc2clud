@@ -3,7 +3,7 @@ import { Link, Outlet } from 'react-router';
 import Button from '@jetbrains/ring-ui-built/components/button/button';
 import { ControlsHeight } from '@jetbrains/ring-ui-built/components/global/controls-height';
 import { useQuery } from '@tanstack/react-query';
-import { Bell, Download, MessageSquare, Search, Star } from 'lucide-react';
+import { Bell, MessageSquare, Search, Star } from 'lucide-react';
 import { icon16 } from '@/ui/icons';
 import { ThemeSwitcher } from '@/ui/theme-switcher';
 import { UserAvatar } from '@/ui/user/avatar';
@@ -39,9 +39,8 @@ export function Shell() {
             <Button ghost inline={false} height={ControlsHeight.S} href={appPath('')} icon={icon16(Search)}>
               搜索
             </Button>
-            <Button ghost inline={false} height={ControlsHeight.S} href={appPath('download')} icon={icon16(Download)}>
-              下载
-            </Button>
+            {/* 「下载」顶栏入口**已撤**：与现在的设计冲突（用户拍板 2026-10-13），
+                而且启动器发布数据本来就没有（老站备份 releases 0 行、归档无产物）—— 留着是个空门面。 */}
           </nav>
           <div className='ml-auto flex items-center gap-2'>
             <AdminEntryButton />
@@ -125,9 +124,7 @@ export function Shell() {
         <div className='mx-auto flex w-full max-w-[1280px] flex-wrap items-center justify-center gap-x-4 gap-y-1 px-4 text-xs text-muted-foreground'>
           <span>{site.data?.name ?? 'SC2clud'} · 星际争霸战役社区</span>
           {/* 申诉入口已撤：后端 POST /api/v1/appeals 不存在（完全重构/UI与后端对齐.md 第二节） */}
-          <a className='underline' href={appPath('download')}>
-            启动器下载
-          </a>
+          {/* 页脚的「启动器下载」同撤 */}
         </div>
       </footer>
     </div>
