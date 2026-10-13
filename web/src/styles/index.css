@@ -26,6 +26,17 @@ body {
 
 @custom-variant dark (&:where([data-theme='dark'], [data-theme='dark'] *));
 
+/* Ring UI 的 ButtonSet 会把容器 font-size 设为 0（消 inline-block 之间的间隙），
+   而它的按钮在带 icon 时加 .ring-button-inline，那个类的 font-size:inherit 会继承到这个 0 →
+   **带图标的按钮放进 ButtonSet，文字被算成 0 宽，只剩一个图标**。
+   实测过的受害者：14-home 的视图切换（「卡片」「紧凑列表」）与 15-admin 分区页的上移/下移。
+   逐页套 span 能绕，但每处都有人会忘，所以修在这里一次。 */
+.ring-button-set-buttonSet > .ring-button-inline {
+  /* 用 Ring 自己的变量，才能跟着 heightS/M/L 走（heightS 是 12px，heightM/L 是 14px）。
+     写死 14px 会让 heightS 的图标按钮比同排的纯文字按钮大一号（实测 48px vs 44px）。 */
+  font-size: var(--ring-button-font-size, var(--ring-font-size, 14px));
+}
+
 /* 用户向按钮的「提交中」：一条流动的高光扫过（与 Ring UI 的 loader 观感一致）。
    只用 transform，尊重 prefers-reduced-motion。 */
 @keyframes vivid-sweep {
