@@ -1,30 +1,184 @@
-import { useQuery } from '@tanstack/react-query';
+import { useSearchParams } from 'react-router';
+import { useInfiniteQuery } from '@tanstack/react-query';
+import Button from '@jetbrains/ring-ui-built/components/button/button';
+import ButtonSet from '@jetbrains/ring-ui-built/components/button-set/button-set';
+import { ControlsHeight } from '@jetbrains/ring-ui-built/components/global/controls-height';
+import { LayoutGrid, List } from 'lucide-react';
+import { icon16 } from '@/ui/icons';
+import { appPath } from '@/lib/url';
 import { qk } from '@/lib/query/keys';
-import { fetchHealth } from '@/lib/api/system';
-import { isApiError } from '@/lib/api/errors';
+import { PAGE_LIMIT } from '@/lib/api/paging';
+import { fetchTopics, type Topic as ApiTopic } from '@/lib/api/forum';
+import { cn } from '@/lib/utils';
+import { CompactTopicRow } from '@/devroom/pages/14-home/topic-compact-row';
+import { SquareTopicCard } from '@/devroom/pages/14-home/topic-square-card';
+import { ListEnd, SquareCardSkeleton } from '@/devroom/pages/14-home/states';
+import { SORTS } from '@/devroom/pages/14-home/mock';
+import { BoardRail, ComposeButton, PageHeader } from './_parts/layout';
+import { Empty, ErrorState } from './_parts/state';
+import { toCardTopic } from './_parts/mappers';
 
-// F0 的验收页面：真实调通后端探针，证明「路由 → Query → api client → 后端」整条链是通的
+// 首页信息流（契约：GET /topics + GET /boards）。**公开首屏，不做代码分割**（前端方案 §6）。
+// URL 即状态（§6 规则一）：board / sort / view 全在查询串里，可分享、可后退、刷新不丢。
+// 卡片与紧凑行直接复用 DevRoom 14-home 的房子件（同一个实现，不是抄一份）。
+const GRID = {
+  card: 'grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4',
+  compact: 'flex flex-col gap-0.5',
+} as const;
+
+type View = keyof typeof GRID;
+
 export function HomePage() {
-  const health = useQuery({
-    queryKey: qk.health(),
-    queryFn: ({ signal }) => fetchHealth(signal),
-    staleTime: 60_000,
+  const [params, setParams] = useSearchParams();
+  const board = params.get('board') ?? '';
+  const sort = (SORTS.find((s) => s.key === params.get('sort'))?.key ?? 'latest') as 'latest' | 'new' | 'hot';
+  const view: View = params.get('view') === 'compact' ? 'compact' : 'card';
+
+  const filter = { board: board || undefined, sort };
+  const list = useInfiniteQuery({
+    queryKey: qk.topics(filter),
+    queryFn: ({ pageParam, signal }) => fetchTopics({ ...filter, cursor: pageParam }, signal),
+    initialPageParam: null as string | null,
+    getNextPageParam: (last) => last.next,
   });
 
+  const items: ApiTopic[] = list.data?.pages.flatMap((p) => p.items) ?? [];
+  const total = items.length;
+
+  /** 改 URL 里的一个键；null 表示删掉它（默认值不进 URL，链接才短） */
+  function setParam(key: string, value: string | null) {
+    setParams(
+      (prev) => {
+        const next = new URLSearchParams(prev);
+        if (value === null) next.delete(key);
+        else next.set(key, value);
+        return next;
+      },
+      { replace: true },
+    );
+  }
+
   return (
-    <section className='flex flex-col gap-4'>
-      <h1 className='text-xl font-semibold text-foreground'>SC2clud</h1>
-      <p className='text-sm text-muted-foreground'>重写版前端骨架（F0）。</p>
-      <dl className='w-fit rounded border border-border bg-muted px-4 py-3 text-sm'>
-        <dt className='text-muted-foreground'>后端探针</dt>
-        <dd className='text-foreground'>
-          {health.isPending ? '检查中…' : null}
-          {health.isError
-            ? '不可用：' + (isApiError(health.error) ? health.error.message : '未知错误')
-            : null}
-          {health.data ? health.data.status + ' · v' + health.data.version : null}
-        </dd>
-      </dl>
-    </section>
+    // 一维 flex 而不是写死两列的栅格：BoardRail 拿不到分区时**整个不渲染**，
+    // 而栅格的第一条轨道照样占着 168px —— 主栏会被塞进那一格、文案逐字换行（出图时抓到的）。
+    <div className='flex flex-col gap-6 xl:flex-row xl:items-start'>
+      <BoardRail current={board || undefined} className='hidden xl:flex xl:w-[168px] xl:shrink-0' />
+
+      <div className='flex min-w-0 flex-1 flex-col gap-4'>
+        <PageHeader
+          title='社区帖子'
+          description={list.isSuccess ? '已加载 ' + total + ' 个帖子' : '浏览全部分区的最新帖子'}
+          actions={<ComposeButton board={board || undefined} />}
+        />
+
+        <div className='flex flex-wrap items-center justify-between gap-2 border-y border-border py-2'>
+          <span className='flex items-center gap-2'>
+            <span className='text-[12px] text-muted-foreground'>排序</span>
+            <ButtonSet>
+              {SORTS.map((s) => (
+                <Button
+                  key={s.key}
+                  primary={s.key === sort}
+                  ghost={s.key !== sort}
+                  active={s.key === sort}
+                  height={ControlsHeight.S}
+                  onClick={() => setParam('sort', s.key === 'latest' ? null : s.key)}
+                >
+                  {s.label}
+                </Button>
+              ))}
+            </ButtonSet>
+          </span>
+          <span className='flex items-center gap-2'>
+            <span className='text-[12px] text-muted-foreground'>视图</span>
+            <ButtonSet>
+              {(['card', 'compact'] as const).map((v) => (
+                <Button
+                  key={v}
+                  data-testid={'view-' + v}
+                  active={v === view}
+                  primary={v === view}
+                  ghost={v !== view}
+                  inline={false}
+                  height={ControlsHeight.S}
+                  icon={icon16(v === 'card' ? LayoutGrid : List)}
+                  onClick={() => setParam('view', v === 'card' ? null : v)}
+                >
+                  {v === 'card' ? '卡片' : '紧凑列表'}
+                </Button>
+              ))}
+            </ButtonSet>
+          </span>
+        </div>
+
+        {list.isPending ? (
+          <ul className={cn('m-0 list-none p-0', GRID.card)} aria-busy>
+            {[0, 1, 2, 3, 4, 5, 6, 7].map((i) => (
+              <li key={i}>
+                <SquareCardSkeleton />
+              </li>
+            ))}
+          </ul>
+        ) : list.isError ? (
+          <ErrorState what='帖子列表' error={list.error} onRetry={() => void list.refetch()} />
+        ) : items.length === 0 ? (
+          <Empty
+            title={board ? '这个分区还没有帖子' : '还没有任何帖子'}
+            hint={
+              board
+                ? '换一个分区看看，或者成为第一个在这个分区发帖的人。'
+                : '站点刚开张时就是这样。第一篇帖子由你来写。'
+            }
+            action={
+              <span className='flex flex-wrap items-center justify-center gap-2'>
+                {board ? <Button onClick={() => setParam('board', null)}>看全部帖子</Button> : null}
+                <ComposeButton board={board || undefined} />
+              </span>
+            }
+          />
+        ) : (
+          <>
+            {view === 'card' ? (
+              <ul className={cn('m-0 list-none p-0', GRID.card)}>
+                {items.map((t) => (
+                  <li key={t.id} className='flex'>
+                    <SquareTopicCard
+                      topic={toCardTopic(t)}
+                      className='w-full'
+                      href={appPath('t/' + encodeURIComponent(t.id))}
+                      authorHref={appPath('u/' + encodeURIComponent(t.author.handle))}
+                    />
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <div className={GRID.compact}>
+                {items.map((t) => (
+                  <CompactTopicRow
+                    key={t.id}
+                    topic={toCardTopic(t)}
+                    href={appPath('t/' + encodeURIComponent(t.id))}
+                  />
+                ))}
+              </div>
+            )}
+
+            {/* 游标分页（§21.1）：**没有页码**，只有 next_cursor 为 null 才算到底 */}
+            {list.hasNextPage ? (
+              <div className='flex flex-col items-center gap-1.5'>
+                <Button loader={list.isFetchingNextPage} onClick={() => void list.fetchNextPage()}>
+                  {list.isFetchingNextPage ? '加载中…' : '加载更多'}
+                </Button>
+                <span className='text-[11px] text-muted-foreground'>
+                  每页 {PAGE_LIMIT} 条 · 按游标翻页（不是页码）
+                </span>
+              </div>
+            ) : (
+              <ListEnd total={total} />
+            )}
+          </>
+        )}
+      </div>
+    </div>
   );
 }

@@ -4,24 +4,27 @@ import { UserAvatar } from '@/ui/user/avatar';
 import { Username } from '@/ui/user/username';
 import type { Topic } from './mock';
 import { TopicKindTag, TopicMark } from './topic-parts';
-import { roomHref } from '@/devroom/room-links';
 
 // 待提升为 src/ui：**紧凑列表行**（设计需求-分区页 §B2，参考 Discord 消息列表）。
 // 规矩：行间不画分割线（靠行距 + hover 底色）；置顶/精华用小标记，不用大色块；
 // 元信息弱化——不排成表格，只有回复/赞/浏览三个数字挂在右侧。
-export function CompactTopicRow({ topic }: { topic: Topic }) {
+export function CompactTopicRow({ topic, href }: { topic: Topic; href?: string }) {
   return (
     <article className='group relative flex items-start gap-3 rounded-md px-3 py-2 transition-colors hover:bg-muted/60'>
       <UserAvatar name={topic.author.nickname} src={topic.author.avatar} size='sm' className='mt-0.5' />
 
       <div className='flex min-w-0 flex-1 flex-col gap-0.5'>
         <span className='flex min-w-0 items-center gap-2'>
-          <a
-            href={roomHref('12-topic')}
-            className='min-w-0 truncate rounded-[3px] text-[14px] font-medium text-foreground outline-none after:absolute after:inset-0 group-hover:text-primary focus-visible:ring-[3px] focus-visible:ring-ring/50'
-          >
-            {topic.title}
-          </a>
+          {href ? (
+            <a
+              href={href}
+              className='min-w-0 truncate rounded-[3px] text-[14px] font-medium text-foreground outline-none after:absolute after:inset-0 group-hover:text-primary focus-visible:ring-[3px] focus-visible:ring-ring/50'
+            >
+              {topic.title}
+            </a>
+          ) : (
+            <span className='min-w-0 truncate text-[14px] font-medium text-foreground'>{topic.title}</span>
+          )}
           <TopicMark pinned={topic.pinned} featured={topic.featured_at != null} />
           <TopicKindTag kind={topic.kind} />
           <span className='ml-auto shrink-0 whitespace-nowrap text-[11px] text-muted-foreground tabular-nums'>

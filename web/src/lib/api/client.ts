@@ -16,7 +16,10 @@ export type Req = {
 };
 
 function buildUrl(path: string, base: string, query?: Req['query']): string {
-  const url = base + path;
+  // base 与 path 之间**必须有且只有一个斜杠**：DEFAULT_BASE 是 '<base>api/v1'（无尾斜杠）、path 不带前斜杠，
+  // 直接相加会拼出 /api/v1me 这种 URL —— 它 404、但看起来完全正常（这条是被 app.test 的 fetch 断言抓出来的）。
+  const root = base.endsWith('/') ? base : base + '/';
+  const url = root + path.replace(/^\/+/, '');
   if (!query) return url;
   const params = new URLSearchParams();
   for (const [k, v] of Object.entries(query)) {
@@ -29,6 +32,23 @@ function buildUrl(path: string, base: string, query?: Req['query']): string {
 type ErrorBody = { error?: { code?: string; message?: string; request_id?: string; fields?: Record<string, string> } };
 
 export async function api<T>(path: string, req: Req = {}): Promise<T> {
+  // 单对象包络：{ "data": … }（§21.1）。列表请用 apiPage —— 列表的 next_cursor 在 data **外面**。
+  const payload = (await request(path, req)) as { data?: T } | undefined;
+  return payload?.data as T;
+}
+
+/**
+ * 列表端点专用：**包络是 { data: [...], next_cursor }**，而 next_cursor 在 data **外面**。
+ * 所以列表不能走 api<T>()（它只取 payload.data，游标会丢 —— 这是被首页的测试抓出来的）：
+ * 丢了游标的后果是「加载更多」永远到底，而接口看起来完全正常。
+ */
+export async function apiPage<T>(path: string, req: Req = {}): Promise<{ items: T[]; next: string | null }> {
+  const payload = (await request(path, req)) as { data?: T[]; next_cursor?: string | null } | undefined;
+  return { items: payload?.data ?? [], next: payload?.next_cursor ?? null };
+}
+
+// 全站唯一的 fetch 调用点：api / apiPage 都走它。**返回的是完整包络**（解析与解包是两件事）
+async function request(path: string, req: Req = {}): Promise<unknown> {
   const url = buildUrl(path, req.base ?? DEFAULT_BASE, req.query);
 
   let res: Response;
@@ -45,7 +65,7 @@ export async function api<T>(path: string, req: Req = {}): Promise<T> {
     throw new ApiError(0, 'network', '网络不可用，请检查连接');
   }
 
-  if (res.status === 204) return undefined as T;
+  if (res.status === 204) return undefined;
 
   let payload: unknown = undefined;
   try {
@@ -67,5 +87,5 @@ export async function api<T>(path: string, req: Req = {}): Promise<T> {
     );
   }
 
-  return (payload as { data: T }).data;
+  return payload;
 }

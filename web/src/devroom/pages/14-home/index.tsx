@@ -184,14 +184,15 @@ export default function HomePage() {
         <ul className={cn('m-0 list-none p-0', GRID.card)}>
           {visible.map((t) => (
             <li key={t.id} className='flex'>
-              <SquareTopicCard topic={t} className='w-full' />
+              {/* href 由调用方给（2026-10-13 起）：产品路由传 appPath('t/'+id)，房间传 ?page=12-topic */}
+              <SquareTopicCard topic={t} className='w-full' href={roomHref('12-topic')} authorHref={roomHref('11-profile')} />
             </li>
           ))}
         </ul>
       ) : (
         <div className={GRID.compact}>
           {visible.map((t) => (
-            <CompactTopicRow key={t.id} topic={t} />
+            <CompactTopicRow key={t.id} topic={t} href={roomHref('12-topic')} />
           ))}
         </div>
       )}

@@ -39,7 +39,9 @@ it('排序：latest 按最后回复、new 按发布时间、hot 按回复数', (
 
 it('方卡片：标题链到帖子页，封面是固定比例的 img，统计数字都在', () => {
   const topic = TOPICS[0]!;
-  render(<SquareTopicCard topic={topic} />);
+  // 2026-10-13：链接改由调用方给（href prop），与 @/ui/topic/topic-row 同一套约定 ——
+  // 房子件自己拼路径会把房间用户送到旧站 404。所以这里必须显式传 href。
+  render(<SquareTopicCard topic={topic} href='?page=12-topic' />);
   expect(screen.getByRole('link', { name: topic.title })).toBeTruthy();
   const cover = screen.getByAltText('《' + topic.title + '》封面');
   expect(cover.getAttribute('src')).toBe(topic.cover);
@@ -47,6 +49,13 @@ it('方卡片：标题链到帖子页，封面是固定比例的 img，统计数
   expect(screen.getByText(String(topic.reply_count))).toBeTruthy();
   expect(screen.getByText(String(topic.like_count))).toBeTruthy();
   expect(screen.getByText(String(topic.view_count))).toBeTruthy();
+});
+
+it('方卡片：没给 href 时标题**不是链接**（宁可不可点，也不把人送到别处）', () => {
+  const topic = TOPICS[0]!;
+  render(<SquareTopicCard topic={topic} />);
+  expect(screen.queryByRole('link', { name: topic.title })).toBeNull();
+  expect(screen.getByText(topic.title)).toBeTruthy();
 });
 
 it('方卡片：无封面时不留空壳（色块占位替代）', () => {
