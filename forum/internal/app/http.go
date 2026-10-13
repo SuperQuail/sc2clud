@@ -93,6 +93,8 @@ func registerAPIRoutes(r *gin.Engine, cfg *config.Config, m *Modules) {
 	auth.NewHandler(m.Auth).Register(v1)
 	// 公开资料：/users/search 与 /users/:handle。
 	user.NewHandler(m.User).Register(v1)
+	// 全站搜索：一个端点横跨两个域（topics 归 forum、users 归 user），所以组合在 app 层。
+	v1.GET("/search", m.searchEndpoint)
 
 	forum.NewHandler(m.Forum, actorOf).Register(v1, m.requireLogin(), m.perm1)
 	mediaHandler.Register(v1, m.requireLoginFn, m.perm, httpx.BodyLimit)

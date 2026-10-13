@@ -1,0 +1,25 @@
+登录真根因 + 分区左栏 + 主页内嵌搜索（含搜索端点）
+
+一、登录（用户报「账号依旧无法登录，且所有错误都显示验证码不对」）—— CDP 抓真实请求定位到两处：
+  1) **首屏根本没有验证码框**（challenge 初值 false）：抓包显示 POST /auth/login 只有 {login,password}，
+     没有 captcha_id / captcha_answer -> 必然 400 auth.captcha_required，然后框才冒出来。
+     用户看到的是「我明明填对了」+「提示验证码不对」。改成**验证码框常驻**
+     （mode=off 时服务端不看它、空着也能提交，所以常驻不挡人）。
+  2) **两种错误共用一句文案**：captcha_required（你还没填）与 captcha_wrong（填错了）都显示「验证码不对」——
+     把「我没收到」说成「你写错了」，人会一直重试输入而不会去找那个还没出现的框。现分成两句。
+  （上一轮已修的更根本的一处：出网字段名 username -> login。）
+
+二、分区左栏消失：分区页现在复用首页同一个 BoardRail（用户实测「点进分区后左侧分区工具栏会消失」）。
+
+三、搜索内嵌主页（用户要求「不要单独开页面」）：
+  - 首页 URL 带 q 就把信息流切成搜索结果，**同一端点、同一张卡片、共用一套渲染**；
+  - 后端补上一直缺的那条路由：GET /api/v1/search?q=&type=topics|users（查询侧 SearchTopics / user.Search
+    一直都在且有测试，只是没人挂路由，于是落到 SPA 兜底返回 200+HTML）；
+  - 游标自带 rank+tier：搜索按 (rank,id) 排，loose 的 rank 分布与 exact 不同，**丢档位就是错序**（不报错，
+    只让人以为搜索不准）。配一条往返用例钉住 tier；坏游标一律 400，不静默当第一页。
+  - /search 改成重定向回主页；顶栏「搜索」按钮落到主页；stubs.tsx 的搜索占位页删掉。
+
+四、通知页字段对齐：前端写的 summary/read 后端没有（给的是 payload/link/read_at/actor），
+   通知列表因此渲染成一列空白行。这一处已按 payload.text 对齐（通知页的完整重写由并行施工者继续）。
+
+门禁：pnpm check 全绿（78 测试 / 235 文件 0 超限 / 五条门禁）；go build 0 / vet 0 / 游标用例过。

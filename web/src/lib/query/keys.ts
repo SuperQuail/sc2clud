@@ -16,6 +16,13 @@ export const qk = {
   posts: (id: string) => ['topic', id, 'posts'] as const,
   profile: (handle: string) => ['profile', handle] as const,
   userTopics: (handle: string) => ['profile', handle, 'topics'] as const,
+  notifications: () => ['notifications', 'list'] as const,
   unread: () => ['notifications', 'unread'] as const,
+  unreadMessages: () => ['messages', 'unread'] as const,
+  conversations: () => ['messages', 'conversations'] as const,
+  thread: (handle: string) => ['messages', 'thread', handle] as const,
+  releases: () => ['launcher', 'releases'] as const,
+  releaseLatest: (channel: string) => ['launcher', 'latest', channel] as const,
+  /** 搜索：type 与 q 都在 key 里 —— 换一个词就是另一次查询，不能互相覆盖 */
   search: (type: string, q: string) => ['search', type, q] as const,
 };

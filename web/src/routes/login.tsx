@@ -28,7 +28,6 @@ export function LoginPage() {
   const [captcha, setCaptcha] = useState('');
   const [captchaId, setCaptchaId] = useState('');
   const [captchaSeed, setCaptchaSeed] = useState(0);
-  const [challenge, setChallenge] = useState(false);
 
   const signIn = useMutation({
     mutationFn: () =>
@@ -41,7 +40,6 @@ export function LoginPage() {
     onError: (e) => {
       // 验证码错 / 需要验证码：后端用 auth.captcha_required / auth.captcha_wrong 表达（§21.4）
       if (isApiError(e) && (e.code === 'auth.captcha_required' || e.code === 'auth.captcha_wrong')) {
-        setChallenge(true);
         setCaptcha('');
         // 一道题只有一次机会（服务端无论对错都作废），所以出错必须换一张新的。
         setCaptchaSeed((n) => n + 1);
@@ -83,7 +81,18 @@ export function LoginPage() {
         />
       ) : null}
       {isCaptchaError ? (
-        <FormAlert tone='error' title='验证码不对' description='请按图片重新输入一次；连续错误会触发限流。' />
+        // **两种错误要说两句话**：captcha_required =「你还没填」，captcha_wrong =「填错了」。
+        // 2026-10-13 用户实测：只填了用户名与口令（页面上**根本没有验证码框**），页面却说「验证码不对」——
+        // 把「我没收到」说成「你写错了」，人会一直重试输入，而不会去找那个还没出现的框。
+        <FormAlert
+          tone='error'
+          title={err.code === 'auth.captcha_wrong' ? '验证码不对' : '请先填写图形验证码'}
+          description={
+            err.code === 'auth.captcha_wrong'
+              ? '请按图片重新输入一次；连续错误会触发限流。'
+              : '这道题是必须的：按图片填一次即可，看不清就点「换一张」。'
+          }
+        />
       ) : null}
 
       <form onSubmit={submit} noValidate className='flex flex-col gap-3'>
@@ -107,15 +116,17 @@ export function LoginPage() {
           onChange={setPassword}
           error={fieldError(err, 'password')}
         />
-        {/* 验证码按需出现：后端要才画（§21.4 的 auth.captcha_required），不是无条件挡一道 */}
-        {challenge || isCaptchaError ? (
+        {/* **验证码框常驻。** 原先是「后端要才画」（challenge 初值 false），于是 mode=always 下
+            第一次提交必然 400 auth.captcha_required、框才冒出来 —— 用户以为自己填错了。
+            mode=off 时服务端不看它、空着也能提交，所以常驻不挡人。 */}
+        {(
           <ProductCaptcha
             value={captcha}
             onChange={setCaptcha}
             onChallenge={setCaptchaId}
-            refreshKey={captchaSeed}
-          />
-        ) : null}
+          refreshKey={captchaSeed}
+        />
+        )}
         <Checkbox
           label='记住我（这台设备 7 天免登录）'
           checked={remember}

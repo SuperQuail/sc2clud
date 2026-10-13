@@ -130,6 +130,16 @@ export function fetchTopic(id: string, signal?: AbortSignal): Promise<TopicDetai
   return api<TopicDetail>('topics/' + encodeURIComponent(id), { signal });
 }
 
+/**
+ * 搜索帖子：GET /search?type=topics。
+ *
+ * 条目形状与列表项**完全相同**（同一张卡片），所以首页可以把信息流直接换成搜索结果、共用一套渲染。
+ * 游标是不透明的（服务端按 (rank, id) 编的，与列表的 (时间, id) 不是一回事）—— 前端只原样带回。
+ */
+export function searchTopics(q: string, cursor?: string | null, signal?: AbortSignal): Promise<Paged<Topic>> {
+  return apiPage<Topic>('search', { query: { q, type: 'topics', cursor: cursor ?? undefined }, signal });
+}
+
 export function fetchPosts(topicId: string, q: PageQuery = {}, signal?: AbortSignal): Promise<Paged<Post>> {
   return apiPage<Post>('topics/' + encodeURIComponent(topicId) + '/posts', { query: pageQuery(q), signal });
 }

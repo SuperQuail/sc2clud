@@ -25,13 +25,22 @@ export function appealTopicReview(topicId: string, body: { reason: string }): Pr
   });
 }
 
+// **字段名照抄后端 notify/types.go 的 NotificationDTO**。
+// 2026-10-13 盲测实测：这里原本写的是 { summary, read }，而线上根本没有这两个字段
+// （后端给的是 payload / link / read_at / actor）—— 通知中心因此**渲染出一列空白行**，
+// 接口 200、列表有数据，只有文字是空的。契约两侧各写一份、各自的测试都过，序列化那层没人测。
 export type Notification = {
   id: string;
   kind: string;
-  actor?: { handle: string; nickname: string; avatar?: string | null };
-  summary: string;
-  read: boolean;
+  /** 渲染这一条所需的最小形状（d4 §1.1：不放快照）。已知键：ref_type / ref_id / topic_id / text / state / until / amount_cents */
+  payload?: Record<string, unknown> | null;
+  /** 站内路径（形如 "/t/<public_id>"），空串 = 这条通知没有落点（例如处罚通知） */
+  link: string;
+  /** null = 未读。**没有 read 布尔字段** */
+  read_at: string | null;
   created_at: string;
+  /** null = 触发者已注销（系统通知与 AI 审核也是 null） */
+  actor?: { handle: string; nickname: string; avatar?: string | null; avatar_small?: string | null } | null;
 };
 
 export function fetchNotifications(q: PageQuery = {}, signal?: AbortSignal): Promise<Paged<Notification>> {
@@ -43,5 +52,10 @@ export function fetchUnreadCount(signal?: AbortSignal): Promise<{ count: number 
 }
 
 export function markNotificationsRead(body: { ids: string[] } | { all: true }) {
-  return api<void>('notifications/read', { method: 'POST', body });
+  return api<{ updated: number }>('notifications/read', { method: 'POST', body });
+}
+
+/** 软删（只对自己隐藏）。后端对「别人的通知」与「不存在的通知」返回同一个 404，避免枚举。 */
+export function deleteNotification(id: string): Promise<null> {
+  return api<null>('notifications/' + encodeURIComponent(id), { method: 'DELETE' });
 }

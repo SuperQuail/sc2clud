@@ -1,14 +1,16 @@
 import { useSearchParams } from 'react-router';
+import { useState } from 'react';
 import { useInfiniteQuery } from '@tanstack/react-query';
 import Button from '@jetbrains/ring-ui-built/components/button/button';
+import Input from '@jetbrains/ring-ui-built/components/input/input';
 import ButtonSet from '@jetbrains/ring-ui-built/components/button-set/button-set';
 import { ControlsHeight } from '@jetbrains/ring-ui-built/components/global/controls-height';
-import { LayoutGrid, List } from 'lucide-react';
+import { LayoutGrid, List, Search, X } from 'lucide-react';
 import { icon16 } from '@/ui/icons';
 import { appPath } from '@/lib/url';
 import { qk } from '@/lib/query/keys';
 import { PAGE_LIMIT } from '@/lib/api/paging';
-import { fetchTopics, type Topic as ApiTopic } from '@/lib/api/forum';
+import { fetchTopics, searchTopics, type Topic as ApiTopic } from '@/lib/api/forum';
 import { cn } from '@/lib/utils';
 import { CompactTopicRow } from '@/devroom/pages/14-home/topic-compact-row';
 import { SquareTopicCard } from '@/devroom/pages/14-home/topic-square-card';
@@ -57,8 +59,29 @@ const sort = (SORTS.find((s) => s.key === params.get('sort'))?.key ?? 'latest') 
     getNextPageParam: (last) => last.next,
   });
 
-  const items: ApiTopic[] = list.data?.pages.flatMap((p) => p.items) ?? [];
+  // **搜索内嵌在首页**（用户明确要求「不要单独开一个页面」）：URL 里带 q 就把信息流切成搜索结果。
+  // 用的是同一个端点（GET /search?type=topics）与同一张卡片，所以两种状态共用下面那一套渲染，
+  // 不复制第二份列表。q 进 URL —— 可分享、可后退、刷新不丢（与 board / sort / view 同一条规则）。
+  const q = (params.get('q') ?? '').trim();
+  const [qInput, setQInput] = useState(q);
+  const searching = q !== '';
+  const searchFeed = useInfiniteQuery({
+    queryKey: ['search', q],
+    queryFn: ({ pageParam, signal }) => searchTopics(q, pageParam, signal),
+    initialPageParam: null as string | null,
+    enabled: searching,
+    getNextPageParam: (last) => last.next,
+  });
+  const feed = searching ? searchFeed : list;
+
+  const items: ApiTopic[] = feed.data?.pages.flatMap((p) => p.items) ?? [];
   const total = items.length;
+
+  /** 把输入框的值落到 URL；空串 = 退出搜索 */
+  function commitQuery() {
+    const v = qInput.trim();
+    setParam('q', v === '' ? null : v);
+  }
 
   /** 改 URL 里的一个键；null 表示删掉它（默认值不进 URL，链接才短） */
   function setParam(key: string, value: string | null) {
@@ -87,6 +110,43 @@ const sort = (SORTS.find((s) => s.key === params.get('sort'))?.key ?? 'latest') 
         />
 
         <div className='flex flex-wrap items-center justify-between gap-2 border-y border-border py-2'>
+          <span className='flex min-w-0 flex-1 items-center gap-2 sm:flex-none'>
+            {/* 用原生 form 接 Enter：Ring 的 Input 没有 onPressEnter，而手写 onKeyDown 要赌它透传 DOM 属性 */}
+            <form
+              onSubmit={(e) => {
+                e.preventDefault();
+                commitQuery();
+              }}
+              className='flex w-[260px] max-w-full items-center gap-2'
+            >
+              <Input
+                value={qInput}
+                onChange={(e) => setQInput(e.target.value)}
+                placeholder='搜索帖子标题…'
+                data-testid='home-search'
+              />
+              <Button type='submit' inline={false} height={ControlsHeight.S} icon={icon16(Search)}>
+                搜索
+              </Button>
+            </form>
+            {searching ? (
+              <Button
+                data-testid='home-search-clear'
+                inline={false}
+                height={ControlsHeight.S}
+                icon={icon16(X)}
+                title='退出搜索，回到信息流'
+                onClick={() => {
+                  setQInput('');
+                  setParam('q', null);
+                }}
+              >
+                清除
+              </Button>
+            ) : null}
+          </span>
+          {/* 排序只对信息流有意义：搜索结果是按 rank 排的，给它一个「排序」开关是假的 */}
+          {searching ? null : (
           <span className='flex items-center gap-2'>
             <span className='text-[12px] text-muted-foreground'>排序</span>
             <ButtonSet>
@@ -104,6 +164,7 @@ const sort = (SORTS.find((s) => s.key === params.get('sort'))?.key ?? 'latest') 
               ))}
             </ButtonSet>
           </span>
+          )}
           <span className='flex items-center gap-2'>
             <span className='text-[12px] text-muted-foreground'>视图</span>
             <ButtonSet>
@@ -126,7 +187,7 @@ const sort = (SORTS.find((s) => s.key === params.get('sort'))?.key ?? 'latest') 
           </span>
         </div>
 
-        {list.isPending ? (
+        {feed.isPending ? (
           <ul className={cn('m-0 list-none p-0', GRID.card)} aria-busy>
             {[0, 1, 2, 3, 4, 5, 6, 7].map((i) => (
               <li key={i}>
@@ -134,21 +195,27 @@ const sort = (SORTS.find((s) => s.key === params.get('sort'))?.key ?? 'latest') 
               </li>
             ))}
           </ul>
-        ) : list.isError ? (
-          <ErrorState what='帖子列表' error={list.error} onRetry={() => void list.refetch()} />
+        ) : feed.isError ? (
+          <ErrorState what={searching ? '搜索结果' : '帖子列表'} error={feed.error} onRetry={() => void feed.refetch()} />
         ) : items.length === 0 ? (
           <Empty
-            title={board ? '这个分区还没有帖子' : '还没有任何帖子'}
+            title={searching ? '没有匹配的帖子' : board ? '这个分区还没有帖子' : '还没有任何帖子'}
             hint={
-              board
-                ? '换一个分区看看，或者成为第一个在这个分区发帖的人。'
-                : '站点刚开张时就是这样。第一篇帖子由你来写。'
+              searching
+                ? '换个词试试；搜索只查标题与正文里的字，不是模糊匹配。'
+                : board
+                  ? '换一个分区看看，或者成为第一个在这个分区发帖的人。'
+                  : '站点刚开张时就是这样。第一篇帖子由你来写。'
             }
             action={
-              <span className='flex flex-wrap items-center justify-center gap-2'>
-                {board ? <Button onClick={() => setParam('board', null)}>看全部帖子</Button> : null}
-                <ComposeButton board={board || undefined} />
-              </span>
+              searching ? (
+                <Button onClick={() => { setQInput(''); setParam('q', null); }}>清除搜索</Button>
+              ) : (
+                <span className='flex flex-wrap items-center justify-center gap-2'>
+                  {board ? <Button onClick={() => setParam('board', null)}>看全部帖子</Button> : null}
+                  <ComposeButton board={board || undefined} />
+                </span>
+              )
             }
           />
         ) : (
@@ -179,10 +246,10 @@ const sort = (SORTS.find((s) => s.key === params.get('sort'))?.key ?? 'latest') 
             )}
 
             {/* 游标分页（§21.1）：**没有页码**，只有 next_cursor 为 null 才算到底 */}
-            {list.hasNextPage ? (
+            {feed.hasNextPage ? (
               <div className='flex flex-col items-center gap-1.5'>
-                <Button loader={list.isFetchingNextPage} onClick={() => void list.fetchNextPage()}>
-                  {list.isFetchingNextPage ? '加载中…' : '加载更多'}
+                <Button loader={feed.isFetchingNextPage} onClick={() => void feed.fetchNextPage()}>
+                  {feed.isFetchingNextPage ? '加载中…' : '加载更多'}
                 </Button>
                 <span className='text-[11px] text-muted-foreground'>
                   每页 {PAGE_LIMIT} 条 · 按游标翻页（不是页码）

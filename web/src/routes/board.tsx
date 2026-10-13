@@ -8,7 +8,7 @@ import { fetchBoard, fetchTopics, type Topic as ApiTopic } from '@/lib/api/forum
 import { ArrowLeft } from 'lucide-react';
 import { SquareTopicCard } from '@/devroom/pages/14-home/topic-square-card';
 import { ListEnd, SquareCardSkeleton } from '@/devroom/pages/14-home/states';
-import { ComposeButton, PageHeader } from './_parts/layout';
+import { BoardRail, ComposeButton, PageHeader } from './_parts/layout';
 import { Empty, ErrorState } from './_parts/state';
 import { toCardTopic } from './_parts/mappers';
 
@@ -46,7 +46,12 @@ export function BoardPage() {
   const items: ApiTopic[] = list.data?.pages.flatMap((p) => p.items) ?? [];
 
   return (
-    <div className='flex flex-col gap-4'>
+    // 左栏与首页**同一份** BoardRail：点进分区后它不能消失 ——
+    // 「我在哪个分区、还能去哪」是同一件事，换页就把它抽掉会让人找不到北（用户实测）。
+    <div className='flex flex-col gap-6 xl:flex-row xl:items-start'>
+      <BoardRail current={slug} className='hidden xl:flex xl:w-[168px] xl:shrink-0' />
+
+      <div className='flex min-w-0 flex-1 flex-col gap-4'>
       <PageHeader
         title={board.data?.name ?? (board.isError ? '分区' : '正在加载分区…')}
         description={
@@ -146,6 +151,7 @@ export function BoardPage() {
           )}
         </>
       )}
+      </div>
     </div>
   );
 }

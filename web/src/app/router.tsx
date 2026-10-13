@@ -1,10 +1,11 @@
 import { lazy } from 'react';
 // 只从主入口引：v7 的 'react-router' 与 'react-router/dom' 会解析成两个模块副本，
 // context 因此为 null（双包实例陷阱，React 18 + vitest 下必现）。
-import { RouterProvider, createBrowserRouter } from 'react-router';
+import { Navigate, RouterProvider, createBrowserRouter } from 'react-router';
 import { ROUTER_BASENAME } from '@/lib/base';
 import { Shell } from './shell';
 import { RouteError } from './error-boundary';
+import { routePath } from '@/lib/url';
 import { HomePage } from '@/routes/home';
 import { TopicPage } from '@/routes/topic';
 
@@ -24,12 +25,14 @@ const ComposePage = lazy(() => import('@/routes/compose').then((m) => ({ default
 const AppealPage = lazy(() => import('@/routes/appeal').then((m) => ({ default: m.AppealPage })));
 const AdminLayout = lazy(() => import('@/routes/admin').then((m) => ({ default: m.AdminLayout })));
 const NotFoundPage = lazy(() => import('@/routes/not-found').then((m) => ({ default: m.NotFoundPage })));
-const NotificationsPage = lazy(() => import('@/routes/stubs').then((m) => ({ default: m.NotificationsPage })));
+const NotificationsPage = lazy(() => import('@/routes/notifications').then((m) => ({ default: m.NotificationsPage })));
 // 「我的」：收藏 + 举报进展。盲测发现这两个入口在界面上根本不存在（接口一直在）。
 const MePage = lazy(() => import('@/routes/me').then((m) => ({ default: m.MePage })));
-const SearchPage = lazy(() => import('@/routes/stubs').then((m) => ({ default: m.SearchPage })));
-const MessagesPage = lazy(() => import('@/routes/stubs').then((m) => ({ default: m.MessagesPage })));
-const DownloadPage = lazy(() => import('@/routes/stubs').then((m) => ({ default: m.DownloadPage })));
+// 搜索**内嵌在首页**（用户明确要求「不要单独开一个页面」）：/search 只做重定向，
+// 老链接与书签仍然有效，但不再有第二个页面要维护。
+const SearchRedirect = () => <Navigate to={routePath('')} replace />;
+const MessagesPage = lazy(() => import('@/routes/messages').then((m) => ({ default: m.MessagesPage })));
+const DownloadPage = lazy(() => import('@/routes/download').then((m) => ({ default: m.DownloadPage })));
 
 const router = createBrowserRouter(
   [
@@ -50,10 +53,10 @@ const router = createBrowserRouter(
         { path: 'settings', element: <SettingsPage /> },
         { path: 'notifications', element: <NotificationsPage /> },
         { path: 'me', element: <MePage /> },
-        // /messages/:handle 也落在这一屏：私信端点没接之前，两个路径给的是同一句实话
+        // /messages 与 /messages/:handle 是同一屏：左边会话列表 + 右边会话（后者是 URL 里的选中态）
         { path: 'messages', element: <MessagesPage /> },
         { path: 'messages/:handle', element: <MessagesPage /> },
-        { path: 'search', element: <SearchPage /> },
+        { path: 'search', element: <SearchRedirect /> },
         { path: 'download', element: <DownloadPage /> },
         { path: 'admin/*', element: <AdminLayout /> },
         { path: '*', element: <NotFoundPage /> },

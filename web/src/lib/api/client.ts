@@ -47,6 +47,14 @@ export async function apiPage<T>(path: string, req: Req = {}): Promise<{ items: 
   return { items: payload?.data ?? [], next: payload?.next_cursor ?? null };
 }
 
+/**
+ * 少数端点的包络比 apiPage 多一个字段（私信会话页的 peer，d4 §5.2）。
+ * 整包拿回来由调用方取：为它单独写一个 apiThread() 只会把「包络有几种」这件事散到两个函数里。
+ */
+export async function apiEnvelope<T>(path: string, req: Req = {}): Promise<T> {
+  return (await request(path, req)) as T;
+}
+
 // 全站唯一的 fetch 调用点：api / apiPage 都走它。**返回的是完整包络**（解析与解包是两件事）
 async function request(path: string, req: Req = {}): Promise<unknown> {
   const url = buildUrl(path, req.base ?? DEFAULT_BASE, req.query);

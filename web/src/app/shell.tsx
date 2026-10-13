@@ -35,7 +35,8 @@ export function Shell() {
             <Button ghost inline={false} height={ControlsHeight.S} href={appPath('')}>
               首页
             </Button>
-            <Button ghost inline={false} height={ControlsHeight.S} href={appPath('search')} icon={icon16(Search)}>
+            {/* 搜索内嵌在首页（用户要求不单独开页面），所以这个按钮只是把人带到首页的搜索框旁 */}
+            <Button ghost inline={false} height={ControlsHeight.S} href={appPath('')} icon={icon16(Search)}>
               搜索
             </Button>
             <Button ghost inline={false} height={ControlsHeight.S} href={appPath('download')} icon={icon16(Download)}>
