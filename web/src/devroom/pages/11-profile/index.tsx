@@ -25,7 +25,7 @@ const TOPICS: TopicRowData[] = [
     id: 201,
     title: '第三章「余烬」发布公告与更新日志',
     tags: [{ text: '公告', type: TagType.MAIN }, { text: '第三章' }],
-    author: { nickname: '唐天', avatar: assetUrl('miyin-portrait-320.webp'), role: { key: 'admin', name: '管理员' }, title: { name: '执政官', color: '#2563eb' } },
+    author: { nickname: '示范管理员', avatar: assetUrl('miyin-portrait-320.webp'), role: { key: 'admin', name: '管理员' }, title: { name: '执政官', color: '#2563eb' } },
     replies: 128,
     views: 4203,
     lastReplyAt: '3 分钟前',
@@ -34,7 +34,7 @@ const TOPICS: TopicRowData[] = [
     id: 202,
     title: '存档兼容性说明（装过第二章的直接进游戏）',
     tags: [{ text: '公告' }],
-    author: { nickname: '唐天', avatar: assetUrl('miyin-portrait-320.webp'), role: { key: 'admin', name: '管理员' } },
+    author: { nickname: '示范管理员', avatar: assetUrl('miyin-portrait-320.webp'), role: { key: 'admin', name: '管理员' } },
     replies: 64,
     views: 3310,
     lastReplyAt: '昨天',
@@ -43,7 +43,7 @@ const TOPICS: TopicRowData[] = [
     id: 203,
     title: '关于第 11 关菌毯推进速度的调整说明',
     tags: [{ text: '讨论' }],
-    author: { nickname: '唐天', avatar: assetUrl('miyin-portrait-320.webp'), title: { name: '执政官', color: '#2563eb' } },
+    author: { nickname: '示范管理员', avatar: assetUrl('miyin-portrait-320.webp'), title: { name: '执政官', color: '#2563eb' } },
     replies: 42,
     views: 1180,
     lastReplyAt: '2 天前',
@@ -309,7 +309,7 @@ export default function ProfilePage() {
                 和身后 50% 的渐变一比就像贴上去的圆片。改成 /60 让环与身后的底同一档透明度，
                 仍然能分出头像与壁纸，但不突兀。 */}
             <span className='rounded-full ring-4 ring-background/60'>
-              <UserAvatar name='唐天' src={assetUrl('miyin-portrait-320.webp')} size='xl' />
+              <UserAvatar name='示范管理员' src={assetUrl('miyin-portrait-320.webp')} size='xl' />
             </span>
             <span className='flex flex-nowrap items-center gap-2'>
               <Button primary icon={icon16(UserPlus)}>关注</Button>
@@ -319,12 +319,12 @@ export default function ProfilePage() {
           </div>
           <div className='flex flex-col gap-2'>
             <span className='flex flex-wrap items-center gap-2'>
-              <Username nickname='唐天' size='xl' strong />
+              <Username nickname='示范管理员' size='xl' strong />
               <RoleBadge role={{ key: 'admin', name: '管理员' }} />
               <TitleBadge title={{ name: '执政官', color: '#2563eb' }} />
             </span>
             <span className='flex flex-wrap items-center gap-x-3 gap-y-1 text-[13px] text-muted-foreground'>
-              <span>@tangtian</span>
+              <span>@demo-admin</span>
               <span>· 2024 年 3 月加入</span>
               <span className='flex items-center gap-1'>
                 <MapPin aria-hidden className='size-3.5' />
