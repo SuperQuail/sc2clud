@@ -6,6 +6,7 @@ import (
 
 	ent "forum/internal/ent"
 	"forum/internal/platform/apperr"
+	"forum/internal/platform/counter"
 	"forum/internal/platform/db"
 	"forum/internal/platform/idgen"
 
@@ -44,7 +45,9 @@ func (s *Service) GoSource(ctx context.Context, topicPublicID, sourcePublicID st
 		}
 		return "", err
 	}
-	s.count.Add(counterSourceGoKey(row.ID), 1)
+	// 键必须由 counter 包生成：字符串手拼的键不在 Kind 的分支里，
+	// 会让整个 flush 批次报「未知的计数键」→ 重试 3 次后**丢整批**（不只是丢这一个键）。
+	s.count.Add(counter.GoSourceKey(row.ID), 1)
 	return row.URL, nil
 }
 

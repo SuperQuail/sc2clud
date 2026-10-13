@@ -161,9 +161,6 @@ func clip(s string, n int) string {
 // counter.Kind(key) 按 "view:topic:<id>" 拆表与列（§8.2）。
 func counterTopicViewKey(topicID int64) string { return "view:topic:" + itoa64(topicID) }
 
-// counterSourceGoKey 是转链计数的键。
-func counterSourceGoKey(sourceID int64) string { return "go:source:" + itoa64(sourceID) }
-
 func itoa64(n int64) string { return strconv.FormatInt(n, 10) }
 
 // isUniqueViolation 判「唯一约束冲突」。唯一索引撞车与唯一约束撞车的 SQLSTATE 都是 23505。

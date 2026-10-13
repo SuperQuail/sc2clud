@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"forum/internal/authz"
+	"forum/internal/platform/counter"
 )
 
 // setupTopic 是大多数用例的起点：一个分区 + 一个作者 + 一条过审主题。
@@ -481,7 +482,7 @@ func TestSourcesWriteRules(t *testing.T) {
 	if target != "https://pan.baidu.com/y" {
 		t.Fatalf("转链目标不对: %s", target)
 	}
-	if h.count.Get(counterSourceGoKey(0)) != 0 {
+	if h.count.Get(counter.GoSourceKey(0)) != 0 {
 		t.Fatal("计数键不该是 0 号源")
 	}
 	// 主题不可见时源也不可见（不能被用来探测隐藏主题）。
@@ -493,3 +494,64 @@ func TestSourcesWriteRules(t *testing.T) {
 }
 
 func ptrStr(s string) *string { return &s }
+
+// 全站 Issue 列表（无任何筛选）是 GET /api/v1/issues 的那条路：TopicID=0 时 $5 不被任何
+// 条件引用。**这条路上原来没有用例**，于是「拼进去的参数比 args 少一个」这件事
+// 一直到真库上才以 42P18「无法确定 $5 的类型」暴露出来（P1 接线时发现）。
+func TestListIssuesAllSiteNoFilter(t *testing.T) {
+	h := newHarness(t)
+	author, topic := h.setupTopic(t)
+	// 只有资源帖能提反馈，先把它改成资源帖。
+	if err := h.svc.UpdateTopic(h.ctx, author, topic.ID, UpdateTopicInput{Kind: ptrStr("resource")}); err != nil {
+		t.Fatal(err)
+	}
+	made, err := h.svc.CreateIssue(h.ctx, author, topic.ID, CreateIssueInput{Kind: "bug", Title: "全站列表", BodyMD: "描述"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	// 不带任何筛选：?status / ?kind / ?author / ?assignee / ?cursor 全空。
+	page, err := h.svc.ListIssues(h.ctx, author, ListIssuesInput{})
+	if err != nil {
+		t.Fatalf("全站 Issue 列表（无筛选）不该失败: %v", err)
+	}
+	if len(page.Items) != 1 || page.Items[0].ID != made.ID {
+		t.Fatalf("全站聚合应返回那条 issue，实际 %+v", page.Items)
+	}
+}
+
+// 主题投票：只能赞不能踩（拍板 d3 §11.2 第 5 条）。
+// 这条用例同时钉住两件事：
+//   - 服务层把 value=-1 挡在 400（不是让它走到 SQL 上变成 500）；
+//   - **+1 与取消真的能跑**：topics 表只有 like_count，没有 dislike_count，
+//     而那两条 SQL 曾经无条件写 dislike_count（42P01/42703）。
+func TestTopicVoteOnlyLike(t *testing.T) {
+	h := newHarness(t)
+	author, topic := h.setupTopic(t)
+
+	_, err := h.svc.Vote(h.ctx, author, VoteTopic, topic.ID, -1)
+	assertCode(t, err, "forum.vote_value_invalid")
+
+	got, err := h.svc.Vote(h.ctx, author, VoteTopic, topic.ID, 1)
+	if err != nil {
+		t.Fatalf("主题点赞不该失败: %v", err)
+	}
+	if got.LikeCount != 1 || got.DislikeCount != 0 || got.MyVote != 1 {
+		t.Fatalf("点赞后计数不对: %+v", got)
+	}
+	var stored int
+	if err := h.pool.QueryRow(h.ctx, "SELECT like_count FROM topics WHERE public_id = $1", topic.ID).Scan(&stored); err != nil {
+		t.Fatal(err)
+	}
+	if stored != 1 {
+		t.Fatalf("topics.like_count 应为 1，实际 %d", stored)
+	}
+
+	// 取消也是同一条 SQL 的另一半（Unvote 同样只该碰 like_count）。
+	got, err = h.svc.Unvote(h.ctx, author, VoteTopic, topic.ID)
+	if err != nil {
+		t.Fatalf("取消主题点赞不该失败: %v", err)
+	}
+	if got.LikeCount != 0 || got.MyVote != 0 {
+		t.Fatalf("取消后计数应归零: %+v", got)
+	}
+}

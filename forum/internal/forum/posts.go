@@ -182,9 +182,16 @@ func (s *Service) insertPost(ctx context.Context, actor *authz.Actor, ref *pgsql
 		if err := pgsql.RecountTopic(ctx, tx, ref.ID); err != nil {
 			return err
 		}
-		// ⑤ 通知与索引。payload 只放 id（拍板 §5.7）：任务执行时再查一次库。
+		// ⑤ 通知与索引。payload 只能放 id 一类最小形状（拍板 §5.7：任务执行时再查一次库），
+		// **但形状必须与消费方（notify）逐字一致**——它解的是
+		// {actor_id, ref_type, ref_id, topic_id}（notify.CreateNotifyInput，§8.1 的定稿）。
+		// 曾经这里只发 {"id": id}：ref_id 解成 0 → 查不到楼层 → 静默 return nil，
+		// 任务照样 done、通知一行都没有（「任务成功」与「通知产生」是两件事）。
 		return s.enqueue(ctx, tx, queue.Task{
-			Type: queue.TypeNotifyReply, Payload: map[string]int64{"id": id},
+			Type: queue.TypeNotifyReply,
+			Payload: map[string]any{
+				"actor_id": actor.UserID, "ref_type": notifyRefPost, "ref_id": id, "topic_id": ref.ID,
+			},
 		})
 	})
 	if err == nil || in.ClientToken == "" || !isUniqueViolation(err) {

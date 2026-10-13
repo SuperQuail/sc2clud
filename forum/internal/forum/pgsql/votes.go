@@ -30,8 +30,13 @@ func Vote(ctx context.Context, tx Querier, targetType string, targetID, userID i
 	return changed, err
 }
 
-// voteSQL 按目标表拼出那一条语句。票数落在哪两列上由目标表决定：
-// topics 只有 like_count（主题只有赞，没有踩）。
+// voteSQL 按目标表拼出那一条语句。
+//
+// SET 子句必须跟着表走：**topics 表只有 like_count，没有 dislike_count**
+// （主题只有赞，拍板 d3 §11.2 第 5 条；迁移 0004 的 topics 也没有那一列）。
+// 无条件写两列会让主题点赞直接 42703「字段 t.dislike_count 不存在」——
+// 而那条路是 PUT /topics/:id/like 的主路。所以「写哪几列」与「读哪几列」
+// 用同一份映射（likeSetSQL / voteCountCols），三张表各只有一处定义。
 func voteSQL(table string) string {
 	return sqlJoin(
 		"WITH ins AS (",
@@ -49,13 +54,23 @@ func voteSQL(table string) string {
 		"               WHERE p.user_id = $1::bigint AND p.target_type = $2::text AND p.target_id = $3::bigint) END) AS old_value",
 		")",
 		"UPDATE "+table+" t",
-		"   SET like_count    = t.like_count    + ((i.new_value =  1)::int - (i.old_value =  1)::int),",
-		"       dislike_count = t.dislike_count + ((i.new_value = -1)::int - (i.old_value = -1)::int)",
+		"   SET "+likeSetSQL(table),
 		"  FROM ins i",
 		" WHERE t.id = $3::bigint",
 		"   AND i.new_value IS DISTINCT FROM i.old_value",
 		" RETURNING true",
 	)
+}
+
+// likeSetSQL 是票数平移的 SET 子句，按目标表给列：
+//   - topics 只有 like_count（主题只有赞，不能踩）；
+//   - posts / issue_comments 两列都有（评论区有赞/踩，拍板 §11.2 第 6 条与接口定稿补充 §5）。
+func likeSetSQL(table string) string {
+	s := "like_count = t.like_count + ((i.new_value = 1)::int - (i.old_value = 1)::int)"
+	if table == "topics" {
+		return s
+	}
+	return s + ",\n       dislike_count = t.dislike_count + ((i.new_value = -1)::int - (i.old_value = -1)::int)"
 }
 
 // Unvote 是幂等的取消（§5.3）：没有票时不删任何行 → UPDATE 零行 → 幂等成功。
@@ -72,8 +87,7 @@ func (s *Store) Unvote(ctx context.Context, tx Querier, targetType string, targe
 		"  RETURNING value",
 		")",
 		"UPDATE "+table+" t",
-		"   SET like_count    = t.like_count    - (CASE WHEN d.value =  1 THEN 1 ELSE 0 END),",
-		"       dislike_count = t.dislike_count - (CASE WHEN d.value = -1 THEN 1 ELSE 0 END)",
+		"   SET "+unlikeSetSQL(table),
 		"  FROM del d",
 		" WHERE t.id = $3",
 		" RETURNING "+voteCountCols(table),
@@ -87,6 +101,15 @@ func (s *Store) Unvote(ctx context.Context, tx Querier, targetType string, targe
 		return 0, 0, ErrNoRows
 	}
 	return like, dislike, err
+}
+
+// unlikeSetSQL 是取消投票的 SET 子句，列的取舍与 likeSetSQL 逐字同源。
+func unlikeSetSQL(table string) string {
+	s := "like_count = t.like_count - (CASE WHEN d.value = 1 THEN 1 ELSE 0 END)"
+	if table == "topics" {
+		return s
+	}
+	return s + ",\n       dislike_count = t.dislike_count - (CASE WHEN d.value = -1 THEN 1 ELSE 0 END)"
 }
 
 // voteCountCols 与 voteCountDest 一起解决「topics 只有 like_count」这一件事。

@@ -484,3 +484,13 @@ func nullIfEmpty(s string) *string {
 	}
 	return &s
 }
+
+// nullIfZero 把「0 = 不过滤」的整型筛选换成 NULL，让条件恒真。
+// 它存在的理由：被筛选的参数**必须在 SQL 里恒被引用**（引用了才推断得出类型），
+// 所以不能靠「不给筛选就不拼这段条件」来省掉它（issues.go 的 $5 踩过 42P18）。
+func nullIfZero(n int64) *int64 {
+	if n == 0 {
+		return nil
+	}
+	return &n
+}

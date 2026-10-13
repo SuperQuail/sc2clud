@@ -1,0 +1,10 @@
+# 构建与暂存产物：80MB 的 Linux 二进制、staged dist —— 一律不进仓库
+.build/
+.stage/
+.tmp/
+artifacts/
+incoming/
+
+# 注意：deploy/artifacts/forum-0.1.0-dev.1.tar.gz 是 0 字节的**失败产物**（tar 没打完就中断），
+# .sha256 那个 64 字节文件对应的是空内容 —— 这类「产物存在但内容是空的」正是总纲 §7.4 说的陷阱：
+# 部署脚本必须校验 tar 的**可解性**，而不是只看文件在不在。

@@ -110,9 +110,14 @@ func (b *Buffer) restore(keys []string, deltas []int64) {
 }
 
 // 计数键的前缀是 counter 与写回函数之间唯一的约定：写回函数按键前缀选表。
+//
+// **加一个新键 = 同时加三处**：前缀常量、下面的 Kind 分支、pgcounter 的写回表。
+// 漏掉第二处的后果是整批 flush 失败重试到丢批（不是丢这一个键），漏掉第三处是静默丢增量。
+// pgcounter 的 TestEveryKnownKindHasWriter 把这两条都钉住了——加键时必须先让它绿。
 const (
 	prefixTopicView     = "view:topic:"
 	prefixAssetDownload = "download:asset:"
+	prefixSourceGo      = "go:source:"
 )
 
 // TopicViewKey 主题浏览量（topics.view_count）。
@@ -123,6 +128,9 @@ func AssetDownloadKey(assetID int64) string {
 	return prefixAssetDownload + strconv.FormatInt(assetID, 10)
 }
 
+// GoSourceKey 下载源转链次数（topic_sources.go_count）。
+func GoSourceKey(sourceID int64) string { return prefixSourceGo + strconv.FormatInt(sourceID, 10) }
+
 // Kind 与 ID 把键拆开；不认识的前缀返回 error——写回函数据此报错，而不是静默丢数。
 func Kind(key string) (kind string, id int64, err error) {
 	switch {
@@ -132,6 +140,9 @@ func Kind(key string) (kind string, id int64, err error) {
 	case strings.HasPrefix(key, prefixAssetDownload):
 		id, err = strconv.ParseInt(strings.TrimPrefix(key, prefixAssetDownload), 10, 64)
 		return "asset_download", id, err
+	case strings.HasPrefix(key, prefixSourceGo):
+		id, err = strconv.ParseInt(strings.TrimPrefix(key, prefixSourceGo), 10, 64)
+		return "source_go", id, err
 	default:
 		return "", 0, fmt.Errorf("counter: 未知的计数键 %q", key)
 	}

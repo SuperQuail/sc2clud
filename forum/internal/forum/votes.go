@@ -26,30 +26,31 @@ func (s *Service) Vote(ctx context.Context, actor *authz.Actor, target VoteTarge
 	if target == VoteTopic && value != 1 {
 		return nil, ErrVoteValue
 	}
-	table, ok := voteTable(target)
-	if !ok {
-		return nil, invalid("target", "不支持的投票目标")
-	}
-	targetID, err := s.resolveVoteTarget(ctx, actor, table, target, publicID)
+	vt, err := s.resolveVoteTarget(ctx, actor, target, publicID)
 	if err != nil {
 		return nil, err
 	}
 	now := s.clk.Now().UTC()
 	var like, dislike int
 	err = db.WithTx(ctx, s.db, func(tx *ent.Tx) error {
-		changed, err := pgsql.Vote(ctx, tx, string(target), targetID, actor.UserID, value, now)
+		changed, err := pgsql.Vote(ctx, tx, string(target), vt.id, actor.UserID, value, now)
 		if err != nil {
 			return err
 		}
-		like, dislike, err = s.repo.VoteCounts(ctx, tx, string(target), targetID)
+		like, dislike, err = s.repo.VoteCounts(ctx, tx, string(target), vt.id)
 		if err != nil {
 			return err
 		}
 		if changed && value == 1 {
-			// notify:like 的消费者在 D4（社交域），任务类型常量届时加到 platform/queue。
+			// payload 的形状是**消费方 notify 定的**（§8.1 定稿）：
+			// {ref_type, ref_id, topic_id, actor_id}，任务类型用 platform/queue 的常量。
+			// 曾经这里发的是字面量 "notify:like" + {"id","user_id"}：notify 解出的 ref_type 为空
+			// → 「不认识的 ref_type」→ 重试 5 次进 dead。
 			return s.enqueue(ctx, tx, queue.Task{
-				Type:    "notify:like",
-				Payload: map[string]int64{"id": targetID, "user_id": actor.UserID},
+				Type: queue.TypeNotifyLike,
+				Payload: map[string]any{
+					"actor_id": actor.UserID, "ref_type": vt.kind, "ref_id": vt.id, "topic_id": vt.topicID,
+				},
 			})
 		}
 		return nil
@@ -65,11 +66,7 @@ func (s *Service) Unvote(ctx context.Context, actor *authz.Actor, target VoteTar
 	if _, err := requireActor(actor); err != nil {
 		return nil, err
 	}
-	table, ok := voteTable(target)
-	if !ok {
-		return nil, invalid("target", "不支持的投票目标")
-	}
-	targetID, err := s.resolveVoteTarget(ctx, actor, table, target, publicID)
+	vt, err := s.resolveVoteTarget(ctx, actor, target, publicID)
 	if err != nil {
 		return nil, err
 	}
@@ -77,12 +74,12 @@ func (s *Service) Unvote(ctx context.Context, actor *authz.Actor, target VoteTar
 	err = db.WithTx(ctx, s.db, func(tx *ent.Tx) error {
 		// 取消是幂等的：没有票时删 0 行也是成功（§5.3）——那种情况 UPDATE 不返回行，
 		// 回读当前计数；目标不存在时回读也会 0 行，那时才是 404。
-		like, dislike, err = s.repo.Unvote(ctx, tx, string(target), targetID, actor.UserID)
+		like, dislike, err = s.repo.Unvote(ctx, tx, string(target), vt.id, actor.UserID)
 		if err != pgsql.ErrNoRows {
 			return err
 		}
 		var readErr error
-		like, dislike, readErr = s.repo.VoteCounts(ctx, tx, string(target), targetID)
+		like, dislike, readErr = s.repo.VoteCounts(ctx, tx, string(target), vt.id)
 		if readErr == pgsql.ErrNoRows {
 			return ErrTopicNotFound
 		}
@@ -95,36 +92,47 @@ func (s *Service) Unvote(ctx context.Context, actor *authz.Actor, target VoteTar
 	return &VoteResultDTO{LikeCount: like, DislikeCount: dislike, MyVote: 0}, nil
 }
 
+// voteTargetRef 是投票目标解析出来的三件事。**ref_type 与 ref_id 在这里算一次**，
+// 不再由调用点各算一遍（两份就会漂移，见 _P2-修正清单 §8.1）。
+type voteTargetRef struct {
+	id   int64  // 内部 id：写票数、算 dedup_key 都用它
+	kind string // notify 的 ref_type：post | topic | comment
+	// topicID 是通知要的 topic_id：楼层与 issue 评论各有归属主题，主题就是它自己。
+	topicID int64
+}
+
 // resolveVoteTarget 把 public_id 解成内部 id，并回答「这一行对外存在吗」。
 // 主题不可见 / 楼层不可见 / 评论不可见一律 404（不区分原因，区分就是探测口）。
-func (s *Service) resolveVoteTarget(ctx context.Context, actor *authz.Actor, table string, target VoteTarget, publicID string) (int64, error) {
+func (s *Service) resolveVoteTarget(ctx context.Context, actor *authz.Actor, target VoteTarget, publicID string) (voteTargetRef, error) {
 	switch target {
 	case VoteTopic:
 		ref, err := s.repo.TopicRef(ctx, publicID, actor.UserID, canReview(actor))
 		if err != nil {
 			if err == pgsql.ErrNoRows {
-				return 0, ErrTopicNotFound
+				return voteTargetRef{}, ErrTopicNotFound
 			}
-			return 0, err
+			return voteTargetRef{}, err
 		}
-		return ref.ID, nil
+		return voteTargetRef{id: ref.ID, kind: notifyRefTopic, topicID: ref.ID}, nil
 	case VotePost:
 		ref, err := s.postRef(ctx, actor, publicID)
 		if err != nil {
-			return 0, err
+			return voteTargetRef{}, err
 		}
-		return ref.ID, nil
+		return voteTargetRef{id: ref.ID, kind: notifyRefPost, topicID: ref.TopicID}, nil
 	case VoteIssueComment:
 		ref, err := s.repo.IssueCommentRef(ctx, publicID, actor.UserID)
 		if err != nil {
 			if err == pgsql.ErrNoRows {
-				return 0, ErrIssueNotFound
+				return voteTargetRef{}, ErrIssueNotFound
 			}
-			return 0, err
+			return voteTargetRef{}, err
 		}
-		return ref.ID, nil
+		// likes.target_type='issue_comment' → notify 的 ref_type="comment"
+		// （NotifyLike 只认 post/topic/comment 三个，§8.1 的映射规则）。
+		return voteTargetRef{id: ref.ID, kind: notifyRefComment, topicID: ref.TopicID}, nil
 	default:
-		return 0, invalid("target", "不支持的投票目标")
+		return voteTargetRef{}, invalid("target", "不支持的投票目标")
 	}
 }
 

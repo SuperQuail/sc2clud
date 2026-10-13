@@ -42,6 +42,19 @@ type (
 	}
 )
 
+// notify 的 ref_type（通知 payload 的取值）。**与 notify 包的同名常量同值**：
+// 它不是本域的实现细节，而是两个模块之间的线格式（接口定稿补充 §8.1）。
+// 为什么在这里再写一遍：notify 与 forum 禁止互相 import（两个域各写一半），
+// 所以这份契约只能各持一半——「两边同值」由 app 包那条端到端用例证明
+// （internal/app/e2e_test.go：任务 done 之外**还要**通知表里真的多一行）。
+// 注意 likes.target_type（库里第三套名字）与它不同：issue_comment → comment 的换算
+// 在 votes.go 的 resolveVoteTarget 里做，只做一次。
+const (
+	notifyRefPost    = "post"
+	notifyRefTopic   = "topic"
+	notifyRefComment = "comment"
+)
+
 // UserAuthBrief 是发帖门槛与审核豁免要的两个字段（§9.4）。
 type UserAuthBrief struct {
 	ID      int64

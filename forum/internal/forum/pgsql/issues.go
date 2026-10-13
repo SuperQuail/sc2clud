@@ -144,10 +144,10 @@ type IssueFilter struct {
 // 首页（无游标）；带上游标直接 400（§7.7 的注）。
 func (s *Store) ListIssues(ctx context.Context, f IssueFilter) ([]IssueRow, error) {
 	col := f.Sort.column()
-	scope := "t.visibility = 'normal' AND t.review_state = 'approved'"
-	if f.TopicID > 0 {
-		scope = "i.topic_id = $5"
-	}
+	// scope 是**一个恒被引用的条件**，不是「有时拼进来的一整段」：args 里恒有 $5，
+	// 只要有一条路径不引用它，pgx 的 DescribeExec 就定不出它的类型 → 42P18
+	// （全站列表、无筛选时就是这么炸的）。改这条 SQL 的人请保持「参数个数 == 拼进去的个数」。
+	scope := "($5::bigint IS NULL OR i.topic_id = $5)"
 	cursor := "(" + col + ", i.id) < ($6::timestamptz, $7::bigint)"
 	if f.Sort == IssueSortComments {
 		// 首页才允许；带游标由 service 拒掉（所以这里给一个恒真的游标条件是没有意义的，
@@ -165,8 +165,9 @@ func (s *Store) ListIssues(ctx context.Context, f IssueFilter) ([]IssueRow, erro
 		" AND " + cursor +
 		" ORDER BY " + order + " LIMIT $8"
 
+	// TopicID=0（全站聚合）时给 NULL，条件退化成恒真——$5 仍然被引用。
 	args := []any{nullIfEmpty(f.Status), nullIfEmpty(f.Kind), f.AuthorID, f.AssigneeID,
-		f.TopicID, f.CursorT.UTC(), f.CursorID, f.Limit}
+		nullIfZero(f.TopicID), f.CursorT.UTC(), f.CursorID, f.Limit}
 
 	var out []IssueRow
 	err := s.query(ctx, sqlText, args, func(rows *sql.Rows) error {

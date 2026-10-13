@@ -1,0 +1,62 @@
+# ============================================================
+# SC2clud template unit -- one definition for both instances.
+# Deployed to /etc/systemd/system/sc2clud@.service by deploy/deploy.ps1.
+#
+#   systemctl start sc2clud@prod     -> /srv/sc2clud/prod/current  (127.0.0.1:8080)
+#   systemctl start sc2clud@dev      -> /srv/sc2clud-dev/current   (127.0.0.1:8082)
+#
+# Instance identity lives in the env file ONLY (/etc/sc2clud/<inst>.env:
+# FORUM_HTTP__ADDR, FORUM_DB__DSN, ...). The unit is identical for both,
+# so there is no place for the two instances to drift apart.
+#
+# DO NOT add a drop-in that overrides ExecStart: the old site shipped a
+# binary to the wrong place for weeks because a drop-in outranked the unit.
+# To change the start command, change this file and daemon-reload.
+# ============================================================
+
+[Unit]
+Description=SC2clud forum (%i)
+After=network-online.target postgresql.service
+Wants=network-online.target
+StartLimitIntervalSec=60
+StartLimitBurst=5
+
+[Service]
+Type=simple
+# %i is the instance name; the release dir and env file both key off it.
+WorkingDirectory=/srv/sc2clud-%i/current
+# -listen wins over FORUM_HTTP__ADDR and -web over FORUM_WEB__DIST_DIR, so the
+# running release is visible in systemctl status instead of hidden in an env file.
+ExecStart=/srv/sc2clud-%i/current/bin/forum run -web /srv/sc2clud-%i/current/web/dist
+EnvironmentFile=/etc/sc2clud/%i.env
+Restart=always
+RestartSec=2
+KillSignal=SIGTERM
+TimeoutStopSec=30
+
+# --- resource envelope (see 完全重构/性能与容量.md) ---
+# prod 450M / dev 400M. MemoryMax is the hard wall; MemoryHigh throttles first.
+MemoryHigh=400M
+MemoryMax=448M
+# Let the OOM killer take the app before it takes nginx or postgres.
+OOMScoreAdjust=200
+TasksMax=256
+LimitNOFILE=16384
+# Go's own soft limit: keep the heap under the cgroup wall instead of thrashing.
+Environment=GOMEMLIMIT=380MiB
+
+# --- hardening (kept to what has actually been verified to boot) ---
+NoNewPrivileges=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectHome=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+LockPersonality=true
+# NOT set on purpose:
+#   ProtectSystem=strict - the app writes /etc/sc2clud? no; but ReadWritePaths on a
+#     symlinked release dir is a boot-time footgun (verified once on the Rust unit).
+#   MemoryDenyWriteExecute / SystemCallFilter=@system-service - the Go runtime
+#     needs mmap(PROT_EXEC) for JIT-less but still exec-mapped pages.
