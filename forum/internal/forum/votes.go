@@ -75,13 +75,18 @@ func (s *Service) Unvote(ctx context.Context, actor *authz.Actor, target VoteTar
 	}
 	var like, dislike int
 	err = db.WithTx(ctx, s.db, func(tx *ent.Tx) error {
-		var err error
-		// 取消是幂等的：没有票时删 0 行也是成功，计数原样返回（§5.3）。
+		// 取消是幂等的：没有票时删 0 行也是成功（§5.3）——那种情况 UPDATE 不返回行，
+		// 回读当前计数；目标不存在时回读也会 0 行，那时才是 404。
 		like, dislike, err = s.repo.Unvote(ctx, tx, string(target), targetID, actor.UserID)
-		if err == pgsql.ErrNoRows {
+		if err != pgsql.ErrNoRows {
+			return err
+		}
+		var readErr error
+		like, dislike, readErr = s.repo.VoteCounts(ctx, tx, string(target), targetID)
+		if readErr == pgsql.ErrNoRows {
 			return ErrTopicNotFound
 		}
-		return err
+		return readErr
 	})
 	if err != nil {
 		return nil, err

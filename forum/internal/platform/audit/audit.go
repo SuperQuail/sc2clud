@@ -7,7 +7,6 @@ package audit
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 
 	ent "forum/internal/ent"
@@ -67,5 +66,3 @@ func (w *Writer) WriteBatch(ctx context.Context, tx *ent.Tx, es []Entry) error {
 	}
 	return nil
 }
-
-var _ = json.Marshal

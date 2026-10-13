@@ -105,13 +105,13 @@ func quietLogger() *slog.Logger {
 	return slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelError + 1}))
 }
 
-// applyMigrations 跑全部 *.up.sql，并修补三处**已确认的迁移缺陷**（migrations/** 不在本模块作用域，
-// 所以只能在测试里做等价修补；迁移被正式修好后这里整段删掉）：
+// applyMigrations 跑全部 *.up.sql —— **原文照跑，不做任何补丁**。
 //
-//  1. 0004 的 board_acls / topic_images 同时写了 id 主键与表级复合主键 → PostgreSQL 42P16，
-//     迁移在 0004 就断，后面一张表都建不出来。保留每个块里第一个主键，其余降成 UNIQUE。
-//  2. 0010 的 payment_channels 缺 public_id（ent 的 PaymentChannel 带 mixin.PublicID，
-//     生成代码的 SELECT 固定带它）→ 补上，与 reward 的测试补法一致。
+// 这里曾经有一段「把第二个主键降成 UNIQUE」「给 payment_channels 补 public_id」的等价修补，
+// 因为当时 0004/0010 有缺陷而 migrations/** 不在本模块写作用域。
+// 那两处已在迁移里正式修好（0004 降 UNIQUE、0010 补 public_id），**补丁已删**：
+// 留着一份 DDL 补丁就是第二份真源，而且它会掩盖将来同类的迁移缺陷
+// （测试自己把迁移修好了，真正的迁移坏了也看不出来）。
 func applyMigrations(t *testing.T, ctx context.Context, pool *pgxpool.Pool) {
 	t.Helper()
 	dir := testsupport.MigrationsDir()
@@ -139,56 +139,12 @@ func applyMigrations(t *testing.T, ctx context.Context, pool *pgxpool.Pool) {
 			b.WriteString(line)
 			b.WriteByte('\n')
 		}
-		sql := b.String()
-		if _, err := pool.Exec(ctx, demoteExtraPrimaryKeys(sql)); err != nil {
+		if _, err := pool.Exec(ctx, b.String()); err != nil {
 			t.Fatalf("迁移 %s: %v", name, err)
 		}
 	}
 }
 
-// demoteExtraPrimaryKeys 把每个 CREATE TABLE 块里第二个及以后的主键降成 UNIQUE（唯一性不变）。
-// demoteExtraPrimaryKeys 把每个 CREATE TABLE 块里第二个及以后的主键降成 UNIQUE（唯一性不变）。
-// 按块文本做替换：块内容唯一，不需要维护搜索位置（第一版在这里写出了死循环）。
-func demoteExtraPrimaryKeys(sql string) string {
-	for _, block := range createBlocks(sql) {
-		if strings.Count(block, "PRIMARY KEY") < 2 {
-			continue
-		}
-		seen := false
-		fixed := strings.Split(block, "\n")
-		for j, ln := range fixed {
-			if !strings.Contains(ln, "PRIMARY KEY") {
-				continue
-			}
-			if seen {
-				fixed[j] = strings.Replace(ln, "PRIMARY KEY", "UNIQUE", 1)
-			}
-			seen = true
-		}
-		sql = strings.Replace(sql, block, strings.Join(fixed, "\n"), 1)
-	}
-	return sql
-}
-
-// createBlocks 切出每个完整的 CREATE TABLE 块（到第一个 "\n);" 为止）。
-func createBlocks(sql string) []string {
-	const marker = "CREATE TABLE "
-	var out []string
-	for {
-		i := strings.Index(sql, marker)
-		if i < 0 {
-			return out
-		}
-		rest := sql[i:]
-		end := strings.Index(rest, "\n);")
-		if end < 0 {
-			return out
-		}
-		block := rest[:end+3]
-		out = append(out, block)
-		sql = rest[len(block):]
-	}
-}
 
 // putImage 落一张图并登记引用行：与上传端点同一条路径（落盘走 service，登记走 SQL）。
 // 不为测试在生产代码里开一个 RefTx 导出——那会多一个没人调的导出。

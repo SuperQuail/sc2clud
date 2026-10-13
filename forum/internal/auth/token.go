@@ -96,34 +96,20 @@ func (s *Service) secureCookie() bool {
 	return len(s.cfg.Site.BaseURL) >= len(https) && s.cfg.Site.BaseURL[:len(https)] == https
 }
 
-// 会话列表与踢设备的 {id}：token_hash 的 base64url 前 16 字节（22 字符）。
+// 会话列表与踢设备的 {id}：token_hash 的 base64url **全文**（32 字节 → 43 字符）。
 //
 // sessions 表**没有 public_id 列**（ent 的 session schema 明确写了「不加 public_id 是定案」，
-// 与拍板 U13 的②相反）。本实现照 schema 的实际形态做；补列是 Lead 的迁移决定。
+// 与拍板 U13 的②相反），所以对外 id 只能是摘要的编码。**必须是全文而不是前缀**：
+// 截断的前缀既让「踢设备」查不到行，也会让两条会话撞同一个 id。
 func sessionKey(digest []byte) string {
-	return base64.RawURLEncoding.EncodeToString(digest[:16])
+	return base64.RawURLEncoding.EncodeToString(digest)
 }
 
-// decodeSessionKey 把 {id} 解回 16 字节前缀。它**不能**当 WHERE 条件查库
-// （token_hash 是 32 字节，后 16 字节未知），只能与手头的摘要比前缀。
+// decodeSessionKey 把 {id} 解回 32 字节摘要——它**就是** uq_sessions_token 的查询键。
 func decodeSessionKey(key string) ([]byte, bool) {
 	b, err := base64.RawURLEncoding.DecodeString(key)
-	if err != nil || len(b) != 16 {
+	if err != nil || len(b) != 32 {
 		return nil, false
 	}
 	return b, true
-}
-
-// sameDigest 比摘要的前 16 字节（会话 {id} 的语义）。
-func sameDigest(key string, digest []byte) bool {
-	head, ok := decodeSessionKey(key)
-	if !ok || len(digest) != 32 {
-		return false
-	}
-	for i := range head {
-		if head[i] != digest[i] {
-			return false
-		}
-	}
-	return true
 }

@@ -1,0 +1,15 @@
+P2d 定案 + 删掉 media 测试里的迁移补丁
+
+拍板（完全重构/后端设计/_P2-修正清单.md 9）：
+- images 保留已落地的 char(64)/smallint 形状（改 d5 文档跟代码，不改代码跟文档）；
+- config.Image 加 MinFreeBytes（磁盘闸门阈值必须是配置项 + 死值校验）；
+- 占位图就一张，三档文案归前端（图片是字节，文案是界面的事）；
+- EXPLAIN 门禁按「规模条件」写（10k 行下 planner 选 Seq Scan 是正确决策，强行要 GIN 等于把测试改成通过）；
+- media 的 6 个错误码登记进 v2 21.4。
+
+删补丁：media/main_test.go 里那段「第二个主键降 UNIQUE + 补 payment_channels.public_id」的等价修补整段删除，
+applyMigrations 现在原文照跑迁移。理由：留着一份 DDL 补丁就是第二份真源，而且它会掩盖将来同类的迁移缺陷
+（测试自己把迁移修好了，真正的迁移坏了也看不出来）。
+release/reward 的同类补丁待删（同一理由，下一步做）。
+
+另：清掉产品路径上的 debugSQLs 开关（复审发现的真缺陷）。

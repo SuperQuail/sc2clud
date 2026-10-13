@@ -1,6 +1,7 @@
 package auth
 
 import (
+	"bytes"
 	"context"
 	"database/sql"
 	"errors"
@@ -174,39 +175,33 @@ func (s *Service) ListSessions(ctx context.Context, actor *authz.Actor, current 
 			UserAgent:  r.UserAgent,
 			LastSeenAt: r.LastSeenAt,
 			CreatedAt:  r.CreatedAt,
-			IsCurrent:  sameDigest(sessionKey(r.TokenHash), current),
+			IsCurrent:  bytes.Equal(r.TokenHash, current),
 		})
 	}
 	return out, nil
 }
 
-// RevokeSession 踢自己的一台设备。{id} 只有摘要的前 16 字节，**不能直接当 WHERE 条件**
-// （后 16 字节未知），所以在自己的会话行里按前缀定位后按主键删。
-// 「不做按用户列会话的第二索引」的代价就是这一次 N 行的比较（设计 §6.3）。
+// RevokeSession 踢自己的一台设备。{id} 就是摘要，直接走 uq_sessions_token：
+// 一次索引查找，不需要「按用户列会话」的第二索引（设计 §6.3）。
+// user_id 也写进 WHERE：别人的会话删不到（对外 404，不区分「不是你的」与「没有这条」）。
 func (s *Service) RevokeSession(ctx context.Context, actor *authz.Actor, key string) error {
 	if actor == nil {
 		return unauthorized()
 	}
-	if _, ok := decodeSessionKey(key); !ok {
+	digest, ok := decodeSessionKey(key)
+	if !ok {
 		return errSessionNotFound
 	}
-	rows, err := s.db.Session.Query().
-		Where(session.UserIDEQ(actor.UserID)).
-		Select(session.FieldID, session.FieldTokenHash).
-		All(ctx)
+	n, err := s.db.Session.Delete().
+		Where(session.TokenHashEQ(digest), session.UserIDEQ(actor.UserID)).
+		Exec(ctx)
 	if err != nil {
 		return err
 	}
-	for _, r := range rows {
-		if sessionKey(r.TokenHash) != key {
-			continue
-		}
-		_, err := s.db.Session.Delete().
-			Where(session.IDEQ(r.ID), session.UserIDEQ(actor.UserID)).
-			Exec(ctx)
-		return err
+	if n == 0 {
+		return errSessionNotFound
 	}
-	return errSessionNotFound
+	return nil
 }
 
 // InvalidateSession / InvalidateUser 是**跨模块契约**，本轮是 no-op：

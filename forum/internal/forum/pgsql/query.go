@@ -11,6 +11,9 @@ import (
 
 // queryQ 跑一条查询，把每一行交给 scan。
 func queryQ(ctx context.Context, q Querier, sql string, args []any, scan func(*sql.Rows) error) error {
+	if debugSQLs {
+		debugPrint(sql)
+	}
 	rows, err := q.QueryContext(ctx, sql, args...)
 	if err != nil {
 		return err
@@ -26,6 +29,9 @@ func queryQ(ctx context.Context, q Querier, sql string, args []any, scan func(*s
 
 // queryOneQ 是「预期 0 或 1 行」的查询（按主键 / 唯一键取一行）。
 func queryOneQ(ctx context.Context, q Querier, sql string, args []any, scan func(*sql.Rows) error) error {
+	if debugSQLs {
+		debugPrint(sql)
+	}
 	rows, err := q.QueryContext(ctx, sql, args...)
 	if err != nil {
 		return err
@@ -59,4 +65,12 @@ func sqlJoin(lines ...string) string {
 		out += l
 	}
 	return out
+}
+
+// debugSQLs / debugPrint 是临时排障开关（收尾前删）。
+var debugSQLs = true
+
+func debugPrint(sql string) {
+	out := sql
+	println("==SQL==" + out)
 }

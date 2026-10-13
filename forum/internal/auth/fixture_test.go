@@ -324,3 +324,11 @@ func (f *fixture) actor(token string) *authz.Actor {
 }
 
 // login 的姊妹方法：注册后直接登录（测试里很常用）。
+// pgsqlResolve / pgsqlLoadActor 是排查用的薄包装（测试内可见）。
+func pgsqlResolve(f *fixture, digest []byte) (*pgsql.SessionRow, error) {
+	return pgsql.ResolveSession(f.ctx, f.db, digest, f.clk.Now())
+}
+
+func pgsqlLoadActor(f *fixture, roleID, userID int64) (*pgsql.ActorRow, error) {
+	return pgsql.LoadActor(f.ctx, f.db, roleID, userID, f.clk.Now())
+}
