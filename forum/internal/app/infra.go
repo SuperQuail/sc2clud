@@ -47,6 +47,10 @@ type Infra struct {
 	// Profile 是生效的容量档位（small / standard），决定 worker 并发等参数。
 	Profile string
 
+	// AI 是发帖审核的配置。放在这里是因为 cron（它只拿得到 Infra）要用它；
+	// 而且它天然是「基础设施级」的东西：一个外呼客户端 + 开关。
+	AI config.AI
+
 	closers []func() error
 }
 
@@ -65,7 +69,7 @@ type TxFunc func(ctx context.Context, fn func(tx *ent.Tx) error) error
 
 // NewInfra 创建全部基础设施。任何一步失败：先关掉已经建好的，再返回错误（启动即失败）。
 func NewInfra(ctx context.Context, cfg *config.Config, log *slog.Logger) (*Infra, error) {
-	in := &Infra{Clock: clock.Real{}, Log: log}
+	in := &Infra{Clock: clock.Real{}, Log: log, AI: cfg.AI}
 
 	profile := cfg.Capacity.Resolve(memoryLimit())
 	in.Profile = profile
