@@ -40,7 +40,7 @@ export function AppealList({ records, guest, total }: AppealListProps) {
       </div>
       <p className='text-[12px] leading-relaxed text-muted-foreground'>
         {guest
-          ? '你还没登录，所以这里只列出刚刚在本页提交过的记录（单号就是凭据，请存好）。用提交时填的邮箱登录后，能看到这个账号的全部申诉。'
+          ? '你还没登录：除了刚刚在本页提交的那条，下面几条是示例记录（不是你的，只用来演示各状态长什么样）；示例刷新即消失。登录后这里才是这个账号的全部申诉。'
           : '这个账号提交过的申诉与反馈，按时间倒序。答复内容直接摊在行里，不用再点进去。'}
       </p>
 
@@ -58,6 +58,8 @@ export function AppealList({ records, guest, total }: AppealListProps) {
                   {APPEAL_TYPE_LABEL[r.type]}
                 </Tag>
                 <StatusPill status={r.status} />
+                {/* 未登录时这几条不是本人提交的：标出来，免得被当成「我的记录里有一条不是我的」 */}
+                {guest ? <Tag tagType={TagType.DEFAULT} className='text-[11px]'>示例</Tag> : null}
                 <span className='ml-auto font-mono text-[11px] text-muted-foreground'>{r.no}</span>
               </div>
               <span className='text-[13px] font-medium text-foreground'>{r.title}</span>

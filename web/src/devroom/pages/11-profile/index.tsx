@@ -75,15 +75,19 @@ export default function ProfilePage() {
   const [tab, setTab] = useState('posts');
   // 「本人 / 别人」是**一个**开关：赞助入口与账号入口（头像/改密码/退出）都看它。
   // 默认本人 —— 页面初始态就该是本人主页（账号那几条入口在本人态才存在，见 readSelfView 的注释）。
-  const [selfView, setSelfView] = useState(readSelfView);
+  // 必须写成 useState(() => ...)：直接写 readSelfView() 是**立刻求值**，而 useState 只取第一次的值，
+  // 重挂载时永远停在首次那一瞬的 query（?sponsor=other 失效 → 看别人主页也放出账号入口）。
+  const [selfView, setSelfView] = useState(() => readSelfView());
   const [loggedOut, setLoggedOut] = useState(false);
   // 新头像的预览地址（object URL）。真实页面在上传成功后换成服务端 /img/<hash>。
   const [avatar, setAvatar] = useState<string | null>(null);
   // 头像上传器挂在「设置」标签里；hero 上的「更换头像」通过这个句柄代点，不必把上传器挪出设置面板。
   // 用 ref 不用 state：它不参与渲染，而且按钮的 onClick 拿 ref.current 比读一次 state 更直接。
   const avatarApi = useRef<AvatarHandle | null>(null);
-  // 从「别人主页」切回来时，若停在设置标签上会被下面的推导踢回帖子页
-  const activeTab = !selfView && tab === 'settings' ? 'posts' : tab;
+  // 看别人主页时没有「设置」标签：停在它上面（或从本人态切过来）就踢回帖子页。
+  // 这里必须写 selfView.isSelf —— 写成 !selfView 是在判那个对象，永假，
+  // 于是别人态仍然渲染账号面板（账号入口在别人主页上放出来，是要害）。
+  const activeTab = !selfView.isSelf && tab === 'settings' ? 'posts' : tab;
   // 封面可自定义：默认给一张，之后接入用户上传（与头像同一个上传控件）
   // 封面素材必须是**横构图**：原来用 starcraft/zerg.webp（64x64）拉到 1440x160 只能放大裁剪 → 一块糊色。
   // 现在默认 sc2-battle.webp（1200x953 插画），「更换封面」在它和 sc2-logo.webp（240x101 横幅）之间切。
@@ -125,8 +129,9 @@ export default function ProfilePage() {
     { key: 'other', label: '看别人主页（有收款码）', demo: { isSelf: false, channels: [...SPONSOR_CHANNELS] } },
     { key: 'none', label: '别人没挂收款码（赞助整块不渲染）', demo: { isSelf: false, channels: [] } },
   ];
-  // 看别人主页时没有「设置」标签：那一栏里的账号动作（改密码/退登/换头像）一行都不该出现
-  const tabs = selfView ? TABS : TABS.filter((t) => t.key !== 'settings');
+  // 看别人主页时没有「设置」标签：那一栏里的账号动作（改密码/退登/换头像）一行都不该出现。
+  // 必须写 selfView.isSelf：写成 selfView 是在判**对象**（恒真），过滤永远不生效。
+  const tabs = selfView.isSelf ? TABS : TABS.filter((t) => t.key !== 'settings');
   // 头像入口：切到设置标签并**就地打开文件框**（上传器挂载在那边，句柄由它回传）。
   // 读当前值走函数式写法，避免把 avatarApi 塞进依赖数组、每次挂载都重渲染一遍。
   const pickAvatar = () => {

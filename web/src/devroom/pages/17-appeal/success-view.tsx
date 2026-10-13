@@ -28,7 +28,12 @@ export function SuccessView({ cfg, no, guest, onAgain }: SuccessViewProps) {
         <Row k={cfg.done.unit} v={no} mono />
         <Row k='预计答复' v={cfg.done.eta} />
         <Row k='答复去哪看' v={cfg.done.follow} />
-        {guest ? <Row k='凭据' v='没登录也能查：单号 + 提交时填的注册邮箱，两样合起来才查得到。' /> : null}
+        {guest ? (
+          <Row
+            k='凭据'
+            v='单号请存好。未登录时本页只留你这次提交的记录（刷新即散）—— 之后要按单号查进展，需要登录后再查。'
+          />
+        ) : null}
       </div>
 
       {!guest ? (
@@ -39,12 +44,10 @@ export function SuccessView({ cfg, no, guest, onAgain }: SuccessViewProps) {
         />
       ) : null}
 
+      {/* 只留一颗：原来「再提交一条」与「回到表单」是同一个 onAgain，两颗按钮做同一件事 */}
       <div className='flex flex-wrap items-center gap-2'>
         <Button primary inline={false} onClick={onAgain}>
           再提交一条
-        </Button>
-        <Button inline onClick={onAgain}>
-          回到表单
         </Button>
       </div>
     </AuthShell>

@@ -189,4 +189,24 @@ export const VERIFIED: VerifiedControl[] = [
       '无障碍：aria-pressed 表达开关状态、aria-label/title 说明动作；Ring Button 是原生 <button>，Tab 可达、Enter/Space 可切换。眼睛不覆盖整行宽度，点输入区照常聚焦。',
     ],
   },
+  {
+    name: 'captcha-field',
+    path: '@/devroom/pages/16-auth/captcha-field',
+    page: '16-auth',
+    verifiedOn: '2026-10-13',
+    props: [
+      'chars: string[]（图块上显示的字符）/ value + onChange（受控）',
+      'onRefresh()：换一张（回调里自换 chars）',
+      'error：服务端 error.fields 里的验证码错误，直接喂给内部 Input',
+      '没有 size / height：输入框固定 Size.FULL，图块固定 h-10 + min-w-[7.5rem]',
+    ],
+    notes: [
+      '**两行布局**：第一行输入框（Size.FULL，与同表单其它输入框等宽），第二行图块 + 「换一张」。挤成一行时图块只有 87×32、输入框被压到 240 宽、换一张变成看不出是什么的 16×16 图标（实测数据在 16-auth 的回报里）。',
+      '**error / help 都渲染在输入行下方**，所以第二行排在它们之后，不会插到输入框与错误文案中间。',
+      '**「换一张」必须显式 inline={false}**：带 icon 的 Button 默认走 inline 排版（button.js: isInline = inline ?? text ?? !!icon），.ring-button-inline 会旁路 height —— 实测 height=L 仍是 24px、看着像链接；显式关掉才是 32px 真按钮，与 40px 图块同一行。',
+      '图块 aria-hidden（真实实现里是验证码图片，读屏读它没有意义）；语义由输入框的 label/help 承载，键盘 Tab 到的是输入框与「换一张」。',
+      '真实字符来自 GET /api/v1/captcha 的 image_base64；DevRoom 用字符块代替，不引外部图片。',
+      '**两个调用点**：16-auth 登录页第 7 种情形（?page=16-auth&view=login&case=captcha）、17-appeal 未登录提交（被封的人登不进来，靠它挡脚本批量提交）。',
+    ],
+  },
 ];

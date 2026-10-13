@@ -84,13 +84,17 @@ export default function HomePage() {
           <p className='m-0 text-[13px] text-muted-foreground'>{matched.length} 个帖子 · 今日新增 12 · 关注 3,204</p>
         </div>
         {/* 发帖 → 18-compose。**房间内链接只能走 ?page=**（旧站域名下的 /p/xxx、/settings 会 404，
-            盲审一号报的就是这个）。当前分区一并带过去（?board=）：从哪来就在哪发，不用再选一次。 */}
+            盲审一号报的就是这个）。
+            **不带 ?board=**：本页的分区是「信息流筛选项」的键（campaign / terrain / help …），与发帖页
+            要的 BoardSlug（custom-campaign …，见 12-topic/types.ts）不是同一套 —— 实测带过去一律被发帖页
+            判成非法值、静默回落到默认分区（?board=help 与不带参数的出图**逐像素相同**，2026-10-13 量过）。
+            两套键统一之后再带上，那时这里才有意义。 */}
         <Button
           primary
           inline={false}
           height={ControlsHeight.M}
           icon={icon16(Plus)}
-          href={appPath('?page=18-compose' + (board === 'all' ? '' : '&board=' + board))}
+          href={appPath('?page=18-compose')}
         >
           发帖
         </Button>

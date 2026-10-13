@@ -90,13 +90,13 @@ export const FORM_FIELDS = [
 ] as const;
 export type FieldKey = (typeof FORM_FIELDS)[number];
 
-/** 三种事由的字段差异 —— 这张表就是「可复用」的证明。 */
+/** 四种事由的字段差异 —— 这张表就是「可复用」的证明。 */
 export const APPEAL_TYPES: AppealTypeConfig[] = [
   {
     type: 'ban',
     label: '账号封禁申诉',
     intro:
-      '被封的账号登不进来，所以这一种**不需要登录**：填上被封的用户名 + 注册邮箱 + 图形验证码，我们按这三样核对。',
+      '被封的账号登不进来，所以这一种不需要登录：填上被封的用户名 + 注册邮箱 + 图形验证码，我们按这三样核对。',
     ref: {
       label: '封禁案号或封禁时间',
       guestRequired: false,
@@ -108,7 +108,7 @@ export const APPEAL_TYPES: AppealTypeConfig[] = [
     done: {
       unit: '申诉单号',
       eta: '3 个工作日内',
-      follow: '答复会发到你上面填的邮箱；同样的单号可以在本页「我的申诉」里查状态。',
+      follow: '答复会发到你上面填的注册邮箱；本站登录后在「我的申诉」里也能看到这条。',
       promise: '我们已经收到你的申诉，它不会静默消失：无论维持还是解封，都会给你一条答复。',
     },
     serverRow: 'ap-2409',
@@ -171,7 +171,7 @@ export const APPEAL_TYPES: AppealTypeConfig[] = [
     done: {
       unit: '反馈单号',
       eta: '5 个工作日内',
-      follow: '答复会发到你的注册邮箱；也可以在「我的申诉」里看状态。',
+      follow: '答复会发到你的注册邮箱；登录后在「我的申诉」里能看到它和答复内容。',
       promise: '反馈已记录。就算我们决定不做，也会告诉你为什么——不会让它烂在队列里。',
     },
     serverRow: 'ap-2403',
@@ -316,7 +316,6 @@ export const MOCK_GUEST = {
   guestIntro:
     '不需要登录：被封禁的账号登不进来、也发不了帖，所以这条链路专门给「进不来的人」留了一条路。凭用户名 + 注册邮箱 + 图形验证码提交。',
   selfIntro: '你已登录，身份字段会按账号自动带出、不可修改。',
-  loginHref: '?page=16-auth',
   /** 事务码（后端错误码）——只出现在 DevRoom 演示条的提示里 */
   errorNote: '服务端契约：429 appeal.rate_limited（同一账号/IP 24 小时最多 3 条）+ 字段错误走 error.fields。',
 };

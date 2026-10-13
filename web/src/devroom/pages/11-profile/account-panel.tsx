@@ -75,6 +75,8 @@ export function AccountPanel({ avatar, onAvatar, onAvatarReady, onLogout, logged
 
   return (
     <div className='flex flex-col gap-4'>
+      {/* 已退出时连头像入口一起收起：没有会话就没有可上传的去处 */}
+      {loggedOut ? null : (
       <Island withoutPaddings>
         <div className='flex flex-col gap-3 px-4 py-4'>
           <span className='flex items-center gap-2'>
@@ -98,7 +100,10 @@ export function AccountPanel({ avatar, onAvatar, onAvatarReady, onLogout, logged
           </span>
         </div>
       </Island>
+      )}
 
+      {/* 已退出时整块收起：留着「改密码」表单会出现「你已退出登录，但请先输入当前密码」这种自相矛盾的状态 */}
+      {loggedOut ? null : (
       <Island withoutPaddings>
         <form className='flex flex-col gap-4 px-4 py-4' onSubmit={submit}>
           <span className='flex flex-wrap items-center gap-2'>
@@ -134,6 +139,7 @@ export function AccountPanel({ avatar, onAvatar, onAvatarReady, onLogout, logged
           </span>
         </form>
       </Island>
+      )}
 
       <Island withoutPaddings>
         <div className='flex flex-col gap-3 px-4 py-4'>

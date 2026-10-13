@@ -35,7 +35,10 @@ export type ComposeTag = 'resource' | 'discussion' | 'repost' | 'help' | 'announ
 
 /** 标签候选表 —— **待补接口**：全站还没有标签目录（数据库里也没有 topic_tags 表）。
  *  这五个词不是新编的，是站点已有的内容类型词：前三个 = 12-topic/badges.tsx 与 14-home/topic-kind.ts
- *  的帖子类型（资源/讨论/转载），后两个 = 12-topic/mock.ts 的 BOARD_NAV 里那两个筛选（求助答疑 / 公告）。
+ *  的帖子类型（资源/讨论/转载）；「公告」= 12-topic/mock.ts 的 BOARD_NAV（announcement）；
+ *  「求助」= 14-home/mock.ts 的 BOARDS（key: help，文案「求助答疑」）。
+ *  （2026-10-13 核过：原先把「求助答疑」也记成 BOARD_NAV 的筛选，但 BOARD_NAV 只有
+ *   全部/精华/资源/讨论/公告五项，没有求助 —— 出处改记到真正有它的那一处。）
  *  「求助」与「公告」没有 TopicKind 对应项，所以这里各写一份标签与配色（各自只有一处）。 */
 export const TAGS: Array<{ key: ComposeTag; label: string; kind?: TopicKind; type: TagType }> = [
   { key: 'resource', label: TOPIC_KIND_LABEL.resource, kind: 'resource', type: KIND_TAG.resource },

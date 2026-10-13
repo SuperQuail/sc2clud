@@ -84,10 +84,14 @@ export function ReportDialog({
             aria-labelledby='report-reason-label'
             className='flex flex-col gap-2 rounded-md border border-border px-3 py-2.5'
           >
+            {/* Radio 自己**不渲染任何 DOM**（它只是 RadioContext.Provider），标签与圆圈都在 Radio.Item 上：
+                写成 <Radio>文案</Radio> 的话，页面上只剩一行连在一起的纯文字，一个可点的圆圈都没有。
+                Radio 是「这一组」（name + 当前值）；Radio.Item 是「其中一个」（value）。 */}
             {REASONS.map((r) => (
-              <Radio
+              <Radio.Item
                 key={r}
                 name='report-reason'
+                value={r}
                 checked={reason === r}
                 onChange={() => {
                   setReason(r);
@@ -95,7 +99,7 @@ export function ReportDialog({
                 }}
               >
                 {REPORT_REASON_LABEL[r]}
-              </Radio>
+              </Radio.Item>
             ))}
           </div>
         </div>

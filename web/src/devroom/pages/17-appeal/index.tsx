@@ -60,8 +60,12 @@ export default function AppealPage() {
     SERVER_APPEALS.filter((r) => GUEST_VISIBLE_NOS.includes(r.no)),
   );
   const [seq, setSeq] = useState(0);
-  /** 提交成功那一刻的快照：结果态要显示「刚提交的那一条」，不能用之后再变的 type */
-  const [last, setLast] = useState<{ cfg: (typeof APPEAL_TYPES)[number]; no: string; guest: boolean } | null>(null);
+  // 回执快照。三件事：① 结果态要显示「刚提交的那一条」，不能用之后再变的 type；
+  // ② ?scene=sent 直接进来时也要看得到回执（否则出这一格图得先手填一张表）；
+  // ③ 初值用固定假号 ap-2500：出图可复现，且不依赖 nextNo 的定义顺序。
+  const [last, setLast] = useState<{ cfg: (typeof APPEAL_TYPES)[number]; no: string; guest: boolean } | null>(() =>
+    readParam('scene') === 'sent' ? { cfg: APPEAL_TYPES.find((t) => t.type === initType())!, no: 'ap-2500', guest: true } : null,
+  );
   const [resetKey, setResetKey] = useState(0);
 
   const cfg = APPEAL_TYPES.find((t) => t.type === type)!;
@@ -76,22 +80,33 @@ export default function AppealPage() {
     setRecords(SERVER_APPEALS.filter((r) => (next === 'guest' ? GUEST_VISIBLE_NOS.includes(r.no) : true)));
   }
 
+  /**
+   * 出回执：真提交与演示控制台共用一条。
+   * 为什么共用：原来演示条的「提交后（回执）」只 setScene('sent')，而回执门的条件是
+   * scene==='sent' && last —— 按下去还是表单（等于一个点了没反应的按钮，正是本页要消灭的那种）。
+   */
+  function receipt(v?: { type: AppealType; title: string }) {
+    const conf = APPEAL_TYPES.find((t) => t.type === v?.type)!;
+    const no = nextNo(seq);
+    setScene('sent');
+    setLast({ cfg: conf, no, guest: actor === 'guest' });
+    setSeq((n) => n + 1);
+    if (!v) return;
+    // 只有真提交才往「我的申诉」里插记录：演示回执不该伪造一条用户没提交过的记录
+    setRecords((prev) => [
+      { no, type: v.type, title: v.title, status: 'pending', submittedAt: '刚刚', eta: conf.done.eta },
+      ...prev,
+    ]);
+  }
+
   function submit(v: { type: AppealType; title: string }) {
-    const conf = APPEAL_TYPES.find((t) => t.type === v.type)!;
     setPending(true);
     setSubmitError(null);
     setFieldErrors(undefined);
     // 设计页：只演示「提交中 → 回执」，不真的发请求（真实现：POST 后 202 + 单号）
     window.setTimeout(() => {
-      const no = nextNo(seq);
-      setSeq((n) => n + 1);
       setPending(false);
-      setScene('sent');
-      setLast({ cfg: conf, no, guest: actor === 'guest' });
-      setRecords((prev) => [
-        { no, type: v.type, title: v.title, status: 'pending', submittedAt: '刚刚', eta: conf.done.eta },
-        ...prev,
-      ]);
+      receipt(v);
     }, 700);
   }
 
@@ -105,6 +120,7 @@ export default function AppealPage() {
         ：被封的人登不进来，「在社区里联系管理员」那条路对他不存在，所以这里用 用户名 + 邮箱 + 图形验证码（复用
         16-auth 的控件）自证身份。
         提交后必须给回执（单号 / 多久答复 / 去哪看）—— 盲审二号报过「点完申诉界面不变，用户以为没点上」。
+// 未登录那条路能查什么、不能查什么，文案里写死：单号在未登录时只活在本页这一次会话里。
       </p>
 
       <section
@@ -141,7 +157,7 @@ export default function AppealPage() {
           <Button primary={scene === 'form'} onClick={() => setScene('form')}>
             填表中
           </Button>
-          <Button primary={scene === 'sent' && !last ? true : false} onClick={() => setScene('sent')}>
+          <Button primary={scene === 'sent' && !pending} onClick={() => receipt()}>
             提交后（回执）
           </Button>
           <Button
