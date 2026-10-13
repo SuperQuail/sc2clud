@@ -75,3 +75,6 @@ dist/
 .tmp-*/
 web/.tmp-*/
 preview-dist/
+
+# 阻止 agent 把 C:\Users\ROG\AppData\Local\Temp 当相对路径时误建目录
+/undefined/

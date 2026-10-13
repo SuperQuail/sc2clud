@@ -88,8 +88,7 @@ func plan(t *testing.T, ctx context.Context, pool *pgxpool.Pool, query string, a
 			t.Fatal(err)
 		}
 		b.WriteString(line)
-		b.WriteString("
-")
+		b.WriteString("\n")
 	}
 	if err := rows.Err(); err != nil {
 		t.Fatal(err)
@@ -106,19 +105,16 @@ func TestListNotificationsPlanUsesInboxIndex(t *testing.T) {
 
 	got := plan(t, ctx, pool, listSQL, me, nil, 0, "", false, 20)
 	if !strings.Contains(got, "idx_notifications_inbox") {
-		t.Fatalf("列表查询没用上 idx_notifications_inbox:
-%s", got)
+		t.Fatalf("列表查询没用上 idx_notifications_inbox:\n%s", got)
 	}
 	if strings.Contains(got, "Seq Scan on notifications") {
-		t.Fatalf("列表查询出现了全表扫:
-%s", got)
+		t.Fatalf("列表查询出现了全表扫:\n%s", got)
 	}
 
 	// 带 kind 过滤与只取未读时也不许退化成全表扫
 	got = plan(t, ctx, pool, listSQL, me, nil, 0, "reply", true, 20)
 	if strings.Contains(got, "Seq Scan on notifications") {
-		t.Fatalf("带 kind/unread 过滤时出现全表扫:
-%s", got)
+		t.Fatalf("带 kind/unread 过滤时出现全表扫:\n%s", got)
 	}
 }
 
@@ -131,11 +127,9 @@ func TestUnreadCountPlanUsesPartialIndex(t *testing.T) {
 
 	got := plan(t, ctx, pool, unreadCountSQL, me)
 	if !strings.Contains(got, "idx_notifications_unread") {
-		t.Fatalf("未读计数没用上 idx_notifications_unread:
-%s", got)
+		t.Fatalf("未读计数没用上 idx_notifications_unread:\n%s", got)
 	}
 	if strings.Contains(got, "Seq Scan on notifications") {
-		t.Fatalf("未读计数出现了全表扫:
-%s", got)
+		t.Fatalf("未读计数出现了全表扫:\n%s", got)
 	}
 }

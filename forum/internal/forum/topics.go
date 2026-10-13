@@ -475,13 +475,24 @@ func (s *Service) LockTopic(ctx context.Context, actor *authz.Actor, publicID st
 	})
 }
 
-// SetPinned 是置顶与精华（§4.7）。两者共用 topic.pin（拍板 §10.9 定案）。
-func (s *Service) SetPinned(ctx context.Context, actor *authz.Actor, publicID string, pin, featured bool) error {
+// PinTopic 是置顶与精华（§4.7）。两者共用 topic.pin（拍板 §10.9 定案）。
+// field 只接受 "pin" | "feature"：**一次只改一列**，另一个保持不变——
+// 否则点「置顶」会把精华一起取消掉，而那是用户没做的事。
+func (s *Service) PinTopic(ctx context.Context, actor *authz.Actor, publicID, field string, on bool) error {
 	if _, err := requireActor(actor); err != nil {
 		return err
 	}
 	if err := requirePerm(actor, authz.PermTopicPin); err != nil {
 		return err
+	}
+	var column string
+	switch field {
+	case "pin":
+		column = "pinned_at"
+	case "feature":
+		column = "featured_at"
+	default:
+		return invalid("field", "只能是 pin / feature")
 	}
 	ref, err := s.repo.TopicRef(ctx, publicID, actor.UserID, canReview(actor))
 	if err != nil {
@@ -490,14 +501,14 @@ func (s *Service) SetPinned(ctx context.Context, actor *authz.Actor, publicID st
 		}
 		return err
 	}
-	now := s.clk.Now().UTC()
 	return db.WithTx(ctx, s.db, func(tx *ent.Tx) error {
 		// 转载帖不能置顶：UPDATE 的 WHERE 带 kind <> 'repost'，0 行就是拒绝。
-		if _, err := pgsql.PinTopic(ctx, tx, ref.ID, "pinned_at", pin, now); err != nil {
+		changed, err := pgsql.PinTopic(ctx, tx, ref.ID, column, on, s.clk.Now().UTC())
+		if err != nil {
 			return err
 		}
-		if _, err := pgsql.PinTopic(ctx, tx, ref.ID, "featured_at", featured, now); err != nil {
-			return err
+		if !changed && ref.Kind == "repost" {
+			return apperr.ErrForbidden
 		}
 		return nil
 	})

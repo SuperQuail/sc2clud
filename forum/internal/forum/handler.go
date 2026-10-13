@@ -1,0 +1,624 @@
+package forum
+
+import (
+	"net/http"
+	"strconv"
+	"time"
+
+	"github.com/gin-gonic/gin"
+
+	"forum/internal/authz"
+	"forum/internal/platform/apperr"
+	"forum/internal/platform/httpx"
+)
+
+// Handler 是本域的 HTTP 层。**只做四件事**：绑定 → 取 actor → 调 service → httpx.OK/Created/Fail。
+// 任何业务分支都不许写在这里（方案 §4.2）。
+type Handler struct {
+	svc   *Service
+	actor ActorFunc
+}
+
+// ActorFunc 由 app 层注入：从 gin 上下文里取出已经装配好的 Actor（D2 的 LoadPrincipal 产物）。
+// 游客返回 nil——「谁是游客」由本域按 nil 处理，不引入第二个哨兵。
+type ActorFunc func(c *gin.Context) *authz.Actor
+
+func NewHandler(svc *Service, actor ActorFunc) *Handler {
+	return &Handler{svc: svc, actor: actor}
+}
+
+// 请求体上限按路由设（拍板：不许全局一刀切）。
+const (
+	maxTopicBody = 256 << 10 // 发主题 / 改主题：长正文
+	maxWriteBody = 32 << 10  // 回复、评论、下载源、Issue
+)
+
+// Register 挂上本域的全部路由。
+// requireLogin 与 perm 由 app 层注入（D2 的中间件），本域不 import auth 域。
+//
+// 中间件只挂全局权限点；作用域权限（board.moderate）与归属判定在 service 里判（拍板 §1.2）。
+// **自带中间件的路由**（如收藏页要登录）用 rg.GET(path, requireLogin, h.xxx) 的三段式。
+func (h *Handler) Register(rg *gin.RouterGroup, requireLogin gin.HandlerFunc, perm func(string) gin.HandlerFunc) {
+	// ---- 公开读 ----
+	rg.GET("/boards", h.listBoards)
+	rg.GET("/boards/:slug", h.getBoard)
+	rg.GET("/topics", h.listTopics)
+	rg.GET("/topics/:id", h.getTopic)
+	rg.GET("/topics/:id/posts", h.listPosts)
+	rg.GET("/topics/:id/issues", h.listTopicIssues)
+	rg.GET("/issues", h.listIssues)
+	rg.GET("/issues/:id", h.getIssue)
+	rg.GET("/issues/:id/comments", h.listIssueComments)
+	rg.GET("/posts/:id/replies", h.listReplies)
+	rg.GET("/issue-comments/:id/replies", h.listIssueCommentReplies)
+	rg.GET("/topics/:topicId/sources/:sourceId/go", h.goSource) // 302
+
+	// ---- 写 ----
+	rg.POST("/topics", requireLogin, perm(authz.PermTopicCreate), httpx.BodyLimit(maxTopicBody), h.createTopic)
+	rg.PATCH("/topics/:id", requireLogin, perm(authz.PermTopicEditOwn), httpx.BodyLimit(maxTopicBody), h.updateTopic)
+	rg.DELETE("/topics/:id", requireLogin, perm(authz.PermTopicDeleteOwn), h.deleteTopic)
+	rg.POST("/topics/:id/lock", requireLogin, perm(authz.PermTopicLock), h.lockTopic)
+	rg.POST("/topics/:id/pin", requireLogin, perm(authz.PermTopicPin), h.pinTopic)
+	rg.POST("/topics/:id/feature", requireLogin, perm(authz.PermTopicPin), h.featureTopic)
+	rg.POST("/topics/:id/posts", requireLogin, perm(authz.PermTopicCreate), httpx.BodyLimit(maxWriteBody), h.createPost)
+	rg.PATCH("/posts/:id", requireLogin, perm(authz.PermTopicEditOwn), httpx.BodyLimit(maxWriteBody), h.updatePost)
+	rg.DELETE("/posts/:id", requireLogin, perm(authz.PermTopicDeleteOwn), h.deletePost)
+	rg.PUT("/posts/:id/vote", requireLogin, h.votePost)
+	rg.DELETE("/posts/:id/vote", requireLogin, h.unvotePost)
+	rg.PUT("/issue-comments/:id/vote", requireLogin, h.voteIssueComment)
+	rg.DELETE("/issue-comments/:id/vote", requireLogin, h.unvoteIssueComment)
+	rg.PUT("/topics/:id/like", requireLogin, h.likeTopic)
+	rg.DELETE("/topics/:id/like", requireLogin, h.unlikeTopic)
+	rg.PUT("/topics/:id/bookmark", requireLogin, h.bookmarkTopic)
+	rg.DELETE("/topics/:id/bookmark", requireLogin, h.unbookmarkTopic)
+	rg.GET("/me/bookmarks", requireLogin, h.listBookmarks)
+	rg.POST("/topics/:id/issues", requireLogin, perm(authz.PermTopicCreate), httpx.BodyLimit(maxWriteBody), h.createIssue)
+	rg.PATCH("/issues/:id", requireLogin, perm(authz.PermTopicEditOwn), httpx.BodyLimit(maxWriteBody), h.updateIssue)
+	rg.POST("/issues/:id/comments", requireLogin, perm(authz.PermTopicCreate), httpx.BodyLimit(maxWriteBody), h.createIssueComment)
+	rg.GET("/topics/:id/sources", h.listSources)
+	rg.POST("/topics/:id/sources", requireLogin, perm(authz.PermTopicEditOwn), httpx.BodyLimit(maxWriteBody), h.saveSource)
+	rg.PATCH("/topics/:id/sources/:sid", requireLogin, perm(authz.PermTopicEditOwn), httpx.BodyLimit(maxWriteBody), h.updateSource)
+	rg.DELETE("/topics/:id/sources/:sid", requireLogin, perm(authz.PermTopicEditOwn), h.deleteSource)
+	rg.POST("/topics/:id/sources/:sid/verify", requireLogin, perm(authz.PermTopicEditOwn), h.verifySource)
+	rg.PUT("/users/:handle/block", requireLogin, h.blockUser)
+	rg.DELETE("/users/:handle/block", requireLogin, h.unblockUser)
+}
+
+// ---- 读 ----
+
+func (h *Handler) listBoards(c *gin.Context) {
+	out, err := h.svc.ListBoards(c.Request.Context(), h.actor(c))
+	if err != nil {
+		httpx.Fail(c, err)
+		return
+	}
+	httpx.OK(c, out)
+}
+
+func (h *Handler) getBoard(c *gin.Context) {
+	out, err := h.svc.BoardBySlug(c.Request.Context(), c.Param("slug"))
+	if err != nil {
+		httpx.Fail(c, err)
+		return
+	}
+	httpx.OK(c, out)
+}
+
+type listTopicsQuery struct {
+	Board  string `form:"board"`
+	Kind   string `form:"kind"`
+	Sort   string `form:"sort"`
+	Cursor string `form:"cursor"`
+	Limit  int    `form:"limit"`
+}
+
+func (h *Handler) listTopics(c *gin.Context) {
+	var q listTopicsQuery
+	if err := httpx.BindQuery(c, &q); err != nil {
+		httpx.Fail(c, err)
+		return
+	}
+	page, err := h.svc.ListTopics(c.Request.Context(), h.actor(c), ListTopicsInput{
+		Board: q.Board, Kind: q.Kind, Sort: q.Sort, Cursor: q.Cursor, Limit: q.Limit,
+	})
+	if err != nil {
+		httpx.Fail(c, err)
+		return
+	}
+	httpx.OKList(c, page.Items, page.NextCursor)
+}
+
+func (h *Handler) getTopic(c *gin.Context) {
+	out, err := h.svc.TopicDetail(c.Request.Context(), h.actor(c), c.Param("id"))
+	if err != nil {
+		httpx.Fail(c, err)
+		return
+	}
+	httpx.OK(c, out)
+}
+
+type pageQuery struct {
+	Cursor string `form:"cursor"`
+	Limit  int    `form:"limit"`
+}
+
+func (h *Handler) listPosts(c *gin.Context) {
+	var q pageQuery
+	if err := httpx.BindQuery(c, &q); err != nil {
+		httpx.Fail(c, err)
+		return
+	}
+	page, err := h.svc.ListPosts(c.Request.Context(), h.actor(c), ListPostsInput{
+		TopicPublicID: c.Param("id"), Cursor: q.Cursor, Limit: q.Limit,
+	})
+	if err != nil {
+		httpx.Fail(c, err)
+		return
+	}
+	httpx.OKList(c, page.Items, page.NextCursor)
+}
+
+func (h *Handler) listReplies(c *gin.Context) {
+	out, err := h.svc.ListReplies(c.Request.Context(), h.actor(c), c.Param("id"))
+	if err != nil {
+		httpx.Fail(c, err)
+		return
+	}
+	httpx.OK(c, out)
+}
+
+func (h *Handler) listBookmarks(c *gin.Context) {
+	var q pageQuery
+	if err := httpx.BindQuery(c, &q); err != nil {
+		httpx.Fail(c, err)
+		return
+	}
+	page, err := h.svc.ListBookmarks(c.Request.Context(), h.actor(c), PageInput{Cursor: q.Cursor, Limit: q.Limit})
+	if err != nil {
+		httpx.Fail(c, err)
+		return
+	}
+	httpx.OKList(c, page.Items, page.NextCursor)
+}
+
+func (h *Handler) listSources(c *gin.Context) {
+	out, err := h.svc.ListSources(c.Request.Context(), c.Param("id"))
+	if err != nil {
+		httpx.Fail(c, err)
+		return
+	}
+	httpx.OK(c, out)
+}
+
+// goSource 是唯一的 302：限流 30/分钟/IP 在这里做（service 看不到 IP）。
+func (h *Handler) goSource(c *gin.Context) {
+	ctx := c.Request.Context()
+	if h.svc.deps.Limit != nil {
+		ok, retry, err := h.svc.deps.Limit.Allow(ctx, "forum:go:"+c.ClientIP(), 30, time.Minute)
+		if err != nil {
+			httpx.Fail(c, err)
+			return
+		}
+		if !ok {
+			c.Header("Retry-After", strconv.Itoa(int(retry.Seconds())+1))
+			httpx.Fail(c, errRateLimited)
+			return
+		}
+	}
+	url, err := h.svc.GoSource(ctx, c.Param("topicId"), c.Param("sourceId"))
+	if err != nil {
+		httpx.Fail(c, err)
+		return
+	}
+	// no-store：转链是一次有副作用的跳转，不能被中间层缓存（§7.2）。
+	c.Header("Cache-Control", "no-store")
+	c.Redirect(http.StatusFound, url)
+}
+
+// ---- 写 ----
+
+type createTopicBody struct {
+	BoardSlug   string `json:"board" binding:"required"`
+	Kind        string `json:"kind"`
+	Title       string `json:"title" binding:"required"`
+	ContentMD   string `json:"content_md" binding:"required"`
+	ClientToken string `json:"client_token"`
+}
+
+func (h *Handler) createTopic(c *gin.Context) {
+	var b createTopicBody
+	if err := httpx.Bind(c, &b); err != nil {
+		httpx.Fail(c, err)
+		return
+	}
+	out, err := h.svc.CreateTopic(c.Request.Context(), h.actor(c), CreateTopicInput{
+		BoardSlug: b.BoardSlug, Kind: b.Kind, Title: b.Title, ContentMD: b.ContentMD, ClientToken: b.ClientToken,
+	})
+	if err != nil {
+		httpx.Fail(c, err)
+		return
+	}
+	httpx.Created(c, out)
+}
+
+type updateTopicBody struct {
+	Title          *string `json:"title"`
+	ContentMD      *string `json:"content_md"`
+	Board          *string `json:"board"`
+	Kind           *string `json:"kind"`
+	ResourceStatus *string `json:"resource_status"`
+}
+
+func (h *Handler) updateTopic(c *gin.Context) {
+	var b updateTopicBody
+	if err := httpx.Bind(c, &b); err != nil {
+		httpx.Fail(c, err)
+		return
+	}
+	err := h.svc.UpdateTopic(c.Request.Context(), h.actor(c), c.Param("id"), UpdateTopicInput{
+		Title: b.Title, ContentMD: b.ContentMD, BoardSlug: b.Board, Kind: b.Kind, ResourceStatus: b.ResourceStatus,
+	})
+	if err != nil {
+		httpx.Fail(c, err)
+		return
+	}
+	httpx.OK(c, gin.H{"ok": true})
+}
+
+func (h *Handler) deleteTopic(c *gin.Context) {
+	if err := h.svc.DeleteTopic(c.Request.Context(), h.actor(c), c.Param("id")); err != nil {
+		httpx.Fail(c, err)
+		return
+	}
+	httpx.NoContent(c)
+}
+
+type lockBody struct {
+	Locked bool `json:"locked"`
+}
+
+func (h *Handler) lockTopic(c *gin.Context) {
+	var b lockBody
+	if err := httpx.Bind(c, &b); err != nil {
+		httpx.Fail(c, err)
+		return
+	}
+	if err := h.svc.LockTopic(c.Request.Context(), h.actor(c), c.Param("id"), b.Locked); err != nil {
+		httpx.Fail(c, err)
+		return
+	}
+	httpx.OK(c, gin.H{"ok": true})
+}
+
+type pinBody struct {
+	Pinned bool `json:"pinned"`
+}
+
+type featureBody struct {
+	Featured bool `json:"featured"`
+}
+
+func (h *Handler) pinTopic(c *gin.Context) {
+	var b pinBody
+	if err := httpx.Bind(c, &b); err != nil {
+		httpx.Fail(c, err)
+		return
+	}
+	if err := h.svc.PinTopic(c.Request.Context(), h.actor(c), c.Param("id"), "pin", b.Pinned); err != nil {
+		httpx.Fail(c, err)
+		return
+	}
+	httpx.OK(c, gin.H{"ok": true})
+}
+
+func (h *Handler) featureTopic(c *gin.Context) {
+	var b featureBody
+	if err := httpx.Bind(c, &b); err != nil {
+		httpx.Fail(c, err)
+		return
+	}
+	if err := h.svc.PinTopic(c.Request.Context(), h.actor(c), c.Param("id"), "feature", b.Featured); err != nil {
+		httpx.Fail(c, err)
+		return
+	}
+	httpx.OK(c, gin.H{"ok": true})
+}
+
+type createPostBody struct {
+	ContentMD   string `json:"content_md" binding:"required"`
+	ParentID    string `json:"parent_id"`
+	ClientToken string `json:"client_token"`
+}
+
+func (h *Handler) createPost(c *gin.Context) {
+	var b createPostBody
+	if err := httpx.Bind(c, &b); err != nil {
+		httpx.Fail(c, err)
+		return
+	}
+	out, err := h.svc.CreatePost(c.Request.Context(), h.actor(c), c.Param("id"), CreatePostInput{
+		ContentMD: b.ContentMD, ParentID: b.ParentID, ClientToken: b.ClientToken,
+	})
+	if err != nil {
+		httpx.Fail(c, err)
+		return
+	}
+	httpx.Created(c, out)
+}
+
+type updatePostBody struct {
+	ContentMD string `json:"content_md" binding:"required"`
+}
+
+func (h *Handler) updatePost(c *gin.Context) {
+	var b updatePostBody
+	if err := httpx.Bind(c, &b); err != nil {
+		httpx.Fail(c, err)
+		return
+	}
+	if err := h.svc.UpdatePost(c.Request.Context(), h.actor(c), c.Param("id"), b.ContentMD); err != nil {
+		httpx.Fail(c, err)
+		return
+	}
+	httpx.OK(c, gin.H{"ok": true})
+}
+
+func (h *Handler) deletePost(c *gin.Context) {
+	if err := h.svc.DeletePost(c.Request.Context(), h.actor(c), c.Param("id")); err != nil {
+		httpx.Fail(c, err)
+		return
+	}
+	httpx.NoContent(c)
+}
+
+type voteBody struct {
+	Value int `json:"value"`
+}
+
+func (h *Handler) votePost(c *gin.Context) { h.vote(c, VotePost) }
+func (h *Handler) voteIssueComment(c *gin.Context) { h.vote(c, VoteIssueComment) }
+func (h *Handler) likeTopic(c *gin.Context) { h.voteValue(c, VoteTopic, 1) }
+
+func (h *Handler) vote(c *gin.Context, target VoteTarget) {
+	var b voteBody
+	if err := httpx.Bind(c, &b); err != nil {
+		httpx.Fail(c, err)
+		return
+	}
+	h.voteValue(c, target, b.Value)
+}
+
+func (h *Handler) voteValue(c *gin.Context, target VoteTarget, value int) {
+	out, err := h.svc.Vote(c.Request.Context(), h.actor(c), target, c.Param("id"), value)
+	if err != nil {
+		httpx.Fail(c, err)
+		return
+	}
+	httpx.OK(c, out)
+}
+
+func (h *Handler) unvotePost(c *gin.Context) { h.unvote(c, VotePost) }
+func (h *Handler) unvoteIssueComment(c *gin.Context) { h.unvote(c, VoteIssueComment) }
+func (h *Handler) unlikeTopic(c *gin.Context) { h.unvote(c, VoteTopic) }
+
+func (h *Handler) unvote(c *gin.Context, target VoteTarget) {
+	out, err := h.svc.Unvote(c.Request.Context(), h.actor(c), target, c.Param("id"))
+	if err != nil {
+		httpx.Fail(c, err)
+		return
+	}
+	httpx.OK(c, out)
+}
+
+func (h *Handler) bookmarkTopic(c *gin.Context)   { h.bookmark(c, true) }
+func (h *Handler) unbookmarkTopic(c *gin.Context) { h.bookmark(c, false) }
+
+func (h *Handler) bookmark(c *gin.Context, on bool) {
+	if err := h.svc.Bookmark(c.Request.Context(), h.actor(c), c.Param("id"), on); err != nil {
+		httpx.Fail(c, err)
+		return
+	}
+	httpx.OK(c, gin.H{"ok": true})
+}
+
+func (h *Handler) blockUser(c *gin.Context)   { h.block(c, true) }
+func (h *Handler) unblockUser(c *gin.Context) { h.block(c, false) }
+
+func (h *Handler) block(c *gin.Context, on bool) {
+	if err := h.svc.BlockUser(c.Request.Context(), h.actor(c), c.Param("handle"), on); err != nil {
+		httpx.Fail(c, err)
+		return
+	}
+	httpx.OK(c, gin.H{"ok": true})
+}
+
+type sourceBody struct {
+	Provider       string  `json:"provider" binding:"required"`
+	Label          string  `json:"label"`
+	URL            string  `json:"url" binding:"required"`
+	ExtractionCode *string `json:"extraction_code"`
+	Size           string  `json:"size"`
+}
+
+func (h *Handler) saveSource(c *gin.Context) {
+	var b sourceBody
+	if err := httpx.Bind(c, &b); err != nil {
+		httpx.Fail(c, err)
+		return
+	}
+	in := SourceInput{Provider: b.Provider, Label: b.Label, URL: b.URL, ExtractionCode: b.ExtractionCode, Size: b.Size}
+	out, err := h.svc.SaveSource(c.Request.Context(), h.actor(c), c.Param("id"), in)
+	if err != nil {
+		httpx.Fail(c, err)
+		return
+	}
+	httpx.Created(c, out)
+}
+
+func (h *Handler) updateSource(c *gin.Context) {
+	var b sourceBody
+	if err := httpx.Bind(c, &b); err != nil {
+		httpx.Fail(c, err)
+		return
+	}
+	in := SourceInput{Provider: b.Provider, Label: b.Label, URL: b.URL, ExtractionCode: b.ExtractionCode, Size: b.Size}
+	out, err := h.svc.UpdateSource(c.Request.Context(), h.actor(c), c.Param("id"), c.Param("sid"), in)
+	if err != nil {
+		httpx.Fail(c, err)
+		return
+	}
+	httpx.OK(c, out)
+}
+
+func (h *Handler) deleteSource(c *gin.Context) {
+	if err := h.svc.DeleteSource(c.Request.Context(), h.actor(c), c.Param("sid")); err != nil {
+		httpx.Fail(c, err)
+		return
+	}
+	httpx.NoContent(c)
+}
+
+func (h *Handler) verifySource(c *gin.Context) {
+	if err := h.svc.VerifySource(c.Request.Context(), h.actor(c), c.Param("sid")); err != nil {
+		httpx.Fail(c, err)
+		return
+	}
+	httpx.OK(c, gin.H{"ok": true})
+}
+
+type listIssuesQuery struct {
+	Status   string `form:"status"`
+	Kind     string `form:"kind"`
+	Author   string `form:"author"`
+	Assignee string `form:"assignee"`
+	Sort     string `form:"sort"`
+	Cursor   string `form:"cursor"`
+	Limit    int    `form:"limit"`
+}
+
+func (h *Handler) listTopicIssues(c *gin.Context)  { h.listIssuesAt(c, c.Param("id")) }
+func (h *Handler) listIssues(c *gin.Context)       { h.listIssuesAt(c, "") }
+
+func (h *Handler) listIssuesAt(c *gin.Context, topicPublicID string) {
+	var q listIssuesQuery
+	if err := httpx.BindQuery(c, &q); err != nil {
+		httpx.Fail(c, err)
+		return
+	}
+	if q.Assignee != "" && q.Assignee != "me" {
+		httpx.Fail(c, invalid("assignee", "只能是 me"))
+		return
+	}
+	page, err := h.svc.ListIssues(c.Request.Context(), h.actor(c), ListIssuesInput{
+		TopicPublicID: topicPublicID, Status: q.Status, Kind: q.Kind, Author: q.Author,
+		AssigneeMe: q.Assignee == "me", Sort: q.Sort, Cursor: q.Cursor, Limit: q.Limit,
+	})
+	if err != nil {
+		httpx.Fail(c, err)
+		return
+	}
+	httpx.OKList(c, page.Items, page.NextCursor)
+}
+
+func (h *Handler) getIssue(c *gin.Context) {
+	out, err := h.svc.IssueDetail(c.Request.Context(), h.actor(c), c.Param("id"))
+	if err != nil {
+		httpx.Fail(c, err)
+		return
+	}
+	httpx.OK(c, out)
+}
+
+type createIssueBody struct {
+	Kind        string `json:"kind" binding:"required"`
+	Title       string `json:"title" binding:"required"`
+	BodyMD      string `json:"body_md" binding:"required"`
+	ClientToken string `json:"client_token"`
+}
+
+func (h *Handler) createIssue(c *gin.Context) {
+	var b createIssueBody
+	if err := httpx.Bind(c, &b); err != nil {
+		httpx.Fail(c, err)
+		return
+	}
+	out, err := h.svc.CreateIssue(c.Request.Context(), h.actor(c), c.Param("id"), CreateIssueInput{
+		Kind: b.Kind, Title: b.Title, BodyMD: b.BodyMD, ClientToken: b.ClientToken,
+	})
+	if err != nil {
+		httpx.Fail(c, err)
+		return
+	}
+	httpx.Created(c, out)
+}
+
+type updateIssueBody struct {
+	Title    *string `json:"title"`
+	BodyMD   *string `json:"body_md"`
+	Status   *string `json:"status"`
+	Assignee *string `json:"assignee"`
+}
+
+func (h *Handler) updateIssue(c *gin.Context) {
+	var b updateIssueBody
+	if err := httpx.Bind(c, &b); err != nil {
+		httpx.Fail(c, err)
+		return
+	}
+	err := h.svc.UpdateIssue(c.Request.Context(), h.actor(c), c.Param("id"), UpdateIssueInput{
+		Title: b.Title, BodyMD: b.BodyMD, Status: b.Status, Assignee: b.Assignee,
+	})
+	if err != nil {
+		httpx.Fail(c, err)
+		return
+	}
+	httpx.OK(c, gin.H{"ok": true})
+}
+
+type createCommentBody struct {
+	BodyMD   string `json:"body_md" binding:"required"`
+	ParentID string `json:"parent_id"`
+}
+
+func (h *Handler) listIssueComments(c *gin.Context) {
+	var q pageQuery
+	if err := httpx.BindQuery(c, &q); err != nil {
+		httpx.Fail(c, err)
+		return
+	}
+	page, err := h.svc.ListIssueComments(c.Request.Context(), h.actor(c), c.Param("id"), PageInput{Cursor: q.Cursor, Limit: q.Limit})
+	if err != nil {
+		httpx.Fail(c, err)
+		return
+	}
+	httpx.OKList(c, page.Items, page.NextCursor)
+}
+
+func (h *Handler) listIssueCommentReplies(c *gin.Context) {
+	out, err := h.svc.ListIssueCommentReplies(c.Request.Context(), h.actor(c), c.Param("id"))
+	if err != nil {
+		httpx.Fail(c, err)
+		return
+	}
+	httpx.OK(c, out)
+}
+
+func (h *Handler) createIssueComment(c *gin.Context) {
+	var b createCommentBody
+	if err := httpx.Bind(c, &b); err != nil {
+		httpx.Fail(c, err)
+		return
+	}
+	out, err := h.svc.CreateIssueComment(c.Request.Context(), h.actor(c), c.Param("id"), CreateCommentInput{
+		BodyMD: b.BodyMD, ParentID: b.ParentID,
+	})
+	if err != nil {
+		httpx.Fail(c, err)
+		return
+	}
+	httpx.Created(c, out)
+}
+
+// errRateLimited 与 platform/apperr 的 ErrRateLimited 是同一个码：
+// 转链端点的 429 要带 Retry-After，所以它单独包一层。
+var errRateLimited = apperr.New(apperr.CodeRateLimited, http.StatusTooManyRequests, "请求太频繁，请稍后再试")
