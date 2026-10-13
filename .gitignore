@@ -92,3 +92,6 @@ forum/.probe*/
 
 deploy/.legacy-blobs/
 
+
+__pycache__/
+
