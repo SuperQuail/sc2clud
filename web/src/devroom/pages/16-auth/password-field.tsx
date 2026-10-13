@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import Input from '@jetbrains/ring-ui-built/components/input/input';
+import Input, { Size } from '@jetbrains/ring-ui-built/components/input/input';
 import Button from '@jetbrains/ring-ui-built/components/button/button';
 import { Eye, EyeOff } from 'lucide-react';
 import { icon16 } from '@/ui/icons';
@@ -28,6 +28,10 @@ export function PasswordField({ label, value, onChange, error, help, name, place
     <div className='flex items-end gap-1.5'>
       <div className='min-w-0 flex-1'>
         <Input
+          // Ring 的 Input 默认 sizeM=240px（.ring-input-sizeM: width: calc(30*var(--ring-unit))），
+          // 于是它比满宽的提交按钮窄一截。Size.FULL 是库自己的 100%（.ring-input-sizeFULL{width:100%}），
+          // 不是我们压它的样式——对齐方向是「输入框占满表单宽」。
+          size={Size.FULL}
           label={label}
           type={shown ? 'text' : 'password'}
           value={value}

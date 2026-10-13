@@ -1,6 +1,6 @@
 import { useState, type FormEvent } from 'react';
 import Button from '@jetbrains/ring-ui-built/components/button/button';
-import Input from '@jetbrains/ring-ui-built/components/input/input';
+import Input, { Size } from '@jetbrains/ring-ui-built/components/input/input';
 import { AuthShell } from './auth-shell';
 import { FormAlert } from './form-alert';
 import { PasswordField } from './password-field';
@@ -56,6 +56,7 @@ export function RegisterView({ scene, onView }: RegisterViewProps) {
       ) : null}
       <form onSubmit={submit} noValidate className='flex flex-col gap-3'>
         <Input
+          size={Size.FULL}
           label='用户名'
           value={username}
           onChange={(e) => setUsername(e.target.value)}
@@ -66,6 +67,7 @@ export function RegisterView({ scene, onView }: RegisterViewProps) {
           placeholder='例如 sc2-player'
         />
         <Input
+          size={Size.FULL}
           label='邮箱'
           type='email'
           value={email}

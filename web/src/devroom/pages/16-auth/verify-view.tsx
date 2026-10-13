@@ -1,6 +1,6 @@
 import { useState, type FormEvent } from 'react';
 import Button from '@jetbrains/ring-ui-built/components/button/button';
-import Input from '@jetbrains/ring-ui-built/components/input/input';
+import Input, { Size } from '@jetbrains/ring-ui-built/components/input/input';
 import { AuthShell } from './auth-shell';
 import { FormAlert } from './form-alert';
 import { CodeField } from './code-field';
@@ -78,6 +78,7 @@ export function VerifyView({ scene, onView }: VerifyViewProps) {
 
       <form onSubmit={submit} noValidate className='flex flex-col gap-3'>
         <Input
+          size={Size.FULL}
           label='用户名或邮箱'
           value={login}
           onChange={(e) => setLogin(e.target.value)}

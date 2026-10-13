@@ -26,6 +26,7 @@ export const VERIFIED: VerifiedControl[] = [
     notes: [
       '不许覆盖 Ring UI 的尺寸变量：曾覆盖 --ring-unit（8→4px），按钮高度是 calc(3 * var(--ring-unit))，所有控件缩一半、文字被挤出按钮。',
       '**icon + 文字时 Ring UI 会自动改走 inline 排版**（button.js: isInline = inline ?? text ?? !!icon），而 primaryBlock = primary && !inline，于是 primary 被吃掉：按钮变成蓝字链接、选中态看不出来。要「图标 + 文字 + 填充」必须显式 inline={false}。（2026-10-12 由 W1 在帖子页双按钮上实测：不写 inline={false} 时两个页签都是蓝字。）',
+      '**同一个 inline 还会吞掉 height**：.ring-button-inline 是 display:inline; padding:0; color:var(--ring-link-color)，所以 height={ControlsHeight.L} 也不生效（2026-10-13 实测：带 icon 的「换一张」先给了 height=L 仍是 24px、看着像链接；显式 inline={false} 之后才变成 32px 的真按钮）。**只有图标没有文字的按钮默认就是这种 inline 小链接** —— 「图标按钮让人不知道是什么」的根子在这里，要真按钮就 inline={false} + 可见文字。',
       '已知欠账（未清）：src/ui/comment/comment-actions.tsx、src/ui/rich/markdown-editor.tsx、src/ui/rich/image-uploader.tsx、src/ui/message/notice-settings.tsx、以及 11-profile 的「关注 / 发私信」等带图标又带文字的按钮都还没写 inline={false}。它们是既有代码、渲染出来只是变成链接样式（不报错），单独一次改动统一收口，别顺手改。',
     ],
   },
@@ -42,6 +43,8 @@ export const VERIFIED: VerifiedControl[] = [
     notes: [
       '错误文案来自服务端 error.fields，直接喂 error prop。',
       '原来的 field.tsx / label.tsx / input.tsx 已删除——重复了控件自带的能力。',
+      '**size 默认是 M，即 .ring-input-sizeM 的 width: calc(30 * var(--ring-unit)) = 240px 定宽**，不是 100%。表单里的输入框必须显式 size={Size.FULL}（.ring-input-sizeFULL 才是 width:100%）。2026-10-13 在登录/注册页实测：卡片内容宽 378，五个输入框都是 240，而提交按钮是满宽 378 —— 差 138px，看着就是「按钮和输入框长度不统一」。**别用 !w-full 去压库样式**（同优先级靠加载顺序，脆弱），用库自带的 Size.FULL。',
+      '密码框会比其他输入框窄 22px（16px 的「显示密码」按钮 + 6px gap 占位）。这是正常的：该行总宽仍与其它输入框一致（356+6+16=378），表单右边缘是齐的。',
     ],
   },
   {

@@ -21,6 +21,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/jackc/pgx/v5/stdlib"
 
+	"forum/internal/auth"
 	"forum/internal/authz"
 	ent "forum/internal/ent"
 	"forum/internal/mail"
@@ -29,10 +30,21 @@ import (
 	platformdb "forum/internal/platform/db"
 	pgmail "forum/internal/platform/mail"
 	"forum/internal/platform/queue"
+	"forum/internal/platform/queue/pgqueue"
 	"forum/internal/testsupport"
 )
 
 func TestMain(m *testing.M) { testsupport.Main(m) }
+
+// 编译期断言：本模块实现的形状**就是** auth 期望的那两个接口（拍板 §12.2 的接线点）。
+// auth 是使用方，接口在它那里定义；这两行让「签名漂了」在编译期就红，而不是等到 app 接线。
+var (
+	_ auth.MailAccounts = (*mail.Service)(nil) // HasUsable(ctx) (bool, error)
+	_ auth.Mailer       = (*mail.Service)(nil) // SendVerifyCode(ctx, userID, to, code, template) (int64, error)
+)
+
+// app 层把 pgqueue 直接当 Queue 注入（不需要 adapter）：这里钉住那个形状。
+var _ mail.Queue = (*pgqueue.Queue)(nil)
 
 // testKey 是测试主密钥（32 字节 hex）；otherKey 用来造「换了主密钥」的账号。
 const testKey = "00112233445566778899aabbccddeeff00112233445566778899aabbccddeeff"
@@ -242,7 +254,7 @@ func (f *fakeQueue) Enqueue(_ context.Context, t queue.Task) error {
 	return nil
 }
 
-func (f *fakeQueue) EnqueueTx(_ context.Context, _ *ent.Tx, t queue.Task) error {
+func (f *fakeQueue) EnqueueTx(_ context.Context, _ queue.TxExecutor, t queue.Task) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.tasks = append(f.tasks, t)

@@ -3,7 +3,7 @@ package mail
 import "time"
 
 // 邮件模板（d6 §5.5）：值域 = mail_logs.template 的 CHECK = platform/mail 的 templates/ 文件名。
-// 三处同名由 §10 第 49 条的自检钉住（见 templates_test.go）。
+// 三处同名由 §10 第 49 条的自检钉住（mail_test.go 的 TestTemplatesMatchCheckAndFiles）。
 const (
 	TemplateVerifyEmail   = "verify_email"
 	TemplateResetPassword = "reset_password"
@@ -42,14 +42,3 @@ const defaultResetTZ = "Asia/Shanghai"
 
 // requeueAfterReset 是「重排到明天」时的宽限（d6 §6.11：下一个自然日 00:30 + 5 分钟）。
 const requeueAfterReset = 35 * time.Minute
-
-// 分页上限（拍板 §5.1）。
-const (
-	defaultLimit = 20
-	maxLimit     = 100
-)
-
-type cursor struct {
-	T  time.Time `json:"t"`
-	ID int64     `json:"id"`
-}

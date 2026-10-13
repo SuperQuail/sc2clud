@@ -1,6 +1,6 @@
 import { useState, type FormEvent } from 'react';
 import Button from '@jetbrains/ring-ui-built/components/button/button';
-import Input from '@jetbrains/ring-ui-built/components/input/input';
+import Input, { Size } from '@jetbrains/ring-ui-built/components/input/input';
 import Checkbox from '@jetbrains/ring-ui-built/components/checkbox/checkbox';
 import { AuthShell } from './auth-shell';
 import { FormAlert } from './form-alert';
@@ -133,6 +133,7 @@ export function LoginView({ scene, onScene, onView }: LoginViewProps) {
 
       <form onSubmit={submit} noValidate className='flex flex-col gap-3'>
         <Input
+          size={Size.FULL}
           label='用户名或邮箱'
           value={username}
           onChange={(e) => setUsername(e.target.value)}

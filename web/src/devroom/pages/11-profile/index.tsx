@@ -188,7 +188,9 @@ export default function ProfilePage() {
   const [tab, setTab] = useState('posts');
   const [sponsorDemo, setSponsorDemo] = useState<SponsorDemo>(readSponsorDemo);
   // 封面可自定义：默认给一张，之后接入用户上传（与头像同一个上传控件）
-  const [cover, setCover] = useState<string>(assetUrl('starcraft/zerg.webp'));
+  // 封面素材必须是**横构图**：原来用 starcraft/zerg.webp（64x64）拉到 1440x160 只能放大裁剪 → 一块糊色。
+  // 现在默认 sc2-battle.webp（1200x953 插画），「更换封面」在它和 sc2-logo.webp（240x101 横幅）之间切。
+  const [cover, setCover] = useState<string>(assetUrl('starcraft/sc2-battle.webp'));
   const [visibility, setVisibility] = useState('public');
   const [showTitle, setShowTitle] = useState(true);
   const [blocked, setBlocked] = useState<string[]>([]);
@@ -256,26 +258,49 @@ export default function ProfilePage() {
           任何人往 hero 加内容 / 换更高的封面 / 调大字号，都要重新量一次按钮 bottom 是否仍 <= 900
           （用 CDP 量，不要目测）。
           **注意真实壳的页头高度与 DevRoom 不同，所以「当前值」不要写进注释——写「怎么量」，不写「量到多少」。** */}
-      <section className='overflow-hidden rounded-xl border border-border bg-background'>
-        <div className='relative'>
-          <img src={cover} alt='主页封面' className='h-40 w-full object-cover' />
-          <span className='absolute right-4 top-4'>
-            <Button
-              data-testid='change-cover'
-              icon={icon16(ImageIcon)}
-              onClick={() => setCover((c) => (c.includes('zerg') ? assetUrl('starcraft/protoss.webp') : assetUrl('starcraft/zerg.webp')))}
-            >
-              更换封面
-            </Button>
-          </span>
-        </div>
+      {/* isolate：建独立层叠上下文，壁纸两层的 -z-10 才落在「section 背景之上、内容之下」，
+          否则 -z-10 跑到 section 背景后面，壁纸直接看不见（踩过）。
+          flow-root：**壁纸改成绝对定位之后，身份卡的 -mt-20 会向上穿透 section**（没有块级内容挡着就会发生
+          margin collapse），整个 section 被顶高 80px、头像行被 overflow-hidden 裁掉（踩过）。
+          flow-root 建立 BFC 挡住这次外边距合并。 */}
+      <section className='relative isolate flow-root overflow-hidden rounded-xl border border-border bg-background'>
+        {/* 壁纸**铺满整个 hero 方框**，不是只铺那条 160px 的带子。
+            之前是「160px 的 <img> + 下面接卡片」，方框下半部分自然没有壁纸 —— 用户看到的
+            「只有一半」就是这么来的（另一半原因是原素材 zerg.webp 只有 64x64，放大即糊）。
+            现在：绝对定位的壁纸层 + 一层向下渐隐到页面底的遮罩，身份卡浮在上面，
+            **hero 总高度不变**（首屏预算那条约束见下面的注释）。 */}
+        {/* 两层都用 -z-10 明确压到内容之下：只靠 DOM 顺序时，绝对定位的图会盖住后面 relative 的卡片 */}
+        <img src={cover} alt='' className='pointer-events-none absolute inset-0 -z-10 h-full w-full object-cover' />
+        <span
+          aria-hidden
+          className='pointer-events-none absolute inset-0 -z-10 bg-gradient-to-b from-background/35 via-background/80 to-background'
+        />
+        {/* 撑高用的占位条：壁纸是绝对定位、不参与布局，少了它 hero 只能由身份卡撑，
+            身份卡的 -mt-20 就会把它自己顶到 hero 之外（头像行被裁剪）。144px（h-36）= 身份卡上方的
+            可见壁纸条高度，**它就是 hero 预算**：改大就等于把赞助按钮往首屏外推，改前先量。 */}
+        <div aria-hidden className='h-36' />
+        {/* 「更换封面」直接绝对定位在 hero 右上角（z-20）：放进内层 relative 时它会被上移的身份卡压住，
+            只露出一角、点不到。按钮浮在壁纸上，原来没给底 —— 浅色下是深蓝字、深色下是浅蓝字，
+            壁纸一浅（sc2-battle 的天空）就看不清，所以补一层卡片色 + 轻微模糊把它托起来。 */}
+        <span className='absolute right-3 top-3 z-20 rounded-md bg-background/85 backdrop-blur-sm'>
+          <Button
+            data-testid='change-cover'
+            icon={icon16(ImageIcon)}
+            onClick={() => setCover((c) => (c.includes('sc2-battle') ? assetUrl('starcraft/sc2-logo.webp') : assetUrl('starcraft/sc2-battle.webp')))}
+          >
+            更换封面
+          </Button>
+        </span>
 
-        <div className='relative mx-4 -mt-20 mb-4 flex flex-col gap-5 rounded-xl border border-border bg-background/70 p-5 backdrop-blur-md'>
+        {/* 身份卡：实色卡面压在壁纸上（原来是 bg-background/70 + backdrop-blur，壁纸铺满之后
+            透过磨砂会花掉，正文与徽标全在卡里，可读性优先） */}
+        {/* mb-2 而不是 mb-4：hero 现在还要装 144px 壁纸条，这 8px 是补给首屏预算的 */}
+        <div className='relative z-10 mx-4 -mt-20 mb-2 flex flex-col gap-5 rounded-xl border border-border bg-background p-5'>
           <div className='flex flex-wrap items-end justify-between gap-4'>
             <span className='rounded-full ring-4 ring-background'>
               <UserAvatar name='唐天' src={assetUrl('miyin-portrait-320.webp')} size='xl' />
             </span>
-            <span className='flex flex-wrap items-center gap-2'>
+            <span className='flex flex-nowrap items-center gap-2'>
               <Button primary icon={icon16(UserPlus)}>关注</Button>
               <Button icon={icon16(MessageSquare)}>发私信</Button>
               <Button icon={icon16(MoreHorizontal)} aria-label='更多操作' />
