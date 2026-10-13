@@ -60,11 +60,12 @@ func (s *Service) ListReplies(ctx context.Context, actor *authz.Actor, postPubli
 }
 
 func postDTO(r pgsql.PostRow) PostDTO {
-	parent := deref(r.ParentPublicID)
+	// 直接透传指针：nil 就是顶层。**不要再 deref** —— 那会把 NULL 变成空串，
+	// 而契约（前端 forum.ts / mappers.ts）判的是 null。
 	ids := make([]string, 0, len(r.PreviewIDs))
 	ids = append(ids, r.PreviewIDs...)
 	return PostDTO{
-		ID: r.PublicID, ParentID: parent, Floor: r.Floor, ContentHTML: r.ContentHTML,
+		ID: r.PublicID, ParentID: r.ParentPublicID, Floor: r.Floor, ContentHTML: r.ContentHTML,
 		Author: userBriefDTO(r.Author), LikeCount: r.LikeCount, DislikeCount: r.DislikeCount,
 		MyVote: r.MyVote, ReplyTotal: r.ReplyTotal, PreviewIDs: ids,
 		CreatedAt: r.CreatedAt.UTC(), UpdatedAt: r.UpdatedAt.UTC(),

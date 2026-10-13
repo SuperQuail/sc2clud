@@ -34,15 +34,19 @@ export function fetchCaptcha(signal?: AbortSignal): Promise<Captcha> {
   return api<Captcha>('captcha', { signal });
 }
 
-// captcha_id 是「这一张图」的身份：服务端按它找到答案，无论对错都立刻作废（一次性）。
-// 只交 answer 的话服务端没法把答案和某道题对上 —— mode=always / on_failure 就会永远校验不过。
-export function login(body: {
-  username: string;
-  password: string;
-  captcha?: string;
-  captcha_id?: string;
-}): Promise<Session> {
-  return api<Session>('auth/login', { method: 'POST', body });
+// 图形验证码：**id + answer 成对**校验（服务端按 id 找到答案，无论对错都立刻作废）。
+// captcha_id 是「这一张图」的身份，不是登录态；只交 answer 的话服务端没法把答案和某道题对上 ——
+// mode=always / on_failure 就会永远校验不过。
+type CaptchaInput = { captcha?: string; captcha_id?: string };
+
+/** 入参沿用界面里的 captcha，出网时改成后端契约的 captcha_answer（auth/handler.go:77-85）。 */
+function withCaptcha(body: CaptchaInput): Record<string, unknown> {
+  const { captcha, ...rest } = body;
+  return captcha === undefined ? rest : { ...rest, captcha_answer: captcha };
+}
+
+export function login(body: { username: string; password: string } & CaptchaInput): Promise<Session> {
+  return api<Session>('auth/login', { method: 'POST', body: withCaptcha(body) });
 }
 
 export function logout(): Promise<void> {
@@ -55,10 +59,8 @@ export function register(body: {
   nickname?: string;
   email: string;
   password: string;
-  captcha?: string;
-  captcha_id?: string;
-}): Promise<{ handle: string }> {
-  return api<{ handle: string }>('auth/register', { method: 'POST', body });
+} & CaptchaInput): Promise<{ handle: string }> {
+  return api<{ handle: string }>('auth/register', { method: 'POST', body: withCaptcha(body) });
 }
 
 /** 邮箱激活走 6 位验证码（后端开工前拍板 §11：不发链接），所以提交的是文本 token */

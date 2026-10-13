@@ -1,0 +1,40 @@
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import { login, register } from './auth';
+import { mockFetch } from '@/test/fetch-mock';
+
+afterEach(() => {
+  vi.unstubAllGlobals();
+});
+
+// 图形验证码是「id + answer」成对校验的（服务端按 id 找答案，无论对错都作废），
+// 所以请求体里两个字段名都必须与后端契约逐字一致：captcha_id / captcha_answer。
+// 这一条是被真站抓出来的：前端发的是 `captcha`，后端（handler.go 的 registerReq/loginReq）
+// 读的是 `captcha_answer`，于是答案永远是空串 -> 一律 auth.captcha_required「请先填写验证码」，
+// 而界面看起来完全正常。
+describe('auth 请求体', () => {
+  it('注册把验证码答案放在 captcha_answer', async () => {
+    const { calls } = mockFetch([{ status: 201, body: { data: { handle: 'marine' } } }]);
+    await register({ username: 'marine', nickname: '陆战队员', email: 'm@example.com', password: 'pw-123456', captcha: 'AB3D', captcha_id: 'cap-1' });
+    const body = JSON.parse(String(calls[0]?.init?.body)) as Record<string, string>;
+    expect(body.captcha_answer).toBe('AB3D');
+    expect(body.captcha_id).toBe('cap-1');
+    expect(body).not.toHaveProperty('captcha');
+  });
+
+  it('登录把验证码答案放在 captcha_answer', async () => {
+    const { calls } = mockFetch([{ body: { data: { id: 'u' } } }]);
+    await login({ username: 'marine', password: 'pw-123456', captcha: 'AB3D', captcha_id: 'cap-1' });
+    const body = JSON.parse(String(calls[0]?.init?.body)) as Record<string, string>;
+    expect(body.captcha_answer).toBe('AB3D');
+    expect(body.captcha_id).toBe('cap-1');
+    expect(body).not.toHaveProperty('captcha');
+  });
+
+  it('没有验证码时两个字段都不出现（游客模式 mode=off 仍能注册/登录）', async () => {
+    const { calls } = mockFetch([{ body: { data: { id: 'u' } } }]);
+    await login({ username: 'marine', password: 'pw-123456' });
+    const body = JSON.parse(String(calls[0]?.init?.body)) as Record<string, string>;
+    expect(body).not.toHaveProperty('captcha_answer');
+    expect(body).not.toHaveProperty('captcha_id');
+  });
+});

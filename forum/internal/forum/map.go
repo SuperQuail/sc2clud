@@ -134,7 +134,7 @@ func issueStatusDB(api string) (string, error) {
 
 func issueCommentDTO(r pgsql.IssueCommentRow) IssueCommentDTO {
 	return IssueCommentDTO{
-		ID: r.PublicID, ParentID: deref(r.ParentPublicID), BodyHTML: r.BodyHTML,
+		ID: r.PublicID, ParentID: r.ParentPublicID, BodyHTML: r.BodyHTML,
 		Author: userBriefDTO(r.Author), LikeCount: r.LikeCount, DislikeCount: r.DislikeCount,
 		MyVote: r.MyVote, CreatedAt: r.CreatedAt.UTC(), UpdatedAt: r.UpdatedAt.UTC(),
 	}

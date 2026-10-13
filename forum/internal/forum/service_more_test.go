@@ -1,6 +1,8 @@
 package forum
 
 import (
+	"encoding/json"
+	"strings"
 	"sync"
 	"testing"
 
@@ -75,8 +77,22 @@ func TestReplyParentRules(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if nested.ParentID != root.ID {
-		t.Fatalf("楼中楼的 parent_id 应为 %s，实际 %s", root.ID, nested.ParentID)
+	if nested.ParentID == nil || *nested.ParentID != root.ID {
+		t.Fatalf("楼中楼的 parent_id 应为 %s，实际 %v", root.ID, nested.ParentID)
+	}
+
+	// **序列化那一层**必须有断言（2026-10-13 补）。
+	//
+	// 这条 bug 之所以能活到今天：Go 侧断言的是 DTO 字段（原来是 string，空串=顶层）、
+	// 前端 mock 里写的是 null —— **两边各自的测试都过，JSON 那一层没人测**。
+	// 结果顶层 parent_id 序列化成 `""`，而前端按 `=== null` 过滤 → 评论区一条都不渲染。
+	// 所以这里断言的是**编出来的 JSON**，不是结构体字段。
+	b, err := json.Marshal(PostDTO{ID: "x", ParentID: nil})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(b), `"parent_id":null`) {
+		t.Fatalf("顶层楼层的 parent_id 必须序列化成 null（前端按 null 判顶层），实际 JSON: %s", b)
 	}
 
 	_, err = h.svc.CreatePost(h.ctx, author, topic.ID, CreatePostInput{ContentMD: "二级", ParentID: nested.ID})

@@ -51,6 +51,10 @@ func (h *Handler) Register(rg *gin.RouterGroup, requireLogin gin.HandlerFunc, pe
 	rg.GET("/issues/:id/comments", h.listIssueComments)
 	rg.GET("/posts/:id/replies", h.listReplies)
 	rg.GET("/issue-comments/:id/replies", h.listIssueCommentReplies)
+	// 个人主页的作品列表。**这条路由以前根本不存在** —— Service 有 ListUserTopics 的实现却没挂路由，
+	// 前端 GET /users/{handle}/topics 落到 NoRoute（返回 200 + SPA 壳），于是页面上「最近发布」
+	// 永远停在「正在加载帖子…」（2026-10-13 实测）。
+	rg.GET("/users/:handle/topics", h.listUserTopics)
 	// 参数名必须与上面那组一致（gin 不允许同一层出现两个不同的通配名）。
 	rg.GET("/topics/:id/sources/:sid/go", h.goSource) // 302
 
@@ -122,6 +126,23 @@ func (h *Handler) listTopics(c *gin.Context) {
 	page, err := h.svc.ListTopics(c.Request.Context(), h.actor(c), ListTopicsInput{
 		Board: q.Board, Kind: q.Kind, Sort: q.Sort, Cursor: q.Cursor, Limit: q.Limit,
 	})
+	if err != nil {
+		httpx.Fail(c, err)
+		return
+	}
+	httpx.OKList(c, page.Items, page.NextCursor)
+}
+
+func (h *Handler) listUserTopics(c *gin.Context) {
+	var q struct {
+		Cursor string `form:"cursor"`
+		Limit  int    `form:"limit"`
+	}
+	if err := httpx.BindQuery(c, &q); err != nil {
+		httpx.Fail(c, err)
+		return
+	}
+	page, err := h.svc.ListUserTopics(c.Request.Context(), h.actor(c), c.Param("handle"), PageInput{Cursor: q.Cursor, Limit: q.Limit})
 	if err != nil {
 		httpx.Fail(c, err)
 		return

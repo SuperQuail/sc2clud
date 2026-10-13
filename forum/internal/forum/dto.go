@@ -114,8 +114,12 @@ type ViewerDTO struct {
 
 // PostDTO 是楼层（交接单 §1.2）。PreviewIDs 是前 3 条楼中楼的 public_id，顺序即展示顺序。
 type PostDTO struct {
-	ID           string       `json:"id"`
-	ParentID     string       `json:"parent_id"` // 空串 = 顶层
+	ID string `json:"id"`
+	// **nil = 顶层；非空 = 父回复的 public_id**。
+	// 2026-10-13 之前这里是 string（空串 = 顶层），而前端声明的是 `string | null` 并按 `=== null` 过滤 ——
+	// 于是顶层楼层全被过滤掉，**评论区一条都不渲染**（接口 200 且返回数据，DOM 容器是空的）。
+	// 契约两侧各写了一份约定，两边的测试都过，序列化那一层没人测。
+	ParentID     *string      `json:"parent_id"`
 	Floor        int          `json:"floor"`
 	ContentHTML  string       `json:"content_html"`
 	Author       UserBriefDTO `json:"author"`
@@ -183,7 +187,7 @@ type IssuePage struct {
 // IssueCommentDTO 是 Issue 评论。
 type IssueCommentDTO struct {
 	ID           string       `json:"id"`
-	ParentID     string       `json:"parent_id"`
+	ParentID     *string      `json:"parent_id"` // nil = 顶层（同 PostDTO，Issue 评论同病同治）
 	BodyHTML     string       `json:"body_html"`
 	Author       UserBriefDTO `json:"author"`
 	LikeCount    int          `json:"like_count"`

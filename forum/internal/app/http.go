@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -120,7 +121,21 @@ func registerStatic(r *gin.Engine, cfg *config.Config, bi BuildInfo) error {
 	if err != nil {
 		return err
 	}
-	r.NoRoute(handler)
+	r.NoRoute(func(c *gin.Context) {
+		// `/api/` 前缀下未命中 = **这个接口不存在**，必须回 404 JSON。
+		//
+		// 2026-10-13 之前这里对所有路径一视同仁地返回 SPA 壳，于是「不存在的接口」返回 **200 + HTML**：
+		// 客户端把「成功但空」与「功能不存在」混为一谈（比如 GET /api/v1/users/x/topics 在路由注册前
+		// 就是 200 + index.html）。这与「200 其实不是我们的站」是同一族问题 —— 报告里出现过三次。
+		if strings.HasPrefix(c.Request.URL.Path, "/api/") {
+			c.JSON(http.StatusNotFound, gin.H{"error": gin.H{
+				"code":    "common.route_not_found",
+				"message": "接口不存在",
+			}})
+			return
+		}
+		handler(c)
+	})
 	return nil
 }
 
