@@ -12,10 +12,11 @@ import (
 )
 
 // Usage 是给用户看的用法；退出码 2 表示用法错误（与运行期失败的 1 区分）。
-const Usage = "usage: forum <run|migrate|check|create-admin|backup> [-config path]\n" +
+const Usage = "usage: forum <run|migrate|check|seed|create-admin|backup> [-config path]\n" +
 	"  run           -listen addr -web dir\n" +
 	"  migrate\n" +
 	"  check\n" +
+	"  seed                                         （写入演示数据；可重复执行，不是迁移）\n" +
 	"  create-admin  -username name [-email addr]   （口令从 stdin 读；-password 仅供开发）\n" +
 	"  backup        -out file.dump\n"
 
@@ -61,6 +62,8 @@ func Main(args []string, version string) int {
 		err = Migrate(ctx, cfg)
 	case "check":
 		err = Check(ctx, cfg)
+	case "seed":
+		err = Seed(ctx, cfg)
 	case "create-admin":
 		pw := *password
 		if pw == "" {
