@@ -1,0 +1,14 @@
+证明「老站口令串能被新站校验」—— 迁移侧与登录有关的唯一未验证点
+
+问：之前登录不上是数据库迁移的问题还是别的什么问题？
+答：不是迁移问题，是前端与后端的契约（字段名）不一致，三处，全在浏览器那侧：
+  1) auth.ts 把账号发在 username，后端 loginReq 读的是 login（binding:required）
+     -> login 为空 -> 400 参数错误（口令错会是 401，所以一开始就不像口令问题）；
+  2) 验证码答案发在 captcha，后端读 captcha_answer，且必须与 captcha_id 成对 -> 非 off 模式一律 400；
+  3) 验证码框首屏不渲染（challenge 初值 false）+ 把 captcha_required 显示成 captcha_wrong 的文案
+     「验证码不对」—— 把「我没收到」说成「你写错了」。
+
+迁移侧唯一沾边的点：老库口令串是 argon2id，新站 verifier 能否接受老参数（m=19456,t=2,p=1）。
+此前只有静态分析（parsePHC 从串里读参数）。现在补了一条真跑哈希的测试：
+internal/auth/password_legacy_test.go —— 用老参数真的造一条串，Verify 必须通过、错口令必须拒绝、
+needsRehash 必须为真（登录成功后升级到新参数）、旧站占位串 "!" 必须恒 false 且不 panic。测试通过。
