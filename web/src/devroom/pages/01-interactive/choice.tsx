@@ -23,10 +23,12 @@ export function ChoicePair() {
   );
   const radios = (
     <Line label='单选组（同一 name 互斥）'>
-      <Radio name='sort' checked={radio === 'new'} onChange={() => setRadio('new')}>最新回复</Radio>
-      <Radio name='sort' checked={radio === 'hot'} onChange={() => setRadio('hot')}>最多回复</Radio>
-      <Radio name='sort' checked={radio === 'old'} onChange={() => setRadio('old')}>最早发布</Radio>
-      <Radio name='sort-off' disabled checked={false} onChange={() => {}}>不可用</Radio>
+      {/* 必须用 Radio.Item：Radio 本身不渲染 DOM（写成 <Radio>文案</Radio> 会得到一行不可点的纯文字，
+          而且 typecheck 不报 —— 见 registry.ts 的 radio 条目）。 */}
+      <Radio.Item name='sort' value='new' checked={radio === 'new'} onChange={() => setRadio('new')}>最新回复</Radio.Item>
+      <Radio.Item name='sort' value='hot' checked={radio === 'hot'} onChange={() => setRadio('hot')}>最多回复</Radio.Item>
+      <Radio.Item name='sort' value='old' checked={radio === 'old'} onChange={() => setRadio('old')}>最早发布</Radio.Item>
+      <Radio.Item name='sort' value='off' disabled checked={false} onChange={() => {}}>不可用</Radio.Item>
     </Line>
   );
   const segs = (

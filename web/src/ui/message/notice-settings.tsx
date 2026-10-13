@@ -49,14 +49,17 @@ export function NoticeSettings({ rows }: { rows: SettingRow[] }) {
           {row.kind === 'radio' ? (
             <span className='flex flex-wrap items-center gap-x-6 gap-y-2'>
               {row.options.map((o) => (
-                <Radio
+                // 必须用 Radio.Item：Radio 本身不渲染 DOM（写成 <Radio>标签</Radio> 会得到一行不可点的纯文字，
+                // 而且 typecheck 不报 —— 见 registry.ts 的 radio 条目）
+                <Radio.Item
                   key={o.key}
                   name={row.key}
+                  value={o.key}
                   checked={row.value === o.key}
                   onChange={() => row.onChange(o.key)}
                 >
                   {o.label}
-                </Radio>
+                </Radio.Item>
               ))}
             </span>
           ) : null}
