@@ -203,6 +203,24 @@ func (s *Service) Register(ctx context.Context, in RegisterInput) (*RegisterResu
 		}
 	}
 
+	// 显式预检占用：唯一索引是最终保证，但按约束名区分「哪个撞了」要靠 pgconn 的 ConstraintName，
+	// 而它依赖 ent 生成的约束名，不稳。这里先查一次（两条都走 lower(col) 表达式索引），
+	// 撞车时直接给出能挂到输入框上的码；真正的并发重放仍由唯一索引兜底（走 mapRegisterErr）。
+	uname, ufound, err := s.lookup(ctx, username)
+	if err != nil {
+		return nil, err
+	}
+	if ufound && uemailClash(uname, username) {
+		return nil, ErrHandleTaken
+	}
+	uemail, efound, err := s.lookup(ctx, email)
+	if err != nil {
+		return nil, err
+	}
+	if efound && uemailClash(uemail, email) {
+		return nil, ErrEmailTaken
+	}
+
 	pub, err := idgen.NewPublicID()
 	if err != nil {
 		return nil, err
@@ -639,9 +657,9 @@ func (s *Service) BanUser(ctx context.Context, actor *authz.Actor, in BanInput) 
 					"after": map[string]any{"status": want, "reason": in.Reason}},
 			})
 		}
-		// 封号删会话行：**不是**为了正确性（解析路径本来就判 status），
-		// 而是让「解封后要重新登录」这件事不发生——所以删行只发生在封号这一侧。
-		n, err := tx.Session.Delete().Where(session.UserIDEQ(target.ID)).Exec(ctx)
+		// 封号**不删会话行**（设计 §6.6）：删行会让解封后用户「莫名其妙要重新登录」，而且不可逆。
+		// 失效靠解析路径判 status（下一个请求就是 401），所以这里只数一下有多少条会立刻失效。
+		n, err := tx.Session.Query().Where(session.UserIDEQ(target.ID)).Count(ctx)
 		if err != nil {
 			return err
 		}
@@ -749,6 +767,12 @@ SELECT t.was_super, (SELECT n FROM remaining) FROM target t`, targetID).Scan(&wa
 		return ErrAdminLastSuper
 	}
 	return nil
+}
+
+// uemailClash 判断「查回来的这一行是不是被这个值占用了」。
+// FindUserByLogin 的谓词是 username OR email，所以命中的可能是另一种字段——逐字比一次。
+func uemailClash(row *UserAuthRow, value string) bool {
+	return strings.EqualFold(row.Username, value) || strings.EqualFold(row.Email, value)
 }
 
 // userByPublicID 按 public_id 找用户（管理端一律用它，不接受自增 id）。

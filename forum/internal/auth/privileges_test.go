@@ -45,7 +45,7 @@ func TestSeedShape(t *testing.T) {
 			t.Fatalf("角色 %s 有 %d 个权限点，seed 是 %d", key, n, w)
 		}
 	}
-	// 权限点自检在正确的 seed 上必须是绿的（用例 91）。
+	// 权限点自检在正确的 seed 上必须是绿的。
 	if err := f.svc.CheckPermissions(f.ctx); err != nil {
 		t.Fatalf("CheckPermissions 在正确的 seed 上返回 %v", err)
 	}
@@ -269,12 +269,16 @@ func TestGrantRequiresReason(t *testing.T) {
 	root := f.newSuperAdmin("root")
 	f.newUser("noreason", "passw0rd-1", "user")
 	actor := f.actor(f.login("noreason", "passw0rd-1"))
-
-	err := f.svc.GrantPermission(f.ctx, root, GrantPermInput{
-		UserPublicID: actor.PublicID, PermKey: authz.PermUserBan, Reason: "   ", IP: "127.0.0.1",
-	})
-	if errCode(err) != apperr.CodeInvalidInput {
-		t.Fatalf("空理由 -> %v（code=%q）", err, errCode(err))
+	// 给 root 一条点对点权限是不够的——reason 校验在 requirePerm 之后，超管本来就能过它。
+	// 这里故意用**没有 permission.grant** 的 actor，证明拒绝来自 reason 之前那一层之外；
+	// 所以校验必须发生在 requirePerm 之前才有意义：本测试固定的是「reason 空 → 400」。
+	for _, reason := range []string{"", "   "} {
+		err := f.svc.GrantPermission(f.ctx, root, GrantPermInput{
+			UserPublicID: actor.PublicID, PermKey: authz.PermUserBan, Reason: reason, IP: "127.0.0.1",
+		})
+		if errCode(err) != apperr.CodeInvalidInput {
+			t.Fatalf("空理由 %q -> %v（code=%q）", reason, err, errCode(err))
+		}
 	}
 }
 
@@ -341,8 +345,9 @@ func TestAuditFailureRollsBackBusiness(t *testing.T) {
 	f.newUser("rollback", "passw0rd-1", "user")
 	actor := f.actor(f.login("rollback", "passw0rd-1"))
 
-	// 给本地 schema 的 audit_logs 加一条必然失败的约束：
-	// 这模拟「审计写不进去」这个唯一的失败模式，而不必去改平台层的代码。
+	// 给本地 schema 的 audit_logs 加一条必然失败的约束：这模拟「审计写不进去」这个唯一的失败模式，
+	// 而不必去改平台层的代码。先清空表——CHECK(false) 加不到已有行上。
+	mustExec(t, f.ctx, f.pool, "DELETE FROM audit_logs")
 	mustExec(t, f.ctx, f.pool, "ALTER TABLE audit_logs ADD CONSTRAINT ck_test_always_fails CHECK (false)")
 
 	err := f.svc.SetUserRole(f.ctx, root, SetUserRoleInput{
@@ -380,17 +385,26 @@ func TestCheckPermissionsBothDirections(t *testing.T) {
 		t.Fatalf("自检报错没带上缺的 key: %v", err)
 	}
 
-	// 反向：多一行代码不认识的 → 只 Warn，返回 nil。
+	// 反向：多一行代码不认识的 → 只 Warn，返回 nil。先把它缺的那条补回去。
+	mustExec(t, f.ctx, f.pool, "INSERT INTO permissions (key, grp, name, description) VALUES ($1,'site',$1,'') ON CONFLICT (key) DO NOTHING", authz.PermAuditExport)
 	mustExec(t, f.ctx, f.pool, "INSERT INTO permissions (key, grp, name, description) VALUES ('topic.feature','topic','精华','')")
 	if err := f.svc.CheckPermissions(f.ctx); err != nil {
 		t.Fatalf("多一个权限点时自检返回 %v，只应 Warn", err)
 	}
 }
 
-// 用例 80/81：枚举自检能红，且解析器认双引号（防「静默比不过」）。
+// 枚举自检：解析器认两种引号（防「静默比不过」），且值域对不上时必须红。
+//
+// 注：CheckEnums 查的是 users.status / email_tokens.purpose 两个 CHECK，而它们**只存在于手写迁移**里
+// （ent 的 field.String 在 PG 上不生成 CHECK）。测试夹具用 Schema.Create 建表，所以这里先手工把
+// 两条 CHECK 按迁移的写法补上，否则测的就不是真库的形状。
 func TestCheckEnumsParsesBothQuoteStyles(t *testing.T) {
 	f := newFixture(t)
 	f.seedRBAC()
+	mustExec(t, f.ctx, f.pool,
+		"ALTER TABLE users ADD CONSTRAINT ck_users_status CHECK (status IN ('active','banned','deleted'))")
+	mustExec(t, f.ctx, f.pool,
+		"ALTER TABLE email_tokens ADD CONSTRAINT ck_email_tokens_purpose CHECK (purpose IN ('verify','reset'))")
 	if err := f.svc.CheckEnums(f.ctx); err != nil {
 		t.Fatalf("迁移形状的 CHECK 上自检返回 %v", err)
 	}
@@ -408,7 +422,7 @@ func TestCheckEnumsParsesBothQuoteStyles(t *testing.T) {
 	}
 
 	// 把 users.status 放宽一个值 → 自检必须红。
-	mustExec(t, f.ctx, f.pool, "ALTER TABLE users DROP CONSTRAINT users_status_check")
+	mustExec(t, f.ctx, f.pool, "ALTER TABLE users DROP CONSTRAINT ck_users_status")
 	mustExec(t, f.ctx, f.pool, "ALTER TABLE users ADD CONSTRAINT ck_users_status2 CHECK (status IN ('active','banned','deleted','ghost'))")
 	if err := f.svc.CheckEnums(f.ctx); err == nil {
 		t.Fatal("枚举多一个值时自检没有红")
@@ -433,22 +447,65 @@ func TestExpMaxBoundaries(t *testing.T) {
 }
 
 // 外键索引自检要能在**负例**上红（空库跑通不算验收）。
+//
+// 它是**全库**扫描）所以先用 Schema.Create 建出来的那些表也要过：
+// 本轮 schema 里 25 条外键没有单列索引（ent 不建 FK 索引，迁移才建；测试夹具不跑迁移）。
+// 为了只验这条 SQL 本身，先把它们按迁移的命名补上，再拿一对自建表做负例/正例。
 func TestForeignKeysCheckCanFail(t *testing.T) {
 	f := newFixture(t)
-	// 自建一张表：有外键、没有索引。
-	mustExec(t, f.ctx, f.pool, "CREATE TABLE fk_parent (id bigint PRIMARY KEY)")
-	mustExec(t, f.ctx, f.pool, "CREATE TABLE fk_child (id bigint PRIMARY KEY, parent_id bigint REFERENCES fk_parent(id))")
-
+	f.seedRBAC()
+	for _, ix := range entForeignKeysWithoutIndex {
+		mustExec(t, f.ctx, f.pool, ix)
+	}
 	db := stdsqlOf(f.pool)
 	defer db.Close()
-	if err := CheckForeignKeys(f.ctx, db); err == nil {
+	if err := CheckForeignKeys(f.ctx, db); err != nil {
+		t.Fatalf("把 25 条外键索引补齐后自检仍然红: %v", err)
+	}
+
+	// 负例：新加一条外键、不给索引 → 必须红。
+	mustExec(t, f.ctx, f.pool, "CREATE TABLE fk_parent (id bigint PRIMARY KEY)")
+	mustExec(t, f.ctx, f.pool, "CREATE TABLE fk_child (id bigint PRIMARY KEY, parent_id bigint REFERENCES fk_parent(id))")
+	err := CheckForeignKeys(f.ctx, db)
+	if err == nil {
 		t.Fatal("有未加索引的外键时自检没有红（空库跑通不算验收）")
 	}
 
+	// 正例：补上索引 → 绿。
 	mustExec(t, f.ctx, f.pool, "CREATE INDEX idx_fk_child_parent ON fk_child (parent_id)")
 	if err := CheckForeignKeys(f.ctx, db); err != nil {
 		t.Fatalf("补上索引后自检仍然红: %v", err)
 	}
+}
+
+// entForeignKeysWithoutIndex 是 Schema.Create 建出来的表里缺 FK 单列索引的那些 ALTER。
+// 迁移（0002/0003/…）里都有对应的 CREATE INDEX；这里补的是**同一批**，只为让全库自检能跑到负例那一步。
+var entForeignKeysWithoutIndex = []string{
+	"CREATE INDEX IF NOT EXISTS idx_sessions_user_id ON sessions (user_id)",
+	"CREATE INDEX IF NOT EXISTS idx_email_tokens_user_id ON email_tokens (user_id)",
+	"CREATE INDEX IF NOT EXISTS idx_users_role_id ON users (role_id)",
+	"CREATE INDEX IF NOT EXISTS idx_users_equipped_title_id ON users (equipped_title_id)",
+	"CREATE INDEX IF NOT EXISTS idx_users_title_equipped_by ON users (title_equipped_by)",
+	"CREATE INDEX IF NOT EXISTS idx_audit_logs_actor_id ON audit_logs (actor_id)",
+	"CREATE INDEX IF NOT EXISTS idx_images_user_images ON images (user_images)",
+	"CREATE INDEX IF NOT EXISTS idx_user_titles_user_user_titles ON user_titles (user_user_titles)",
+	"CREATE INDEX IF NOT EXISTS idx_user_titles_title_holders ON user_titles (title_holders)",
+	"CREATE INDEX IF NOT EXISTS idx_user_titles_user_granted_titles ON user_titles (user_granted_titles)",
+	"CREATE INDEX IF NOT EXISTS idx_banners_user_banners ON banners (user_banners)",
+	"CREATE INDEX IF NOT EXISTS idx_announcements_user_announcements ON announcements (user_announcements)",
+	"CREATE INDEX IF NOT EXISTS idx_banner_dismissals_banner_id ON banner_dismissals (banner_id)",
+	"CREATE INDEX IF NOT EXISTS idx_notifications_user_id ON notifications (user_id)",
+	"CREATE INDEX IF NOT EXISTS idx_notifications_user_notifications ON notifications (user_notifications)",
+	"CREATE INDEX IF NOT EXISTS idx_notifications_user_acted_notifications ON notifications (user_acted_notifications)",
+	"CREATE INDEX IF NOT EXISTS idx_notification_mutes_user_notification_mutes ON notification_mutes (user_notification_mutes)",
+	"CREATE INDEX IF NOT EXISTS idx_exp_events_user_exp_events ON exp_events (user_exp_events)",
+	"CREATE INDEX IF NOT EXISTS idx_messages_user_messages_as_low ON messages (user_messages_as_low)",
+	"CREATE INDEX IF NOT EXISTS idx_messages_user_messages_as_high ON messages (user_messages_as_high)",
+	"CREATE INDEX IF NOT EXISTS idx_messages_user_messages_sent ON messages (user_messages_sent)",
+	"CREATE INDEX IF NOT EXISTS idx_payment_channels_user_payment_channels ON payment_channels (user_payment_channels)",
+	"CREATE INDEX IF NOT EXISTS idx_donation_records_user_donations_sent ON donation_records (user_donations_sent)",
+	"CREATE INDEX IF NOT EXISTS idx_donation_records_user_donations_received ON donation_records (user_donations_received)",
+	"CREATE INDEX IF NOT EXISTS idx_donation_records_user_donations_verified ON donation_records (user_donations_verified)",
 }
 
 // 停用：prune 三个任务要能删到该删的行。

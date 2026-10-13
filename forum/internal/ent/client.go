@@ -18,7 +18,6 @@ import (
 	"forum/internal/ent/bannerrole"
 	"forum/internal/ent/block"
 	"forum/internal/ent/board"
-	"forum/internal/ent/boardacl"
 	"forum/internal/ent/boardmoderator"
 	"forum/internal/ent/bookmark"
 	"forum/internal/ent/defaultavatar"
@@ -85,8 +84,6 @@ type Client struct {
 	Block *BlockClient
 	// Board is the client for interacting with the Board builders.
 	Board *BoardClient
-	// BoardACL is the client for interacting with the BoardACL builders.
-	BoardACL *BoardACLClient
 	// BoardModerator is the client for interacting with the BoardModerator builders.
 	BoardModerator *BoardModeratorClient
 	// Bookmark is the client for interacting with the Bookmark builders.
@@ -181,7 +178,6 @@ func (c *Client) init() {
 	c.BannerRole = NewBannerRoleClient(c.config)
 	c.Block = NewBlockClient(c.config)
 	c.Board = NewBoardClient(c.config)
-	c.BoardACL = NewBoardACLClient(c.config)
 	c.BoardModerator = NewBoardModeratorClient(c.config)
 	c.Bookmark = NewBookmarkClient(c.config)
 	c.DefaultAvatar = NewDefaultAvatarClient(c.config)
@@ -319,7 +315,6 @@ func (c *Client) Tx(ctx context.Context) (*Tx, error) {
 		BannerRole:            NewBannerRoleClient(cfg),
 		Block:                 NewBlockClient(cfg),
 		Board:                 NewBoardClient(cfg),
-		BoardACL:              NewBoardACLClient(cfg),
 		BoardModerator:        NewBoardModeratorClient(cfg),
 		Bookmark:              NewBookmarkClient(cfg),
 		DefaultAvatar:         NewDefaultAvatarClient(cfg),
@@ -384,7 +379,6 @@ func (c *Client) BeginTx(ctx context.Context, opts *sql.TxOptions) (*Tx, error) 
 		BannerRole:            NewBannerRoleClient(cfg),
 		Block:                 NewBlockClient(cfg),
 		Board:                 NewBoardClient(cfg),
-		BoardACL:              NewBoardACLClient(cfg),
 		BoardModerator:        NewBoardModeratorClient(cfg),
 		Bookmark:              NewBookmarkClient(cfg),
 		DefaultAvatar:         NewDefaultAvatarClient(cfg),
@@ -453,7 +447,7 @@ func (c *Client) Close() error {
 func (c *Client) Use(hooks ...Hook) {
 	for _, n := range []interface{ Use(...Hook) }{
 		c.Announcement, c.AuditLog, c.Banner, c.BannerDismissal, c.BannerRole, c.Block,
-		c.Board, c.BoardACL, c.BoardModerator, c.Bookmark, c.DefaultAvatar,
+		c.Board, c.BoardModerator, c.Bookmark, c.DefaultAvatar,
 		c.DonationNoticeDefault, c.DonationRecord, c.EmailToken, c.ExpEvent, c.Image,
 		c.IssueComment, c.Job, c.Like, c.MailAccount, c.MailLog, c.MailQuota,
 		c.Message, c.Notification, c.NotificationMute, c.PaymentChannel, c.Permission,
@@ -471,7 +465,7 @@ func (c *Client) Use(hooks ...Hook) {
 func (c *Client) Intercept(interceptors ...Interceptor) {
 	for _, n := range []interface{ Intercept(...Interceptor) }{
 		c.Announcement, c.AuditLog, c.Banner, c.BannerDismissal, c.BannerRole, c.Block,
-		c.Board, c.BoardACL, c.BoardModerator, c.Bookmark, c.DefaultAvatar,
+		c.Board, c.BoardModerator, c.Bookmark, c.DefaultAvatar,
 		c.DonationNoticeDefault, c.DonationRecord, c.EmailToken, c.ExpEvent, c.Image,
 		c.IssueComment, c.Job, c.Like, c.MailAccount, c.MailLog, c.MailQuota,
 		c.Message, c.Notification, c.NotificationMute, c.PaymentChannel, c.Permission,
@@ -501,8 +495,6 @@ func (c *Client) Mutate(ctx context.Context, m Mutation) (Value, error) {
 		return c.Block.mutate(ctx, m)
 	case *BoardMutation:
 		return c.Board.mutate(ctx, m)
-	case *BoardACLMutation:
-		return c.BoardACL.mutate(ctx, m)
 	case *BoardModeratorMutation:
 		return c.BoardModerator.mutate(ctx, m)
 	case *BookmarkMutation:
@@ -1688,171 +1680,6 @@ func (c *BoardClient) mutate(ctx context.Context, m *BoardMutation) (Value, erro
 		return (&BoardDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
 	default:
 		return nil, fmt.Errorf("ent: unknown Board mutation op: %q", m.Op())
-	}
-}
-
-// BoardACLClient is a client for the BoardACL schema.
-type BoardACLClient struct {
-	config
-}
-
-// NewBoardACLClient returns a client for the BoardACL from the given config.
-func NewBoardACLClient(c config) *BoardACLClient {
-	return &BoardACLClient{config: c}
-}
-
-// Use adds a list of mutation hooks to the hooks stack.
-// A call to `Use(f, g, h)` equals to `boardacl.Hooks(f(g(h())))`.
-func (c *BoardACLClient) Use(hooks ...Hook) {
-	c.hooks.BoardACL = append(c.hooks.BoardACL, hooks...)
-}
-
-// Intercept adds a list of query interceptors to the interceptors stack.
-// A call to `Intercept(f, g, h)` equals to `boardacl.Intercept(f(g(h())))`.
-func (c *BoardACLClient) Intercept(interceptors ...Interceptor) {
-	c.inters.BoardACL = append(c.inters.BoardACL, interceptors...)
-}
-
-// Create returns a builder for creating a BoardACL entity.
-func (c *BoardACLClient) Create() *BoardACLCreate {
-	mutation := newBoardACLMutation(c.config, OpCreate)
-	return &BoardACLCreate{config: c.config, hooks: c.Hooks(), mutation: mutation}
-}
-
-// CreateBulk returns a builder for creating a bulk of BoardACL entities.
-func (c *BoardACLClient) CreateBulk(builders ...*BoardACLCreate) *BoardACLCreateBulk {
-	return &BoardACLCreateBulk{config: c.config, builders: builders}
-}
-
-// MapCreateBulk creates a bulk creation builder from the given slice. For each item in the slice, the function creates
-// a builder and applies setFunc on it.
-func (c *BoardACLClient) MapCreateBulk(slice any, setFunc func(*BoardACLCreate, int)) *BoardACLCreateBulk {
-	rv := reflect.ValueOf(slice)
-	if rv.Kind() != reflect.Slice {
-		return &BoardACLCreateBulk{err: fmt.Errorf("calling to BoardACLClient.MapCreateBulk with wrong type %T, need slice", slice)}
-	}
-	builders := make([]*BoardACLCreate, rv.Len())
-	for i := 0; i < rv.Len(); i++ {
-		builders[i] = c.Create()
-		setFunc(builders[i], i)
-	}
-	return &BoardACLCreateBulk{config: c.config, builders: builders}
-}
-
-// Update returns an update builder for BoardACL.
-func (c *BoardACLClient) Update() *BoardACLUpdate {
-	mutation := newBoardACLMutation(c.config, OpUpdate)
-	return &BoardACLUpdate{config: c.config, hooks: c.Hooks(), mutation: mutation}
-}
-
-// UpdateOne returns an update builder for the given entity.
-func (c *BoardACLClient) UpdateOne(_m *BoardACL) *BoardACLUpdateOne {
-	mutation := newBoardACLMutation(c.config, OpUpdateOne, withBoardACL(_m))
-	return &BoardACLUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
-}
-
-// UpdateOneID returns an update builder for the given id.
-func (c *BoardACLClient) UpdateOneID(id int64) *BoardACLUpdateOne {
-	mutation := newBoardACLMutation(c.config, OpUpdateOne, withBoardACLID(id))
-	return &BoardACLUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
-}
-
-// Delete returns a delete builder for BoardACL.
-func (c *BoardACLClient) Delete() *BoardACLDelete {
-	mutation := newBoardACLMutation(c.config, OpDelete)
-	return &BoardACLDelete{config: c.config, hooks: c.Hooks(), mutation: mutation}
-}
-
-// DeleteOne returns a builder for deleting the given entity.
-func (c *BoardACLClient) DeleteOne(_m *BoardACL) *BoardACLDeleteOne {
-	return c.DeleteOneID(_m.ID)
-}
-
-// DeleteOneID returns a builder for deleting the given entity by its id.
-func (c *BoardACLClient) DeleteOneID(id int64) *BoardACLDeleteOne {
-	builder := c.Delete().Where(boardacl.ID(id))
-	builder.mutation.id = &id
-	builder.mutation.op = OpDeleteOne
-	return &BoardACLDeleteOne{builder}
-}
-
-// Query returns a query builder for BoardACL.
-func (c *BoardACLClient) Query() *BoardACLQuery {
-	return &BoardACLQuery{
-		config: c.config,
-		ctx:    &QueryContext{Type: TypeBoardACL},
-		inters: c.Interceptors(),
-	}
-}
-
-// Get returns a BoardACL entity by its id.
-func (c *BoardACLClient) Get(ctx context.Context, id int64) (*BoardACL, error) {
-	return c.Query().Where(boardacl.ID(id)).Only(ctx)
-}
-
-// GetX is like Get, but panics if an error occurs.
-func (c *BoardACLClient) GetX(ctx context.Context, id int64) *BoardACL {
-	obj, err := c.Get(ctx, id)
-	if err != nil {
-		panic(err)
-	}
-	return obj
-}
-
-// QueryBoard queries the board edge of a BoardACL.
-func (c *BoardACLClient) QueryBoard(_m *BoardACL) *BoardQuery {
-	query := (&BoardClient{config: c.config}).Query()
-	query.path = func(context.Context) (fromV *sql.Selector, _ error) {
-		id := _m.ID
-		step := sqlgraph.NewStep(
-			sqlgraph.From(boardacl.Table, boardacl.FieldID, id),
-			sqlgraph.To(board.Table, board.FieldID),
-			sqlgraph.Edge(sqlgraph.M2O, false, boardacl.BoardTable, boardacl.BoardColumn),
-		)
-		fromV = sqlgraph.Neighbors(_m.driver.Dialect(), step)
-		return fromV, nil
-	}
-	return query
-}
-
-// QueryRole queries the role edge of a BoardACL.
-func (c *BoardACLClient) QueryRole(_m *BoardACL) *RoleQuery {
-	query := (&RoleClient{config: c.config}).Query()
-	query.path = func(context.Context) (fromV *sql.Selector, _ error) {
-		id := _m.ID
-		step := sqlgraph.NewStep(
-			sqlgraph.From(boardacl.Table, boardacl.FieldID, id),
-			sqlgraph.To(role.Table, role.FieldID),
-			sqlgraph.Edge(sqlgraph.M2O, false, boardacl.RoleTable, boardacl.RoleColumn),
-		)
-		fromV = sqlgraph.Neighbors(_m.driver.Dialect(), step)
-		return fromV, nil
-	}
-	return query
-}
-
-// Hooks returns the client hooks.
-func (c *BoardACLClient) Hooks() []Hook {
-	return c.hooks.BoardACL
-}
-
-// Interceptors returns the client interceptors.
-func (c *BoardACLClient) Interceptors() []Interceptor {
-	return c.inters.BoardACL
-}
-
-func (c *BoardACLClient) mutate(ctx context.Context, m *BoardACLMutation) (Value, error) {
-	switch m.Op() {
-	case OpCreate:
-		return (&BoardACLCreate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
-	case OpUpdate:
-		return (&BoardACLUpdate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
-	case OpUpdateOne:
-		return (&BoardACLUpdateOne{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
-	case OpDelete, OpDeleteOne:
-		return (&BoardACLDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
-	default:
-		return nil, fmt.Errorf("ent: unknown BoardACL mutation op: %q", m.Op())
 	}
 }
 
@@ -8290,23 +8117,21 @@ func (c *UserTitleClient) mutate(ctx context.Context, m *UserTitleMutation) (Val
 type (
 	hooks struct {
 		Announcement, AuditLog, Banner, BannerDismissal, BannerRole, Block, Board,
-		BoardACL, BoardModerator, Bookmark, DefaultAvatar, DonationNoticeDefault,
-		DonationRecord, EmailToken, ExpEvent, Image, IssueComment, Job, Like,
-		MailAccount, MailLog, MailQuota, Message, Notification, NotificationMute,
-		PaymentChannel, Permission, Post, PostIssue, Release, ReleaseAsset, Report,
-		Role, RolePermission, Sanction, Session, SiteDomain, SiteSetting, Title, Topic,
-		TopicImage, TopicSource, User, UserDonationSetting, UserPermission,
-		UserTitle []ent.Hook
+		BoardModerator, Bookmark, DefaultAvatar, DonationNoticeDefault, DonationRecord,
+		EmailToken, ExpEvent, Image, IssueComment, Job, Like, MailAccount, MailLog,
+		MailQuota, Message, Notification, NotificationMute, PaymentChannel, Permission,
+		Post, PostIssue, Release, ReleaseAsset, Report, Role, RolePermission, Sanction,
+		Session, SiteDomain, SiteSetting, Title, Topic, TopicImage, TopicSource, User,
+		UserDonationSetting, UserPermission, UserTitle []ent.Hook
 	}
 	inters struct {
 		Announcement, AuditLog, Banner, BannerDismissal, BannerRole, Block, Board,
-		BoardACL, BoardModerator, Bookmark, DefaultAvatar, DonationNoticeDefault,
-		DonationRecord, EmailToken, ExpEvent, Image, IssueComment, Job, Like,
-		MailAccount, MailLog, MailQuota, Message, Notification, NotificationMute,
-		PaymentChannel, Permission, Post, PostIssue, Release, ReleaseAsset, Report,
-		Role, RolePermission, Sanction, Session, SiteDomain, SiteSetting, Title, Topic,
-		TopicImage, TopicSource, User, UserDonationSetting, UserPermission,
-		UserTitle []ent.Interceptor
+		BoardModerator, Bookmark, DefaultAvatar, DonationNoticeDefault, DonationRecord,
+		EmailToken, ExpEvent, Image, IssueComment, Job, Like, MailAccount, MailLog,
+		MailQuota, Message, Notification, NotificationMute, PaymentChannel, Permission,
+		Post, PostIssue, Release, ReleaseAsset, Report, Role, RolePermission, Sanction,
+		Session, SiteDomain, SiteSetting, Title, Topic, TopicImage, TopicSource, User,
+		UserDonationSetting, UserPermission, UserTitle []ent.Interceptor
 	}
 )
 

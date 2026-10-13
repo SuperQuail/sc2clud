@@ -1,7 +1,13 @@
 -- 0015_queue.up.sql —— 任务队列（jobs）
 -- 依据：d1-platform §6.1（DDL 与三个索引的真源）；数据库文档 §2 全局约定、§4.10。
--- 与数据库文档 §4.10 的差异以 d1 §6.1 为准：locked_by / finished_at 不在 D1 的领取、恢复、
--- 清理 SQL 里出现，属于「以后可能要」的列，不建。
+-- 与数据库文档 §4.10 的差异以 d1 §6.1 为准：finished_at 不建（D1 的清理 SQL 不用它）。
+--
+-- **locked_by 必须有**（2026-10-13 数据库审计 D1 的修复）：worker 的 claim/done/retry/dead/recover
+-- 五条 SQL 全部用 `locked_by = $instance` 做「只可能由持有者改自己那条」的判定，而本文件原先只在注释里
+-- 提到它、没有建列 —— 结果是整个异步队列领不到任何任务（发信/搜索索引/图片 GC/通知全哑），
+-- 而进程起得来、日志正常、HTTP 正常，表面上全绿。
+-- 根因是「实现与迁移各写各的、且没有一条检查比对两边」；堵法是审计建议的第 2 条：
+-- **所有原生 SQL 常量在真库 PREPARE**（SQL 引用了不存在的列，PREPARE 就会红）。
 
 CREATE TABLE jobs (
   id           bigint      GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
@@ -13,7 +19,8 @@ CREATE TABLE jobs (
   attempts     int         NOT NULL DEFAULT 0,
   max_retry    int         NOT NULL DEFAULT 5,
   run_at       timestamptz NOT NULL DEFAULT now(),
-  locked_until timestamptz NULL,                     -- 崩溃恢复用（领取时 now()+5min）
+  locked_by    text        NOT NULL DEFAULT '',       -- 实例标识：领取时写自己；done/retry/dead 都带「= $instance」
+  locked_until timestamptz NULL,                     -- 租约到期（领取时 now()+5min），崩溃恢复用
   last_error   text        NOT NULL DEFAULT '',
   created_at   timestamptz NOT NULL DEFAULT now(),
   updated_at   timestamptz NOT NULL DEFAULT now(),

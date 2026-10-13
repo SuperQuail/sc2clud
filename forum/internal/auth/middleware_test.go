@@ -129,9 +129,13 @@ func TestMiddlewarePermissionBoundary(t *testing.T) {
 	}
 
 	// 超管短路：**权限集合里没有这个点**也必须放行（拍板 §9.8 第 1 条）。
+	// 造一个 has 为空的集合的等价办法：先把 superadmin 角色的矩阵清空。
 	root := f.newSuperAdmin("root")
+	mustExec(t, f.ctx, f.pool,
+		"DELETE FROM role_permissions WHERE role_id = (SELECT id FROM roles WHERE key = 'superadmin')")
+	root = f.actor(f.login("root", "passw0rd-1"))
 	if root.Perms.Has(authz.PermUserBan) {
-		t.Fatal("夹具问题：超管的集合里本来就有 user.ban，测不出短路")
+		t.Fatal("夹具问题：超管的集合里仍然有 user.ban，测不出短路")
 	}
 	rootCookie := f.login("root", "passw0rd-1")
 	if w := f.do(r, http.MethodPost, "/api/v1/admin", rootCookie); w.Code != http.StatusOK {

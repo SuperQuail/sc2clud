@@ -467,9 +467,9 @@ func PinTopic(ctx context.Context, tx Querier, topicID int64, column string, on 
 	}
 	var at *time.Time
 	err := queryOneQ(ctx, tx, `
-UPDATE topics SET ` + column + ` = CASE WHEN $2 THEN COALESCE(` + column + `, $3) ELSE NULL END, updated_at = $3
+UPDATE topics SET `+column+` = CASE WHEN $2 THEN COALESCE(`+column+`, $3) ELSE NULL END, updated_at = $3
  WHERE id = $1 AND visibility <> 'deleted' AND kind <> 'repost'
-RETURNING ` + column, []any{topicID, on, now.UTC()}, func(rows *sql.Rows) error {
+RETURNING `+column, []any{topicID, on, now.UTC()}, func(rows *sql.Rows) error {
 		return rows.Scan(&at)
 	})
 	if err != nil {

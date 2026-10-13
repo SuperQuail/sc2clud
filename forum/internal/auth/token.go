@@ -23,14 +23,18 @@ func (s *Service) sessionTTL() time.Duration {
 }
 
 // newToken 生成 32 字节 crypto/rand 的 base64url 串（43 字符）。
-// 它只在 Cookie 里出现一次，库里存的是它的 SHA-256（设计 §6.1）。
+// 它只在 Cookie 里出现一次，库里存的是**这个串**的 SHA-256（设计 §6.1）。
+//
+// 摘要算的是编码后的串，不是 32 字节原文：客户端手上只有串，服务端每次都要从串重算摘要，
+// 两边必须用同一个输入（写错一次就是「刚登录的会话解析不出来」）。
 func newToken() (string, []byte, error) {
 	raw := make([]byte, 32)
 	if _, err := rand.Read(raw); err != nil {
 		return "", nil, fmt.Errorf("auth: token: %w", err)
 	}
-	sum := sha256.Sum256(raw)
-	return base64.RawURLEncoding.EncodeToString(raw), sum[:], nil
+	tok := base64.RawURLEncoding.EncodeToString(raw)
+	sum := sha256.Sum256([]byte(tok))
+	return tok, sum[:], nil
 }
 
 // digestOf 算会话摘要（库里存的 32 字节）。解析路径每次请求都要算一次，绕不开。

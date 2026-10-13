@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"sort"
+	"strings"
 	"time"
 
 	"forum/internal/auth/pgsql"
@@ -246,7 +247,8 @@ func (s *Service) GrantPermission(ctx context.Context, actor *authz.Actor, in Gr
 	if err := requirePerm(actor, authz.PermPermissionGrant); err != nil {
 		return err
 	}
-	if in.Reason == "" || len([]rune(in.Reason)) > 200 {
+	// 全空白也是空：DB 的 ck_user_permissions_reason 用的是 btrim(reason) <> ''，本地判定必须同口径。
+	if strings.TrimSpace(in.Reason) == "" || len([]rune(in.Reason)) > 200 {
 		return invalid("reason", "必须填写授权理由（200 字以内）")
 	}
 	now := s.clk.Now()

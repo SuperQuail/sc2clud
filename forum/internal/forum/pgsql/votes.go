@@ -76,7 +76,7 @@ func (s *Store) Unvote(ctx context.Context, tx Querier, targetType string, targe
 		"       dislike_count = t.dislike_count - (CASE WHEN d.value = -1 THEN 1 ELSE 0 END)",
 		"  FROM del d",
 		" WHERE t.id = $3",
-		" RETURNING " + voteCountCols(table),
+		" RETURNING "+voteCountCols(table),
 	)
 	var like, dislike int
 	dest := voteCountDest(table, &like, &dislike)

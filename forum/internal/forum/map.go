@@ -16,8 +16,8 @@ func userBriefDTO(u pgsql.UserRow) UserBriefDTO {
 func (s *Service) topicCard(r pgsql.TopicRow) TopicCardDTO {
 	d := TopicCardDTO{
 		ID: r.PublicID, Kind: r.Kind, Title: r.Title, Excerpt: r.Excerpt,
-		Board:  BoardRefDTO{Slug: r.BoardSlug, Name: r.BoardName},
-		Author: userBriefDTO(r.Author),
+		Board:      BoardRefDTO{Slug: r.BoardSlug, Name: r.BoardName},
+		Author:     userBriefDTO(r.Author),
 		ReplyCount: r.ReplyCount, LikeCount: r.LikeCount,
 		// 详情页每次读都 +1 进缓冲，所以列表也要把它加回来，否则两个页面上的数字对不上（§8.2）。
 		ViewCount:   r.ViewCount + s.count.Get(counterTopicViewKey(r.ID)),

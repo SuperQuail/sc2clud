@@ -29,7 +29,6 @@ type IssueRow struct {
 	Assignee     *UserRow
 }
 
-
 // topicScopeColumns 是「主题只用来限定范围」时的那三列：issues 的两条列表都用它，
 // 不要用 topicColumns（那一条还带 boards / users / topic_images 的列，这里没有那些 JOIN）。
 const topicScopeColumns = `t.id, t.title, b.slug, b.name`
@@ -64,9 +63,9 @@ func scanIssue(rows *sql.Rows, r *IssueRow, extra ...any) error {
 		&r.Author.ID, &r.Author.PublicID, &r.Author.Handle, &r.Author.Nickname, &avatar, &avatarSmall, &r.Author.Status,
 	}
 	var (
-		asgID                                          sql.NullInt64
-		asgPublic, asgHandle, asgNick, asgStatus       sql.NullString
-		asgAvatar, asgAvatarSmall                      sql.NullString
+		asgID                                    sql.NullInt64
+		asgPublic, asgHandle, asgNick, asgStatus sql.NullString
+		asgAvatar, asgAvatarSmall                sql.NullString
 	)
 	dest = append(dest, &asgID, &asgPublic, &asgHandle, &asgNick, &asgAvatar, &asgAvatarSmall, &asgStatus)
 	if err := rows.Scan(append(dest, extra...)...); err != nil {
@@ -126,7 +125,7 @@ func (s IssueSort) column() string {
 
 // IssueFilter 是 Issue 列表的筛选形状。
 type IssueFilter struct {
-	TopicID    int64 // 0 = 全站聚合
+	TopicID    int64  // 0 = 全站聚合
 	Status     string // keep_open | closed | 空
 	Kind       string
 	AuthorID   *int64
@@ -135,7 +134,6 @@ type IssueFilter struct {
 	CursorT    time.Time
 	CursorID   int64
 	Limit      int
-	FirstPage  bool
 }
 
 // ListIssues 用一条 SQL 服务单帖列表与全站聚合（§7.7 Q10 / §7.8 Q11）：
@@ -264,21 +262,26 @@ func InsertIssue(ctx context.Context, tx Querier, publicID string, topicID, auth
 // closed_by / closed_at 跟着它一起变（ck_post_issues_closed 要求两者同真同假）。
 func UpdateIssue(ctx context.Context, tx Querier, issueID int64, title, bodyMD, bodyHTML, bodyText *string,
 	status *string, assigneeID *int64, clearAssignee bool, actorID int64, now time.Time) error {
-	return exec(ctx, tx, `
-UPDATE post_issues i
-   SET title       = COALESCE($2, i.title),
-       body_md     = COALESCE($3, i.body_md),
-       body_html   = COALESCE($4, i.body_html),
-       body_text   = COALESCE($5, i.body_text),
-       status      = COALESCE($6, i.status),
-       closed_by   = CASE WHEN $6::text IS NULL THEN i.closed_by
-                          WHEN $6::text = 'closed' THEN $8 ELSE NULL END,
-       closed_at   = CASE WHEN $6::text IS NULL THEN i.closed_at
-                          WHEN $6::text = 'closed' THEN $9 ELSE NULL END,
-       assignee_id = CASE WHEN $10::boolean THEN $7 ELSE COALESCE($7, i.assignee_id) END,
-       updated_at  = $9
- WHERE i.id = $1`,
-		issueID, title, bodyMD, bodyHTML, bodyText, status, assigneeID, actorID, now.UTC(), clearAssignee)
+	// 三段各管各的列（一条骨架，参数决定改哪几列）：
+	//  标题 / 正文 / 指派：COALESCE —— 没给就保持原值；
+	//  开关：只在 status 真的给了、且与现值不同时改写 closed_by / closed_at，
+	// 所以「重复点关闭」不刷新时间戳（§7.5）。
+	return exec(ctx, tx, sqlJoin(
+		"UPDATE post_issues i",
+		"   SET title       = COALESCE($2::varchar, i.title),",
+		"       body_md     = COALESCE($3::text, i.body_md),",
+		"       body_html   = COALESCE($4::text, i.body_html),",
+		"       body_text   = COALESCE($5::text, i.body_text),",
+		"       status      = CASE WHEN $6::text IS NOT NULL THEN $6::text ELSE i.status END,",
+		"       closed_by   = CASE WHEN $6::text = 'closed' AND i.status <> 'closed' THEN $8::bigint",
+		"                         WHEN $6::text = 'keep_open' THEN NULL ELSE i.closed_by END,",
+		"       closed_at   = CASE WHEN $6::text = 'closed' AND i.status <> 'closed' THEN $9::timestamptz",
+		"                         WHEN $6::text = 'keep_open' THEN NULL ELSE i.closed_at END,",
+		"       assignee_id = CASE WHEN $10::boolean THEN NULL",
+		"                         ELSE COALESCE($7::bigint, i.assignee_id) END,",
+		"       updated_at  = $9::timestamptz",
+		" WHERE i.id = $1::bigint",
+	), issueID, title, bodyMD, bodyHTML, bodyText, status, assigneeID, actorID, now.UTC(), clearAssignee)
 }
 
 // IssueComments 是 Issue 的顶层评论一页（§7.8 Q12）。游标按 id，与帖子回复同一套。
@@ -341,14 +344,14 @@ type IssueCommentRow struct {
 	IssueID        int64
 	ParentID       *int64
 	ParentPublicID *string
-	BodyHTML     string
-	Visibility   string
-	LikeCount    int
-	DislikeCount int
-	MyVote       int
-	CreatedAt    time.Time
-	UpdatedAt    time.Time
-	Author       UserRow
+	BodyHTML       string
+	Visibility     string
+	LikeCount      int
+	DislikeCount   int
+	MyVote         int
+	CreatedAt      time.Time
+	UpdatedAt      time.Time
+	Author         UserRow
 }
 
 func scanIssueComment(rows *sql.Rows, r *IssueCommentRow, extra ...any) error {

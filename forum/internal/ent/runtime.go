@@ -10,7 +10,6 @@ import (
 	"forum/internal/ent/bannerdismissal"
 	"forum/internal/ent/block"
 	"forum/internal/ent/board"
-	"forum/internal/ent/boardacl"
 	"forum/internal/ent/boardmoderator"
 	"forum/internal/ent/bookmark"
 	"forum/internal/ent/defaultavatar"
@@ -185,34 +184,6 @@ func init() {
 	board.DefaultUpdatedAt = boardDescUpdatedAt.Default.(func() time.Time)
 	// board.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.
 	board.UpdateDefaultUpdatedAt = boardDescUpdatedAt.UpdateDefault.(func() time.Time)
-	boardaclFields := schema.BoardACL{}.Fields()
-	_ = boardaclFields
-	// boardaclDescCanPost is the schema descriptor for can_post field.
-	boardaclDescCanPost := boardaclFields[3].Descriptor()
-	// boardacl.DefaultCanPost holds the default value on creation for the can_post field.
-	boardacl.DefaultCanPost = boardaclDescCanPost.Default.(bool)
-	// boardaclDescCanReply is the schema descriptor for can_reply field.
-	boardaclDescCanReply := boardaclFields[4].Descriptor()
-	// boardacl.DefaultCanReply holds the default value on creation for the can_reply field.
-	boardacl.DefaultCanReply = boardaclDescCanReply.Default.(bool)
-	// boardaclDescDenyPost is the schema descriptor for deny_post field.
-	boardaclDescDenyPost := boardaclFields[5].Descriptor()
-	// boardacl.DefaultDenyPost holds the default value on creation for the deny_post field.
-	boardacl.DefaultDenyPost = boardaclDescDenyPost.Default.(bool)
-	// boardaclDescDenyReply is the schema descriptor for deny_reply field.
-	boardaclDescDenyReply := boardaclFields[6].Descriptor()
-	// boardacl.DefaultDenyReply holds the default value on creation for the deny_reply field.
-	boardacl.DefaultDenyReply = boardaclDescDenyReply.Default.(bool)
-	// boardaclDescCreatedAt is the schema descriptor for created_at field.
-	boardaclDescCreatedAt := boardaclFields[7].Descriptor()
-	// boardacl.DefaultCreatedAt holds the default value on creation for the created_at field.
-	boardacl.DefaultCreatedAt = boardaclDescCreatedAt.Default.(func() time.Time)
-	// boardaclDescUpdatedAt is the schema descriptor for updated_at field.
-	boardaclDescUpdatedAt := boardaclFields[8].Descriptor()
-	// boardacl.DefaultUpdatedAt holds the default value on creation for the updated_at field.
-	boardacl.DefaultUpdatedAt = boardaclDescUpdatedAt.Default.(func() time.Time)
-	// boardacl.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.
-	boardacl.UpdateDefaultUpdatedAt = boardaclDescUpdatedAt.UpdateDefault.(func() time.Time)
 	boardmoderatorFields := schema.BoardModerator{}.Fields()
 	_ = boardmoderatorFields
 	// boardmoderatorDescGrantedAt is the schema descriptor for granted_at field.

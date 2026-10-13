@@ -2,10 +2,10 @@
 // service 不内联 SQL，handler 不碰数据库。
 //
 // 为什么用 ent 的 ExecContext / QueryContext 而不是 pgxpool：
-//   * 事务的唯一入口是 platform/db.WithTx，它给的是 *ent.Tx；要让「读」和「事务内的读」是同一套代码，
+//   - 事务的唯一入口是 platform/db.WithTx，它给的是 *ent.Tx；要让「读」和「事务内的读」是同一套代码，
 //     两者必须共有一个接口——ent 的 *Client 与 *Tx 都从内嵌的 config 上提升出
 //     ExecContext/QueryContext（client.go 末尾那两个方法，由 --feature sql/execquery 打开）；
-//   * pgxpool 拿不到同一个事务（它没有 ExecContext，pgx.Tx 也不是 sql 的执行器），
+//   - pgxpool 拿不到同一个事务（它没有 ExecContext，pgx.Tx 也不是 sql 的执行器），
 //     混用会让「事务里那次查询到底看的是哪个快照」变成一个说不清的问题。
 //
 // 代价说清楚：database/sql 的 *sql.Rows 用 driver.Value 传递列值，所以

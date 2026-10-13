@@ -51,7 +51,8 @@ func (h *Handler) Register(rg *gin.RouterGroup, requireLogin gin.HandlerFunc, pe
 	rg.GET("/issues/:id/comments", h.listIssueComments)
 	rg.GET("/posts/:id/replies", h.listReplies)
 	rg.GET("/issue-comments/:id/replies", h.listIssueCommentReplies)
-	rg.GET("/topics/:topicId/sources/:sourceId/go", h.goSource) // 302
+	// 参数名必须与上面那组一致（gin 不允许同一层出现两个不同的通配名）。
+	rg.GET("/topics/:id/sources/:sid/go", h.goSource) // 302
 
 	// ---- 写 ----
 	rg.POST("/topics", requireLogin, perm(authz.PermTopicCreate), httpx.BodyLimit(maxTopicBody), h.createTopic)
@@ -205,7 +206,7 @@ func (h *Handler) goSource(c *gin.Context) {
 			return
 		}
 	}
-	url, err := h.svc.GoSource(ctx, c.Param("topicId"), c.Param("sourceId"))
+	url, err := h.svc.GoSource(ctx, c.Param("id"), c.Param("sid"))
 	if err != nil {
 		httpx.Fail(c, err)
 		return
@@ -375,9 +376,9 @@ type voteBody struct {
 	Value int `json:"value"`
 }
 
-func (h *Handler) votePost(c *gin.Context) { h.vote(c, VotePost) }
+func (h *Handler) votePost(c *gin.Context)         { h.vote(c, VotePost) }
 func (h *Handler) voteIssueComment(c *gin.Context) { h.vote(c, VoteIssueComment) }
-func (h *Handler) likeTopic(c *gin.Context) { h.voteValue(c, VoteTopic, 1) }
+func (h *Handler) likeTopic(c *gin.Context)        { h.voteValue(c, VoteTopic, 1) }
 
 func (h *Handler) vote(c *gin.Context, target VoteTarget) {
 	var b voteBody
@@ -397,9 +398,9 @@ func (h *Handler) voteValue(c *gin.Context, target VoteTarget, value int) {
 	httpx.OK(c, out)
 }
 
-func (h *Handler) unvotePost(c *gin.Context) { h.unvote(c, VotePost) }
+func (h *Handler) unvotePost(c *gin.Context)         { h.unvote(c, VotePost) }
 func (h *Handler) unvoteIssueComment(c *gin.Context) { h.unvote(c, VoteIssueComment) }
-func (h *Handler) unlikeTopic(c *gin.Context) { h.unvote(c, VoteTopic) }
+func (h *Handler) unlikeTopic(c *gin.Context)        { h.unvote(c, VoteTopic) }
 
 func (h *Handler) unvote(c *gin.Context, target VoteTarget) {
 	out, err := h.svc.Unvote(c.Request.Context(), h.actor(c), target, c.Param("id"))
@@ -496,8 +497,8 @@ type listIssuesQuery struct {
 	Limit    int    `form:"limit"`
 }
 
-func (h *Handler) listTopicIssues(c *gin.Context)  { h.listIssuesAt(c, c.Param("id")) }
-func (h *Handler) listIssues(c *gin.Context)       { h.listIssuesAt(c, "") }
+func (h *Handler) listTopicIssues(c *gin.Context) { h.listIssuesAt(c, c.Param("id")) }
+func (h *Handler) listIssues(c *gin.Context)      { h.listIssuesAt(c, "") }
 
 func (h *Handler) listIssuesAt(c *gin.Context, topicPublicID string) {
 	var q listIssuesQuery

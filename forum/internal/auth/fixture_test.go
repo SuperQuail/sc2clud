@@ -225,9 +225,11 @@ func (f *fixture) newUserRow(username, password, roleKey string, activate bool) 
 	if activate {
 		activated = f.clk.Now()
 	}
+	// activate=true 时两根轴一起置：email_verified_at 只影响展示（拍板 §9.12），
+	// 但「重发验证码」这条路径判的正是它，所以显式区分。
 	err := f.pool.QueryRow(f.ctx,
-		"INSERT INTO users (public_id, username, email, password_hash, nickname, role_id, status, activated_at) "+
-			"VALUES (gen_random_uuid(), $1, $2, $3, $1, $4, 'active', $5) RETURNING id",
+		"INSERT INTO users (public_id, username, email, password_hash, nickname, role_id, status, email_verified_at, activated_at) "+
+			"VALUES (gen_random_uuid(), $1, $2, $3, $1, $4, 'active', $5, $5) RETURNING id",
 		username, username+"@example.com", f.hashPassword(password), f.roleID(roleKey), activated).Scan(&id)
 	if err != nil {
 		f.t.Fatalf("插用户失败: %v", err)

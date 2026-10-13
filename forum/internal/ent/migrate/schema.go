@@ -276,50 +276,6 @@ var (
 			},
 		},
 	}
-	// BoardAcLsColumns holds the columns for the "board_ac_ls" table.
-	BoardAcLsColumns = []*schema.Column{
-		{Name: "id", Type: field.TypeInt64, Increment: true},
-		{Name: "can_post", Type: field.TypeBool, Default: false},
-		{Name: "can_reply", Type: field.TypeBool, Default: false},
-		{Name: "deny_post", Type: field.TypeBool, Default: false},
-		{Name: "deny_reply", Type: field.TypeBool, Default: false},
-		{Name: "created_at", Type: field.TypeTime, Default: schema.Expr("now()")},
-		{Name: "updated_at", Type: field.TypeTime, Default: schema.Expr("now()")},
-		{Name: "board_id", Type: field.TypeInt64},
-		{Name: "role_id", Type: field.TypeInt64},
-	}
-	// BoardAcLsTable holds the schema information for the "board_ac_ls" table.
-	BoardAcLsTable = &schema.Table{
-		Name:       "board_ac_ls",
-		Columns:    BoardAcLsColumns,
-		PrimaryKey: []*schema.Column{BoardAcLsColumns[0]},
-		ForeignKeys: []*schema.ForeignKey{
-			{
-				Symbol:     "board_ac_ls_boards_board",
-				Columns:    []*schema.Column{BoardAcLsColumns[7]},
-				RefColumns: []*schema.Column{BoardsColumns[0]},
-				OnDelete:   schema.Cascade,
-			},
-			{
-				Symbol:     "board_ac_ls_roles_role",
-				Columns:    []*schema.Column{BoardAcLsColumns[8]},
-				RefColumns: []*schema.Column{RolesColumns[0]},
-				OnDelete:   schema.Cascade,
-			},
-		},
-		Indexes: []*schema.Index{
-			{
-				Name:    "boardacl_board_id_role_id",
-				Unique:  true,
-				Columns: []*schema.Column{BoardAcLsColumns[7], BoardAcLsColumns[8]},
-			},
-			{
-				Name:    "idx_board_acls_role",
-				Unique:  false,
-				Columns: []*schema.Column{BoardAcLsColumns[8]},
-			},
-		},
-	}
 	// BoardModeratorsColumns holds the columns for the "board_moderators" table.
 	BoardModeratorsColumns = []*schema.Column{
 		{Name: "id", Type: field.TypeInt64, Increment: true},
@@ -2102,7 +2058,6 @@ var (
 		BannerRolesTable,
 		BlocksTable,
 		BoardsTable,
-		BoardAcLsTable,
 		BoardModeratorsTable,
 		BookmarksTable,
 		DefaultAvatarsTable,
@@ -2156,8 +2111,6 @@ func init() {
 	BannerRolesTable.ForeignKeys[1].RefTable = RolesTable
 	BlocksTable.ForeignKeys[0].RefTable = UsersTable
 	BlocksTable.ForeignKeys[1].RefTable = UsersTable
-	BoardAcLsTable.ForeignKeys[0].RefTable = BoardsTable
-	BoardAcLsTable.ForeignKeys[1].RefTable = RolesTable
 	BoardModeratorsTable.ForeignKeys[0].RefTable = BoardsTable
 	BoardModeratorsTable.ForeignKeys[1].RefTable = UsersTable
 	BoardModeratorsTable.ForeignKeys[2].RefTable = UsersTable

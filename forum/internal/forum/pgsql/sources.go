@@ -57,7 +57,7 @@ func (s *Store) Sources(ctx context.Context, topicID int64) ([]SourceRow, error)
 func (s *Store) SourceRef(ctx context.Context, topicPublicID, sourcePublicID string) (*SourceRow, error) {
 	var r SourceRow
 	err := s.queryOne(ctx, "SELECT "+sourceColumns+sourceFrom+
-		" WHERE s.public_id = $1::uuid AND t.public_id = $2::uuid" +
+		" WHERE s.public_id = $1::uuid AND t.public_id = $2::uuid"+
 		" AND t.visibility = 'normal' AND t.review_state = 'approved'",
 		[]any{sourcePublicID, topicPublicID}, func(rows *sql.Rows) error {
 			return scanSource(rows, &r)

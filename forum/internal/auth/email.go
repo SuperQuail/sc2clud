@@ -88,14 +88,14 @@ func (s *Service) VerifyEmailCode(ctx context.Context, in VerifyCodeInput) error
 	}
 	now := s.clk.Now()
 
-	return s.withTx(ctx, func(tx *ent.Tx) error {
-		ok, err := consumeCode(ctx, tx, u.ID, purposeVerify, row.ID, codeHash(in.Code), now)
+	var badTokenID int64
+	err = s.withTx(ctx, func(tx *ent.Tx) error {
+		ok, tokenID, err := consumeCode(ctx, tx, u.ID, purposeVerify, row.ID, codeHash(in.Code), now)
 		if err != nil {
 			return err
 		}
 		if !ok {
-			id := row.ID
-			s.noteBadCode(ctx, tx, u.ID, purposeVerify, &id)
+			badTokenID = tokenID
 			return ErrTokenInvalid
 		}
 		// 拍板 §12.2：输码成功时 email_verified_at 与 activated_at **一起置**。
@@ -113,6 +113,9 @@ func (s *Service) VerifyEmailCode(ctx context.Context, in VerifyCodeInput) error
 			TargetID: u.PublicID.String(), IP: ipOf(in.IP), Detail: map[string]any{},
 		})
 	})
+	// 作废必须在事务之后：事务里返回业务错误会回滚，那条 DELETE 会被一起撤销。
+	s.noteBadCode(ctx, u.ID, purposeVerify, badTokenID)
+	return err
 }
 
 // VerifyResetCode 是找回密码的第一步：校验同一个 purpose='reset' 的码，**不提前消费码**
@@ -136,18 +139,20 @@ func (s *Service) VerifyResetCode(ctx context.Context, in VerifyCodeInput) (*Res
 	}
 	expires := now.Add(codeTTL)
 
+	var badTokenID int64
 	err = s.withTx(ctx, func(tx *ent.Tx) error {
-		ok, err := consumeCode(ctx, tx, u.ID, purposeReset, row.ID, codeHash(in.Code), now)
+		ok, tokenID, err := consumeCode(ctx, tx, u.ID, purposeReset, row.ID, codeHash(in.Code), now)
 		if err != nil {
 			return err
 		}
 		if !ok {
-			id := row.ID
-			s.noteBadCode(ctx, tx, u.ID, purposeReset, &id)
+			badTokenID = tokenID
 			return ErrTokenInvalid
 		}
 		return s.upsertCode(ctx, tx, u.ID, purposeReset, codeHash(ticket), now)
 	})
+	// 同 VerifyEmailCode：作废放事务之后，否则会被业务错误的回滚撤销。
+	s.noteBadCode(ctx, u.ID, purposeReset, badTokenID)
 	if err != nil {
 		return nil, err
 	}
@@ -192,41 +197,44 @@ func (s *Service) locateCode(ctx context.Context, in VerifyCodeInput, purpose st
 //   - 两个并发请求：第二个阻塞到第一个提交，然后读到行已不在 → 失败。这就是设计 §10.4
 //     讲的原子性（那里用条件 UPDATE 的 RETURNING，这里用行锁，效果等价）。
 //   - 过期 / 已消费 / 试错满 5 次：三种情况**同一结果**，对外也是同一句文案。
-func consumeCode(ctx context.Context, tx *ent.Tx, userID int64, purpose string, tokenID int64, hash []byte, now time.Time) (bool, error) {
+func consumeCode(ctx context.Context, tx *ent.Tx, userID int64, purpose string, tokenID int64, hash []byte, now time.Time) (bool, int64, error) {
 	cur, err := tx.EmailToken.Query().
 		Where(emailtoken.IDEQ(tokenID), emailtoken.UserIDEQ(userID), emailtoken.PurposeEQ(purpose)).
 		ForUpdate().
 		Only(ctx)
 	if err != nil {
 		if ent.IsNotFound(err) {
-			return false, nil // 并发下另一个请求已经把它删了
+			return false, 0, nil // 并发下另一个请求已经把它删了
 		}
-		return false, err
+		return false, 0, err
 	}
 	if cur.UsedAt != nil || !cur.ExpiresAt.After(now) {
-		return false, nil
+		return false, cur.ID, nil
 	}
 	if subtle.ConstantTimeCompare(cur.TokenHash, hash) != 1 {
-		return false, nil
+		return false, cur.ID, nil
 	}
 	if _, err := tx.EmailToken.Delete().Where(emailtoken.IDEQ(cur.ID)).Exec(ctx); err != nil {
-		return false, err
+		return false, cur.ID, err
 	}
-	return true, nil
+	return true, cur.ID, nil
 }
 
 // noteBadCode 记一次失败：满 5 次直接删掉该码（用户必须重新发送）。
-// 设计 §10.4 支 B 是把 consumed_at 置为现在；DELETE 加部分唯一索引达到同一效果，
-// 而且不需要 attempt_count 列。
 //
-// 删除**必须走调用方的事务**：它被在 WithTx 回调里调用，而事务已经占着池里的一条连接——
-// 在那里用池再发一条语句就是自锁（池被这个事务占满时永远拿不到第二条连接）。
-func (s *Service) noteBadCode(ctx context.Context, tx *ent.Tx, userID int64, purpose string, tokenID *int64) {
-	if s.codes.bump(userID, purpose) < maxCodeAttempts || tokenID == nil {
+// 它**必须在事务之外调用**（两条调用路径都写在 withTx 之后）：
+//   - 在事务里用池再发一条语句会自锁（事务占着池里的连接）；
+//   - 用事务删、然后返回 ErrTokenInvalid，回滚会把那条 DELETE 一起撤销（码就永远作废不了）。
+//
+// 设计 §10.4 支 B 是把 consumed_at 置为现在；DELETE 加部分唯一索引达到同一效果，
+// 而且不需要 attempt_count 列。tokenID 为 0 表示这次失败没有对应的活跃码行（并发删掉了），
+// 那就只记数。
+func (s *Service) noteBadCode(ctx context.Context, userID int64, purpose string, tokenID int64) {
+	if s.codes.bump(userID, purpose) < maxCodeAttempts || tokenID == 0 {
 		return
 	}
-	if _, err := tx.EmailToken.Delete().Where(emailtoken.IDEQ(*tokenID)).Exec(ctx); err != nil {
-		s.log.Error("auth: 作废验证码失败", "token_id", *tokenID, "err", err.Error())
+	if _, err := s.db.EmailToken.Delete().Where(emailtoken.IDEQ(tokenID)).Exec(ctx); err != nil {
+		s.log.Error("auth: 作废验证码失败", "token_id", tokenID, "err", err.Error())
 	}
 }
 

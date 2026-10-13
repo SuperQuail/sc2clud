@@ -8,22 +8,22 @@ import (
 
 // PostRow 是一个楼层（含作者与我自己的票）。topic_id 是内部 id，用来做归属判定与计数。
 type PostRow struct {
-	ID           int64
-	PublicID     string
-	TopicID      int64
+	ID             int64
+	PublicID       string
+	TopicID        int64
 	ParentID       *int64
 	ParentPublicID *string // 楼中楼才有：parent_id 的内部 id 不出 API，这里换回 public_id
 	Floor          int
 	ContentHTML    string
-	Visibility   string
-	LikeCount    int
-	DislikeCount int
-	ReplyTotal   int
-	MyVote       int
-	PreviewIDs   []string
-	CreatedAt    time.Time
-	UpdatedAt    time.Time
-	Author       UserRow
+	Visibility     string
+	LikeCount      int
+	DislikeCount   int
+	ReplyTotal     int
+	MyVote         int
+	PreviewIDs     []string
+	CreatedAt      time.Time
+	UpdatedAt      time.Time
+	Author         UserRow
 }
 
 const postColumns = `p.id, p.public_id, p.topic_id, p.parent_id, par.public_id, p.floor, p.content_html,
@@ -44,6 +44,7 @@ func scanPost(rows *sql.Rows, p *PostRow, extra ...any) error {
 	p.Author.AvatarSmall = scanNullString(avatarSmall)
 	return nil
 }
+
 // topLevelReplies 是顶层回复的一页（§3.4 Q3a）。
 //
 // 排序键是 p.id 而不是 created_at：id 是 identity，与 created_at 同序，但它是单列——
@@ -261,7 +262,7 @@ func DeletePostRow(ctx context.Context, tx Querier, postID int64, now time.Time)
 func (s *Store) PostByID(ctx context.Context, postID, viewerID int64) (*PostRow, error) {
 	var out *PostRow
 	err := s.query(ctx, `
-SELECT ` + postColumns + `,
+SELECT `+postColumns+`,
        (SELECT count(*) FROM posts r WHERE r.parent_id = p.id AND r.visibility = 'normal'),
        COALESCE(preview.ids, ARRAY[]::uuid[]),
        COALESCE(my.value, 0)

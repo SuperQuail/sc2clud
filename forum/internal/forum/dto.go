@@ -55,8 +55,8 @@ type TopicCardDTO struct {
 	CoverHeight int          `json:"cover_height"`
 
 	// 个人主页与收藏页才填的两项：作者看自己的帖要知道它在哪一态。
-	Visibility  string     `json:"visibility,omitempty"`
-	ReviewState string     `json:"review_state,omitempty"`
+	Visibility   string     `json:"visibility,omitempty"`
+	ReviewState  string     `json:"review_state,omitempty"`
 	BookmarkedAt *time.Time `json:"bookmarked_at,omitempty"`
 }
 
@@ -163,8 +163,8 @@ type IssueDTO struct {
 	ClosedAt     *time.Time    `json:"closed_at"`
 
 	// 全站聚合与单帖列表都把所属主题带上（W3 的反馈页要显示它）。
-	TopicID    string `json:"topic_id"`
-	TopicTitle string `json:"topic_title"`
+	TopicID    string      `json:"topic_id"`
+	TopicTitle string      `json:"topic_title"`
 	Board      BoardRefDTO `json:"board"`
 }
 
@@ -287,10 +287,10 @@ type CreateIssueInput struct {
 
 // UpdateIssueInput 是改 Issue：标题 / 正文 / 开关 / 指派（指针 = 没给）。
 type UpdateIssueInput struct {
-	Title      *string
-	BodyMD     *string
-	Status     *string // open | closed
-	Assignee   *string // handle；空串 = 取消指派
+	Title    *string
+	BodyMD   *string
+	Status   *string // open | closed
+	Assignee *string // handle；空串 = 取消指派
 }
 
 // CreateCommentInput 是发 Issue 评论。

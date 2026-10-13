@@ -11,15 +11,14 @@ import (
 // 把用户输入的 markdown 当 HTML 发出去就是 XSS，宁可 500。
 var errNoRenderer = errors.New("forum: 未配置 Markdown 渲染器（deps.Render）")
 
-
 // 本域的错误码（d3-forum §10）。**只在这里定义**：handler 不许自己造码。
 //
 // topic.not_found / post.not_found / issue.not_found 各自一条覆盖「不存在 / 不可见 / 已软删」，
 // 不区分——区分就等于承认它存在（§10 末段）。日志里用 reason 字段区分，响应里不分。
 var (
-	ErrTopicNotFound = apperr.New("topic.not_found", http.StatusNotFound, "主题不存在或已被删除")
-	ErrPostNotFound  = apperr.New("post.not_found", http.StatusNotFound, "楼层不存在")
-	ErrIssueNotFound = apperr.New("issue.not_found", http.StatusNotFound, "反馈不存在")
+	ErrTopicNotFound  = apperr.New("topic.not_found", http.StatusNotFound, "主题不存在或已被删除")
+	ErrPostNotFound   = apperr.New("post.not_found", http.StatusNotFound, "楼层不存在")
+	ErrIssueNotFound  = apperr.New("issue.not_found", http.StatusNotFound, "反馈不存在")
 	ErrSourceNotFound = apperr.New("source.not_found", http.StatusNotFound, "下载源不存在")
 	ErrBoardNotFound  = apperr.New("board.not_found", http.StatusNotFound, "分区不存在")
 
@@ -30,10 +29,10 @@ var (
 	ErrBlocked       = apperr.New("forum.blocked", http.StatusForbidden, "无法回复该用户的内容")
 	ErrACLDenied     = apperr.New("board.acl_denied", http.StatusForbidden, "你没有在此分区发言的权限")
 
-	ErrNotResource  = apperr.New("forum.not_resource", http.StatusBadRequest, "只有资源帖可以挂下载源或提反馈")
-	ErrParentNested = apperr.New("forum.reply_parent_nested", http.StatusBadRequest, "只允许回复一级评论")
-	ErrParentTopic  = apperr.New("forum.reply_parent_cross_topic", http.StatusBadRequest, "回复的评论不属于该主题")
-	ErrVoteValue    = apperr.New("forum.vote_value_invalid", http.StatusBadRequest, "投票值只能是赞或踩")
+	ErrNotResource    = apperr.New("forum.not_resource", http.StatusBadRequest, "只有资源帖可以挂下载源或提反馈")
+	ErrParentNested   = apperr.New("forum.reply_parent_nested", http.StatusBadRequest, "只允许回复一级评论")
+	ErrParentTopic    = apperr.New("forum.reply_parent_cross_topic", http.StatusBadRequest, "回复的评论不属于该主题")
+	ErrVoteValue      = apperr.New("forum.vote_value_invalid", http.StatusBadRequest, "投票值只能是赞或踩")
 	ErrSortUnpageable = apperr.New("forum.page_sort_unpageable", http.StatusBadRequest, "该排序不支持翻页")
 )
 

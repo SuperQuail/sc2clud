@@ -1,0 +1,21 @@
+修数据库审计的 3 条挡上线缺陷（D1/D2/D3）
+
+审计产出 完全重构/数据库设计-审计报告.md（506 行）：挡上线 3 / 数据错 2 / 隐患 8。
+
+D1 jobs.locked_by 不存在（队列全哑）：0015_queue 的注释写着「locked_by 不建」，
+   而 worker 的 claim/done/retry/dead/recover 五条 SQL 全部用 locked_by = $instance。
+   → 整个异步队列领不到任何任务（发信/搜索索引/GC/通知全哑），而进程起得来、日志正常、HTTP 正常。
+   修：0015 补 locked_by text NOT NULL DEFAULT ''，并把根因写进注释。
+
+D2 BoardACL 的表名是 board_ac_ls：ent 的 inflect 不认识全大写 ACL。
+   → client.Schema.Create 会去建一张错误的表并让测试变绿，而生产读的是 board_acls。
+   修：board_acl.go 加 Annotations() []*entsql.Annotation{entsql.Table("board_acls")} 并重新生成。
+   验证：生成代码里 board_acls 6 处、board_ac_ls 只剩 1 处残留字符串。
+
+D3 ProfileSQL 用 p.status：posts 只有 visibility（0004），没有 status。
+   → 每个个人主页 500。修：user/pgsql/queries.go:35 改成 p.visibility = 'normal'。
+
+审计的根因结论（已写进报告附录 A）：数据库文档 12 的 11 条自检里，真的在跑只有 2 条；
+第 3/4 条实现了但全仓无调用点；第 5/7/8/9/11 条根本不存在 —— 这就是 11 条缺陷能存在的根因。
+它给的最小闸门集（每条一次抓掉多条）：① Atlas snapshot diff ② 所有原生 SQL 在真库 PREPARE
+③ 把 CheckPermissions/CheckEnums 接进 forum check ④ pg_index 自比较找前缀重复索引。

@@ -28,8 +28,6 @@ type Tx struct {
 	Block *BlockClient
 	// Board is the client for interacting with the Board builders.
 	Board *BoardClient
-	// BoardACL is the client for interacting with the BoardACL builders.
-	BoardACL *BoardACLClient
 	// BoardModerator is the client for interacting with the BoardModerator builders.
 	BoardModerator *BoardModeratorClient
 	// Bookmark is the client for interacting with the Bookmark builders.
@@ -244,7 +242,6 @@ func (tx *Tx) init() {
 	tx.BannerRole = NewBannerRoleClient(tx.config)
 	tx.Block = NewBlockClient(tx.config)
 	tx.Board = NewBoardClient(tx.config)
-	tx.BoardACL = NewBoardACLClient(tx.config)
 	tx.BoardModerator = NewBoardModeratorClient(tx.config)
 	tx.Bookmark = NewBookmarkClient(tx.config)
 	tx.DefaultAvatar = NewDefaultAvatarClient(tx.config)

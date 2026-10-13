@@ -53,8 +53,8 @@ func TestCanSpeakSixSteps(t *testing.T) {
 			name:    "第2步 已过期禁言不生效",
 			slug:    "s2b",
 			openACL: true,
-			setup: func(boardID int64) { h.sanction(user, nil, "all", ptrTime(h.clk.Now().Add(-time.Hour))) },
-			actor: h.actor(user, role, authz.PermTopicCreate),
+			setup:   func(boardID int64) { h.sanction(user, nil, "all", ptrTime(h.clk.Now().Add(-time.Hour))) },
+			actor:   h.actor(user, role, authz.PermTopicCreate),
 		},
 		{
 			name:  "第3步 acl_enabled=false → 登录即可发言",

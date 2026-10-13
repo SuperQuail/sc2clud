@@ -17,6 +17,14 @@ import (
 //   - ck_board_acls_no_contradiction CHECK (NOT (deny_post AND can_post) AND NOT (deny_reply AND can_reply))
 //     —— 它让「禁止优先」在表结构上就成立：第 4 步与第 5 步永远只有一个会命中；
 //   - 主键 (board_id, role_id)：ent 的表都带 id 列，所以自然键写成唯一索引（见回报「与设计不一致」）。
+//
+// **表名必须显式声明**（2026-10-13 数据库审计 D2）：ent 的 inflect 不认识全大写 ACL，
+// 默认会把 BoardACL 复数化成 board_ac_ls；加 entsql.Table 之后才是 board_acls。
+// 不写它，client.Schema.Create 会去建一张**错误的表**并让测试变绿，而生产库读的是 board_acls。
+func (BoardACL) Annotations() []*entsql.Annotation {
+	return []*entsql.Annotation{entsql.Table("board_acls")}
+}
+
 type BoardACL struct {
 	ent.Schema
 }

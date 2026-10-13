@@ -27,9 +27,6 @@ type Block func(*sql.Selector)
 // Board is the predicate function for board builders.
 type Board func(*sql.Selector)
 
-// BoardACL is the predicate function for boardacl builders.
-type BoardACL func(*sql.Selector)
-
 // BoardModerator is the predicate function for boardmoderator builders.
 type BoardModerator func(*sql.Selector)
 

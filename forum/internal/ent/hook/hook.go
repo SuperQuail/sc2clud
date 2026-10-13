@@ -92,18 +92,6 @@ func (f BoardFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, error
 	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.BoardMutation", m)
 }
 
-// The BoardACLFunc type is an adapter to allow the use of ordinary
-// function as BoardACL mutator.
-type BoardACLFunc func(context.Context, *ent.BoardACLMutation) (ent.Value, error)
-
-// Mutate calls f(ctx, m).
-func (f BoardACLFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, error) {
-	if mv, ok := m.(*ent.BoardACLMutation); ok {
-		return f(ctx, mv)
-	}
-	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.BoardACLMutation", m)
-}
-
 // The BoardModeratorFunc type is an adapter to allow the use of ordinary
 // function as BoardModerator mutator.
 type BoardModeratorFunc func(context.Context, *ent.BoardModeratorMutation) (ent.Value, error)

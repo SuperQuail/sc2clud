@@ -13,7 +13,6 @@ import (
 	"forum/internal/ent/bannerrole"
 	"forum/internal/ent/block"
 	"forum/internal/ent/board"
-	"forum/internal/ent/boardacl"
 	"forum/internal/ent/boardmoderator"
 	"forum/internal/ent/bookmark"
 	"forum/internal/ent/defaultavatar"
@@ -125,7 +124,6 @@ func checkColumn(t, c string) error {
 			bannerrole.Table:            bannerrole.ValidColumn,
 			block.Table:                 block.ValidColumn,
 			board.Table:                 board.ValidColumn,
-			boardacl.Table:              boardacl.ValidColumn,
 			boardmoderator.Table:        boardmoderator.ValidColumn,
 			bookmark.Table:              bookmark.ValidColumn,
 			defaultavatar.Table:         defaultavatar.ValidColumn,
