@@ -23,7 +23,7 @@ export function NoticeChat({
   children,
 }: {
   messages: ChatMessage[];
-  title?: string;
+  title?: ReactNode;
   headerActions?: ReactNode;
   /** 输入区 */
   children?: ReactNode;

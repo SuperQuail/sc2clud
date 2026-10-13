@@ -14,7 +14,7 @@ import (
 )
 
 // BodyRe 匹配一条提及，与 d4 §5.6 的 Re 逐字一致。
-var BodyRe = regexp.MustCompile(`[\@([^\]\n]{1,20})\](mention:(\d{1,18})\)`)
+var BodyRe = regexp.MustCompile(`\[@([^\]\n]{1,20})\]\(mention:(\d{1,18})\)`) // d4 §5.6 的 Re，逐字一致
 
 // MaxPerBody 是单条正文的提及上限（v2 §9.7）。
 const MaxPerBody = 20

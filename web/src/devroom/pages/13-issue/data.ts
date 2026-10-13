@@ -174,7 +174,7 @@ export const COMMENTS: Record<string, IssueComment[]> = {
     {
       id: 'c1',
       author: TANG,
-      body: '确认是 bug：事件计时用的是**读档之后的时间**，不是任务时间。下个补丁改成任务时间。',
+      body: '确认是 bug：事件计时用的是<strong>读档之后的时间</strong>，不是任务时间。下个补丁改成任务时间。',
       createdAt: '10 月 11 日',
       likes: 12,
       dislikes: 0,

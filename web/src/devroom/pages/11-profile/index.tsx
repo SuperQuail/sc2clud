@@ -1,5 +1,7 @@
 import Button from '@jetbrains/ring-ui-built/components/button/button';
 import Island from '@jetbrains/ring-ui-built/components/island/island';
+// ButtonSet 是**默认导出**（命名导出在这个包里不存在，typecheck 直接报 TS2614）
+import ButtonSet from '@jetbrains/ring-ui-built/components/button-set/button-set';
 import Tag, { TagType } from '@jetbrains/ring-ui-built/components/tag/tag';
 import { useState } from 'react';
 import { Check, ChevronDown, ChevronUp, Coffee, FolderOpen, Heart, Image as ImageIcon, MapPin, MessageSquare, MoreHorizontal, QrCode, Star, UserPlus, UserRound } from 'lucide-react';
@@ -67,41 +69,66 @@ const SPONSOR_CHANNELS = [
   { id: 'afdian', label: '爱发电', notice: '爱发电支持一次性与按月两种，随你方便。' },
 ];
 
-// mock：想看「作者没有收款码」的空态，把下面 channels 换成 []（真实实现来自 /api/v1/users/{handle}/channels）。
-function SponsorCard() {
-  const channels = SPONSOR_CHANNELS;
+// 看别人主页 / 看自己主页是两种情形（本轮只做文案分支，isSelf 由页面内的 mock 开关给）：
+//   别人 → 「赞助 TA」大按钮；自己 → 「设置我的收款码」（自己给自己打赏是荒谬的）。
+// 没有收款码时按钮**保留但禁用** + title 说明原因（与帖子页 reward-panel 同一条规矩：
+// 藏掉入口，作者就永远等不到想支持的人）。
+type SponsorView = { heading: string; button: string; hint: string; disabledHint: string };
+const SPONSOR_VIEW: Record<'other' | 'self', SponsorView> = {
+  other: {
+    heading: '赞助 TA',
+    button: '赞助 TA',
+    hint: '打赏是纯自愿的，不解锁任何东西。',
+    disabledHint: 'TA 还没开启收款码。按钮保留但禁用——入口本身说明「这个站点可以打赏」，藏掉它作者就永远等不到想支持的人。',
+  },
+  self: {
+    heading: '我的赞助',
+    button: '设置我的收款码',
+    hint: '收款码在个人设置里挂；打赏渠道随时可关，关掉后主页不显示入口。',
+    disabledHint: '你还没挂收款码。按钮保留但禁用——挂上之后别人才能在这里支持你。',
+  },
+};
+
+function SponsorCard({ isSelf, channels }: SponsorDemo) {
+  const view = SPONSOR_VIEW[isSelf ? 'self' : 'other'];
   const [open, setOpen] = useState(false);
   const [activeId, setActiveId] = useState(channels[0]?.id ?? '');
   const [confirmed, setConfirmed] = useState(false);
+  const [settingsHit, setSettingsHit] = useState(false);
   const active = channels.find((c) => c.id === activeId) ?? channels[0];
   const hasChannel = channels.length > 0;
 
   return (
     <Island withoutPaddings>
       <div className='flex flex-col gap-2 p-4'>
-        <span className='text-[12px] font-medium tracking-wide text-muted-foreground'>赞助 TA</span>
-        {/* 大按钮：图标走 children 里的 span（icon16 会把它压成 16px），字号与高度用 ! 覆盖 Ring 的默认值 */}
+        <span className='text-[12px] font-medium tracking-wide text-muted-foreground'>{view.heading}</span>
+        {/* 大按钮（≥44px、橙底白字）：图标走 children 里的 span——icon16 会把它压成 16px；
+            高度与字号用 ! 覆盖 Ring 的默认值；inline={false} 才能拿到整块宽度。 */}
         <Button
           inline={false}
           primary
-          aria-expanded={open}
+          aria-expanded={isSelf ? undefined : open}
           disabled={!hasChannel}
-          title={hasChannel ? undefined : 'TA 还没有开启收款码：等作者在个人设置里挂了渠道，这里就能用'}
-          iconRight={hasChannel ? icon16(open ? ChevronUp : ChevronDown) : undefined}
-          onClick={() => setOpen((v) => !v)}
+          title={hasChannel ? undefined : view.disabledHint}
+          iconRight={hasChannel && !isSelf ? icon16(open ? ChevronUp : ChevronDown) : undefined}
+          onClick={() => (isSelf ? setSettingsHit(true) : setOpen((v) => !v))}
           className='!h-11 w-full !border-[var(--vivid-accent)] !bg-[var(--vivid-accent)] !text-[15px] !text-white'
         >
           <span className='inline-flex items-center gap-2'>
             <Coffee aria-hidden className='size-5' />
-            赞助 TA
+            {view.button}
           </span>
         </Button>
-        <p className='text-[11px] leading-relaxed text-muted-foreground'>打赏是纯自愿的，不解锁任何东西。</p>
+        <p className='text-[11px] leading-relaxed text-muted-foreground'>{view.hint}</p>
 
         {!hasChannel ? (
-          <p className='text-[11px] leading-relaxed text-muted-foreground'>
-            TA 还没开启收款码。按钮保留但禁用——入口本身说明「这个站点可以打赏」，藏掉它作者就永远等不到想支持的人。
-          </p>
+          <p className='text-[11px] leading-relaxed text-muted-foreground'>{view.disabledHint}</p>
+        ) : isSelf ? (
+          settingsHit ? (
+            <p className='rounded-md bg-muted/50 px-2 py-2 text-[11px] leading-relaxed text-muted-foreground'>
+              已进入「个人设置 · 收款码」（mock）。真实页面跳到 /settings 的收款码分区。
+            </p>
+          ) : null
         ) : open ? (
           <div className='flex flex-col gap-3 border-t border-border pt-3'>
             <span className='flex flex-wrap items-center gap-1.5'>
@@ -145,8 +172,21 @@ function SponsorCard() {
   );
 }
 
+// ?sponsor=other|self|none —— 只影响 DevRoom 的演示态：两态（看别人 / 看自己）+ 无收款码的空态。
+// 真实页面里 isSelf 由「当前登录者 handle 是否等于 /u/{handle}」决定，channels 来自
+// GET /api/v1/users/{handle}/channels（作者关掉展示开关时后端返回空数组）。
+type SponsorDemo = { isSelf: boolean; channels: Array<(typeof SPONSOR_CHANNELS)[number]> };
+
+function readSponsorDemo(): SponsorDemo {
+  const v = new URLSearchParams(location.search).get('sponsor');
+  if (v === 'self') return { isSelf: true, channels: SPONSOR_CHANNELS };
+  if (v === 'none') return { isSelf: false, channels: [] };
+  return { isSelf: false, channels: SPONSOR_CHANNELS };
+}
+
 export default function ProfilePage() {
   const [tab, setTab] = useState('posts');
+  const [sponsorDemo, setSponsorDemo] = useState<SponsorDemo>(readSponsorDemo);
   // 封面可自定义：默认给一张，之后接入用户上传（与头像同一个上传控件）
   const [cover, setCover] = useState<string>(assetUrl('starcraft/zerg.webp'));
   const [visibility, setVisibility] = useState('public');
@@ -180,14 +220,45 @@ export default function ProfilePage() {
     },
   ];
 
+  const sponsorStates: Array<{ key: string; label: string; demo: SponsorDemo }> = [
+    { key: 'other', label: '看别人主页（有收款码）', demo: { isSelf: false, channels: [...SPONSOR_CHANNELS] } },
+    { key: 'self', label: '看自己主页', demo: { isSelf: true, channels: [...SPONSOR_CHANNELS] } },
+    { key: 'none', label: '别人没挂收款码', demo: { isSelf: false, channels: [] } },
+  ];
+
   return (
-    <div className='flex flex-col gap-5'>
-      {/* 身份卡：**大封面 + 半透明磨砂面板**（参考 B 站空间页）
-          封面允许自定义（cover 状态；接上传后即为「更换封面」）；信息面板压在封面下半部，
-          用 backdrop-blur 让封面透出来，而不是用实色把图挡住。 */}
+    <div className='flex flex-col gap-3 sm:gap-4'>
+      {/* DevRoom 演示开关：真实页面没有它——isSelf 来自当前登录者，channels 来自接口 */}
+      <section
+        aria-label='赞助入口演示'
+        className='flex flex-wrap items-center gap-x-3 gap-y-2 rounded-lg border border-dashed border-border px-3 py-2'
+      >
+        <span className='text-[11px] font-medium tracking-wide text-muted-foreground'>DevRoom 演示 · 赞助入口</span>
+        <ButtonSet>
+          {sponsorStates.map((s) => (
+            <Button
+              key={s.key}
+              active={s.demo.isSelf === sponsorDemo.isSelf && s.demo.channels.length === sponsorDemo.channels.length}
+              onClick={() => setSponsorDemo(s.demo)}
+            >
+              {s.label}
+            </Button>
+          ))}
+        </ButtonSet>
+        <span className='ml-auto text-[11px] text-muted-foreground'>
+          真实页面：isSelf 看登录者与主页 handle 是否同一个人；channels 由接口给
+        </span>
+      </section>
+
+      {/* ⚠️ 首屏预算：这一页的 hero 高度决定右栏第一格（赞助入口）能不能落在 1440x900 内。
+          来历：封面 224px（h-56/sm:h-64）时它被顶出首屏（当时右栏要到首屏底部才开始，按钮看不见）；
+          压到 160px（h-40）+ 根 gap 20→12/16 之后才装进来。
+          任何人往 hero 加内容 / 换更高的封面 / 调大字号，都要重新量一次按钮 bottom 是否仍 <= 900
+          （用 CDP 量，不要目测）。
+          **注意真实壳的页头高度与 DevRoom 不同，所以「当前值」不要写进注释——写「怎么量」，不写「量到多少」。** */}
       <section className='overflow-hidden rounded-xl border border-border bg-background'>
         <div className='relative'>
-          <img src={cover} alt='主页封面' className='h-56 w-full object-cover sm:h-64' />
+          <img src={cover} alt='主页封面' className='h-40 w-full object-cover' />
           <span className='absolute right-4 top-4'>
             <Button
               data-testid='change-cover'
@@ -270,7 +341,7 @@ export default function ProfilePage() {
             赞助放第一格：它是这个页面唯一的转化点（读完之后「想支持一下」的那一秒），
             徽章与关注的人是补充信息，晚一步看到不影响什么。 */}
         <aside className='flex flex-col gap-3'>
-          <SponsorCard />
+          <SponsorCard isSelf={sponsorDemo.isSelf} channels={sponsorDemo.channels} />
           <Island withoutPaddings>
             <div className='flex flex-col gap-3 p-4'>
               <span className='text-[12px] font-medium tracking-wide text-muted-foreground'>徽章</span>

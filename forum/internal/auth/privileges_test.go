@@ -431,6 +431,7 @@ func TestCheckEnumsParsesBothQuoteStyles(t *testing.T) {
 
 // 用例 83：等级不变量（公式 level = floor(sqrt(exp/100)) + 1，边界九个点）。
 func TestExpMaxBoundaries(t *testing.T) {
+	// 九个边界点（设计 §12）：exp → level
 	cases := map[int]int{0: 1, 99: 1, 100: 2, 101: 2, 399: 2, 400: 3, 401: 3, 9999: 10, 10000: 11}
 	for exp, want := range cases {
 		got := 1
@@ -441,8 +442,12 @@ func TestExpMaxBoundaries(t *testing.T) {
 			t.Fatalf("exp=%d → level %d，想要 %d", exp, got, want)
 		}
 	}
-	if ExpMax(3) != 900 {
-		t.Fatalf("ExpMax(3) = %d，想要 900", ExpMax(3))
+	// 下一级门槛 = (level+1)^2 * 100（设计 §12：level 1 → 100、level 3 → 1600）。
+	if ExpMax(3) != 1600 {
+		t.Fatalf("ExpMax(3) = %d，想要 1600", ExpMax(3))
+	}
+	if ExpMax(1) != 400 {
+		t.Fatalf("ExpMax(1) = %d，想要 400", ExpMax(1))
 	}
 }
 

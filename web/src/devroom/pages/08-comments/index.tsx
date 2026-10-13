@@ -149,7 +149,7 @@ export default function CommentsPage() {
     <div className='flex flex-col gap-4'>
       <Card
         name='评论区（整块 · CommentList）'
-        note='对照 B 站：表头「评论 N」+ 最热｜最新，下面常驻评论框；**主楼 15px、楼中楼 13px**（层级靠字号/头像/间距，不靠竖线）。**超长评论按渲染高度折叠**（渐隐 + 展开），第三条就是用来验这条路径的。赞踩传了 onVote，**点了要有反应**（同向再点=取消）。'
+        note='对照 B 站：表头「评论 N」+ 最热｜最新，下面常驻评论框；主楼 15px、楼中楼 13px（层级靠字号/头像/间距，不靠竖线）。超长评论按渲染高度折叠（渐隐 + 展开），第三条就是用来验这条路径的。赞踩传了 onVote，点了要有反应（同向再点=取消）。'
       >
         <CommentList comments={comments} total={54} me={ME} candidates={CANDIDATES} onVote={vote} />
       </Card>
@@ -179,7 +179,7 @@ export default function CommentsPage() {
         </Row>
       </Card>
 
-      <Card name='待补' note='只列**需求文档里确实有**的（表情/回复配图不在需求里，已删掉）。'>
+      <Card name='待补' note='只列需求文档里确实有的（表情/回复配图不在需求里，已删掉）。'>
         <Row label='未做' hint='不做出来不许进业务页面；@ 提及已完成，从这里划掉'>
           <span className='rounded-sm bg-muted px-1.5 py-0.5 text-[11px] text-muted-foreground'>举报菜单</span>
           <span className='rounded-sm bg-muted px-1.5 py-0.5 text-[11px] text-muted-foreground'>分页/加载更多</span>

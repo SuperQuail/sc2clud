@@ -20,8 +20,10 @@ export function NoticeList({
         <h2 className='text-[15px] font-semibold text-foreground'>{title}</h2>
         {hint ? <span className='text-[13px] text-muted-foreground'>{hint}</span> : null}
       </header>
+      {/* min-h-0 是必须的：父级给固定高度做「内部滚动」时，flex 子项的默认 min-height:auto 会让它被裁掉而不是滚动。
+          任何用它的页面都只能各自绕，所以修在共享件里。 */}
       {hasChildren ? (
-        <div className='flex flex-col'>{children}</div>
+        <div className='flex min-h-0 flex-1 flex-col overflow-y-auto'>{children}</div>
       ) : (
         <div className='flex flex-col items-center gap-2 px-4 py-12 text-center'>
           {empty ?? (

@@ -76,5 +76,13 @@ dist/
 web/.tmp-*/
 preview-dist/
 
-# ��ֹ agent �� C:\Users\ROG\AppData\Local\Temp �����·��ʱ��Ŀ¼
 /undefined/
+
+# 阻止 agent 把 $env:TEMP 当相对路径时误建目录
+/undefined/
+
+# 一次性探针文件（agent 用来定位某个缺陷、用完即删）——
+# 它们能编译但是垃圾，而且会被 go build / go vet / go test 扫到
+/.probe*/
+forum/.probe*/
+**/zz*_test.go

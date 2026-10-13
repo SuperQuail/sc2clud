@@ -20,7 +20,8 @@ export type AdminBoard = {
   description: string;
   sort: number;
   status: 'active' | 'archived';
-  /** mock 里直接给 public/art 下的文件；真实实现是 cover_hash → /img/{hash} */
+  /** mock 里直接给 public/art 下的文件；真实实现是 cover_hash → /img/{hash}。
+   *  注意：nav-*.webp 是**白描线稿**（白底白线），当缩略图在浅色主题下等于看不见——列表里一律用有颜色的图。 */
   cover_file: string;
   acl_enabled: boolean;
   topic_count: number;
@@ -29,13 +30,13 @@ export type AdminBoard = {
 };
 
 export const BOARDS: AdminBoard[] = [
-  { id: 'b_1', slug: 'campaign', name: '自制战役', description: '战役作者发布与讨论', sort: 10, status: 'active', cover_file: 'starcraft/nav-custom_campaign.webp', acl_enabled: true, topic_count: 812, post_count: 9421, today_count: 17 },
-  { id: 'b_2', slug: 'resources', name: '资源分享', description: '模型、纹理、音效与工具链', sort: 20, status: 'active', cover_file: 'starcraft/nav-tool_dev.webp', acl_enabled: true, topic_count: 431, post_count: 3802, today_count: 9 },
+  { id: 'b_1', slug: 'campaign', name: '自制战役', description: '战役作者发布与讨论', sort: 10, status: 'active', cover_file: 'starcraft/sc2-battle.webp', acl_enabled: true, topic_count: 812, post_count: 9421, today_count: 17 },
+  { id: 'b_2', slug: 'resources', name: '资源分享', description: '模型、纹理、音效与工具链', sort: 20, status: 'active', cover_file: 'starcraft/sc2-logo.webp', acl_enabled: true, topic_count: 431, post_count: 3802, today_count: 9 },
   { id: 'b_3', slug: 'mapping', name: '地图制作', description: '地形、触发与数据编辑', sort: 30, status: 'active', cover_file: 'starcraft/terran.webp', acl_enabled: false, topic_count: 296, post_count: 2140, today_count: 5 },
-  { id: 'b_4', slug: 'vanilla', name: '原版模组', description: '不改变平衡性的原版增强', sort: 40, status: 'active', cover_file: 'starcraft/nav-vanilla_mod.webp', acl_enabled: false, topic_count: 88, post_count: 611, today_count: 1 },
-  { id: 'b_5', slug: 'announce', name: '公告与活动', description: '站点公告、赛事与活动', sort: 50, status: 'active', cover_file: 'starcraft/nav-announcement.webp', acl_enabled: true, topic_count: 24, post_count: 308, today_count: 2 },
-  { id: 'b_6', slug: 'meta', name: '站务讨论', description: '规则、建议与问题反馈', sort: 60, status: 'active', cover_file: 'starcraft/nav-profile.webp', acl_enabled: false, topic_count: 57, post_count: 402, today_count: 0 },
-  { id: 'b_7', slug: 'archive', name: '旧版存档', description: '旧站迁移时的历史分区，只读', sort: 70, status: 'archived', cover_file: 'starcraft/protoss.webp', acl_enabled: false, topic_count: 1204, post_count: 8890, today_count: 0 },
+  { id: 'b_4', slug: 'vanilla', name: '原版模组', description: '不改变平衡性的原版增强', sort: 40, status: 'active', cover_file: 'starcraft/protoss.webp', acl_enabled: false, topic_count: 88, post_count: 611, today_count: 1 },
+  { id: 'b_5', slug: 'announce', name: '公告与活动', description: '站点公告、赛事与活动', sort: 50, status: 'active', cover_file: 'starcraft/zerg.webp', acl_enabled: true, topic_count: 24, post_count: 308, today_count: 2 },
+  { id: 'b_6', slug: 'meta', name: '站务讨论', description: '规则、建议与问题反馈', sort: 60, status: 'active', cover_file: 'miyin/portrait-320.webp', acl_enabled: false, topic_count: 57, post_count: 402, today_count: 0 },
+  { id: 'b_7', slug: 'archive', name: '旧版存档', description: '旧站迁移时的历史分区，只读', sort: 70, status: 'archived', cover_file: 'miyin/genius-160.webp', acl_enabled: false, topic_count: 1204, post_count: 8890, today_count: 0 },
 ];
 
 /** board_acls（D6 的落点）：角色 × 分区的四个开关。key = board_id + ':' + role_id */

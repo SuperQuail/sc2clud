@@ -25,7 +25,7 @@ export default function RichPage() {
   const [row, setRow] = useState<{ id: string; content_json: string; content_html: string; saved_at: string } | null>(null);
   const [busy, setBusy] = useState(false);
 
-  /** 模拟后端：存 Lexical 的 **EditorState JSON**（真源）+ 写入时生成的 HTML（只读展示用） */
+  /** 模拟后端：存 Lexical 的 EditorState JSON（真源）+ 写入时生成的 HTML（只读展示用） */
   function save() {
     setBusy(true);
     window.setTimeout(() => {
@@ -41,8 +41,15 @@ export default function RichPage() {
     <div className='flex flex-col gap-4'>
       <Card
         name='富文本编辑器（帖子正文用）'
-        note='**所见即所得**（Lexical 内核）。**帖子正文上限 20000 字**（超出自动截断，计数变红）。存储用它 **EditorState JSON**（节点自带 type/version，无损往返），写入时同时生成 HTML 供只读展示；工具栏与输入 @ 走同一个候选面板；图片是正文节点。'
+        note='所见即所得（Lexical 内核）。帖子正文上限 20000 字（超出自动截断，计数变红）。存储用它 EditorState JSON（节点自带 type/version，无损往返），写入时同时生成 HTML 供只读展示；工具栏与输入 @ 走同一个候选面板；图片是正文节点。'
       >
+        <p className='mb-2 text-[12px] leading-relaxed text-muted-foreground'>
+          这一页还有两个控件<strong className='font-medium text-foreground'>没有独立入口</strong>，它们只在这个编辑器内部出现：
+          <strong className='font-medium text-foreground'>MaxLengthPlugin</strong>
+          （字数上限插件——正文超过 20000 字时由它截断，右上角计数随之变红）和
+          <strong className='font-medium text-foreground'>MentionMenu</strong>
+          （提及候选菜单——在正文里打一个 @ 就弹出来，候选来自下面的 candidates 属性）。
+        </p>
         <MarkdownEditor
           value={doc.json}
           candidates={CANDIDATES}
@@ -101,7 +108,7 @@ export default function RichPage() {
 
       <Card
         name='图片上传控件 · 禁止原图 + 上限 3'
-        note='allowOriginal=false 时界面上**不会出现**「上传原图」开关——能力由使用方决定，控件不自己决定。'
+        note='allowOriginal=false 时界面上不会出现「上传原图」开关——能力由使用方决定，控件不自己决定。'
       >
         <Row label='只能压缩上传'>
           <ImageUploader images={imgs3} onChange={setImgs3} max={3} allowOriginal={false} compress />
@@ -110,7 +117,7 @@ export default function RichPage() {
 
       <Card
         name='图片上传控件 · 头像形态（单图）'
-        note='variant=avatar：强制 1 张、圆形预览、更换/移除。**换头像、封面这类单图位复用同一个控件**，不再写第二套。'
+        note='variant=avatar：强制 1 张、圆形预览、更换/移除。换头像、封面这类单图位复用同一个控件，不再写第二套。'
       >
         <Row label='未设置 / 已选 / 移除' hint='限额与压缩和其它形态是同一套规则'>
           <ImageUploader images={avatar} onChange={setAvatar} variant='avatar' label='上传头像' />

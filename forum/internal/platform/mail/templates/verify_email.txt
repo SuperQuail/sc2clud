@@ -1,0 +1,8 @@
+{{if .Nickname}}{{.Nickname}}，你好：{{else}}你好：{{end}}
+
+你的邮箱验证码是：{{.Code}}
+
+验证码 {{.ExpiresIn}} 内有效，只能使用一次。不是你本人操作就忽略这封邮件。
+
+-- 
+{{.SiteName}}

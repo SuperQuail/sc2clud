@@ -32,7 +32,7 @@ SELECT u.id, u.public_id, u.username, u.nickname, u.bio,
   LEFT JOIN LATERAL (
         SELECT count(*) AS n
           FROM likes l JOIN posts p ON p.id = l.target_id AND l.target_type = 'post'
-         WHERE p.author_id = u.id AND p.status = 'normal'
+         WHERE p.author_id = u.id AND p.visibility = 'normal'
        ) lc ON true
  WHERE lower(u.username) = lower($1)`
 

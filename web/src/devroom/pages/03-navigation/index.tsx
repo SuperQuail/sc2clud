@@ -35,7 +35,7 @@ export default function NavigationPage() {
         </Row>
       </Card>
 
-      <Card name='面包屑 Breadcrumbs' note='表达层级位置。子项是链接，**URL 必须走 appPath**（gate:urls 会挡硬编码路径）。'>
+      <Card name='面包屑 Breadcrumbs' note='表达层级位置。子项是链接，URL 必须走 appPath（gate:urls 会挡硬编码路径）。'>
         <Row label='三段 / 两段'>
           <Breadcrumbs>
             <a href={appPath('')}>首页</a>
@@ -49,7 +49,7 @@ export default function NavigationPage() {
         </Row>
       </Card>
 
-      <Card name='分页 Pager' note='**我们的 AppPager**：中文文案 + 总数 + 每页条数（默认 20/50/100）。下面同时放 Ring 原生做对照——**不封装就是英文**。'>
+      <Card name='分页 Pager' note='我们的 AppPager：中文文案 + 总数 + 每页条数（默认 20/50/100）。下面同时放 Ring 原生做对照——不封装就是英文。'>
         <Row label='我们的 AppPager（中文）'>
           <AppPager total={1284} currentPage={page} pageSize={size} onPageChange={setPage} onPageSizeChange={setSize} />
         </Row>
@@ -61,7 +61,7 @@ export default function NavigationPage() {
         </Row>
       </Card>
 
-      <Card name='容器 Panel / Island' note='内容的分组容器。Panel 用于列表段落，Island 用于独立卡片块；**不要自己拼边框阴影**。'>
+      <Card name='容器 Panel / Island' note='内容的分组容器。Panel 用于列表段落，Island 用于独立卡片块；不要自己拼边框阴影。'>
         <Row label='Panel（无内边距）/ Island（可调窄）'>
           <div className='w-full max-w-md'>
             <Panel>

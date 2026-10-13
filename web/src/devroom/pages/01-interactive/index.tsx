@@ -20,7 +20,7 @@ export default function InteractivePage() {
       <DropdownPair />
       <Pending
         items={['工具条下拉']}
-        note='复选/单选/按钮组/下拉菜单**本次已用 Ring 补上**。工具条下拉：自制的已废弃，用 Ring 的 DropdownMenu（已登记）。另：图标工具 icon16 / 官方图标在第 05 页。'
+        note='复选/单选/按钮组/下拉菜单本次已用 Ring 补上。工具条下拉：自制的已废弃，用 Ring 的 DropdownMenu（已登记）。另：图标工具 icon16 / 官方图标在第 05 页。'
       />
     </div>
   );

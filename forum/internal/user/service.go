@@ -188,8 +188,8 @@ func (s *Service) GetBasic(ctx context.Context, userID int64) (auth.UserBasic, e
 	}, nil
 }
 
-// ExpMax 与 auth 的公式同源：level * level * 100（设计 §12）。
-func ExpMax(level int) int { return level * level * 100 }
+// ExpMax 与 auth 的公式同源：(level+1)^2 * 100（设计 §12：下一级门槛）。
+func ExpMax(level int) int { return (level + 1) * (level + 1) * 100 }
 
 func deref(s *string) string {
 	if s == nil {

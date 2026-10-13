@@ -57,9 +57,11 @@ func (f *fixture) insertUser(username, nickname, status string, exp int) int64 {
 	f.mustExec("INSERT INTO roles (key, name, depth, is_system, is_super) VALUES ('user','普通用户',0,true,false) ON CONFLICT (key) DO NOTHING")
 	var id int64
 	err := f.pool.QueryRow(f.ctx,
+		// level 由 exp 推出（设计 §12：level = floor(sqrt(exp/100)) + 1），不手写——
+		// 手写就会造出「exp=1200 但 level=1」这种真库里从不存在的行。
 		"INSERT INTO users (public_id, username, email, password_hash, nickname, role_id, status, exp, level, activated_at) "+
-			"VALUES (gen_random_uuid(), $1, $2, '!', $3, (SELECT id FROM roles WHERE key='user'), $4, $5, 1, now()) RETURNING id",
-		username, username+"@example.com", nickname, status, exp).Scan(&id)
+			"VALUES (gen_random_uuid(), $1, $2, '!', $3, (SELECT id FROM roles WHERE key='user'), $4, $5, floor(sqrt($6 / 100)) + 1, now()) RETURNING id",
+		username, username+"@example.com", nickname, status, exp, float64(exp)).Scan(&id)
 	if err != nil {
 		f.t.Fatalf("插用户失败: %v", err)
 	}
@@ -83,8 +85,9 @@ func TestProfileLookup(t *testing.T) {
 		t.Fatalf("资料字段不对: %+v", p)
 	}
 	// 用例 71：exp=1200 → level 3、exp_max 1600（设计 §12）。
-	if p.Level != 3 || p.ExpMax != 1600 {
-		t.Fatalf("level=%d exp_max=%d，想要 3 / 1600", p.Level, p.ExpMax)
+	// exp=1200 → level 4（floor(sqrt(1200/100))+1）；下一级门槛 (4+1)^2*100 = 2500。
+	if p.Level != 4 || p.ExpMax != 2500 {
+		t.Fatalf("level=%d exp_max=%d，想要 4 / 2500", p.Level, p.ExpMax)
 	}
 
 	if _, err := f.svc.GetProfile(f.ctx, "nobody"); err != apperr.ErrNotFound {
@@ -111,19 +114,21 @@ func TestProfileCounts(t *testing.T) {
 	f := newFixture(t)
 	author := f.insertUser("author", "作者", "active", 0)
 	other := f.insertUser("voter", "投票的", "active", 0)
-	f.mustExec("INSERT INTO boards (public_id, slug, name, created_at, updated_at) VALUES (gen_random_uuid(), 'b', '版块', now(), now())")
+	// boards 没有 public_id（它的对外标识是 slug）。
+	f.mustExec("INSERT INTO boards (slug, name, created_at, updated_at) VALUES ('b', '版块', now(), now())")
 	boardID := f.queryInt("SELECT id FROM boards LIMIT 1")
 	// 两条主题：一条正常，一条 hidden（不该被算进 topic_count）。
-	f.mustExec("INSERT INTO topics (public_id, board_id, author_id, title, kind, visibility, review_state, created_at, updated_at) "+
-		"VALUES (gen_random_uuid(), $1, $2, '可见', 'discussion', 'normal', 'approved', now(), now())", boardID, author)
-	f.mustExec("INSERT INTO topics (public_id, board_id, author_id, title, kind, visibility, review_state, created_at, updated_at) "+
-		"VALUES (gen_random_uuid(), $1, $2, '隐藏', 'discussion', 'hidden', 'approved', now(), now())", boardID, author)
+	f.mustExec("INSERT INTO topics (public_id, board_id, author_id, title, kind, visibility, review_state, last_reply_at, created_at, updated_at) "+
+		"VALUES (gen_random_uuid(), $1, $2, '可见', 'discussion', 'normal', 'approved', now(), now(), now())", boardID, author)
+	f.mustExec("INSERT INTO topics (public_id, board_id, author_id, title, kind, visibility, review_state, last_reply_at, created_at, updated_at) "+
+		"VALUES (gen_random_uuid(), $1, $2, '隐藏', 'discussion', 'hidden', 'approved', now(), now(), now())", boardID, author)
 	topicID := f.queryInt("SELECT id FROM topics WHERE title = '可见'")
-	postID := f.queryInt("INSERT INTO posts (public_id, topic_id, author_id, content, status, created_at, updated_at) "+
-		"VALUES (gen_random_uuid(), $1, $2, '正文', 'normal', now(), now()) RETURNING id", topicID, author)
+	postID := f.queryInt("INSERT INTO posts (public_id, topic_id, author_id, floor, content_md, content_html, visibility, created_at, updated_at) "+
+		"VALUES (gen_random_uuid(), $1, $2, 1, '正文', '<p>正文</p>', 'normal', now(), now()) RETURNING id", topicID, author)
 	// 一条已删帖的赞：不该算进 like_received。
-	deletedPost := f.queryInt("INSERT INTO posts (public_id, topic_id, author_id, content, status, created_at, updated_at) "+
-		"VALUES (gen_random_uuid(), $1, $2, '删掉的', 'deleted', now(), now()) RETURNING id", topicID, author)
+	// posts 的可见性列叫 visibility（不是 status），设计 §11.1 的 SQL 用 status='normal' 是笔误。
+	deletedPost := f.queryInt("INSERT INTO posts (public_id, topic_id, author_id, floor, content_md, content_html, visibility, created_at, updated_at) "+
+		"VALUES (gen_random_uuid(), $1, $2, 2, '删掉的', '<p>删掉的</p>', 'deleted', now(), now()) RETURNING id", topicID, author)
 	f.mustExec("INSERT INTO likes (target_type, target_id, user_id, value, created_at) VALUES ('post', $1, $2, 1, now())", postID, other)
 	f.mustExec("INSERT INTO likes (target_type, target_id, user_id, value, created_at) VALUES ('post', $1, $2, 1, now())", deletedPost, other)
 

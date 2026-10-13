@@ -1,20 +1,17 @@
-import Button from '@jetbrains/ring-ui-built/components/button/button';
 import { useState } from 'react';
-import { Image, MessageSquare, Settings, Smile, ThumbsUp, AtSign, Bell, Send } from 'lucide-react';
+import { MessageSquare, Settings, ThumbsUp, AtSign, Bell, Send } from 'lucide-react';
 import { appPath, assetUrl } from '@/lib/url';
-import { icon16 } from '@/ui/icons';
 import { NoticeNav, type NoticeNavItem } from '@/ui/message/notice-nav';
 import { NoticeLayout } from '@/ui/message/notice-layout';
 import { NoticeList } from '@/ui/message/notice-list';
 import { NoticeRow } from '@/ui/message/notice-row';
-import { NoticeChat, type ChatMessage } from '@/ui/message/notice-chat';
-import { NoticeComposer } from '@/ui/message/notice-composer';
 import { NoticeSettings, type SettingRow } from '@/ui/message/notice-settings';
+import { MessagesPanel } from './messages-panel';
 
 // DevRoom 10 · 信息中心（参考 B 站消息中心的结构）
 // **这一页只做组合**：控件在 src/ui/message/ 里，全是数据驱动的通用件（不认识「消息中心」这个业务）。
 // 所以这里的 mock 数据、导航项、设置项都放在页面里——换一个业务场景可以完全复用同一批控件。
-const ME = { nickname: '唐天', avatar: assetUrl('miyin-portrait-320.webp') };
+// 私信（一对一）是**两栏会话界面**，在同目录 messages-panel.tsx 里（左栏会话列表 + 右栏聊天区）。
 
 const NAV: NoticeNavItem[] = [
   { key: 'messages', label: '我的消息', icon: <MessageSquare aria-hidden className='size-4' /> },
@@ -25,24 +22,12 @@ const NAV: NoticeNavItem[] = [
   { key: 'settings', label: '消息设置', icon: <Settings aria-hidden className='size-4' />, groupTitle: '设置' },
 ];
 
-const CHAT: ChatMessage[] = [
-  {
-    id: 'm1',
-    from: 'other',
-    nickname: '次寻白',
-    avatar: assetUrl('miyin-chibi-160.webp'),
-    html: '谢谢关注啦，祝你天天开心哦！我们每个人都是最棒的，不用担心其他，开心是最重要的（￣▽￣）',
-    time: '今天 11:02',
-    note: '此条消息为自动回复',
-  },
-  { id: 'm2', from: 'me', nickname: ME.nickname, avatar: ME.avatar, html: '好，回头把第三章的地图发你看下，帮我提提意见。', time: '今天 11:05' },
-];
-
 export default function MessagesPage() {
-  // 面板可由 URL 指定（?panel=settings）：出图与浏览器断言都要用，不靠手点
+  // 面板与当前会话都由 URL 指定（?panel=messages&peer=<handle>）：出图与浏览器断言都要用，不靠手点
   const [panel, setPanel] = useState(
     () => new URLSearchParams(window.location.search).get('panel') ?? 'messages',
   );
+  const [peer] = useState(() => new URLSearchParams(window.location.search).get('peer'));
   const [privacy, setPrivacy] = useState('all');
   const [notice, setNotice] = useState(true);
   const [blocked, setBlocked] = useState<string[]>(['广告', '代练']);
@@ -74,28 +59,20 @@ export default function MessagesPage() {
     },
   ];
 
+  // DevRoom 的导航条被限宽在 1100px；私信是「导航 + 会话列表 + 聊天区」的三列，自己放宽到 1280px 再居中
+  // （只作用于本页这一段，不动共享布局）。
   return (
+    <div className='relative left-1/2 w-[min(1280px,calc(100vw-32px))] -translate-x-1/2'>
+    <p className='mb-2 px-1 text-[11px] leading-relaxed text-muted-foreground'>
+      本页的件都来自 src/ui/message/。其中
+      <strong className='font-medium text-foreground'>CountBadge</strong>
+      （未读数字角标）没有独立入口：它出现在左侧导航每一项后面的计数上（例如「收到的赞 3」），
+      以及会话列表里未读会话的角标上。
+    </p>
     <NoticeLayout
       nav={<NoticeNav items={NAV} value={panel} onChange={setPanel} title='消息中心' titleIcon={<Send aria-hidden className='size-4' />} />}
     >
-      {panel === 'messages' ? (
-        <NoticeChat
-          title='我的消息'
-          messages={CHAT}
-          headerActions={<Button ghost icon={icon16(Settings)} aria-label='会话设置' />}
-        >
-          <NoticeComposer
-            me={ME}
-            maxLength={500}
-            toolSlot={
-              <span className='flex items-center gap-1'>
-                <Button ghost icon={icon16(Image)} aria-label='发送图片' />
-                <Button ghost icon={icon16(Smile)} aria-label='表情' />
-              </span>
-            }
-          />
-        </NoticeChat>
-      ) : null}
+      {panel === 'messages' ? <MessagesPanel initialPeer={peer} /> : null}
 
       {panel === 'replies' ? (
         <NoticeList title='回复我的' hint='共 2 条'>
@@ -186,5 +163,6 @@ export default function MessagesPage() {
 
       {panel === 'settings' ? <NoticeSettings rows={settings} /> : null}
     </NoticeLayout>
+    </div>
   );
 }

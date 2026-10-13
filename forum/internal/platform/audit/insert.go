@@ -29,7 +29,7 @@ func actorID(id int64) any {
 	return id
 }
 
-// ipOrNull 空 → NULL：inet 列不接受空串（'' 会报 invalid input syntax for type inet）。
+// ipOrNull 空 → NULL：inet 列不接受空串（” 会报 invalid input syntax for type inet）。
 func ipOrNull(ip string) any {
 	if ip == "" {
 		return nil
@@ -38,15 +38,18 @@ func ipOrNull(ip string) any {
 }
 
 // detailJSON nil → {}：列是 NOT NULL，显式写比依赖列默认值清楚。
-func detailJSON(d map[string]any) []byte {
+//
+// **必须是 string，不能是 []byte**：pgx 把 []byte 当 bytea 字面量发出去（'\x7b7d'），
+// jsonb 列直接报「类型 json 的输入语法无效」，而错误里看到的是那串十六进制，查不出原因。
+func detailJSON(d map[string]any) string {
 	if len(d) == 0 {
-		return []byte("{}")
+		return "{}"
 	}
 	b, err := json.Marshal(d)
 	if err != nil {
 		// detail 的值来自我们自己构造的 DTO，序列化不了就是代码 bug。
 		// 写空对象而不是报错：让业务事务成功、审计留下这条行，比整条业务回滚好。
-		return []byte("{}")
+		return "{}"
 	}
-	return b
+	return string(b)
 }

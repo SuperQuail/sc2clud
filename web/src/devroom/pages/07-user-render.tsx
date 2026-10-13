@@ -138,7 +138,7 @@ export default function UserControlsPage() {
 
       <Card
         name='权限 × 头衔 · 差异化方案（三选一）'
-        note='**统一都用带颜色的半透明背景**（Ring UI Tag 的 backgroundColor / Tailwind 的 bg-*/12），差异只靠形状、边框与色条方向。每套成对给出，点徽标可展开。'
+        note='统一都用带颜色的半透明背景（Ring UI Tag 的 backgroundColor / Tailwind 的 bg-*/12），差异只靠形状、边框与色条方向。每套成对给出，点徽标可展开。'
       >
         {PAIRS.map((p) => (
           <Row key={p.n} label={'方案 ' + p.n + ' · ' + p.name} hint={p.note}>

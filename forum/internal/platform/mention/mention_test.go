@@ -26,7 +26,6 @@ func TestParseIgnoresNonMentions(t *testing.T) {
 		"[@a](mention:abc)",
 		"[@a](mention:0)",
 		"[@a](https://example.com)",
-		`[@a](mention:1)`,
 		"[@a](mention:1234567890123456789)", // 19 位，超出 bigint 的合理范围
 	} {
 		if got := Parse(s); len(got) != 0 {

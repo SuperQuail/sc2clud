@@ -19,7 +19,7 @@ export function SelectPair() {
   return (
     <Pair
       name='下拉选择（Ring 原生 · 两种模式）'
-      note='**下拉一律用 Ring 的**（自制的 B 系版本已删除）。左＝type=INPUT（表单里用，输入框外观）；右＝type=BUTTON（工具条里用）。选中标记与弹层全走 Ring 自己的实现。'
+      note='下拉一律用 Ring 的（自制的 B 系版本已删除）。左＝type=INPUT（表单里用，输入框外观）；右＝type=BUTTON（工具条里用）。选中标记与弹层全走 Ring 自己的实现。'
       user={
         <Line label='INPUT 模式（表单）' hint='标签在控件内，选中项打勾，展开不重复标题'>
           <Select type={SelectType.INPUT} label='排序方式' data={SORTS} selected={selected} onSelect={onSelect} />

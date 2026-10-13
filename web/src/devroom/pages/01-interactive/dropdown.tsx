@@ -24,7 +24,7 @@ export function DropdownPair() {
   return (
     <Pair
       name='下拉菜单 DropdownMenu'
-      note='点 anchor 展开；数据用 data 传，选中回 onSelect。**不要自己写浮层**——定位、点外关闭、Esc、键盘导航都在控件里。'
+      note='点 anchor 展开；数据用 data 传，选中回 onSelect。不要自己写浮层——定位、点外关闭、Esc、键盘导航都在控件里。'
       user={
         <Line label='默认'>
           {menu}

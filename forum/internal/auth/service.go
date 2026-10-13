@@ -213,4 +213,4 @@ const maxCodeAttempts = 5
 
 // ExpMax 是下一级门槛：level * level * 100（设计 §12）。auth 与 user 各有一份同源实现，
 // 两处都只**显示**它——写 exp/level 的是 title 模块。
-func ExpMax(level int) int { return level * level * 100 }
+func ExpMax(level int) int { return (level + 1) * (level + 1) * 100 }

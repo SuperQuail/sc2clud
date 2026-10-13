@@ -18,7 +18,7 @@ export default function OverlayPage() {
     <div className='flex flex-col gap-4'>
       <Card
         name='对话框 Dialog'
-        note='Ring UI 自带：遮罩点击、Esc、焦点陷阱（trapFocus）都由控件负责。**不要自己写弹层**——焦点与层级是最容易出错的部分。'
+        note='Ring UI 自带：遮罩点击、Esc、焦点陷阱（trapFocus）都由控件负责。不要自己写弹层——焦点与层级是最容易出错的部分。'
       >
         <Row label='常规 / 模态 / 带关闭按钮' hint='label 是无障碍标题，必填'>
           <Button onClick={() => setDialog(true)}>打开对话框</Button>
@@ -73,7 +73,7 @@ export default function OverlayPage() {
         </Row>
       </Card>
 
-      <Card name='加载 LoaderInline' note='行内加载：用在按钮旁边、列表底部这类**局部**位置；整页加载才用 LoaderScreen。'>
+      <Card name='加载 LoaderInline' note='行内加载：用在按钮旁边、列表底部这类局部位置；整页加载才用 LoaderScreen。'>
         <Row label='默认 / 带说明'>
           <LoaderInline />
           <span className='flex items-center gap-2 text-[13px] text-muted-foreground'>

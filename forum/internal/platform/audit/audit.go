@@ -34,6 +34,12 @@ func New(db *ent.Client, clk clock.Clock) *Writer {
 	return &Writer{db: db, clk: clk}
 }
 
+// compile-time guard：execer 由 *ent.Client 与 *ent.Tx 共同满足（ent 的提升方法）。
+var (
+	_ execer = (*ent.Client)(nil)
+	_ execer = (*ent.Tx)(nil)
+)
+
 // Write 写一条，与业务同一个事务。tx 为 nil 表示「当前不在事务里」——
 // 只有测试夹具与 CLI 走这条路（生产路径的审计按 §1.1 全部与业务同事务）。
 func (w *Writer) Write(ctx context.Context, tx *ent.Tx, e Entry) error {

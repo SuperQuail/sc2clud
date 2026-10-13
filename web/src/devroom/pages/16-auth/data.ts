@@ -6,7 +6,7 @@
 //
 // §11 带来的三处结构变化（别按旧稿做）：
 //   ① 注册成功 → 落地到「输入验证码」页（不是「我们给你发了邮件」）；
-//   ② verify 视图 = 输入 6 位验证码，成功后**就地**显示「已激活，去登录」；
+//   ② verify 视图 = 输入 6 位验证码，成功后就地显示「已激活，去登录」；
 //   ③ 找回密码 = 两步一页（输入验证码 → 设新密码），不再有「点邮件链接」的重置页。
 export type AuthView = 'login' | 'register' | 'verify' | 'forgot';
 
@@ -50,15 +50,15 @@ export const VERIFY_SCENES: Array<Scene<VerifyScene>> = [
   { key: 'input', no: 1, label: '输入验证码', hint: '① 正常：POST /auth/email/verify { username, code }；码 6 位数字、10 分钟有效。' },
   { key: 'wrong', no: 2, label: '验证码不正确', hint: '② 统一失败文案「验证码不正确或已过期」——不区分输错与过期，也不显示「还剩几次」（§11.4）。' },
   { key: 'rateLimited', no: 3, label: '尝试过于频繁', hint: '③ 15 分钟内累计 10 次失败 → 429 + Retry-After。' },
-  { key: 'activated', no: 4, label: '已激活', hint: '④ 成功：email_verified_at 与 activated_at 同时落、activation_pending 置 NULL，**就地**显示「已激活，去登录」。' },
+  { key: 'activated', no: 4, label: '已激活', hint: '④ 成功：email_verified_at 与 activated_at 同时落、activation_pending 置 NULL，就地显示「已激活，去登录」。' },
 ];
 
 /** forgot 视图 = 两步一页：输入验证码 → 设新密码（§11.7） */
 export type ForgotScene = 'request' | 'code' | 'wrong' | 'rateLimited' | 'done';
 export const FORGOT_SCENES: Array<Scene<ForgotScene>> = [
-  { key: 'request', no: 1, label: '填邮箱', hint: '① 第一步：POST /auth/password/forgot { email }，**恒 200**（不暴露邮箱是否存在），限流 3 次/小时。' },
+  { key: 'request', no: 1, label: '填邮箱', hint: '① 第一步：POST /auth/password/forgot { email }，恒 200（不暴露邮箱是否存在），限流 3 次/小时。' },
   { key: 'code', no: 2, label: '验证码 + 新密码', hint: '② 第二步：验证码与新密码一屏提交，后端一个事务里校验码 + 改密码 + 删全部会话。' },
-  { key: 'wrong', no: 3, label: '验证码不正确', hint: '③ 失败文案与激活页**同一句**「验证码不正确或已过期」：邮箱不存在、码错、码过期都走它，否则这一步就成了「查邮箱有没有注册」的工具。' },
+  { key: 'wrong', no: 3, label: '验证码不正确', hint: '③ 失败文案与激活页同一句「验证码不正确或已过期」：邮箱不存在、码错、码过期都走它，否则这一步就成了「查邮箱有没有注册」的工具。' },
   { key: 'rateLimited', no: 4, label: '尝试过于频繁', hint: '④ 429 + Retry-After（重发 1 次/分钟、3 次/小时；15 分钟内 10 次校验失败也 429）。' },
   { key: 'done', no: 5, label: '重置成功', hint: '⑤ 成功：该账号全部设备的会话被删，要用新密码重新登录。' },
 ];
