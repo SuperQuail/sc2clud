@@ -8,8 +8,14 @@ const SRC = fileURLToPath(new URL('../src', import.meta.url));
 const registryPath = join(SRC, 'devroom', 'registry.ts');
 
 const registry = readFileSync(registryPath, 'utf8');
+// 解析登记表的条目名。**两种格式都要认**：
+//   老格式：{ 换行后独立一行写 name:
+//   新格式：{ name: 'x', ...  —— 同一行
+// 2026-10-13 修：原正则带 ^ 锚点，只认老格式，于是 data-table / confirm-dialog / side-nav 一条都没数进去，
+// 而它打印的「只用了已登记的 N 个控件」会让人以为登记表只有 N 条（实际更多）。
+// 教训与今天其它几条同类：**检查的覆盖范围与你以为的不同，而它照样打印一个漂亮的数字**。
 const verified = new Set(
-  [...registry.matchAll(/^\s*name:\s*'([a-z0-9-]+)'/gm)].map((m) => m[1]!),
+  [...registry.matchAll(/(?:^|[{,]\s*)name:\s*'([a-z0-9-]+)'/gm)].map((m) => m[1]!),
 );
 
 function walk(dir: string): string[] {
