@@ -15,6 +15,7 @@ import { TitleBadge } from '@/ui/user/title-badge';
 import { TopicRow, type TopicRowData } from '@/ui/topic/topic-row';
 import { NoticeSettings, type SettingRow } from '@/ui/message/notice-settings';
 import { IconTabs, type IconTabItem } from '@/ui/nav/icon-tabs';
+import { roomHref } from '@/devroom/room-links';
 import { AccountPanel, type AvatarHandle } from './account-panel';
 
 // DevRoom 11 · 个人主页（带设置）
@@ -352,8 +353,10 @@ export default function ProfilePage() {
         <div className='flex flex-col gap-4'>
           {activeTab === 'posts' ? (
             <Island withoutPaddings>
+              {/* 链接由调用方给：房子件自己拼路径（appPath('t/'+id)）会把房间用户送到旧站 404；
+                  房间没有「按 id 看帖子」的页面，所以统一指向房间内的帖子内容页。 */}
               {TOPICS.map((t) => (
-                <TopicRow key={t.id} topic={t} />
+                <TopicRow key={t.id} topic={{ ...t, href: roomHref('12-topic') }} />
               ))}
             </Island>
           ) : null}
