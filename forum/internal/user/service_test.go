@@ -68,6 +68,50 @@ func (f *fixture) insertUser(username, nickname, status string, exp int) int64 {
 	return id
 }
 
+// 显示名回落：昵称留空 → 公开资料显示登录名（d2-auth §5.1「空则回落到 username」），
+// 且**不写回 nickname 列** —— 再查一次仍然是空串，「没设」不会变成「设成用户名」。
+func TestProfileFallsBackToUsernameWhenNicknameBlank(t *testing.T) {
+	f := newFixture(t)
+	f.insertUser("tangtian", "", "active", 0)
+
+	p, err := f.svc.GetProfile(f.ctx, "tangtian")
+	if err != nil {
+		t.Fatalf("取公开资料失败: %v", err)
+	}
+	if p.Nickname != "tangtian" {
+		t.Fatalf("昵称留空时显示 %q，想要回落到登录名 tangtian", p.Nickname)
+	}
+	if p.Handle != "tangtian" {
+		t.Fatalf("handle = %q", p.Handle)
+	}
+
+	var stored string
+	if err := f.pool.QueryRow(f.ctx, "SELECT nickname FROM users WHERE username = 'tangtian'").Scan(&stored); err != nil {
+		t.Fatal(err)
+	}
+	if stored != "" {
+		t.Fatalf("读一次资料就把 nickname 写成了 %q；回落只该发生在响应里", stored)
+	}
+
+	// ?author=<handle> 的解引用也走同一规则（forum 的 UserBriefByHandle 有自己那条 SQL）。
+	b, err := f.svc.BriefByHandle(f.ctx, "tangtian")
+	if err != nil {
+		t.Fatalf("按 handle 取 brief 失败: %v", err)
+	}
+	if b.Nickname != "tangtian" {
+		t.Fatalf("brief.Nickname = %q，想要回落到登录名", b.Nickname)
+	}
+
+	// 搜候选同一规则（@ 提及列表里不能出现空名字）。
+	items, err := f.svc.Search(f.ctx, "tang", 10)
+	if err != nil {
+		t.Fatalf("搜索失败: %v", err)
+	}
+	if len(items) != 1 || items[0].Nickname != "tangtian" {
+		t.Fatalf("搜索候选 = %+v，想要一条昵称为 tangtian 的候选", items)
+	}
+}
+
 // 用例 67/68/69/70：大小写不敏感、不存在 404、封禁可见、注销 404。
 func TestProfileLookup(t *testing.T) {
 	f := newFixture(t)

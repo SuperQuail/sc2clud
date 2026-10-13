@@ -1,0 +1,43 @@
+
+import sqlite3, sys, json, datetime
+sys.stdout.reconfigure(encoding='utf-8')
+c = sqlite3.connect(r'D:\Code\Rust\SC2clud\backups\old-prod-2026-10-12\sc2clud.sqlite3')
+c.row_factory = sqlite3.Row
+print("== nickname/bio lengths ==")
+for r in c.execute("select id,handle,display_name,bio,bio_review_state from users"):
+    print(r['id'], r['handle'], "dn_chars=",len(r['display_name']), "bio_chars=",len(r['bio']), r['bio_review_state'])
+print()
+print("== roles ==")
+for r in c.execute("select role, count(*) n from users group by role"): print(dict(r))
+print("null/empty email:", c.execute("select count(*) from users where email is null or email=''").fetchone()[0])
+for r in c.execute("select lower(email) e, count(*) n from users where email is not null group by lower(email) having n>1"): print("dup email:", dict(r))
+print("handle chars:", [(r[0],len(r[0])) for r in c.execute("select handle from users")])
+print()
+print("== distinct values ==")
+for t,col in [("posts","kind"),("posts","review_state"),("posts","resource_status"),("post_sources","provider"),("sections","post_min_role"),("sections","reply_min_role"),("notifications","kind"),("titles","color"),("post_images","mime"),("post_images","state"),("sections","group_check")]:
+    try:
+        vals = [r[0] for r in c.execute("select distinct %s from %s" % (col,t))]
+        print(" %-14s %-18s %s" % (t,col,vals))
+    except Exception as e: print(" ", t, col, "ERR", e)
+print()
+print("== audit ==")
+print("target nulls:", c.execute("select count(*) from audit_log where target is null").fetchone()[0])
+print("actor nulls:", c.execute("select count(*) from audit_log where actor_id is null").fetchone()[0])
+print("actions:", [r[0] for r in c.execute("select distinct action from audit_log")][:40])
+print("sample:", [dict(r) for r in c.execute("select id,actor_id,action,target,substr(coalesce(detail,''),1,50) d from audit_log order by id desc limit 4")])
+print()
+print("== sessions ==")
+print("by user:", [(r[0],r[1]) for r in c.execute("select user_id, count(*) from sessions group by user_id")])
+print("ua nulls:", c.execute("select count(*) from sessions where user_agent is null").fetchone()[0])
+print("sample:", [dict(r) for r in c.execute("select id,user_id,substr(csrf_token,1,10) c,expires_at,user_agent from sessions limit 2")])
+print()
+print("== mail_accounts ==")
+for r in c.execute("select id,provider,label,priority,from_address,from_name,options_json, daily_quota, sent_today, quota_day, enabled, archived_at, last_error from mail_accounts"): print(dict(r))
+print("has secret:", c.execute("select count(*) from mail_accounts where secret_cipher is not null").fetchone()[0])
+print()
+print("== images vs blobs ==")
+for r in c.execute("select pi.id, pi.post_id, pi.original_hash, pi.display_hash, pi.state, (select count(*) from blobs b where b.hash=pi.original_hash) has_blob from post_images pi"): print(dict(r))
+print("avatar blobs:", [(r[0][:12], c.execute("select count(*) from blobs where hash=?", (r[0],)).fetchone()[0]) for r in c.execute("select avatar_hash from users where avatar_hash is not null")])
+print()
+print("== files/counters/notifications ==")
+print("counters:", [dict(r) for r in c.execute("select * from counters")])

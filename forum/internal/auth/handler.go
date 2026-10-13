@@ -33,7 +33,9 @@ func (h *Handler) Register(rg *gin.RouterGroup) {
 	login := svc.RequireLogin()
 	activated := svc.RequireActivated()
 
-	// 认证（游客可访问）
+	// 认证（游客可访问）。/captcha 在路由白名单里（设计 §9.2）：它是「还没有身份的人」
+	// 唯一能拿到的凭据，挂 RequireLogin 就等于永远拿不到。
+	rg.GET("/captcha", h.captcha)
 	rg.POST("/auth/register", h.register)
 	rg.POST("/auth/login", h.login)
 	rg.POST("/auth/email/verify", h.emailVerify)

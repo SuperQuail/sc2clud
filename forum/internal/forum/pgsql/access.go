@@ -98,7 +98,7 @@ func (s *Store) UserBriefByHandle(ctx context.Context, handle string) (*UserRow,
 	var r UserRow
 	var avatar, avatarSmall sql.NullString
 	err := s.queryOne(ctx,
-		"SELECT id, public_id, username, nickname, avatar_hash, avatar_small_hash, status"+
+		"SELECT id, public_id, username, COALESCE(NULLIF(nickname, ''), username), avatar_hash, avatar_small_hash, status"+
 			" FROM users WHERE lower(username) = lower($1)",
 		[]any{handle}, func(rows *sql.Rows) error {
 			return rows.Scan(&r.ID, &r.PublicID, &r.Handle, &r.Nickname, &avatar, &avatarSmall, &r.Status)

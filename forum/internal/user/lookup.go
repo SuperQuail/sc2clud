@@ -57,8 +57,9 @@ func (s *Service) brief(ctx context.Context, where predicate.User) (*Brief, erro
 		return nil, err
 	}
 	return &Brief{
-		ID: u.ID, PublicID: u.PublicID.String(), Handle: u.Username, Nickname: u.Nickname,
-		Status: u.Status, AvatarHash: deref(u.AvatarHash), AvatarSmall: deref(u.AvatarSmallHash),
+		ID: u.ID, PublicID: u.PublicID.String(), Handle: u.Username,
+		Nickname: displayName(u.Nickname, u.Username),
+		Status:   u.Status, AvatarHash: deref(u.AvatarHash), AvatarSmall: deref(u.AvatarSmallHash),
 		DefaultAvatar: deref(u.DefaultAvatarHash),
 	}, nil
 }

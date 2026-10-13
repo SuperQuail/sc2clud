@@ -1,0 +1,48 @@
+
+import sqlite3, sys, json, datetime
+sys.stdout.reconfigure(encoding='utf-8')
+c = sqlite3.connect(r'D:\Code\Rust\SC2clud\backups\old-prod-2026-10-12\sc2clud.sqlite3')
+c.row_factory = sqlite3.Row
+print("== group_section_rules / user_groups ==")
+for r in c.execute("select * from user_groups"): print(dict(r))
+for r in c.execute("select * from group_section_rules"): print(dict(r))
+print()
+print("== nickname/bio lengths (rune counts) ==")
+for r in c.execute("select id,handle,display_name,bio,review_state from users"):
+    print(r['id'], r['handle'], "dn_chars=",len(r['display_name']), "bio_chars=",len(r['bio']))
+print()
+print("== email dup / role values ==")
+for r in c.execute("select role, count(*) n from users group by role"): print(dict(r))
+for r in c.execute("select lower(email) e, count(*) n from users where email is not null group by lower(email) having n>1"): print("dup email:", dict(r))
+print("null email count:", c.execute("select count(*) from users where email is null or email=''").fetchone()[0])
+print()
+print("== ts sanity ==")
+for v in [1791429809, 1791740613, 1791465321]:
+    print(v, datetime.datetime.fromtimestamp(v, datetime.timezone.utc).isoformat())
+print("min ts across tables:")
+for t,col in [("users","created_at"),("posts","created_at"),("comments","created_at"),("sessions","created_at"),("audit_log","created_at"),("post_likes","created_at"),("titles","created_at"),("user_titles","granted_at"),("site_texts","updated_at")]:
+    mn,mx = c.execute("select min(%s),max(%s) from %s" % (col,col,t)).fetchone()
+    print(" %-16s %s .. %s" % (t, datetime.datetime.fromtimestamp(mn, datetime.timezone.utc).isoformat() if mn else None, datetime.datetime.fromtimestamp(mx, datetime.timezone.utc).isoformat() if mx else None))
+print()
+print("== distinct values ==")
+for t,col in [("posts","kind"),("posts","review_state"),("posts","resource_status"),("comments","deleted_at"),("post_sources","provider"),("sections","post_min_role"),("sections","reply_min_role"),("notifications","kind"),("site_domains","domain"),("titles","color"),("post_images","mime"),("post_images","state")]:
+    vals = [r[0] for r in c.execute("select distinct %s from %s" % (col,t))]
+    print(" %-16s %-18s %s" % (t,col,vals))
+print()
+print("== audit_log actions sample ==")
+for r in c.execute("select id,actor_id,action,target,substr(coalesce(detail,''),1,60) d,created_at from audit_log order by id desc limit 8"): print(dict(r))
+print("audit target nulls:", c.execute("select count(*) from audit_log where target is null").fetchone()[0])
+print("audit distinct actions:", [r[0] for r in c.execute("select distinct action from audit_log")][:40])
+print()
+print("== sessions ==")
+print("sessions users:", [ (r[0],r[1]) for r in c.execute("select user_id, count(*) from sessions group by user_id")])
+print("expired (before 1791740613):", c.execute("select count(*) from sessions where expires_at < 1791740613").fetchone()[0])
+print("ua nulls:", c.execute("select count(*) from sessions where user_agent is null").fetchone()[0])
+print()
+print("== mail_accounts ==")
+for r in c.execute("select id,provider,label,priority,from_address,from_name,substr(options_json,1,80) o, daily_quota, sent_today, quota_day, enabled, archived_at from mail_accounts"): print(dict(r))
+print("has secret:", c.execute("select count(*) from mail_accounts where secret_cipher is not null").fetchone()[0])
+print()
+print("== post_images vs blobs ==")
+for r in c.execute("select pi.id, pi.post_id, pi.original_hash, pi.display_hash, pi.thumb_hash, pi.mime, pi.state, (select count(*) from blobs b where b.hash=pi.original_hash) has_blob from post_images pi"): print(dict(r))
+print("users avatar hashes in blobs?", [(r[0], c.execute("select count(*) from blobs where hash=?", (r[0],)).fetchone()[0]) for r in c.execute("select avatar_hash from users where avatar_hash is not null")])

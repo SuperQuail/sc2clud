@@ -1,4 +1,4 @@
-import { useState, type FormEvent } from 'react';
+import { useEffect, useState, type FormEvent } from 'react';
 import { useNavigate, useSearchParams } from 'react-router';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import Button from '@jetbrains/ring-ui-built/components/button/button';
@@ -25,10 +25,13 @@ export function LoginPage() {
   const [password, setPassword] = useState('');
   const [remember, setRemember] = useState(true);
   const [captcha, setCaptcha] = useState('');
+  const [captchaId, setCaptchaId] = useState('');
+  const [captchaSeed, setCaptchaSeed] = useState(0);
   const [challenge, setChallenge] = useState(false);
 
   const signIn = useMutation({
-    mutationFn: () => login({ username, password, captcha: captcha || undefined }),
+    mutationFn: () =>
+      login({ username, password, captcha: captcha || undefined, captcha_id: captchaId || undefined }),
     onSuccess: async () => {
       queryClient.clear(); // 上一个账号的缓存必须清掉（同一台设备换人登录）
       await queryClient.fetchQuery({ queryKey: qk.me(), queryFn: ({ signal }) => fetchMe(signal) });
@@ -39,6 +42,8 @@ export function LoginPage() {
       if (isApiError(e) && (e.code === 'auth.captcha_required' || e.code === 'auth.captcha_wrong')) {
         setChallenge(true);
         setCaptcha('');
+        // 一道题只有一次机会（服务端无论对错都作废），所以出错必须换一张新的。
+        setCaptchaSeed((n) => n + 1);
       }
     },
   });
@@ -102,7 +107,14 @@ export function LoginPage() {
           error={fieldError(err, 'password')}
         />
         {/* 验证码按需出现：后端要才画（§21.4 的 auth.captcha_required），不是无条件挡一道 */}
-        {challenge || isCaptchaError ? <ProductCaptcha value={captcha} onChange={setCaptcha} /> : null}
+        {challenge || isCaptchaError ? (
+          <ProductCaptcha
+            value={captcha}
+            onChange={setCaptcha}
+            onChallenge={setCaptchaId}
+            refreshKey={captchaSeed}
+          />
+        ) : null}
         <Checkbox
           label='记住我（这台设备 7 天免登录）'
           checked={remember}
@@ -137,10 +149,33 @@ export function LoginPage() {
  * 真验证码：GET /captcha 给 { id, image_base64 }，而房子件 CaptchaField 吃的是字符数组（设计稿用字符块代替图）。
  * 所以这里只把「图 + 换一张」交给房子件之外的输入框：复用 Input 与 Button，不新造控件、也不改房子件的签名。
  * 已知：image_base64 可能是裸 base64 或完整 data URI，两种都要能显示。
+ *
+ * onChallenge 把这一张的 id 交出去：**校验是「id + answer」成对做的**（服务端按 id
+ * 找到答案，无论对错都立刻作废），只交 answer 的话服务端没法把它和某一道题对上 ——
+ * 那样 mode=always / on_failure 永远校验不过。id 是这一张图的身份，不是登录态。
+ * refreshKey 变一次就换一张：一道题只有一次机会，校验失败后旧图已经作废，必须重取。
  */
-export function ProductCaptcha({ value, onChange, error }: { value: string; onChange: (v: string) => void; error?: string | null }) {
-  const [seed, setSeed] = useState(0);
-  const captcha = useCaptchaQuery(seed);
+export function ProductCaptcha({
+  value,
+  onChange,
+  onChallenge,
+  refreshKey,
+  error,
+}: {
+  value: string;
+  onChange: (v: string) => void;
+  onChallenge?: (id: string) => void;
+  refreshKey?: number;
+  error?: string | null;
+}) {
+  // 查询键 = 「第几张」。换一张按钮与上层的 refreshKey 都只是让它 +1。
+  const [n, setN] = useState(0);
+  const captcha = useCaptchaQuery(n + (refreshKey ?? 0));
+  const fresh = captcha.data;
+  // 图一到位就把这一张的 id 交出去：它是「这一张」的身份，换了图就换 id。
+  useEffect(() => {
+    if (fresh) onChallenge?.(fresh.id);
+  }, [fresh, onChallenge]);
   return (
     <div className='flex flex-col gap-2'>
       <Input
@@ -175,7 +210,7 @@ export function ProductCaptcha({ value, onChange, error }: { value: string; onCh
           aria-label='换一张验证码'
           onClick={() => {
             onChange('');
-            setSeed((n) => n + 1);
+            setN((k) => k + 1);
           }}
         >
           换一张

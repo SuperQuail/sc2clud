@@ -28,7 +28,7 @@ type PostRow struct {
 
 const postColumns = `p.id, p.public_id, p.topic_id, p.parent_id, par.public_id, p.floor, p.content_html,
        p.visibility, p.like_count, p.dislike_count, p.created_at, p.updated_at,
-       a.id, a.public_id, a.username, a.nickname, a.avatar_hash, a.avatar_small_hash, a.status`
+       a.id, a.public_id, a.username, COALESCE(NULLIF(a.nickname, ''), a.username), a.avatar_hash, a.avatar_small_hash, a.status`
 
 func scanPost(rows *sql.Rows, p *PostRow, extra ...any) error {
 	var avatar, avatarSmall sql.NullString
@@ -69,7 +69,7 @@ WITH roots AS (
 )
 SELECT r.id, r.public_id, r.topic_id, r.parent_id, par.public_id, r.floor, r.content_html,
        r.visibility, r.like_count, r.dislike_count, r.created_at, r.updated_at,
-       a.id, a.public_id, a.username, a.nickname, a.avatar_hash, a.avatar_small_hash, a.status,
+       a.id, a.public_id, a.username, COALESCE(NULLIF(a.nickname, ''), a.username), a.avatar_hash, a.avatar_small_hash, a.status,
        r.reply_total,
        COALESCE(preview.ids, ARRAY[]::uuid[]) AS preview_ids,
        COALESCE(my.value, 0) AS my_vote

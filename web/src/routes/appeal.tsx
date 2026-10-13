@@ -18,7 +18,9 @@ import { ProductCaptcha } from './login';
 // ⚠️ 契约缺口（见回报的端点清单）：这一条链路的端点在 v2 §21.2 **不存在** ——
 // §21.2 只有「帖子的作者申诉」POST /api/v1/topics/{id}/review/appeal（登录 + 仅作者，拍板 §10.10-1）。
 // 被封者的申诉（用户名 + 邮箱 + 验证码自证）需要 P1 定一个免登录端点，这里按最自然的形状送：
-//   POST /api/v1/appeals { type, username, email, ref?, title, details, contact?, captcha_id?, captcha? }
+//   POST /api/v1/appeals { type, username, email, ref?, title, details, contact?, captcha? }
+//   captcha_id 还没接：appeals 端点本身还没实现（见页脚的端点清单），
+//   现在补一个没人消费的字段只会在后端真做的时候变成第二个真源。
 //   → 202 { no, eta }（单号 + 答复时限；事由非法 / 限流分别 400 / 429 appeal.rate_limited）
 // 端点落地前，提交会走到 404 —— 页面会**如实**说「申诉通道还没通，请用邮件联系管理员」，不会假装收到了。
 const APPEAL_ENDPOINT = 'appeals';

@@ -2,7 +2,7 @@ package app
 
 import (
 	"context"
-	"errors"
+	"fmt"
 	"strconv"
 	"time"
 
@@ -20,6 +20,7 @@ import (
 	notifypgsql "forum/internal/notify/pgsql"
 	"forum/internal/platform/apperr"
 	"forum/internal/platform/audit"
+	"forum/internal/platform/captcha"
 	"forum/internal/platform/httpx"
 	"forum/internal/platform/image/localstore"
 	searchpgsql "forum/internal/platform/search/pgsql"
@@ -51,6 +52,8 @@ type Modules struct {
 	Site    *site.Service
 	Mail    *mail.Service
 	Report  *report.Service
+	// Captcha 是图形验证码的出题器（platform，不是业务域）：auth 消费它的结论。
+	Captcha *captcha.Service
 
 	in    *Infra
 	audit *audit.Writer
@@ -89,13 +92,14 @@ func newModules(ctx context.Context, cfg *config.Config, in *Infra) (*Modules, e
 	// user 的头像 URL 由 media 拼（U15：/img/<hash> 只有那一个拼接点）。
 	m.User = user.NewService(in.DB, m.Media, in.Clock, user.Config{})
 
-	// captcha 模块还没实现：mode=always 时 auth 会拿到 nil 实现并 panic，
-	// 所以那种配置在启动时直接拒绝，而不是等第一个注册请求 500。
-	if cfg.Captcha.Mode == "always" {
-		return nil, errors.New("装配: captcha.mode=always 需要 captcha 模块，而它还没实现（改成 off）")
+	// 图形验证码：出题器 + 三种模式的判定（platform/captcha）。
+	// mode=off 也照建（GET /api/v1/captcha 在任何模式下都要能出图 —— 注册页永远带这个字段）。
+	m.Captcha, err = captcha.New(in.Cache, in.Clock)
+	if err != nil {
+		return nil, fmt.Errorf("装配: captcha: %w", err)
 	}
 	m.Auth, err = auth.NewService(cfg, in.DB, in.Clock, auth.Deps{
-		Users: m.User, Mail: m.Mail, Mailer: m.Mail, Captcha: nil,
+		Users: m.User, Mail: m.Mail, Mailer: m.Mail, Captcha: m.Captcha,
 		Limiter: in.Limiter, Queue: in.Queue, Log: in.Log,
 	})
 	if err != nil {

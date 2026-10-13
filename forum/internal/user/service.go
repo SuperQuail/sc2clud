@@ -98,7 +98,7 @@ func (s *Service) GetProfile(ctx context.Context, handle string) (*Profile, erro
 		return nil, apperr.ErrNotFound
 	}
 	p := &Profile{
-		ID: row.PublicID, Handle: row.Username, Nickname: row.Nickname,
+		ID: row.PublicID, Handle: row.Username, Nickname: displayName(row.Nickname, row.Username),
 		Bio: row.Bio, Status: row.Status,
 		Level: row.Level, Exp: row.Exp, ExpMax: ExpMax(row.Level),
 		TopicCount: row.TopicCount, LikeReceived: row.LikeReceived,
@@ -142,7 +142,7 @@ func (s *Service) Search(ctx context.Context, q string, limit int) ([]SearchItem
 	out := make([]SearchItem, 0, len(rows))
 	for _, r := range rows {
 		it := SearchItem{
-			ID: r.PublicID, Handle: r.Username, Nickname: r.Nickname,
+			ID: r.PublicID, Handle: r.Username, Nickname: displayName(r.Nickname, r.Username),
 			Level: r.Level, Ambiguous: r.Ambiguous,
 		}
 		if s.avatars != nil {
@@ -183,9 +183,20 @@ func (s *Service) GetBasic(ctx context.Context, userID int64) (auth.UserBasic, e
 		return auth.UserBasic{}, err
 	}
 	return auth.UserBasic{
-		ID: u.ID, PublicID: u.PublicID.String(), Handle: u.Username, Nickname: u.Nickname,
+		ID: u.ID, PublicID: u.PublicID.String(), Handle: u.Username,
+		Nickname:   displayName(u.Nickname, u.Username),
 		AvatarHash: deref(u.AvatarHash), AvatarSmall: deref(u.AvatarSmallHash), Status: u.Status,
 	}, nil
+}
+
+// displayName 是**显示名回落**的唯一实现：昵称留空 → 显示登录名。
+// 它只作用于响应，**不写回 users.nickname**（留空就是留空，见 d2-auth §5.1 与
+// 拍板 U20：nickname 只有 PATCH /me 能写，且写空串会被拒）。
+func displayName(nickname, username string) string {
+	if strings.TrimSpace(nickname) == "" {
+		return username
+	}
+	return nickname
 }
 
 // ExpMax 与 auth 的公式同源：(level+1)^2 * 100（设计 §12：下一级门槛）。

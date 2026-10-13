@@ -1,4 +1,4 @@
-import { useState, type FormEvent } from 'react';
+import { useEffect, useState, type FormEvent } from 'react';
 import { useNavigate } from 'react-router';
 import { useMutation } from '@tanstack/react-query';
 import Button from '@jetbrains/ring-ui-built/components/button/button';
@@ -15,19 +15,32 @@ import { ProductCaptcha } from './login';
 // 注册成功后落「输入验证码」页（后端开工前拍板 §11：邮箱激活走 6 位验证码，不发链接），
 // 所以这一页只负责建账号并把单号（邮箱）带到下一页 —— 不在这里假激活。
 const HANDLE_MAX = 24;
-const NICK_MAX = 32;
+// 20 = users.nickname varchar(20) / auth.nicknameMaxLen（写死 32 会让 21-32 字的昵称在服务端被拒）
+const NICK_MAX = 20;
 
 export function RegisterPage() {
   const navigate = useNavigate();
   const [handle, setHandle] = useState('');
+  const [nickname, setNickname] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [confirm, setConfirm] = useState('');
   const [captcha, setCaptcha] = useState('');
+  const [captchaId, setCaptchaId] = useState('');
+  // 验证码被服务端拒掉时 +1：一道题只有一次机会，旧图已经作废，必须换一张。
+  const [captchaSeed, setCaptchaSeed] = useState(0);
   const [localError, setLocalError] = useState<string | null>(null);
 
   const submit = useMutation({
-    mutationFn: () => register({ username: handle, email, password, captcha: captcha || undefined }),
+    mutationFn: () =>
+      register({
+        username: handle,
+        nickname,
+        email,
+        password,
+        captcha: captcha || undefined,
+        captcha_id: captchaId || undefined,
+      }),
     onSuccess: () => void navigate(appPath('register/verify?email=' + encodeURIComponent(email)), { replace: true }),
   });
 
@@ -42,11 +55,18 @@ export function RegisterPage() {
   }
 
   const err = submit.error;
+  // 验证码错了就换一张：那张已经被服务端消费掉，再拿同一个 id 提交只会继续报错。
+  useEffect(() => {
+    if (isApiError(err) && (err.code === 'auth.captcha_wrong' || err.code === 'auth.captcha_required')) {
+      setCaptcha('');
+      setCaptchaSeed((n) => n + 1);
+    }
+  }, [err]);
 
   return (
     <AuthShell
       title='注册 SC2clud'
-      subtitle='一个昵称就能开始：注册后可以立刻浏览、收藏；发帖与上传要等邮箱激活。'
+      subtitle='注册后可以立刻浏览、收藏；发帖与上传要等邮箱激活。'
       footer={
         <>
           注册即表示同意站点规则。已有的账号？
@@ -78,10 +98,10 @@ export function RegisterPage() {
           name='nickname'
           autoComplete='nickname'
           maxLength={NICK_MAX}
-          value={handle}
-          onChange={(e) => setHandle(e.target.value)}
+          value={nickname}
+          onChange={(e) => setNickname(e.target.value)}
           error={fieldError(err, 'nickname')}
-          help='昵称与用户名暂时用同一个值（PATCH /me 可以之后再改）。'
+          help={'显示名，站内各处显示的就是它；可以重名，也随时能在设置里改。留空则显示用户名。最多 ' + NICK_MAX + ' 个字。'}
         />
         <Input
           size={Size.FULL}
@@ -111,7 +131,13 @@ export function RegisterPage() {
           value={confirm}
           onChange={setConfirm}
         />
-        <ProductCaptcha value={captcha} onChange={setCaptcha} error={fieldError(err, 'captcha')} />
+        <ProductCaptcha
+          value={captcha}
+          onChange={setCaptcha}
+          onChallenge={setCaptchaId}
+          refreshKey={captchaSeed}
+          error={fieldError(err, 'captcha')}
+        />
         <Button
           data-testid='register-submit'
           type='submit'
@@ -142,5 +168,7 @@ function errorText(e: unknown): string {
   if (e.status === 409 || e.code === 'common.conflict') return '这个用户名或邮箱已经被注册过了。' + rid;
   if (e.code === 'auth.captcha_wrong' || e.code === 'auth.captcha_required') return '图形验证码不对，请重新输入。' + rid;
   if (e.status === 429) return '提交太频繁了，等一会儿再试。' + rid;
-  return e.message + rid;
+  // 400 的字段级文案（服务端说的最准）优先贴出来，例如「昵称最多 20 个字」。
+  const firstField = e.fields ? Object.values(e.fields)[0] : undefined;
+  return (firstField ?? e.message) + rid;
 }

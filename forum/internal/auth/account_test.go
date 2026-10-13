@@ -425,6 +425,42 @@ func TestLoginRateLimited(t *testing.T) {
 	}
 }
 
+// 显示名（昵称）与登录名是**两个语义**：昵称留空 = 没设显示名，**原样存空串**，
+// 不回填成 username（回填会让「没设」看起来像「设过了」，且用户改昵称前后语义不一致）。
+// 本条钉住写路径：库里必须是空串。留空时的显示回落由读路径负责（user 模块的用例钉住它）。
+func TestRegisterKeepsBlankNickname(t *testing.T) {
+	f := newFixture(t)
+	f.seedRBAC()
+	f.register("tangtian", "passw0rd-1")
+
+	var nickname string
+	if err := f.pool.QueryRow(f.ctx, "SELECT nickname FROM users WHERE username = 'tangtian'").Scan(&nickname); err != nil {
+		t.Fatal(err)
+	}
+	if nickname != "" {
+		t.Fatalf("留空昵称被回填成 %q；昵称与用户名不该强制同步", nickname)
+	}
+}
+
+// 昵称非空时原样存（含中文与首尾空白裁剪），确认上一条不是因为「根本没写」。
+func TestRegisterKeepsGivenNickname(t *testing.T) {
+	f := newFixture(t)
+	f.seedRBAC()
+	if _, err := f.svc.Register(f.ctx, RegisterInput{
+		Username: "tangsan", Email: "tangsan@example.com", Password: "passw0rd-1",
+		Nickname: "  唐天  ", IP: "127.0.0.1",
+	}); err != nil {
+		t.Fatalf("注册失败: %v", err)
+	}
+	var nickname string
+	if err := f.pool.QueryRow(f.ctx, "SELECT nickname FROM users WHERE username = 'tangsan'").Scan(&nickname); err != nil {
+		t.Fatal(err)
+	}
+	if nickname != "唐天" {
+		t.Fatalf("nickname = %q，想要 唐天（去首尾空白后原样存）", nickname)
+	}
+}
+
 // newSuperAdmin 走 create-admin（CLI 路径）造一个可用超管。
 func (f *fixture) newSuperAdmin(name string) *authz.Actor {
 	f.t.Helper()

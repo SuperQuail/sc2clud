@@ -33,6 +33,9 @@ var (
 	// 图形验证码（captcha.mode 非 off 时）。图形验证码本身由 captcha 模块实现，本域只消费它的接口。
 	ErrCaptchaRequired = apperr.New("auth.captcha_required", http.StatusBadRequest, "请先填写验证码")
 	ErrCaptchaWrong    = apperr.New("auth.captcha_wrong", http.StatusBadRequest, "图形验证码不正确")
+	// 验证码服务不可用（kv 连不上 / 没装配）。**宁可拒绝登录，也不静默取消人机验证**
+	//（d5-content §7.2），所以它是 503 而不是「放行」。
+	ErrCaptchaUnavailable = apperr.New("auth.captcha_unavailable", http.StatusServiceUnavailable, "验证码服务暂时不可用，请稍后再试")
 
 	// 管理端：与公开接口的 404 分开，排障时能看出是哪一侧。
 	ErrAdminUserNotFound = apperr.New("admin.user_not_found", http.StatusNotFound, "用户不存在")

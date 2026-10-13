@@ -99,7 +99,7 @@ func uuidString(b [16]byte) string {
 
 const ResolveSessionSQL = `
 SELECT s.token_hash, s.csrf_token, s.expires_at, s.id AS session_id,
-       u.id AS user_id, u.public_id, u.username, u.nickname, u.status,
+       u.id AS user_id, u.public_id, u.username, COALESCE(NULLIF(u.nickname, ''), u.username), u.status,
        u.email_verified_at, u.activated_at, u.avatar_hash, u.avatar_small_hash,
        r.id AS role_id, r.key AS role_key, r.name AS role_name,
        r.badge_color AS role_badge, r.is_super,
@@ -246,7 +246,7 @@ func LoadActor(ctx context.Context, q Querier, roleID, userID int64, now time.Ti
 // （拍板 §5.9 第 2 条 / 设计 §11.3）。LIMIT 2 是 U17 的落点：不交叉判占用，
 // 万一同一个串既是 A 的 username 又是 B 的 email，按 id 取第一个。
 const FindUserByLoginSQL = `
-SELECT u.id, u.public_id, u.username, u.email, u.password_hash, u.nickname,
+SELECT u.id, u.public_id, u.username, u.email, u.password_hash, COALESCE(NULLIF(u.nickname, ''), u.username),
        u.status, u.email_verified_at, u.activated_at, u.trusted,
        u.avatar_hash, u.avatar_small_hash,
        u.role_id, r.key AS role_key, r.is_super
@@ -301,7 +301,7 @@ func FindUserByLogin(ctx context.Context, q Querier, login string) (*LoginRow, b
 
 const ListAuditSQL = `
 SELECT a.id, a.created_at, a.action, a.target_type, a.target_id, a.detail, a.ip,
-       u.public_id, u.username, u.nickname
+       u.public_id, u.username, COALESCE(NULLIF(u.nickname, ''), u.username)
   FROM audit_logs a
   LEFT JOIN users u ON u.id = a.actor_id
  WHERE ($1::text        IS NULL OR a.target_type = $1)

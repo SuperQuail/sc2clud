@@ -34,7 +34,14 @@ export function fetchCaptcha(signal?: AbortSignal): Promise<Captcha> {
   return api<Captcha>('captcha', { signal });
 }
 
-export function login(body: { username: string; password: string; captcha?: string }): Promise<Session> {
+// captcha_id 是「这一张图」的身份：服务端按它找到答案，无论对错都立刻作废（一次性）。
+// 只交 answer 的话服务端没法把答案和某道题对上 —— mode=always / on_failure 就会永远校验不过。
+export function login(body: {
+  username: string;
+  password: string;
+  captcha?: string;
+  captcha_id?: string;
+}): Promise<Session> {
   return api<Session>('auth/login', { method: 'POST', body });
 }
 
@@ -44,9 +51,12 @@ export function logout(): Promise<void> {
 
 export function register(body: {
   username: string;
+  /** 显示名；留空表示没设，服务端原样存空串，读的时候回落到 username（不写回） */
+  nickname?: string;
   email: string;
   password: string;
   captcha?: string;
+  captcha_id?: string;
 }): Promise<{ handle: string }> {
   return api<{ handle: string }>('auth/register', { method: 'POST', body });
 }

@@ -54,7 +54,7 @@ func (q *Queries) scanOne(ctx context.Context, dest []any, query string, args ..
 // actor 已注销（status='deleted'）时 LEFT JOIN 出 NULL，前端渲染「已注销」（d4 §5.1）。
 const listSQL = `
 SELECT n.id, n.public_id::text, n.type, n.payload::text, n.link, n.read_at, n.created_at,
-       a.username, a.nickname, a.avatar_hash, a.avatar_small_hash
+       a.username, COALESCE(NULLIF(a.nickname, ''), a.username), a.avatar_hash, a.avatar_small_hash
   FROM notifications n
   LEFT JOIN users a ON a.id = n.actor_id AND a.status <> 'deleted'
  WHERE n.user_id = $1

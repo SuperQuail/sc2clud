@@ -86,3 +86,6 @@ preview-dist/
 /.probe*/
 forum/.probe*/
 **/zz*_test.go
+
+完全重构/.migration-scratch/
+

@@ -6,6 +6,7 @@ import (
 	"database/sql"
 	"errors"
 	"net/netip"
+	"strings"
 	"time"
 
 	"forum/internal/auth/pgsql"
@@ -54,7 +55,7 @@ func (s *Service) loadPrincipal(ctx context.Context, row *pgsql.SessionRow, dige
 	return &Principal{
 		UserID:        row.UserID,
 		PublicID:      row.PublicID,
-		Nickname:      row.Nickname,
+		Nickname:      displayName(row.Nickname, row.Username),
 		Digest:        digest,
 		SessionID:     row.SessionID,
 		CSRF:          row.CSRF,
@@ -73,6 +74,15 @@ func (s *Service) loadPrincipal(ctx context.Context, row *pgsql.SessionRow, dige
 		Extra:         extra,
 		ExpiresAt:     row.ExpiresAt,
 	}, nil
+}
+
+// displayName 与 user.displayName 同规则（两个包各一份，避免 user ↔ auth 循环依赖）：
+// 昵称留空时显示登录名，**不写回** users.nickname。
+func displayName(nickname, username string) string {
+	if strings.TrimSpace(nickname) == "" {
+		return username
+	}
+	return nickname
 }
 
 func deref(s *string) string {

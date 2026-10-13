@@ -32,9 +32,17 @@ type (
 		SendVerifyCode(ctx context.Context, userID int64, to, code, template string) (int64, error)
 	}
 
-	// Captcha 由 captcha 模块实现。captcha.mode=off 时 app 层传 nil，本模块跳过校验。
+	// Captcha 由 internal/platform/captcha 实现（app 层注入）。
+	//
+	// 形状照 d5-content §7.1/§7.2：出题、校验（无论对错都立刻作废）、
+	// 以及「这个 IP 现在要不要验证码」的三种模式。**没配实现（nil）时按 off**：
+	// 设计与拍板都允许 captcha.mode=off 完全不接这个模块。
 	Captcha interface {
-		Verify(ctx context.Context, id, answer string) (bool, error)
+		Issue(ctx context.Context) (id string, png []byte, err error)
+		Verify(ctx context.Context, id, answer string) error
+		Required(ctx context.Context, ip, mode string) bool
+		CountFailure(ctx context.Context, ip string)
+		ResetFailures(ctx context.Context, ip string)
 	}
 
 	// Limiter 是 platform/ratelimit.RateLimiter 的子集。

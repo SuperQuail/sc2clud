@@ -20,6 +20,7 @@ import (
 	"forum/internal/ent/user"
 	"forum/internal/ent/userpermission"
 	"forum/internal/platform/apperr"
+	"forum/internal/platform/captcha"
 	"forum/internal/platform/idgen"
 )
 
@@ -96,7 +97,6 @@ func keyMailUser(id int64) string      { return "auth:mail:user:" + strconv.Form
 func keyMailVerifyUser(id int64) string {
 	return "auth:mail:verify:user:" + strconv.FormatInt(id, 10)
 }
-func keyCaptchaIP(ip string) string { return "auth:captcha:ip:" + ip }
 
 // errLimiterUnavailable 是限流后端不可用：**必须拒绝放行**（platform/kv 的约定：
 // 缓存类调用方把不可用当未命中，限流类调用方必须拒绝，否则 Redis 一挂就等于没有限流）。
@@ -122,26 +122,54 @@ func (s *Service) allow(ctx context.Context, key string, limit int, window time.
 	return ErrTooManyRequests.WithMsg("操作太频繁，请 " + strconv.Itoa(secs) + " 秒后再试")
 }
 
-// checkCaptcha 只在 captcha.mode=always 时要求（on_failure 的判定需要失败计数，
-// 那属于 captcha 模块自己的策略，本域不重新实现一遍）。
-func (s *Service) checkCaptcha(ctx context.Context, id, answer string) error {
-	if s.cfg.Captcha.Mode != "always" {
-		return nil
-	}
-	if s.captcha == nil {
+// checkCaptcha 是注册与登录共用的人机验证闸门，三种模式的语义都在这里生效：
+//
+//	off        不要求（注册有邮箱验证兜底、登录有限流兜底）；
+//	on_failure 同一 IP 10 分钟内失败 ≥5 次之后才要求；
+//	always     每次都要求。
+//
+// 「要不要」由 captcha 模块判（阈值与窗口写死在它那边，不进配置），本域只消费结论。
+// 没装配实现（nil）时按 off：captcha.mode=off 本来就不需要它，app 层在别的模式下
+// 一定会注入（装不上就不让进程起来）。
+func (s *Service) checkCaptcha(ctx context.Context, ip, id, answer string) error {
+	if s.captcha == nil || !s.captcha.Required(ctx, ip, s.cfg.Captcha.Mode) {
 		return nil
 	}
 	if id == "" || answer == "" {
 		return ErrCaptchaRequired
 	}
-	ok, err := s.captcha.Verify(ctx, id, answer)
-	if err != nil {
-		return err
-	}
-	if !ok {
+	return s.mapCaptchaErr(s.captcha.Verify(ctx, id, answer))
+}
+
+// mapCaptchaErr 把出题器的错误翻成本域的码。**答错与「这道题不存在/已过期」对外同一个码**：
+// 区分只会泄漏「这个 id 存在过」（d5-content §7.2）。
+func (s *Service) mapCaptchaErr(err error) error {
+	switch {
+	case err == nil:
+		return nil
+	case errors.Is(err, captcha.ErrWrong):
 		return ErrCaptchaWrong
+	case errors.Is(err, captcha.ErrUnavailable):
+		s.log.Error("auth: 验证码服务不可用", "err", err.Error())
+		return ErrCaptchaUnavailable
+	default:
+		s.log.Error("auth: 校验验证码失败", "err", err.Error())
+		return apperr.ErrInternal
 	}
-	return nil
+}
+
+// countLoginFailure 记一次失败（on_failure 模式据此决定何时开始要求验证码）。
+func (s *Service) countLoginFailure(ctx context.Context, ip string) {
+	if s.captcha != nil {
+		s.captcha.CountFailure(ctx, ip)
+	}
+}
+
+// resetLoginFailures 在成功时清零：「连续失败」的定义要求成功清零（d5-content §7.2）。
+func (s *Service) resetLoginFailures(ctx context.Context, ip string) {
+	if s.captcha != nil {
+		s.captcha.ResetFailures(ctx, ip)
+	}
 }
 
 // ── 注册 ────────────────────────────────────────────────────────────
@@ -150,6 +178,16 @@ func (s *Service) Register(ctx context.Context, in RegisterInput) (*RegisterResu
 	if err := s.allow(ctx, keyRegisterIP(in.IP), 3, time.Hour); err != nil {
 		return nil, err
 	}
+	// 从这里开始的每一种「没能注册」都算一次失败（on_failure 模式据此开始要求验证码）。
+	// 限流被拒不算：那是「你太快了」，不是「你填错了」（设计 §7.1 第 1 步排在校验之前）。
+	var success bool
+	defer func() {
+		if success {
+			s.resetLoginFailures(ctx, in.IP)
+			return
+		}
+		s.countLoginFailure(ctx, in.IP)
+	}()
 	username := normalizeUsername(in.Username)
 	email := normalizeEmail(in.Email)
 	if err := validateUsername(username); err != nil {
@@ -161,14 +199,15 @@ func (s *Service) Register(ctx context.Context, in RegisterInput) (*RegisterResu
 	if err := validatePassword(in.Password); err != nil {
 		return nil, err
 	}
+	// 昵称留空 = 没设显示名，**空串原样落库**，不回填成 username：
+	// 显示名与登录名是两个语义（显示名可重名、可改；登录名是 @ 句柄、不可改），
+	// 回填会把「没设」写成一个看起来像用户主动设过的值，之后再改用户名（不允许）或
+	// 迁移数据都会以为它是真昵称。留空的显示由**读路径**回落（见 auth.Me / user.GetProfile）。
 	nickname := strings.TrimSpace(in.Nickname)
 	if err := validateNickname(nickname); err != nil {
 		return nil, err
 	}
-	if nickname == "" {
-		nickname = username
-	}
-	if err := s.checkCaptcha(ctx, in.CaptchaID, in.CaptchaAnswer); err != nil {
+	if err := s.checkCaptcha(ctx, in.IP, in.CaptchaID, in.CaptchaAnswer); err != nil {
 		return nil, err
 	}
 
@@ -261,6 +300,8 @@ func (s *Service) Register(ctx context.Context, in RegisterInput) (*RegisterResu
 	if err != nil {
 		return nil, s.mapRegisterErr(err)
 	}
+	// 注册成功：defer 里据此清零而不是记失败（「连续失败」的定义要求成功清零）。
+	success = true
 
 	// 提交后入队（方案 §14.6：事务里禁止发信）。入队失败不回滚注册：
 	// 用户点「重新发送」就能补上，而回滚会让「账号已建好但报错」变成更坏的结果（设计 §16.3）。
@@ -345,6 +386,7 @@ func (s *Service) mapRegisterErr(err error) error {
 func (s *Service) Login(ctx context.Context, in LoginInput) (*LoginResult, error) {
 	login := strings.TrimSpace(in.Login)
 	if login == "" || in.Password == "" {
+		s.countLoginFailure(ctx, in.IP)
 		return nil, ErrBadCredentials
 	}
 	if err := s.allow(ctx, keyLoginIP(in.IP), 10, time.Minute); err != nil {
@@ -353,7 +395,7 @@ func (s *Service) Login(ctx context.Context, in LoginInput) (*LoginResult, error
 	if err := s.allow(ctx, keyLoginUser(login), 5, time.Minute); err != nil {
 		return nil, err
 	}
-	if err := s.checkCaptcha(ctx, in.CaptchaID, in.CaptchaAnswer); err != nil {
+	if err := s.checkCaptcha(ctx, in.IP, in.CaptchaID, in.CaptchaAnswer); err != nil {
 		return nil, err
 	}
 
@@ -383,11 +425,13 @@ func (s *Service) Login(ctx context.Context, in LoginInput) (*LoginResult, error
 		return nil, err
 	}
 	if !found || !verified {
+		s.countLoginFailure(ctx, in.IP)
 		return nil, ErrBadCredentials
 	}
 	// 封号不暴露（设计 §7.2 第 4 步）：对外与「密码错」完全一样。
 	// **邮箱未验证 / 未激活都允许登录**（拍板 §9.12）：不允许的话他连重发验证码都点不到。
 	if row.Status != StatusActive {
+		s.countLoginFailure(ctx, in.IP)
 		return nil, ErrBadCredentials
 	}
 
@@ -419,6 +463,7 @@ func (s *Service) Login(ctx context.Context, in LoginInput) (*LoginResult, error
 	if err != nil {
 		return nil, err
 	}
+	s.resetLoginFailures(ctx, in.IP)
 	return &LoginResult{Token: token, ExpiresAt: expires}, nil
 }
 
@@ -457,7 +502,7 @@ func (s *Service) Me(ctx context.Context, actor *authz.Actor) (*MeResult, error)
 	return &MeResult{
 		ID:            u.PublicID.String(),
 		Handle:        u.Username,
-		Nickname:      u.Nickname,
+		Nickname:      displayName(u.Nickname, u.Username),
 		Email:         u.Email,
 		Avatar:        deref(u.AvatarHash),
 		AvatarSmall:   deref(u.AvatarSmallHash),
@@ -813,9 +858,6 @@ func (s *Service) CreateAdmin(ctx context.Context, in CreateAdminInput) error {
 		return err
 	}
 	nickname := strings.TrimSpace(in.Nickname)
-	if nickname == "" {
-		nickname = username
-	}
 	if err := validateNickname(nickname); err != nil {
 		return err
 	}

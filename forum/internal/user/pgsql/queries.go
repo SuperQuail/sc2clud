@@ -17,7 +17,7 @@ import (
 // topic_count 只算 visibility=normal 且 review_state=approved 的主题；
 // like_received 只算该用户 status=normal 的帖子收到的赞（拍板 §2.2 / §3）。
 const ProfileSQL = `
-SELECT u.id, u.public_id, u.username, u.nickname, u.bio,
+SELECT u.id, u.public_id, u.username, COALESCE(NULLIF(u.nickname, ''), u.username), u.bio,
        u.avatar_hash, u.avatar_small_hash,
        u.exp, u.level, u.status, u.created_at,
        t.name AS title_name, t.color AS title_color,
@@ -39,8 +39,9 @@ SELECT u.id, u.public_id, u.username, u.nickname, u.bio,
 // SearchSQL 是 GET /users/search?q= 的前缀候选（设计 §11.4）。
 // ambiguous 用窗口函数在同一次扫描里算出，不额外查一次。
 const SearchSQL = `
-SELECT u.public_id, u.username, u.nickname, u.avatar_hash, u.avatar_small_hash, u.level,
-       (count(*) OVER (PARTITION BY lower(u.nickname))) > 1 AS ambiguous
+SELECT u.public_id, u.username, COALESCE(NULLIF(u.nickname, ''), u.username), u.avatar_hash, u.avatar_small_hash, u.level,
+       -- 判重按**显示名**（昵称留空 = 显示登录名），否则两个「没设昵称、登录名相同」的人不会被标重
+       (count(*) OVER (PARTITION BY lower(COALESCE(NULLIF(u.nickname, ''), u.username)))) > 1 AS ambiguous
   FROM users u
  WHERE u.status = 'active'
    AND (lower(u.username) LIKE lower($1) || '%' OR lower(u.nickname) LIKE lower($1) || '%')

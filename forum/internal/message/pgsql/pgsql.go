@@ -58,7 +58,7 @@ WITH conv AS (
 )
 SELECT l.peer, COALESCE(ux.n, 0) AS unread_count,
        m.id, m.public_id::text, m.body, m.sender_id, m.read_at, m.created_at,
-       u.username, u.nickname, u.avatar_hash, u.avatar_small_hash
+       u.username, COALESCE(NULLIF(u.nickname, ''), u.username), u.avatar_hash, u.avatar_small_hash
   FROM conv l
   JOIN users    u ON u.id = l.peer AND u.status <> 'deleted'
   JOIN messages m ON m.id = l.last_id
