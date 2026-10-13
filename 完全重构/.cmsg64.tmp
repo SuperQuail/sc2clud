@@ -1,0 +1,13 @@
+修权限键不一致（post.create -> topic.create）：超管也过不了发帖闸门
+
+用户截图：登录后评论区仍显示「你的账号还不能发帖回复（未激活或没有 post.create 权限）」，「查看账号状态」跳到登录页。
+
+根因：**权限键两侧不一致**（今天第 6 处）。后端真实的 24 个权限键是
+topic.create / topic.edit.own / topic.delete.own / topic.pin / topic.lock …，
+**没有 post.create**；而前端在 3 处检查 can(session, 'post.create')，
+所以**连 superadmin 都过不了**（它的 perms 里根本没有这个字符串），发帖框与评论框都判成「没权限」。
+
+改：compose.tsx / profile.tsx / topic.tsx 三处检查改成 topic.create（后端键名）。
+admin-entry.tsx 的 post.review 是对的（后端确实有 post.review），没动。
+
+顺带把「已登录但没权限」与「未登录」两种文案例开的分支说明留着 —— 它们共用一句话会让人以为没登录成功。

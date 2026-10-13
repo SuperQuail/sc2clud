@@ -16,16 +16,9 @@ import { createTopic, fetchBoards, fetchTopic, updateTopic, type TopicKind } fro
 import { PageHeader } from './_parts/layout';
 import { Empty, ErrorState, Loading } from './_parts/state';
 
-// 发帖（契约：POST /topics，权限点 post.create；ACL 与禁言在 service 判 —— §21.2）。
-// 正文与配图**是同一个控件**（@/ui/rich/markdown-editor，09-rich 已定：图片是正文节点，不是独立字段）；
-// 所以这里只传标题、分区、类型与正文 Markdown。
-//
+// 发帖（契约：POST /topics，权限点 post.create；ACL 与禁言�?service �?—�?§21.2）�?// 正文与配�?*是同一个控�?*（@/ui/rich/markdown-editor�?9-rich 已定：图片是正文节点，不是独立字段）�?// 所以这里只传标题、分区、类型与正文 Markdown�?//
 // 已知契约缺口（写进回报的端点清单）：
-//   ① topics.board_id 在 §21.2 里是 **id**，而全站句柄用的是 board.slug（/b/:slug、?board=）——
-//      两者只能是一回事：前端统一送 slug，请后端在 dto 里按 slug 接受（或告知 id 的来源）；
-//   ② 标签（/new 的 TAGS）与附件在 §21.2 里没有对应字段，所以这一版**不画**它们 —— 画了就是假的；
-//   ③ 未激活闸门：POST 会返回 403 auth.not_activated，这里按「先拦后提示」处理（能读不能写）。
-const TITLE_MAX = 200;
+//   �?topics.board_id �?§21.2 里是 **id**，而全站句柄用的是 board.slug�?b/:slug�?board=）—�?//      两者只能是一回事：前端统一�?slug，请后端�?dto 里按 slug 接受（或告知 id 的来源）�?//   �?标签�?new �?TAGS）与附件�?§21.2 里没有对应字段，所以这一�?*不画**它们 —�?画了就是假的�?//   �?未激活闸门：POST 会返�?403 auth.not_activated，这里按「先拦后提示」处理（能读不能写）�?const TITLE_MAX = 200;
 const BODY_MAX = 20000;
 
 const KINDS: Array<{ key: TopicKind; label: string }> = [
@@ -45,7 +38,7 @@ export function ComposePage() {
   const [title, setTitle] = useState('');
   const [doc, setDoc] = useState({ json: '', html: '', length: 0 });
 
-  // 编辑模式：`?edit=<topicId>`。**复用这个页面而不是另写一个** —— 正文编辑器在这里已经装好了，
+  // 编辑模式：`?edit=<topicId>`�?*复用这个页面而不是另写一�?* —�?正文编辑器在这里已经装好了，
   // 另写一份就等于第二份「正文怎么编辑」的实现。（盲测发现「编辑自己的内容」在前端连函数都没有。）
   const editId = params.get('edit') ?? '';
   const editing = editId !== '';
@@ -54,8 +47,7 @@ export function ComposePage() {
     queryFn: ({ signal }) => fetchTopic(editId, signal),
     enabled: editing,
   });
-  // 只填一次：填完就交给用户，别把他正在打的字覆盖掉。
-  const [prefilled, setPrefilled] = useState(false);
+  // 只填一次：填完就交给用户，别把他正在打的字覆盖掉�?  const [prefilled, setPrefilled] = useState(false);
   useEffect(() => {
     if (!editing || prefilled || !existing.data) return;
     setPrefilled(true);
@@ -80,18 +72,18 @@ export function ComposePage() {
   if (!session.isLoggedIn) {
     return (
       <div className='flex flex-col gap-4'>
-        <PageHeader title='发帖' description='登录后才能发帖。' />
+        <PageHeader title='发帖' description='登录后才能发帖�? />
         <Empty
           icon={Lock}
           title='你还没有登录'
-          hint='未登录可以照常浏览；发帖、回复、上传需要先登录并激活邮箱。'
-          action={<Button primary href={appPath('login?next=' + encodeURIComponent(routePath('new')))}>去登录</Button>}
+          hint='未登录可以照常浏览；发帖、回复、上传需要先登录并激活邮箱�?
+          action={<Button primary href={appPath('login?next=' + encodeURIComponent(routePath('new')))}>去登�?/Button>}
         />
       </div>
     );
   }
 
-  const allowed = can(session.session, 'post.create');
+  const allowed = can(session.session, 'topic.create');
   const activated = session.session?.email_verified === true;
   const writable = allowed && activated;
 
@@ -102,8 +94,8 @@ export function ComposePage() {
           title={editing ? '编辑帖子' : writable ? '发帖' : '发帖（当前账号还不能写）'}
           description={
             editing
-              ? '改完保存即生效；标题与正文都会更新（分区不在这一步改）。'
-              : '标题、分区、正文。配图直接插在正文里（它是正文节点，不是另一个字段）。'
+              ? '改完保存即生效；标题与正文都会更新（分区不在这一步改）�?
+              : '标题、分区、正文。配图直接插在正文里（它是正文节点，不是另一个字段）�?
           }
         />
 
@@ -111,11 +103,11 @@ export function ComposePage() {
         {!writable ? (
           <FormAlert
             tone='warning'
-            title={!activated ? '邮箱还没激活' : '账号没有发帖权限'}
+            title={!activated ? '邮箱还没激�? : '账号没有发帖权限'}
             description={
               !activated
-                ? '激活前可以照常浏览、收藏与下载；发帖、回复、上传会被后端拦下并返回 403 auth.not_activated。'
-                : '当前角色没有 post.create 权限（后端会返回 403 common.forbidden）。可以联系管理员了解原因。'
+                ? '激活前可以照常浏览、收藏与下载；发帖、回复、上传会被后端拦下并返回 403 auth.not_activated�?
+                : '当前角色没有 post.create 权限（后端会返回 403 common.forbidden）。可以联系管理员了解原因�?
             }
           >
             {!activated ? (
@@ -144,8 +136,8 @@ export function ComposePage() {
               value={title}
               onChange={(e) => setTitle(e.target.value)}
               error={isApiError(submit.error) ? submit.error.fields?.['title'] : undefined}
-              help={'最多 ' + TITLE_MAX + ' 字（topics.title varchar(200)）。列表里只显示一行，把关键信息放前面。'}
-              placeholder='一句话说清这篇是什么：作品名 / 问题 / 版本号'
+              help={'最�?' + TITLE_MAX + ' 字（topics.title varchar(200)）。列表里只显示一行，把关键信息放前面�?}
+              placeholder='一句话说清这篇是什么：作品�?/ 问题 / 版本�?
             />
 
             <Select
@@ -158,7 +150,7 @@ export function ComposePage() {
               }}
               disabled={!writable || boards.isPending}
             />
-            {boards.isPending ? <span className='text-[11px] text-muted-foreground'>正在加载分区列表…</span> : null}
+            {boards.isPending ? <span className='text-[11px] text-muted-foreground'>正在加载分区列表�?/span> : null}
             {boards.isError ? (
               <ErrorState what='分区列表' error={boards.error} onRetry={() => void boards.refetch()} className='py-6' />
             ) : null}
@@ -180,8 +172,7 @@ export function ComposePage() {
                 ))}
               </div>
               <span className='text-[11px] text-muted-foreground'>
-                类型决定列表里的徽标（讨论 / 资源 / 转载）；标签目录还没有端点，所以没有标签可挑。
-              </span>
+                类型决定列表里的徽标（讨�?/ 资源 / 转载）；标签目录还没有端点，所以没有标签可挑�?              </span>
             </div>
 
             <MarkdownEditor
@@ -195,8 +186,7 @@ export function ComposePage() {
               onImagesChange={() => undefined}
             />
             <span data-testid='compose-count' className='text-[11px] text-muted-foreground'>
-              正文字数 {doc.length} / {BODY_MAX}（正文里插的图算节点，不计入字数）
-            </span>
+              正文字数 {doc.length} / {BODY_MAX}（正文里插的图算节点，不计入字数�?            </span>
           </section>
 
           <div className='flex flex-wrap items-center gap-3 border-t border-border pt-3'>
@@ -209,11 +199,10 @@ export function ComposePage() {
               disabled={!writable || title.trim() === '' || board === '' || doc.length === 0 || submit.isPending}
               onClick={() => submit.mutate()}
             >
-              {submit.isPending ? '发布中…' : '发布'}
+              {submit.isPending ? '发布中�? : '发布'}
             </Button>
             <span className='text-[11px] text-muted-foreground'>
-              {missingText({ title, board, length: doc.length })} · 发布后进入待审或直接发布，取决于后端对你的信任等级
-            </span>
+              {missingText({ title, board, length: doc.length })} · 发布后进入待审或直接发布，取决于后端对你的信任等�?            </span>
           </div>
         </fieldset>
       </div>
@@ -221,9 +210,9 @@ export function ComposePage() {
       <aside className='flex flex-col gap-3 rounded-lg border border-border bg-card p-4 text-[12px]'>
         <h2 className='m-0 text-[13px] font-semibold text-foreground'>发之前确认三件事</h2>
         <ul className='m-0 flex list-none flex-col gap-1.5 p-0 text-muted-foreground'>
-          <li>分区对不对：发错分区要找管理员移。</li>
-          <li>标题能不能当摘要读：列表页只显示标题那一行。</li>
-          <li>配图有没有插进正文：图片是正文节点，不显示为单独的附件位。</li>
+          <li>分区对不对：发错分区要找管理员移�?/li>
+          <li>标题能不能当摘要读：列表页只显示标题那一行�?/li>
+          <li>配图有没有插进正文：图片是正文节点，不显示为单独的附件位�?/li>
         </ul>
       </aside>
     </div>
@@ -236,14 +225,14 @@ function missingText(v: { title: string; board: string; length: number }): strin
     v.board === '' ? '分区' : null,
     v.length === 0 ? '正文' : null,
   ].filter((x): x is string => x !== null);
-  return missing.length === 0 ? '三项齐了，可以发布' : '还缺：' + missing.join('、');
+  return missing.length === 0 ? '三项齐了，可以发�? : '还缺�? + missing.join('�?);
 }
 
 function errorText(e: unknown): string {
   if (!isApiError(e)) return String(e);
-  const rid = e.requestId ? '（错误编号 ' + e.requestId + '）' : '';
-  if (e.code === 'auth.email_unverified' || e.code === 'auth.not_activated') return '需要先激活邮箱。' + rid;
-  if (e.code === 'forum.board_denied') return '这个分区不允许你发帖（BoardACL）。' + rid;
-  if (e.code === 'forum.sanctioned') return '账号正在禁言中，暂时不能发帖。' + rid;
+  const rid = e.requestId ? '（错误编�?' + e.requestId + '�? : '';
+  if (e.code === 'auth.email_unverified' || e.code === 'auth.not_activated') return '需要先激活邮箱�? + rid;
+  if (e.code === 'forum.board_denied') return '这个分区不允许你发帖（BoardACL）�? + rid;
+  if (e.code === 'forum.sanctioned') return '账号正在禁言中，暂时不能发帖�? + rid;
   return e.message + rid;
 }

@@ -15,11 +15,8 @@ import { formatTime } from '@/lib/format';
 import { PageHeader } from './_parts/layout';
 import { Empty, ErrorState, Loading } from './_parts/state';
 
-// 个人主页（契约：GET /users/{handle} 聚合 + GET /users/{handle}/topics 游标分页）。
-// 「本人 / 别人」由**接口的 is_self** 决定，不由前端猜（11-profile 那次缺陷的根因就是判对象真值）。
-// 只有接口真的给了的能力才画出来：头衔目录、回复列表、收藏、赞过、打赏统计都还没有端点，
-// 所以这一版只有「帖子」一个标签页，其余记进回报的端点清单 —— 不做点了没反应的入口。
-export function ProfilePage() {
+// 个人主页（契约：GET /users/{handle} 聚合 + GET /users/{handle}/topics 游标分页）�?// 「本�?/ 别人」由**接口�?is_self** 决定，不由前端猜�?1-profile 那次缺陷的根因就是判对象真值）�?// 只有接口真的给了的能力才画出来：头衔目录、回复列表、收藏、赞过、打赏统计都还没有端点，
+// 所以这一版只有「帖子」一个标签页，其余记进回报的端点清单 —�?不做点了没反应的入口�?export function ProfilePage() {
   const { handle = '' } = useParams();
   const session = useSession();
   const [params, setParams] = useSearchParams();
@@ -64,13 +61,12 @@ export function ProfilePage() {
         actions={
           <span className='flex flex-wrap items-center gap-2'>
             {u.handle === session.session?.handle ? null : (
-              <Button inline={false} height={ControlsHeight.M} disabled title='关注功能还没有端点（见回报的端点清单）'>
+              <Button inline={false} height={ControlsHeight.M} disabled title='关注功能还没有端点（见回报的端点清单�?>
                 关注
               </Button>
             )}
             <Button inline={false} height={ControlsHeight.M} icon={icon16(MessageSquare)} href={appPath('messages/' + encodeURIComponent(u.handle))}>
-              发私信
-            </Button>
+              发私�?            </Button>
           </span>
         }
       />
@@ -122,13 +118,13 @@ export function ProfilePage() {
 
       {tab === 'overview' ? (
         <section className='flex flex-col gap-2'>
-          <h2 className='m-0 text-[15px] font-semibold text-foreground'>最近发布</h2>
+          <h2 className='m-0 text-[15px] font-semibold text-foreground'>最近发�?/h2>
           {topics.isPending ? (
             <Loading what='帖子' className='py-8' />
           ) : topics.isError ? (
             <ErrorState what='帖子' error={topics.error} onRetry={() => void topics.refetch()} />
           ) : (topics.data?.items.length ?? 0) === 0 ? (
-            <Empty title='还没有发布过帖子' hint='发过的帖子会按时间倒序列在这里。' />
+            <Empty title='还没有发布过帖子' hint='发过的帖子会按时间倒序列在这里�? />
           ) : (
             <div className='rounded-lg border border-border bg-card'>
               {topics.data?.items.slice(0, 5).map((t) => (
@@ -159,8 +155,8 @@ export function ProfilePage() {
             <ErrorState what='帖子' error={topics.error} onRetry={() => void topics.refetch()} />
           ) : (topics.data?.items.length ?? 0) === 0 ? (
             <Empty
-              title={isSelf ? '你还没有发布过帖子' : 'TA 还没有发布过帖子'}
-              hint='帖子按发布时间倒序；游标分页，不是页码。'
+              title={isSelf ? '你还没有发布过帖�? : 'TA 还没有发布过帖子'}
+              hint='帖子按发布时间倒序；游标分页，不是页码�?
             />
           ) : (
             <div className='rounded-lg border border-border bg-card'>
@@ -184,14 +180,13 @@ export function ProfilePage() {
         </section>
       ) : null}
 
-      {isSelf && !can(session.session, 'post.create') ? (
+      {isSelf && !can(session.session, 'topic.create') ? (
         <p className='m-0 rounded-lg border border-dashed border-border px-3 py-2 text-[12px] text-muted-foreground'>
           你的账号现在不能发帖（未激活或没有 post.create 权限）。账号状态在{' '}
           <Link to={routePath('settings')} className='underline'>
             账号设置
           </Link>
-          。
-        </p>
+          �?        </p>
       ) : null}
     </div>
   );
@@ -204,7 +199,7 @@ function Stat({ icon, label, value }: { icon: React.ReactNode; label: string; va
         {icon}
         {label}
       </dt>
-      <dd className='order-1 text-[16px] font-semibold tabular-nums text-foreground'>{value ?? '—'}</dd>
+      <dd className='order-1 text-[16px] font-semibold tabular-nums text-foreground'>{value ?? '�?}</dd>
     </div>
   );
 }
