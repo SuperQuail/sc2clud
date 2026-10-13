@@ -168,3 +168,58 @@ export function setPostVote(id: string, value: 1 | -1 | 0) {
     body: value === 0 ? undefined : { value },
   });
 }
+
+// ---- 以下七个是盲测发现「接口都在、前端连函数都没有」之后补的（2026-10-13）----
+// 缺它们时用户体感是：**发错了删不掉、看到违规内容没法举报、收藏了找不回来**。
+
+/** 请求体字段与后端 updateTopicBody 逐字对应（title / content_md / board / kind / resource_status，全部可选）。 */
+export function updateTopic(id: string, body: { title?: string; content_md?: string }): Promise<TopicDetail> {
+  return api<TopicDetail>('topics/' + encodeURIComponent(id), { method: 'PATCH', body });
+}
+
+export function deleteTopic(id: string): Promise<null> {
+  return api<null>('topics/' + encodeURIComponent(id), { method: 'DELETE' });
+}
+
+/** 后端 updatePostBody 只有 content_md，且 required。 */
+export function updatePost(id: string, contentMd: string): Promise<Post> {
+  return api<Post>('posts/' + encodeURIComponent(id), { method: 'PATCH', body: { content_md: contentMd } });
+}
+
+export function deletePost(id: string): Promise<null> {
+  return api<null>('posts/' + encodeURIComponent(id), { method: 'DELETE' });
+}
+
+/** 举报事由的值域**只**声明在后端 DTO 的 binding tag 里（`oneof=spam abuse illegal offtopic other`），
+ *  改一边就要改另一边 —— report 域有契约测试盯着它。 */
+export type ReportReason = 'spam' | 'abuse' | 'illegal' | 'offtopic' | 'other';
+export type ReportTargetType = 'topic' | 'post' | 'user';
+
+export function createReport(body: {
+  target_type: ReportTargetType;
+  target_id: string;
+  reason: ReportReason;
+  detail?: string;
+}): Promise<{ id: string }> {
+  // 重复举报后端回 200 + 既有那条（拍板 §8.11 U5），不当错误处理。
+  return api<{ id: string }>('reports', { method: 'POST', body });
+}
+
+export function fetchMyBookmarks(q: PageQuery = {}, signal?: AbortSignal): Promise<Paged<Topic>> {
+  return apiPage<Topic>('me/bookmarks', { query: pageQuery(q), signal });
+}
+
+/** 我发出的举报：state 是 open | handled | dismissed。 */
+export type MyReport = {
+  id: string;
+  target_type: ReportTargetType;
+  target_title: string;
+  reason: ReportReason;
+  state: 'open' | 'handled' | 'dismissed';
+  handle_note?: string | null;
+  created_at: string;
+};
+
+export function fetchMyReports(q: PageQuery = {}, signal?: AbortSignal): Promise<Paged<MyReport>> {
+  return apiPage<MyReport>('me/reports', { query: pageQuery(q), signal });
+}

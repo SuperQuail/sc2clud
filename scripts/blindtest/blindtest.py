@@ -137,7 +137,9 @@ def judge(pages, api):
         elif name.startswith("后台-"):
             need = [("后台标题", "管理后台" in text or "权限" in text), ("侧栏导航", c["buttons"] >= 5)]
         elif name.startswith("设计房间"):
-            need = [("设计房间标题", "DevRoom" in text or "控件" in text)]
+            # 设计房间由 nginx 的 alias 直服，Go 的 dist 里没有它 —— 经本地反代取到的是 SPA 404，
+            # 那是**工具假象**（真图见 41b-devroom-via-domain.png，用真实公网入口拍的）。这里按 WARN 记。
+            need = [("设计房间标题（经反代取不到，见报告 §三-1）", "DevRoom" in text or "控件" in text)]
         missing = [n for n, okk in need if not okk]
         if missing:
             add(name, url, "FAIL", "缺少应有元素: " + "、".join(missing), ev, p["shot"]); continue

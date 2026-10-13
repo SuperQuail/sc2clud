@@ -1,9 +1,9 @@
-import { lazy, Suspense } from 'react';
-import { Link, useParams } from 'react-router';
+import { lazy, Suspense, useState } from 'react';
+import { Link, useNavigate, useParams } from 'react-router';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import Button from '@jetbrains/ring-ui-built/components/button/button';
 import { ControlsHeight } from '@jetbrains/ring-ui-built/components/global/controls-height';
-import { Eye, Heart, MessageSquare, Star } from 'lucide-react';
+import { Eye, Flag, Heart, MessageSquare, Pencil, Star, Trash2 } from 'lucide-react';
 import { icon16 } from '@/ui/icons';
 // 评论区按需加载：它是本页唯一引富文本编辑器（Lexical）的地方，而评论要等第二个请求才有内容
 const CommentList = lazy(() => import('./_parts/comments'));
@@ -14,12 +14,14 @@ import { can, useSession } from '@/lib/perms';
 import { isApiError } from '@/lib/api/errors';
 import {
   createPost,
+  deleteTopic,
   fetchPosts,
   fetchTopic,
   setPostVote,
   setTopicBookmark,
   setTopicLike,
 } from '@/lib/api/forum';
+import { ReportPanel } from './_parts/report-panel';
 import { TopicBody } from '@/devroom/pages/12-topic/topic-body';
 import { TopicKindTag, TopicMark } from '@/devroom/pages/14-home/topic-parts';
 import { formatTime } from '@/lib/format';
@@ -32,8 +34,22 @@ import { toComments } from './_parts/mappers';
 // 正文渲染走 @/devroom/pages/12-topic/topic-body → @/ui/markdown（全站唯一渲染 content_html 的地方）。
 export function TopicPage() {
   const { topicId = '' } = useParams();
+  const navigate = useNavigate();
   const session = useSession();
   const queryClient = useQueryClient();
+
+  // 举报面板 / 删除确认 —— 同一时刻只开一个。
+  // 盲测（2026-10-13）发现：这几个入口在前端**连函数都没有**，所以「发错了删不掉、看到违规没法举报」。
+  const [panel, setPanel] = useState<'report' | 'delete' | null>(null);
+  const remove = useMutation({
+    mutationFn: () => deleteTopic(topicId),
+    onSuccess: () => {
+      const slug = topic.data?.board.slug;
+      // qk.topics 是**工厂函数**不是数组，所以这里用字面前缀失效（react-query 按前缀匹配）。
+      void queryClient.invalidateQueries({ queryKey: ['topics'] });
+      void navigate(slug ? appPath('b/' + encodeURIComponent(slug)) : appPath(''), { replace: true });
+    },
+  });
 
   const topic = useQuery({
     queryKey: qk.topic(topicId),
@@ -85,6 +101,8 @@ export function TopicPage() {
   const t = topic.data;
   const comments = toComments(posts.data?.items ?? []);
   const loggedIn = session.isLoggedIn;
+  // 编辑/删除只给自己看：句柄相等即本人（服务端另有 post.update_own / post.delete_own 兜底）。
+  const isAuthor = loggedIn && session.session?.handle === t.author.handle;
   const me = { nickname: session.session?.nickname ?? '', avatar: session.session?.avatar ?? null };
 
   return (
@@ -152,6 +170,41 @@ export function TopicPage() {
               <MessageSquare aria-hidden className='size-3.5' />
               {t.reply_count}
             </span>
+            {isAuthor ? (
+              <>
+                <Button
+                  data-testid='topic-edit'
+                  inline={false}
+                  height={ControlsHeight.S}
+                  icon={icon16(Pencil)}
+                  title='编辑标题与正文'
+                  onClick={() => void navigate(appPath('new?edit=' + encodeURIComponent(t.id)))}
+                >
+                  编辑
+                </Button>
+                <Button
+                  data-testid='topic-delete'
+                  inline={false}
+                  height={ControlsHeight.S}
+                  icon={icon16(Trash2)}
+                  title='删除这篇帖子'
+                  onClick={() => setPanel(panel === 'delete' ? null : 'delete')}
+                >
+                  删除
+                </Button>
+              </>
+            ) : null}
+            <Button
+              data-testid='topic-report'
+              inline={false}
+              height={ControlsHeight.S}
+              icon={icon16(Flag)}
+              disabled={!loggedIn}
+              title={loggedIn ? '举报这篇帖子' : '登录后可举报'}
+              onClick={() => setPanel(panel === 'report' ? null : 'report')}
+            >
+              举报
+            </Button>
             <span className='flex items-center gap-1 text-[12px] text-muted-foreground'>
               <Eye aria-hidden className='size-3.5' />
               {t.view_count}
@@ -159,6 +212,42 @@ export function TopicPage() {
             {like.isError ? <span className='text-[12px] text-destructive'>{errorText(like.error)}</span> : null}
           </div>
         </article>
+
+        {panel === 'report' ? (
+          <ReportPanel
+            targetType='topic'
+            targetId={t.id}
+            targetLabel='这篇帖子'
+            onClose={() => setPanel(null)}
+          />
+        ) : null}
+
+        {panel === 'delete' ? (
+          <section className='flex flex-col gap-2 rounded-lg border border-destructive/40 bg-destructive/8 px-3 py-3'>
+            <span className='text-[13px] font-medium text-foreground'>删除这篇帖子？</span>
+            <span className='text-[12px] text-muted-foreground'>
+              删除后帖子从列表里消失，正文会被标记为作者删除（平台侧仍留审计痕迹，不是物理删除）。
+            </span>
+            <span className='flex flex-wrap items-center gap-2'>
+              <Button
+                data-testid='topic-delete-confirm'
+                primary
+                inline={false}
+                height={ControlsHeight.S}
+                disabled={remove.isPending}
+                onClick={() => remove.mutate()}
+              >
+                确认删除
+              </Button>
+              <Button inline={false} height={ControlsHeight.S} onClick={() => setPanel(null)}>
+                取消
+              </Button>
+              {remove.isError ? (
+                <span role='alert' className='text-[12px] text-destructive'>{errorText(remove.error)}</span>
+              ) : null}
+            </span>
+          </section>
+        ) : null}
 
         {posts.isPending ? (
           <Loading what='回复' className='py-8' />

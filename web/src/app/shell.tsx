@@ -3,7 +3,7 @@ import { Link, Outlet } from 'react-router';
 import Button from '@jetbrains/ring-ui-built/components/button/button';
 import { ControlsHeight } from '@jetbrains/ring-ui-built/components/global/controls-height';
 import { useQuery } from '@tanstack/react-query';
-import { Bell, Download, MessageSquare, Search } from 'lucide-react';
+import { Bell, Download, MessageSquare, Search, Star } from 'lucide-react';
 import { icon16 } from '@/ui/icons';
 import { ThemeSwitcher } from '@/ui/theme-switcher';
 import { UserAvatar } from '@/ui/user/avatar';
@@ -63,6 +63,16 @@ export function Shell() {
                   href={appPath('messages')}
                   aria-label='私信'
                   title='私信'
+                />
+                {/* 「我的」：收藏与举报进展。盲测发现它们此前在界面上**根本不存在**（接口一直在）。 */}
+                <Button
+                  ghost
+                  inline={false}
+                  height={ControlsHeight.S}
+                  icon={icon16(Star)}
+                  href={appPath('me')}
+                  aria-label='我的收藏与举报'
+                  title='我的收藏与举报'
                 />
                 <Button
                   ghost

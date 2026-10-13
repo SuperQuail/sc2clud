@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router';
 import { useMutation, useQuery } from '@tanstack/react-query';
 import Button from '@jetbrains/ring-ui-built/components/button/button';
@@ -12,7 +12,7 @@ import { appPath } from '@/lib/url';
 import { qk } from '@/lib/query/keys';
 import { can, useSession } from '@/lib/perms';
 import { isApiError } from '@/lib/api/errors';
-import { createTopic, fetchBoards, type TopicKind } from '@/lib/api/forum';
+import { createTopic, fetchBoards, fetchTopic, updateTopic, type TopicKind } from '@/lib/api/forum';
 import { PageHeader } from './_parts/layout';
 import { Empty, ErrorState, Loading } from './_parts/state';
 
@@ -45,8 +45,32 @@ export function ComposePage() {
   const [title, setTitle] = useState('');
   const [doc, setDoc] = useState({ json: '', html: '', length: 0 });
 
+  // 编辑模式：`?edit=<topicId>`。**复用这个页面而不是另写一个** —— 正文编辑器在这里已经装好了，
+  // 另写一份就等于第二份「正文怎么编辑」的实现。（盲测发现「编辑自己的内容」在前端连函数都没有。）
+  const editId = params.get('edit') ?? '';
+  const editing = editId !== '';
+  const existing = useQuery({
+    queryKey: qk.topic(editId),
+    queryFn: ({ signal }) => fetchTopic(editId, signal),
+    enabled: editing,
+  });
+  // 只填一次：填完就交给用户，别把他正在打的字覆盖掉。
+  const [prefilled, setPrefilled] = useState(false);
+  useEffect(() => {
+    if (!editing || prefilled || !existing.data) return;
+    setPrefilled(true);
+    setTitle(existing.data.title);
+    setBoard(existing.data.board.slug);
+    setKind(existing.data.kind);
+    const md = existing.data.content_md ?? '';
+    setDoc({ json: md, html: existing.data.content_html ?? '', length: md.length });
+  }, [editing, prefilled, existing.data]);
+
   const submit = useMutation({
-    mutationFn: () => createTopic({ board, kind, title: title.trim(), content_md: doc.json }),
+    mutationFn: () =>
+      editing
+        ? updateTopic(editId, { title: title.trim(), content_md: doc.json })
+        : createTopic({ board, kind, title: title.trim(), content_md: doc.json }),
     onSuccess: (t) => void navigate(appPath('t/' + encodeURIComponent(t.id)), { replace: true }),
   });
 
@@ -75,8 +99,12 @@ export function ComposePage() {
     <div className='grid items-start gap-6 xl:grid-cols-[minmax(0,1fr)_288px]'>
       <div className='flex min-w-0 flex-col gap-4'>
         <PageHeader
-          title={writable ? '发帖' : '发帖（当前账号还不能写）'}
-          description='标题、分区、正文。配图直接插在正文里（它是正文节点，不是另一个字段）。'
+          title={editing ? '编辑帖子' : writable ? '发帖' : '发帖（当前账号还不能写）'}
+          description={
+            editing
+              ? '改完保存即生效；标题与正文都会更新（分区不在这一步改）。'
+              : '标题、分区、正文。配图直接插在正文里（它是正文节点，不是另一个字段）。'
+          }
         />
 
         {/* 写闸门：未登录已在上面的分支处理；这里是**已登录但不满足写条件**的两种情形，各说各的 */}
@@ -101,7 +129,7 @@ export function ComposePage() {
         ) : null}
 
         {submit.isError ? (
-          <FormAlert tone='error' title='没能发布' description={errorText(submit.error)} />
+          <FormAlert tone='error' title={editing ? '没能保存' : '没能发布'} description={errorText(submit.error)} />
         ) : null}
 
         {/* 不能写时表单**仍然画出来但整块禁用**：只给一句提示，人不知道自己会失去什么（18-compose 的口径） */}

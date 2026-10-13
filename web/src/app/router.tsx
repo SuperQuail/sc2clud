@@ -25,6 +25,8 @@ const AppealPage = lazy(() => import('@/routes/appeal').then((m) => ({ default: 
 const AdminLayout = lazy(() => import('@/routes/admin').then((m) => ({ default: m.AdminLayout })));
 const NotFoundPage = lazy(() => import('@/routes/not-found').then((m) => ({ default: m.NotFoundPage })));
 const NotificationsPage = lazy(() => import('@/routes/stubs').then((m) => ({ default: m.NotificationsPage })));
+// 「我的」：收藏 + 举报进展。盲测发现这两个入口在界面上根本不存在（接口一直在）。
+const MePage = lazy(() => import('@/routes/me').then((m) => ({ default: m.MePage })));
 const SearchPage = lazy(() => import('@/routes/stubs').then((m) => ({ default: m.SearchPage })));
 const MessagesPage = lazy(() => import('@/routes/stubs').then((m) => ({ default: m.MessagesPage })));
 const DownloadPage = lazy(() => import('@/routes/stubs').then((m) => ({ default: m.DownloadPage })));
@@ -47,6 +49,7 @@ const router = createBrowserRouter(
         { path: 'appeal', element: <AppealPage /> },
         { path: 'settings', element: <SettingsPage /> },
         { path: 'notifications', element: <NotificationsPage /> },
+        { path: 'me', element: <MePage /> },
         // /messages/:handle 也落在这一屏：私信端点没接之前，两个路径给的是同一句实话
         { path: 'messages', element: <MessagesPage /> },
         { path: 'messages/:handle', element: <MessagesPage /> },

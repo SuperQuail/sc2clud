@@ -53,10 +53,14 @@ def main():
     bad = need_shape([("handle", "nonempty"), ("nickname", "nonempty")], d)
     rec("当前会话 GET /me", "GET", "/api/v1/me", st, st == 200 and not bad, "缺/空字段: " + ",".join(bad) if bad else "handle=%s" % d["handle"], b)
 
-    st, b = bt_http.jcall("GET", "/api/v1/healthz")
+    # 注意：/healthz **不带** /api/v1 前缀（system.ts 里 base=BASE）。这里就是页面会打的那个路径。
+    st, b = bt_http.jcall("GET", "/healthz")
     d = b if isinstance(b, dict) else {}
-    rec("健康探针 GET /healthz (无 /api/v1 前缀)", "GET", "/healthz", st, st == 200 and nonempty(d.get("status")),
+    rec("健康探针 GET /healthz（nginx 只转发这一条）", "GET", "/healthz", st, st == 200 and nonempty(d.get("status")),
         "status=%s version=%s" % (d.get("status"), d.get("version")), b)
+    st, b = bt_http.jcall("GET", "/api/v1/healthz")
+    rec("探针的另一种写法 /api/v1/healthz", "GET", "/api/v1/healthz", st, st == 404,
+        "404（正确：探针不在 /api/v1 下）" if st == 404 else "status=%s（这条不该有东西）" % st, b)
 
     st, b = bt_http.jcall("GET", "/api/v1/captcha")
     d = b.get("data") or {}
@@ -118,6 +122,16 @@ def main():
             "excerpt" in t2 and nonempty(t2.get("excerpt")),
             ("excerpt 非空，%d 字" % len(t2.get("excerpt") or "")) if nonempty(t2.get("excerpt")) else ("有 excerpt 字段但为空" if "excerpt" in t2 else "列表项根本没有 excerpt 字段"),
             {"keys": sorted(t2.keys())})
+
+    # q 到底过不过滤：拿一个不可能命中的词，如果还回满页，就是「静默忽略 q」
+    st, b = bt_http.jcall("GET", "/api/v1/topics?limit=20&q=zzzz-no-such-word-zzzz")
+    n_junk = len(b.get("data") or [])
+    st2, b2 = bt_http.jcall("GET", "/api/v1/topics?limit=20")
+    n_all = len(b2.get("data") or [])
+    rec("搜索过滤 q 是否真的生效", "GET", "/api/v1/topics?limit=20&q=zzzz-no-such-word-zzzz", st,
+        st == 200 and n_junk < max(1, n_all),
+        "q=不可能命中的词 → %d 条；不带 q → %d 条（%s）" % (n_junk, n_all, "过滤生效" if n_junk < n_all else "q 被忽略，永远回全表"),
+        {"q_junk": n_junk, "no_q": n_all})
 
     # ---------- 用户 ----------
     handle = None
