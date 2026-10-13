@@ -30,7 +30,9 @@ $BuildDir = Join-Path $Root ('deploy' + $Sep + '.build')
 # running on the server, just with -prod instead of -dev. The unit name is the
 # instance name, and /etc/sc2clud/<instance>.env holds the rest.
 $Layout = @{
-  dev  = @{ Dir = '/srv/sc2clud-dev'; Addr = '127.0.0.1:8082'; Public = 'http://191.40.41.97/dev-go/' }
+  # dev 的公开路径是 /dev/（nginx location /dev/ -> 8082）。曾经写成 /dev-go/ —— 那条路径在下
+  # nginx 里不存在，会落到 location / -> 8080 的维护占位页，于是每次部署都警告「200 但不是这个 build」。
+  dev  = @{ Dir = '/srv/sc2clud-dev'; Addr = '127.0.0.1:8082'; Public = 'http://191.40.41.97/dev/' }
   prod = @{ Dir = '/srv/sc2clud-prod'; Addr = '127.0.0.1:8080'; Public = 'http://191.40.41.97/' }
 }
 if (-not $Layout.ContainsKey($Instance)) { throw ('unknown instance: ' + $Instance) }
