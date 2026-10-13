@@ -23,7 +23,7 @@ export default function NavigationPage() {
         <Row label='选中 / 禁用 / 带计数' hint='selected + onSelect 都由 Tabs 管'>
           <div className='w-full'>
             <Tabs selected={tab} onSelect={(id: string) => setTab(String(id))}>
-              <Tab id='topics' title='主题' />
+              <Tab id='topics' title='帖子' />
               <Tab id='essence' title='精华' />
               <Tab id='following' title='关注' />
               <Tab id='archived' title='归档（不可用）' disabled />

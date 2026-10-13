@@ -16,7 +16,7 @@ export function InputPair() {
             <VividInput placeholder='搜索…' icon={Search} aria-label='搜索' />
           </Line>
           <Line label='带标签 / 带说明'>
-            <VividInput label='标题' placeholder='给主题起个名字…' />
+            <VividInput label='标题' placeholder='给帖子起个名字…' />
             <VividInput label='用户名' hint='注册后不可修改' placeholder='3-24 位字母数字' />
           </Line>
           <Line label='错误态 / 大号 / 禁用'>
@@ -33,7 +33,7 @@ export function InputPair() {
             <Input placeholder='搜索…' icon={undefined} />
           </Line>
           <Line label='带标签 / 带说明'>
-            <Input label='标题' placeholder='给主题起个名字…' />
+            <Input label='标题' placeholder='给帖子起个名字…' />
             <Input label='用户名' help='注册后不可修改' placeholder='3-24 位字母数字' />
           </Line>
           <Line label='错误态 / 大号 / 禁用'>

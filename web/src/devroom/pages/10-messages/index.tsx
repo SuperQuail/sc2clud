@@ -154,7 +154,7 @@ export default function MessagesPage() {
               <span className='text-[13px] tabular-nums text-muted-foreground'>2025年12月1日 06:11</span>
             </span>
             <p className='text-[15px] leading-[1.6] text-foreground'>
-              您好，您在主题 0192f0a1（自定义地图的触发器写法）下的评论被举报涉嫌违规，经核实已被移除。请自觉遵守社区公约，良好的社区氛围需要大家一起维护。
+              您好，您在帖子 0192f0a1（自定义地图的触发器写法）下的评论被举报涉嫌违规，经核实已被移除。请自觉遵守社区公约，良好的社区氛围需要大家一起维护。
               <a href={appPath('rules')} className='ml-1 rounded-[3px] text-primary outline-none hover:underline focus-visible:ring-[3px] focus-visible:ring-ring/50'>查看详情</a>
             </p>
           </div>

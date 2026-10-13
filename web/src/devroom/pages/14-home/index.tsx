@@ -70,8 +70,8 @@ export default function HomePage() {
       {/* 分区身份行：真实分区页有封面与统计，这里只留信息流需要的那一条 */}
       <section className='flex flex-wrap items-end justify-between gap-3'>
         <div>
-          <h1 className='m-0 text-[20px] font-semibold text-foreground'>战役社区 · {boardLabel}主题</h1>
-          <p className='m-0 text-[13px] text-muted-foreground'>{matched.length} 个主题 · 今日新增 12 · 关注 3,204</p>
+          <h1 className='m-0 text-[20px] font-semibold text-foreground'>战役社区 · {boardLabel}</h1>
+          <p className='m-0 text-[13px] text-muted-foreground'>{matched.length} 个帖子 · 今日新增 12 · 关注 3,204</p>
         </div>
         <Button primary icon={icon16(Plus)}>
           发帖
@@ -137,7 +137,7 @@ export default function HomePage() {
 
       {matched.length === 0 ? (
         <EmptyState
-          title='这个分区还没有主题'
+          title='这个分区还没有帖子'
           hint={'当前筛选：' + boardLabel + '。换一个分区，或者成为第一个发帖的人。'}
           action={
             <Button
@@ -146,7 +146,7 @@ export default function HomePage() {
                 setEmptyCase(false);
               }}
             >
-              看全部主题
+              看全部帖子
             </Button>
           }
         />
@@ -222,7 +222,7 @@ export default function HomePage() {
           </ul>
           <div className='flex flex-col gap-2'>
             <EmptyState
-              title='这个分区还没有主题'
+              title='这个分区还没有帖子'
               hint='空态文案与上面的真空态共用同一个件；这里只是把两种态同屏摆出来。'
               action={<Button onClick={() => setEmptyCase(true)}>看空态（把列表清空）</Button>}
             />

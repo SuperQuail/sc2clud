@@ -72,9 +72,9 @@ export default function ShowroomPage() {
         </span>
         <span className='relative flex items-center gap-3 text-[13px] text-muted-foreground'>
           <AvatarStack size={24}>
-            <UserAvatar name='唐天' src={assetUrl('miyin-portrait-320.webp')} size='sm' />
-            <UserAvatar name='林诗' src={assetUrl('miyin-chibi-160.webp')} size='sm' />
-            <UserAvatar name='某小X' size='sm' />
+            <UserAvatar name='示范管理员' src={assetUrl('miyin/smile-160.webp')} size='sm' />
+            <UserAvatar name='雷神' src={assetUrl('miyin/genius-160.webp')} size='sm' />
+            <UserAvatar name='陆战队员' size='sm' />
           </AvatarStack>
           已有 42 位作者发布了 168 张地图
         </span>
@@ -155,13 +155,13 @@ export default function ShowroomPage() {
               <span className='text-[12px] font-medium tracking-[0.08em] text-muted-foreground uppercase'>身份</span>
               <span className='flex flex-wrap items-center gap-4'>
                 <span className='flex items-center gap-2'>
-                  <UserAvatar name='唐天' src={assetUrl('miyin-portrait-320.webp')} size='sm' />
-                  <Username nickname='唐天' role={{ key: 'admin', name: '管理员' }} badge='corner' />
+                  <UserAvatar name='示范管理员' src={assetUrl('miyin/smile-160.webp')} size='sm' />
+                  <Username nickname='示范管理员' role={{ key: 'admin', name: '管理员' }} badge='corner' />
                   <TitleBadge title={{ name: '执政官', color: '#2563eb' }} size='sm' />
                 </span>
                 <span className='flex items-center gap-2'>
-                  <UserAvatar name='林诗' size='sm' />
-                  <Username nickname='林诗' />
+                  <UserAvatar name='雷神' size='sm' />
+                  <Username nickname='雷神' />
                   <RoleBadge role={{ key: 'creator', name: '认证创作者' }} />
                 </span>
               </span>
@@ -169,7 +169,7 @@ export default function ShowroomPage() {
             <div className='flex flex-col gap-3'>
               <span className='text-[12px] font-medium tracking-[0.08em] text-muted-foreground uppercase'>表单</span>
               <span className='flex flex-wrap items-center gap-3'>
-                <Input placeholder='搜索主题、作者…' aria-label='搜索主题、作者' name='q' autoComplete='off' />
+                <Input placeholder='搜索帖子、作者…' aria-label='搜索帖子、作者' name='q' autoComplete='off' />
                 <Toggle checked onChange={() => {}}>仅看未回复</Toggle>
               </span>
             </div>

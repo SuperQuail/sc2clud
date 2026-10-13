@@ -5,12 +5,12 @@ import ButtonSet from '@jetbrains/ring-ui-built/components/button-set/button-set
 import { AlertTriangle, Clock3, Send, ShieldAlert } from 'lucide-react';
 import { icon16 } from '@/ui/icons';
 
-// 主题的审核态表达（作者视角）。来源：完全重构/后端设计/d7-ai-review.md §1 状态机 + 拍板 §10.4。
+// 帖子的审核态体现（作者视角）。来源：完全重构/后端设计/d7-ai-review.md §1 状态机 + 拍板 §10.4。
 //
 // 三条不能越界的约束（写在代码里，免得后来人加分支）：
 //  1. review_state 只有这三个值（migrations/0004 的 ck_topics_review_state）：pending / approved / rejected；
 //     **不要**把 visibility(locked/hidden) 混进来当「审核中」——那是另一根轴；
-//  2. 非作者根本收不到 pending / rejected 的主题（后端过滤，d7 §1）。
+//  2. 非作者根本收不到 pending / rejected 的帖子（后端过滤，d7 §1）。
 //     所以这里**没有**「游客看到审核中」这种分支：能渲染出这个横幅，就说明看的人就是作者；
 //  3. 判定来源（ai / manual / trusted）**不在帖子页显示**，那是管理视角（拍板 §10.3）。
 export type ReviewState = 'pending' | 'approved' | 'rejected';

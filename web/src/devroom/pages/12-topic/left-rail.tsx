@@ -42,7 +42,7 @@ export function LeftRail({
                   {b.name}
                 </span>
                 <span className='flex items-center gap-1.5 text-[11px] tabular-nums text-muted-foreground'>
-                  <span>{b.topic_count} 主题</span>
+                  <span>{b.topic_count} 帖子</span>
                   {b.today_count > 0 ? <span>· 今日 {b.today_count}</span> : null}
                 </span>
               </span>

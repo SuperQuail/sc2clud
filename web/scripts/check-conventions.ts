@@ -42,6 +42,25 @@ add('开发侧安全（无 sourcemap / 无密钥 / 无未受控开关）', 'gate
 // gate:bundle 检查「dist 里有 DevRoom」，那是打包环节的事：裸 pnpm build 会清空 dist 且不建 DevRoom，
 // 在这里跑必然假失败（已因此误判过一次）。它由 pack-dev.ts 在打包前执行。
 
+// ── 文案哨兵：机械查找替换最容易弄坏、而图上看不出来的地方 ──
+// 来历（2026-10-13）：把用户可见文案里的「主题」统一改成「帖子」时，
+// `src/ui/theme-switcher.tsx` 的 `aria-label='主题：日间'` 是**配色主题**，
+// 被一起替换就会变成「帖子：日间」—— 读屏标签与悬停提示坏掉，而**截图上看不出来**。
+// 所以用一条特征串兜住它：命中即红。
+// 按 缺陷处理总纲 §7.2：这里**打印扫描文件数**，让「0 命中」是可解释的（而不是假绿）。
+{
+  const SENTINEL = /帖子：(日间|夜间|跟随系统)|帖子切换/;
+  const scanned = walk(join(WEB, 'src')).filter((f) => /\.tsx?$/.test(f) && !f.includes('.test.'));
+  const broken = scanned.filter((f) => SENTINEL.test(readFileSync(f, 'utf8')));
+  rows.push({
+    rule: '文案哨兵：配色主题没被当成帖子替换掉',
+    how: `扫 ${scanned.length} 个文件`, ok: broken.length === 0,
+    detail: broken.length === 0
+      ? `命中 0（已扫 ${scanned.length} 个文件）`
+      : '命中 ' + broken.map((x) => x.replace(WEB, '')).join('、'),
+  });
+}
+
 // ── 机器查不了、必须人确认的项 ──
 const TODO: string[] = [];
 

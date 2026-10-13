@@ -28,13 +28,13 @@ export const ROLES: AdminRole[] = [
 export const PERM_GROUPS = ['内容', '用户', '授权', '分区', '运营', '系统'] as const;
 
 export const PERMISSIONS: Permission[] = [
-  { key: 'post.create', grp: '内容', description: '发主题 / 发回复' },
+  { key: 'post.create', grp: '内容', description: '发帖 / 回复' },
   { key: 'post.update_own', grp: '内容', description: '编辑自己的内容' },
   { key: 'post.delete_own', grp: '内容', description: '删除自己的内容' },
   { key: 'post.delete_any', grp: '内容', description: '删除任何人的内容' },
-  { key: 'post.lock', grp: '内容', description: '锁定 / 解锁主题' },
+  { key: 'post.lock', grp: '内容', description: '锁定 / 解锁帖子' },
   { key: 'post.pin', grp: '内容', description: '置顶 / 精华' },
-  { key: 'post.move', grp: '内容', description: '移动主题到其它分区' },
+  { key: 'post.move', grp: '内容', description: '移动帖子到其它分区' },
   { key: 'post.review', grp: '内容', description: '人工审核队列：通过 / 拒绝 / 请求修改' },
   { key: 'resource.publish', grp: '内容', description: '发资源帖（kind=resource）' },
   { key: 'user.warn', grp: '用户', description: '警告用户' },

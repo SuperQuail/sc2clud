@@ -24,13 +24,13 @@ export default function DisplayPage() {
 
       <Card name='头像 Avatar / AvatarStack' note='⚠️ Ring 的 Avatar 是给「项目 / 组织」用的色块首字，不是用户头像——用户头像一律用我们的 UserAvatar（按昵称取稳定色、有图用图）。这里只做对照，业务页面不要用它渲染用户。'>
         <Row label='尺寸 / 圆形 / 无图兜底 / 叠加'>
-          <Avatar size={24} username='唐天' />
-          <Avatar size={32} round username='林诗' />
-          <Avatar size={40} username='某小X' />
+          <Avatar size={24} username='示范管理员' />
+          <Avatar size={32} round username='雷神' />
+          <Avatar size={40} username='陆战队员' />
           <AvatarStack size={32}>
-            <Avatar size={32} username='唐天' />
-            <Avatar size={32} username='林诗' />
-            <Avatar size={32} username='某小X' />
+            <Avatar size={32} username='示范管理员' />
+            <Avatar size={32} username='雷神' />
+            <Avatar size={32} username='陆战队员' />
           </AvatarStack>
         </Row>
       </Card>

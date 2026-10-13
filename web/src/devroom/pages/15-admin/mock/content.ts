@@ -278,5 +278,5 @@ export const REVIEW_TRIGGER_LABEL: Record<ReviewEvent['trigger'], string> = {
 };
 
 export const REPORT_REASON: Record<ReportItem['reason'], string> = {
-  spam: '垃圾广告', abuse: '人身攻击', illegal: '侵权 / 违规内容', offtopic: '与分区主题无关', other: '其它',
+  spam: '垃圾广告', abuse: '人身攻击', illegal: '侵权 / 违规内容', offtopic: '与分区内容无关（跑题）', other: '其它',
 };

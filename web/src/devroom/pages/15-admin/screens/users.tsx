@@ -86,7 +86,7 @@ export function UsersScreen() {
 
   // 列定义：数据驱动（列 + 行 + 排序 + 选中都交给 DataTable）。
   // 宽屏下这里只有 ~600px（左导航 + 右详情栏占掉了其余），所以列数压到 5 列：
-  // 「主题/回复 + 注册/最后登录」并进用户单元格的第二行，需要细看时看右栏。
+  // 「帖子/回复 + 注册/最后登录」并进用户单元格的第二行，需要细看时看右栏。
   const columns = [
     {
       key: 'user', title: '用户', track: 'minmax(158px,1.5fr)', sortable: true, sortValue: (u: AdminUser) => u.nickname,
@@ -97,7 +97,7 @@ export function UsersScreen() {
             <Username nickname={u.nickname} handle={u.username} size='sm' strong badge='none' />
             <span className='truncate text-[10px] text-muted-foreground'>{u.email}</span>
             <span className='truncate text-[10px] text-muted-foreground'>
-              注册 {fmtDate(u.created_at)} · {u.topic_count} 主题 / {u.reply_count} 回复
+              注册 {fmtDate(u.created_at)} · {u.topic_count} 帖子 / {u.reply_count} 回复
             </span>
           </span>
         </span>
@@ -253,7 +253,7 @@ export function UsersScreen() {
                 <KV k='邮箱验证轴' v={activeUser.email_verified_at ? fmtDate(activeUser.email_verified_at) : '未验证 → 不能登录'} />
                 <KV k='激活轴 activated_at' v={activeUser.activated_at ? fmtDate(activeUser.activated_at) : '未激活 → 能登录、写操作 403'} />
                 <KV k='注册 / 最后登录' v={fmtDate(activeUser.created_at) + ' / ' + relTime(activeUser.last_login_at)} />
-                <Numbers items={[{ label: '主题', value: activeUser.topic_count }, { label: '回复', value: activeUser.reply_count }]} />
+                <Numbers items={[{ label: '帖子', value: activeUser.topic_count }, { label: '回复', value: activeUser.reply_count }]} />
               </>
             ) : (
               <p className='text-[12px] text-muted-foreground'>在左侧列表里点一行查看详情。</p>

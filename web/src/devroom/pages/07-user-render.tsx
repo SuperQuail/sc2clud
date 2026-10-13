@@ -17,7 +17,7 @@ const CREATOR = { key: 'creator', name: '认证创作者', color: '#7c3aed' };
 const USER = { key: 'user', name: '普通用户' };
 
 const EXTRA = [
-  { key: 'topic.pin', name: '置顶主题', expires: null as string | null },
+  { key: 'topic.pin', name: '置顶帖子', expires: null as string | null },
   { key: 'donation.review', name: '核验打赏', expires: '2026-11-15' as string | null },
 ];
 const BOARDS = [{ board: '自制战役', expires: null as string | null }];

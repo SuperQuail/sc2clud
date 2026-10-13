@@ -13,7 +13,7 @@ import { TopicActions } from './topic-actions';
 import { TopicBody } from './topic-body';
 import type { TopicDetail } from './types';
 
-// 中栏 = 一个主题的全文：标题与标记 → 作者行 → 正文 → 资源来源 → 动作条 → 评论区。
+// 中栏 = 一个帖子的全文：标题与标记 → 作者行 → 正文 → 资源来源 → 动作条 → 评论区。
 // 顺序不是随便排的：**读者要的东西按「这是什么 / 谁写的 / 写了什么 / 怎么拿到 / 我怎么反应 / 别人怎么说」降序**，
 // 所以下载来源必须在评论区之前——资源帖里它比评论重要。
 export function MainColumn({
@@ -61,7 +61,7 @@ export function MainColumn({
           {topic.title}
         </h1>
         {/* 审核态横幅紧贴标题：它是「这篇现在是什么状态」，不是正文的一部分。
-            非作者收不到 pending/rejected 的主题（后端过滤），所以这里不需要「游客看到审核中」的分支。 */}
+            非作者收不到 pending/rejected 的帖子（后端过滤），所以这里不需要「游客看到审核中」的分支。 */}
         <ReviewStateBanner
           state={reviewState}
           note={reviewNote}
@@ -130,7 +130,7 @@ export function TopicMeta({ topic }: { topic: TopicDetail }) {
       >
         {topic.board.name}
       </a>
-      <span>· 主题 #{topic.id}</span>
+      <span>· 帖子 #{topic.id}</span>
       {topic.locked ? <span className='text-destructive'>· 已锁定，仅可浏览</span> : null}
     </p>
   );

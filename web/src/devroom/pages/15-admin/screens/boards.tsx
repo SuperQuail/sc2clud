@@ -118,7 +118,7 @@ export function BoardsScreen() {
               <span className={'truncate text-[13px] font-medium ' + (b.id === board.id ? 'text-primary' : 'text-foreground')}>{b.name}</span>
               {b.id === board.id ? <Pill tone='ok'>编辑中</Pill> : null}
             </span>
-            <span className='truncate text-[11px] text-muted-foreground'>/{b.slug} · {b.topic_count} 主题</span>
+            <span className='truncate text-[11px] text-muted-foreground'>/{b.slug} · {b.topic_count} 帖子</span>
             <span className='mt-0.5 flex flex-wrap items-center gap-1'>
               <Pill tone={enabled[b.id] ? 'ok' : 'warn'}>{enabled[b.id] ? '按 ACL' : '登录即可'}</Pill>
               {b.status === 'archived' ? <Pill tone='danger'>已归档</Pill> : null}
@@ -133,7 +133,7 @@ export function BoardsScreen() {
   const deleteWhy = !canManage
     ? '本账号没有 board.manage'
     : board.topic_count > 0
-      ? '还有 ' + board.topic_count + ' 个主题：先迁移或归档，不能直接删（主题不能失去归属）'
+      ? '还有 ' + board.topic_count + ' 个帖子：先迁移或归档，不能直接删（帖子不能失去归属）'
       : undefined;
 
   return (
@@ -155,7 +155,7 @@ export function BoardsScreen() {
         <Stat label='分区' value={boards.length} hint='表驱动，非枚举' />
         <Stat label='启用 ACL' value={boards.filter((b) => enabled[b.id]).length} tone='info' hint='其余为「登录即可发言」' />
         <Stat label='归档' value={boards.filter((b) => b.status === 'archived').length} />
-        <Stat label='主题总数' value={boards.reduce((s, b) => s + b.topic_count, 0)} />
+        <Stat label='帖子总数' value={boards.reduce((s, b) => s + b.topic_count, 0)} />
         <Stat label='我管理的分区' value={MOCK_MODERATED_BOARDS.length} hint={MOCK_MODERATED_BOARDS.join('、')} />
       </StatRow>
 
@@ -205,7 +205,7 @@ export function BoardsScreen() {
             </div>
             <div className='mt-2 border-t border-border pt-2'>
               <Numbers items={[
-                { label: '主题', value: board.topic_count },
+                { label: '帖子', value: board.topic_count },
                 { label: '回复', value: board.post_count },
                 { label: '今日', value: board.today_count },
                 { label: '状态', value: board.status === 'archived' ? '已归档' : '正常' },
@@ -312,7 +312,7 @@ export function BoardsScreen() {
               </DangerAction>
             </div>
             <p className='mt-2 mb-0 text-[11px] leading-relaxed text-muted-foreground'>
-              为什么删除常常是灰的：分区下还有主题时删除会让主题失去归属，所以<strong className='font-medium text-foreground'>有主题的分区只能归档</strong>；
+              为什么删除常常是灰的：分区下还有帖子时删除会让帖子失去归属，所以<strong className='font-medium text-foreground'>有帖子的分区只能归档</strong>；
               归档是可逆的（改状态位），删除不可逆（§21.2 的 DELETE 只在空分区上开放）。
             </p>
           </Panel>
@@ -333,11 +333,11 @@ export function BoardsScreen() {
         body={pending && pending.kind === 'delete' ? (
           <span>
             删除后 <b>{pending.board.name}</b> 的分区记录不复存在，<b>该操作不可撤销</b>；
-            分区下没有主题才允许走到这一步。
+            分区下没有帖子才允许走到这一步。
           </span>
         ) : (
           <span>
-            归档后 <b>{pending ? pending.board.name : ''}</b> 不再出现在分区列表，主题与回复保留可读；分区里的 ACL 勾选随之失效。
+            归档后 <b>{pending ? pending.board.name : ''}</b> 不再出现在分区列表，帖子与回复保留可读；分区里的 ACL 勾选随之失效。
             归档是可逆的：需要时把 status 改回 active 即可。
           </span>
         )}

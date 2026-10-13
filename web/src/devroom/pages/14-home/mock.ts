@@ -2,7 +2,7 @@ import { assetUrl } from '@/lib/url';
 import type { UserSummary } from '@/ui/user/user-badge';
 
 // 本页是设计验证页：数据是页面内的假数据（前端方案 §10.1 禁止用假数据绕过接口——这里不出现在产品路由里）。
-// 字段名逐字照 完全重构/论坛后端技术方案-v2.md §21.3 的主题列表响应：
+// 字段名逐字照 完全重构/论坛后端技术方案-v2.md §21.3 的帖子列表响应：
 //   id / board{slug,name} / kind / title / author{handle,nickname,avatar} / reply_count / like_count /
 //   view_count / featured_at / pinned / created_at / last_reply_at / cover / viewer{liked,bookmarked}
 // **excerpt 不在 §21.3 里**（契约缺口，已写进回报）——方卡片与紧凑列表都要它。

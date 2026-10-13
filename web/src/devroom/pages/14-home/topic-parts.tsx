@@ -4,7 +4,7 @@ import { cn } from '@/lib/utils';
 import { KIND_TAG, KIND_TINT, TOPIC_KIND_LABEL } from './topic-kind';
 import type { Topic, TopicKind } from './mock';
 
-// 待提升为 src/ui：主题卡片族（方卡片 + 封面 + 标记），业务无关，只吃 props。
+// 待提升为 src/ui：帖子卡片族（方卡片 + 封面 + 标记），业务无关，只吃 props。
 // 提升时要一起带走的：topic-kind.ts（文案/配色映射）+ 本文件的 TopicCover（16:9 容器 + 无封面占位）。
 
 // 封面位宽 256 逻辑像素（1440 视口四列时），源图比这还小、放大出来就是糊的。

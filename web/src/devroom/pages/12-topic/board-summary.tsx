@@ -21,7 +21,7 @@ export function BoardSummary({ board }: { board: Board }) {
 
       {/* 四个数字在 248px 栏里只有 ~52px 一格：11px 标签 + 15px 数字是能放下的下限 */}
       <dl className='grid grid-cols-4 gap-1 border-y border-border px-1 py-2 text-center'>
-        <Stat label='主题' value={board.topic_count} />
+        <Stat label='帖子' value={board.topic_count} />
         <Stat label='回复' value={board.post_count} />
         <Stat label='今日' value={board.today_count} />
         <Stat label='成员' value={board.member_count} />

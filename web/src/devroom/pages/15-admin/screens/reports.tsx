@@ -15,7 +15,7 @@ import { canInBoard, useCan } from '../mock/perms';
 // 注：§21.2 已有 POST /api/v1/reports 与 GET/PATCH /admin/reports，但数据库文档里**还没有 reports 表**（见回报）。
 
 const STATE_LABEL: Record<ReportItem['state'], string> = { open: '待处理', handled: '已处理', dismissed: '已驳回' };
-const TARGET_LABEL: Record<ReportItem['target_type'], string> = { topic: '主题', post: '回复', user: '用户' };
+const TARGET_LABEL: Record<ReportItem['target_type'], string> = { topic: '帖子', post: '回复', user: '用户' };
 
 export function ReportsScreen() {
   const canHandle = useCan('report.handle');
@@ -103,7 +103,7 @@ export function ReportsScreen() {
         <Stat label='待处理' value={REPORTS.filter((r) => (patch[r.id] ?? r.state) === 'open').length} tone='info' />
         <Stat label='已处理' value={REPORTS.filter((r) => (patch[r.id] ?? r.state) === 'handled').length} />
         <Stat label='已驳回' value={REPORTS.filter((r) => (patch[r.id] ?? r.state) === 'dismissed').length} />
-        <Stat label='对象类型' value={'主题 / 回复 / 用户'} hint='user 类不挂分区' />
+        <Stat label='对象类型' value={'帖子 / 回复 / 用户'} hint='user 类不挂分区' />
       </StatRow>
 
       {!canHandle ? <GateNote perm='report.handle'>处理与驳回按钮不渲染；列表仍然可见（只读队列）。</GateNote> : null}
@@ -118,7 +118,7 @@ export function ReportsScreen() {
         <Select
           type={SelectType.INPUT}
           label='对象类型'
-          data={[{ key: 'all', label: '全部类型' }, { key: 'topic', label: '主题' }, { key: 'post', label: '回复' }, { key: 'user', label: '用户' }]}
+          data={[{ key: 'all', label: '全部类型' }, { key: 'topic', label: '帖子' }, { key: 'post', label: '回复' }, { key: 'user', label: '用户' }]}
           selected={{ key: typeFilter, label: typeFilter === 'all' ? '全部类型' : TARGET_LABEL[typeFilter as ReportItem['target_type']] }}
           onSelect={(item) => { if (item) setTypeFilter(String(item.key)); }}
         />

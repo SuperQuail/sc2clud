@@ -61,10 +61,10 @@ export default function OverlayPage() {
 
       <Card name='提示 Tooltip' note='悬停/聚焦显示；延迟由控件管，避免鼠标划过时乱闪。'>
         <Row label='短提示 / 长提示 / 禁用'>
-          <Tooltip title='置顶这条主题'>
+          <Tooltip title='置顶这个帖子'>
             <Button>置顶</Button>
           </Tooltip>
-          <Tooltip long title='长提示用于需要解释清楚的场合：置顶后该主题会一直排在分区列表最前面，直到你取消置顶或它被删除。'>
+          <Tooltip long title='长提示用于需要解释清楚的场合：置顶后该帖子会一直排在分区列表最前面，直到你取消置顶或它被删除。'>
             <Button>置顶（长说明）</Button>
           </Tooltip>
           <Tooltip title='这一条不会显示' hide>

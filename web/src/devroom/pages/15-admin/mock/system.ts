@@ -192,7 +192,7 @@ export const AI_PROVIDERS: { key: AiConfig['provider']; label: string }[] = [
 /** d7 §4 的内置默认提示词（ai_config.prompt 留空时用它）。集中放一份，界面只读展示要点。 */
 export const AI_BUILTIN_PROMPT = [
   '你是中文社区（星际争霸战役作者社区）的内容审核员。判断下面这篇帖子是否适合公开发布。',
-  '拒绝（reject）—— 只在这些情况：广告/引流/站外交易；辱骂、人身攻击、歧视、色情、暴力威胁；违法违规；与本站主题完全无关的刷屏。',
+  '拒绝（reject）—— 只在这些情况：广告/引流/站外交易；辱骂、人身攻击、歧视、色情、暴力威胁；违法违规；与本站内容完全无关的刷屏。',
   '拿不准（review）—— 必须交人工：不确定是否违规；涉及争议话题、指控某人或真实身份；正文为空/噪声/机器乱码；任何无法判断的情境。',
   '其余一律通过（approve）。宁可放过，不可错杀——误杀一篇正常帖子的代价远大于放过一篇边缘内容。',
   '只输出 JSON：{"verdict":"...","reason":"...","categories":[...]}，不要输出任何其它文字。',
@@ -221,7 +221,7 @@ export type AiThreshold = { key: string; label: string; value: number; min: numb
 export const AI_THRESHOLDS: AiThreshold[] = [
   { key: 'ai.review.report_threshold_1', label: '举报 → AI 复审阈值', value: 3, min: 1, max: 50, hint: '未处理举报累计到这么多条 → 用同一套提示词复审一次' },
   { key: 'ai.review.report_threshold_2', label: '举报 → 直接转人工阈值', value: 5, min: 2, max: 100, hint: '累计到这么多条 → 直接进人工队列，不再调 AI（防举报风暴打爆额度）' },
-  { key: 'ai.review.daily_limit_per_topic', label: '单帖每日 AI 调用上限', value: 3, min: 1, max: 20, hint: '同一篇主题一天最多调几次，防刷（d7 §1 硬规则 3）' },
+  { key: 'ai.review.daily_limit_per_topic', label: '单帖每日 AI 调用上限', value: 3, min: 1, max: 20, hint: '同一个帖子一天最多调几次，防刷（d7 §1 硬规则 3）' },
 ];
 
 /** POST /api/v1/admin/ai/test 的三种回执。

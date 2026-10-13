@@ -52,7 +52,7 @@ export function EmptyState({ title, hint, action, className }: { title: string; 
 export function ListEnd({ total }: { total: number }) {
   return (
     <p className='m-0 py-6 text-center text-[12px] text-muted-foreground'>
-      已经到底了 · 共 {total} 个主题（游标分页的 next_cursor 为 null 时显示这句，不再发请求）
+      已经到底了 · 共 {total} 个帖子（游标分页的 next_cursor 为 null 时显示这句，不再发请求）
     </p>
   );
 }
