@@ -67,14 +67,6 @@ func applyMigrations(t *testing.T, ctx context.Context, pool *pgxpool.Pool) {
 	}
 }
 
-// shortcut: 0004_forum 给 board_acls / topic_images 同时声明了 id 主键与自然键主键，PG 直接拒绝
-// （SQLSTATE 42P16），整个迁移跑不起来。这里在测试侧把那两行降级为 UNIQUE 让用例能跑；
-// 真修在迁移文件里（已报 Lead）。这两张表本域一行都不碰，所以形状差异不影响任何断言。
-var migrationFixes = []struct{ from, to string }{
-	{"  PRIMARY KEY (board_id, role_id),", "  UNIQUE (board_id, role_id),"},
-	{"  PRIMARY KEY (topic_id, post_id, image_hash),", "  UNIQUE (topic_id, post_id, image_hash),"},
-}
-
 // newService 造一个只依赖数据库的 Service：通知设置由测试自己给（user 模块还没写）。
 func newService(t *testing.T, client *ent.Client, pool *pgxpool.Pool, settings NoticeSettings) *Service {
 	t.Helper()

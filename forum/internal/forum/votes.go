@@ -35,19 +35,17 @@ func (s *Service) Vote(ctx context.Context, actor *authz.Actor, target VoteTarge
 		return nil, err
 	}
 	now := s.clk.Now().UTC()
-	var inserted bool
 	var like, dislike int
 	err = db.WithTx(ctx, s.db, func(tx *ent.Tx) error {
-		inserted, like, dislike, err = pgsql.Vote(ctx, tx, string(target), targetID, actor.UserID, value, now)
-		if err == pgsql.ErrNoRows {
-			// 计数没动 = 这一票与原来相同（幂等重放）。回读当前计数，响应里的数字仍然是真的。
-			like, dislike, err = pgsql.VoteCounts(ctx, tx, string(target), targetID)
-			return err
-		}
+		changed, err := pgsql.Vote(ctx, tx, string(target), targetID, actor.UserID, value, now)
 		if err != nil {
 			return err
 		}
-		if inserted && value == 1 {
+		like, dislike, err = s.repo.VoteCounts(ctx, tx, string(target), targetID)
+		if err != nil {
+			return err
+		}
+		if changed && value == 1 {
 			// notify:like 的消费者在 D4（社交域），任务类型常量届时加到 platform/queue。
 			return s.enqueue(ctx, tx, queue.Task{
 				Type:    "notify:like",
@@ -78,9 +76,10 @@ func (s *Service) Unvote(ctx context.Context, actor *authz.Actor, target VoteTar
 	var like, dislike int
 	err = db.WithTx(ctx, s.db, func(tx *ent.Tx) error {
 		var err error
-		like, dislike, err = pgsql.Unvote(ctx, tx, string(target), targetID, actor.UserID)
+		// 取消是幂等的：没有票时删 0 行也是成功，计数原样返回（§5.3）。
+		like, dislike, err = s.repo.Unvote(ctx, tx, string(target), targetID, actor.UserID)
 		if err == pgsql.ErrNoRows {
-			like, dislike, err = pgsql.VoteCounts(ctx, tx, string(target), targetID)
+			return ErrTopicNotFound
 		}
 		return err
 	})

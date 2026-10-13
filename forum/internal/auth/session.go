@@ -2,11 +2,10 @@ package auth
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"net/netip"
 	"time"
-
-	"github.com/jackc/pgx/v5"
 
 	"forum/internal/auth/pgsql"
 	"forum/internal/authz"
@@ -25,7 +24,7 @@ func (s *Service) Resolve(ctx context.Context, rawToken string) (*Principal, err
 
 	row, err := pgsql.ResolveSession(ctx, s.db, digest, now)
 	if err != nil {
-		if errors.Is(err, pgx.ErrNoRows) {
+		if errors.Is(err, sql.ErrNoRows) {
 			return nil, ErrSessionInvalid
 		}
 		return nil, err

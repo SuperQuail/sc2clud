@@ -47,3 +47,16 @@ func (s *Store) query(ctx context.Context, sql string, args []any, scan func(*sq
 func (s *Store) queryOne(ctx context.Context, sql string, args []any, scan func(*sql.Rows) error) error {
 	return queryOneQ(ctx, s.q, sql, args, scan)
 }
+
+// sqlJoin 把多行 SQL 拼成一个字符串：每行都是独立的 Go 字符串字面量，
+// 这样 SQL 里出现反引号或百分号都不会破坏源码（本项目踩过这个坑）。
+func sqlJoin(lines ...string) string {
+	out := ""
+	for i, l := range lines {
+		if i > 0 {
+			out += "\n"
+		}
+		out += l
+	}
+	return out
+}

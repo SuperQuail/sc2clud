@@ -68,7 +68,7 @@ func (s *Service) SaveSource(ctx context.Context, actor *authz.Actor, topicPubli
 		if n >= maxSourcesPerTopic {
 			return invalid("url", "每个资源帖最多 20 个下载源")
 		}
-		id, err := pgsql.InsertSource(ctx, tx, ref.ID, clean, now)
+		id, err := pgsql.InsertSource(ctx, tx, newPublicID(), ref.ID, clean, now)
 		if err != nil {
 			return err
 		}

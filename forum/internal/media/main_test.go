@@ -140,8 +140,6 @@ func applyMigrations(t *testing.T, ctx context.Context, pool *pgxpool.Pool) {
 			b.WriteByte('\n')
 		}
 		sql := b.String()
-		sql = strings.Replace(sql, "CREATE TABLE payment_channels (\n",
-			"CREATE TABLE payment_channels (\n  public_id uuid NOT NULL DEFAULT gen_random_uuid() UNIQUE,\n", 1)
 		if _, err := pool.Exec(ctx, demoteExtraPrimaryKeys(sql)); err != nil {
 			t.Fatalf("迁移 %s: %v", name, err)
 		}
@@ -190,6 +188,20 @@ func createBlocks(sql string) []string {
 		out = append(out, block)
 		sql = rest[len(block):]
 	}
+}
+
+// putImage 落一张图并登记引用行：与上传端点同一条路径（落盘走 service，登记走 SQL）。
+// 不为测试在生产代码里开一个 RefTx 导出——那会多一个没人调的导出。
+func (h *harness) putImage(actor *authz.Actor, body []byte, visibility int) error {
+	hsh, size, mime, w, hh, err := h.svc.PutImage(h.ctx, actor, body, 1<<20)
+	if err != nil {
+		return err
+	}
+	_, err = h.pool.Exec(h.ctx, `INSERT INTO images (hash, size, mime, width, height, refcount, visibility, owner_id, created_at, updated_at)
+VALUES ($1, $2, $3, $4, $5, 1, $6, $7, now(), now())
+ON CONFLICT (hash) DO UPDATE SET refcount = images.refcount + 1, updated_at = now()`,
+		string(hsh), size, mime, w, hh, visibility, actor.UserID)
+	return err
 }
 
 // countFiles 数磁盘上的真图片文件（Walk 只认 64 位小写 hex 的名字）。

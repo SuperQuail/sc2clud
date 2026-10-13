@@ -247,14 +247,14 @@ func InsertIssue(ctx context.Context, tx Querier, publicID string, topicID, auth
 	bodyMD, bodyHTML, bodyText, clientToken string, now time.Time) (int64, int, error) {
 	var id int64
 	var number int
-	err := queryOneQ(ctx, tx, `
-INSERT INTO post_issues (public_id, topic_id, author_id, number, kind, title,
-                         body_md, body_html, body_text, client_token, created_at, updated_at)
-SELECT $1, $2, $3,
-       COALESCE((SELECT max(number) FROM post_issues WHERE topic_id = $2), 0) + 1,
-       $4, $5, $6, $7, $8, $9, $10, $10
-RETURNING id, number`,
-		[]any{publicID, topicID, authorID, kind, title, bodyMD, bodyHTML, bodyText, clientToken, now.UTC()},
+	err := queryOneQ(ctx, tx, sqlJoin(
+		"INSERT INTO post_issues (public_id, topic_id, author_id, number, kind, title,",
+		"                         body_md, body_html, body_text, client_token, created_at, updated_at)",
+		"SELECT $1::uuid, $2::bigint, $3::bigint,",
+		"       (COALESCE((SELECT max(number) FROM post_issues WHERE topic_id = $2::bigint), 0) + 1)::int,",
+		"       $4::text, $5::text, $6::text, $7::text, $8::text, $9::text, $10::timestamptz, $10::timestamptz",
+		"RETURNING id, number",
+	), []any{publicID, topicID, authorID, kind, title, bodyMD, bodyHTML, bodyText, clientToken, now.UTC()},
 		func(rows *sql.Rows) error { return rows.Scan(&id, &number) })
 	return id, number, err
 }

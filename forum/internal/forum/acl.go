@@ -38,7 +38,7 @@ func (s *Service) canSpeak(ctx context.Context, actor *authz.Actor, boardID int6
 		return err
 	}
 	if row.HasSanction {
-		if row.SanctionUntil == nil {
+		if row.SanctionPerm {
 			return ErrSanctioned // until IS NULL = 永久，msg 里不带到期时间（§6.3）
 		}
 		until := row.SanctionUntil.UTC()

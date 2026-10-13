@@ -427,14 +427,20 @@ func SetTopicExcerpt(ctx context.Context, tx Querier, topicID int64, excerpt str
 //   - 全部楼层一起置 deleted（刻意的冗余：任何一条忘了 JOIN topics 的楼层查询都不该漏出去）；
 //   - 多态点赞一条语句清掉（likes 没有外键，孤儿行由应用保证清理）。
 func DeleteTopicRows(ctx context.Context, tx Querier, topicID int64, now time.Time) error {
-	return exec(ctx, tx, `
+	// **一条 Exec 只发一条语句**：pgx 的扩展协议不接受多语句。
+	if err := exec(ctx, tx, `
 UPDATE topics SET visibility = 'deleted', pinned_at = NULL, featured_at = NULL, updated_at = $2
- WHERE id = $1 AND visibility <> 'deleted';
-UPDATE posts  SET visibility = 'deleted', updated_at = $2 WHERE topic_id = $1;
+ WHERE id = $1 AND visibility <> 'deleted'`, topicID, now.UTC()); err != nil {
+		return err
+	}
+	if err := exec(ctx, tx, "UPDATE posts SET visibility = 'deleted', updated_at = $2 WHERE topic_id = $1",
+		topicID, now.UTC()); err != nil {
+		return err
+	}
+	return exec(ctx, tx, `
 DELETE FROM likes
  WHERE (target_type = 'topic' AND target_id = $1)
-    OR (target_type = 'post'  AND target_id IN (SELECT id FROM posts WHERE topic_id = $1))`,
-		topicID, now.UTC())
+    OR (target_type = 'post'  AND target_id IN (SELECT id FROM posts WHERE topic_id = $1))`, topicID)
 }
 
 // LockTopic 是幂等的锁定（§4.7）：COALESCE 保证重复锁定不刷新时间戳——

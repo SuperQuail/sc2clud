@@ -61,21 +61,10 @@ func applyMigrations(t *testing.T, ctx context.Context, pool *pgxpool.Pool) {
 			t.Fatal(err)
 		}
 		ddl := string(raw)
-		for _, fix := range migrationFixes {
-			ddl = strings.ReplaceAll(ddl, fix.from, fix.to)
-		}
 		if _, err := conn.Conn().PgConn().Exec(ctx, ddl).ReadAll(); err != nil {
 			t.Fatalf("跑迁移 %s 失败: %v", name, err)
 		}
 	}
-}
-
-// shortcut: 0004_forum 给 board_acls / topic_images 同时声明了 id 主键与自然键主键，PG 直接拒绝
-// （SQLSTATE 42P16），整个迁移跑不起来。这里在测试侧把那两行降级为 UNIQUE 让用例能跑；
-// 真修在迁移文件里（已报 Lead）。这两张表本域一行都不碰，形状差异不影响任何断言。
-var migrationFixes = []struct{ from, to string }{
-	{"  PRIMARY KEY (board_id, role_id),", "  UNIQUE (board_id, role_id),"},
-	{"  PRIMARY KEY (topic_id, post_id, image_hash),", "  UNIQUE (topic_id, post_id, image_hash),"},
 }
 
 // ---------- 依赖的假实现（user / forum 都还没写）----------

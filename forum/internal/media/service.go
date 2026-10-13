@@ -72,15 +72,13 @@ func NewService(cfg Config, db *ent.Client, store image.Store, clk clock.Clock, 
 	return &Service{cfg: cfg, db: db, store: store, clk: clk, log: log}
 }
 
-// PutImage 把字节写进内容寻址存储并返回 (hash, size, mime, 宽, 高)。
-// 它是**唯一**的落盘入口：三个上传端点都先在这里落盘，再开事务写引用行
-// （拍板 §5.4：事务里禁止写文件）。事务回滚留下的孤儿由 image:gc 兜。
-func (s *Service) PutImage(ctx context.Context, actor *authz.Actor, body []byte, maxBytes int64, visibility int) (image.Hash, int64, string, int, int, error) {
+// PutImage 把字节写进内容寻址存储并返回它的事实（hash / 字节数 / mime / 宽高）。
+//
+// 它**不写库、不计引用**：写引用行是引用行的写者在自己事务里的事（d5 §2.2 的时机表）。
+// 落盘必须在事务外（拍板 §5.4）；事务回滚留下的孤儿文件由 image:gc 兜底。
+func (s *Service) PutImage(ctx context.Context, actor *authz.Actor, body []byte, maxBytes int64) (image.Hash, int64, string, int, int, error) {
 	if err := requireActive(actor); err != nil {
 		return "", 0, "", 0, 0, err
-	}
-	if int64(len(body)) > maxBytes {
-		return "", 0, "", 0, 0, ErrTooLarge
 	}
 	mime, w, h, err := sniff(body, maxBytes, int64(len(body)))
 	if err != nil {
@@ -89,12 +87,6 @@ func (s *Service) PutImage(ctx context.Context, actor *authz.Actor, body []byte,
 	hsh, size, err := s.store.Put(ctx, bytes.NewReader(body), maxBytes)
 	if err != nil {
 		return "", 0, "", 0, 0, mapStoreErr(err)
-	}
-	owner := actor.UserID
-	if err := db.WithTx(ctx, s.db, func(tx *ent.Tx) error {
-		return incRefTx(ctx, tx, string(hsh), size, mime, w, h, visibility, &owner)
-	}); err != nil {
-		return "", 0, "", 0, 0, err
 	}
 	return hsh, size, mime, w, h, nil
 }
@@ -105,19 +97,11 @@ func (s *Service) UploadAvatar(ctx context.Context, actor *authz.Actor, in Uploa
 	if err := requireActive(actor); err != nil {
 		return nil, err
 	}
-	mime, w, h, err := sniff(in.Body, s.cfg.AvatarMax, int64(len(in.Body)))
+	hsh, size, mime, w, h, err := s.PutImage(ctx, actor, in.Body, s.cfg.AvatarMax)
 	if err != nil {
 		return nil, err
 	}
-	if int64(len(in.Body)) > s.cfg.AvatarMax {
-		return nil, ErrTooLarge
-	}
-	hsh, size, err := s.store.Put(ctx, bytes.NewReader(in.Body), s.cfg.AvatarMax)
-	if err != nil {
-		return nil, mapStoreErr(err)
-	}
 	created := false
-	owner := actor.UserID
 	err = db.WithTx(ctx, s.db, func(tx *ent.Tx) error {
 		old, err := readAvatarTx(ctx, tx, actor.UserID)
 		if err != nil {
@@ -127,7 +111,8 @@ func (s *Service) UploadAvatar(ctx context.Context, actor *authz.Actor, in Uploa
 			return nil // 内容没变：不动引用计数，也不动列
 		}
 		created = true
-		if err := incRefTx(ctx, tx, string(hsh), size, mime, w, h, VisibilityPublic, &owner); err != nil {
+		owner := actor.UserID
+		if _, err := refTx(ctx, tx, string(hsh), size, mime, w, h, VisibilityPublic, &owner); err != nil {
 			return err
 		}
 		if old != "" {
@@ -172,10 +157,7 @@ func (s *Service) AttachTopicImage(ctx context.Context, actor *authz.Actor, in A
 	if !actor.IsSuper && !actor.Perms.Has(authz.PermTopicCreate) {
 		return nil, apperr.ErrForbidden
 	}
-	if _, _, _, err := sniff(in.Body, s.cfg.PostMax, int64(len(in.Body))); err != nil {
-		return nil, err
-	}
-	hsh, size, mime, w, h, err := s.PutImage(ctx, actor, in.Body, s.cfg.PostMax, VisibilityPublic)
+	hsh, size, mime, w, h, err := s.PutImage(ctx, actor, in.Body, s.cfg.PostMax)
 	if err != nil {
 		return nil, err
 	}
@@ -210,7 +192,7 @@ func (s *Service) AttachTopicImage(ctx context.Context, actor *authz.Actor, in A
 			return err
 		}
 		owner := actor.UserID
-		if err := incRefTx(ctx, tx, string(hsh), size, mime, w, h, VisibilityPublic, &owner); err != nil {
+		if _, err := refTx(ctx, tx, string(hsh), size, mime, w, h, VisibilityPrivate, &owner); err != nil {
 			return err
 		}
 		return insertTopicImage(ctx, tx, topicID, postID, string(hsh), sort)
@@ -257,7 +239,7 @@ func (s *Service) AddPaymentChannel(ctx context.Context, actor *authz.Actor, in 
 		return nil, err
 	}
 	label := sanitizeLabel(in.Label)
-	hsh, size, mime, w, h, err := s.PutImage(ctx, actor, in.Body, s.cfg.PaymentMax, VisibilityPrivate)
+	hsh, size, mime, w, h, err := s.PutImage(ctx, actor, in.Body, s.cfg.PaymentMax)
 	if err != nil {
 		return nil, err
 	}
@@ -275,7 +257,7 @@ func (s *Service) AddPaymentChannel(ctx context.Context, actor *authz.Actor, in 
 			return ErrLimitReached.WithMsg(fmt.Sprintf("最多只能添加 %d 个收款码", maxPaymentChannels))
 		}
 		owner := actor.UserID
-		if err := incRefTx(ctx, tx, string(hsh), size, mime, w, h, VisibilityPrivate, &owner); err != nil {
+		if _, err := refTx(ctx, tx, string(hsh), size, mime, w, h, VisibilityPrivate, &owner); err != nil {
 			return err
 		}
 		newID, err := idgen.NewPublicID()
@@ -370,24 +352,11 @@ func (s *Service) FetchImage(ctx context.Context, actor *authz.Actor, hash strin
 // IncRefTx / DecRefTx 是给别的域的唯一两个方法（d5 §4.3）：
 // 引用行在谁的表里，谁负责在同一事务里调它们。±1 不许自己写 SQL。
 func (s *Service) IncRefTx(ctx context.Context, tx *ent.Tx, h image.Hash) error {
-	return decOrInc(ctx, tx, string(h), true)
+	return incRef(ctx, tx, string(h))
 }
 
 func (s *Service) DecRefTx(ctx context.Context, tx *ent.Tx, h image.Hash) error {
-	return decOrInc(ctx, tx, string(h), false)
-}
-
-// decOrInc 让两个导出方法共用一条路径：现有的引用行不动，只动计数。
-func decOrInc(ctx context.Context, tx *ent.Tx, hash string, inc bool) error {
-	if inc {
-		_, err := tx.ExecContext(ctx, `
-UPDATE images SET refcount = refcount + 1, updated_at = now() WHERE hash = $1`, hash)
-		if err != nil {
-			return fmt.Errorf("media: incref %s: %w", hash, err)
-		}
-		return nil
-	}
-	return decRefTx(ctx, tx, hash)
+	return decRefTx(ctx, tx, string(h))
 }
 
 // GCImages 是 image:gc 任务的处理函数：把「归零满一小时、且不在默认头像池里」的行与文件删掉。

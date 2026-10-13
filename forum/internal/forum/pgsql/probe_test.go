@@ -1,7 +1,6 @@
 package pgsql
 
 import (
-	"os"
 	"testing"
 	"time"
 
@@ -13,8 +12,6 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/jackc/pgx/v5/stdlib"
 )
-
-func TestMain(m *testing.M) { testsupport.Main(m); os.Exit(0) }
 
 func TestProbeScanShapes(t *testing.T) {
 	ctx, pool := testsupport.Pool(t)

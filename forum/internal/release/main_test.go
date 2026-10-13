@@ -110,8 +110,6 @@ func applyMigrations(t *testing.T, ctx context.Context, pool *pgxpool.Pool) {
 			b.WriteByte('\n')
 		}
 		sql := b.String()
-		sql = strings.Replace(sql, "CREATE TABLE payment_channels (\n",
-			"CREATE TABLE payment_channels (\n  public_id uuid NOT NULL DEFAULT gen_random_uuid() UNIQUE,\n", 1)
 		if _, err := pool.Exec(ctx, demoteExtraPrimaryKeys(sql)); err != nil {
 			t.Fatalf("迁移 %s: %v", name, err)
 		}

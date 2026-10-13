@@ -63,7 +63,7 @@ func TestLatestOnlyPublishedStable(t *testing.T) {
 	if betaOut.Version != "2.0.0-beta.1" {
 		t.Fatalf("beta 通道应当拿到 beta 版本，实际 %s", betaOut.Version)
 	}
-	if _, err := h.svc.Latest(h.ctx, "nightly"); !errors.Is(err, apperr.ErrInvalidInput) {
+	if _, err := h.svc.Latest(h.ctx, "nightly"); !isInvalidInput(err) {
 		t.Fatalf("未知通道必须 400，实际 %v", err)
 	}
 }
@@ -110,7 +110,7 @@ func TestListReleasesCursor(t *testing.T) {
 	}
 
 	// 伪造的游标必须 400，不被当第一页吞掉
-	if _, err := h.svc.ListReleases(h.ctx, release.ListReleasesInput{Cursor: "not-base64!!"}); !errors.Is(err, apperr.ErrInvalidInput) {
+	if _, err := h.svc.ListReleases(h.ctx, release.ListReleasesInput{Cursor: "not-base64!!"}); !isInvalidInput(err) {
 		t.Fatalf("坏游标必须 400，实际 %v", err)
 	}
 	// 取满一页时给 next_cursor，取不满时给空
@@ -138,7 +138,7 @@ func TestVersionConflict(t *testing.T) {
 		t.Fatalf("同版本号只该有一行，实际 %d", n)
 	}
 	// 版本号格式非法 → 400
-	if _, err := h.svc.UpsertRelease(h.ctx, h.adminActor(), release.UpsertReleaseInput{Version: "不是版本号"}); !errors.Is(err, apperr.ErrInvalidInput) {
+	if _, err := h.svc.UpsertRelease(h.ctx, h.adminActor(), release.UpsertReleaseInput{Version: "不是版本号"}); !isInvalidInput(err) {
 		t.Fatalf("非法版本号必须 400，实际 %v", err)
 	}
 }
@@ -158,7 +158,7 @@ func TestReleaseStatusMachine(t *testing.T) {
 	// 没有产物就发布 → 400，且状态不变
 	if err := h.svc.SetReleaseStatus(h.ctx, actor, release.SetReleaseStatusInput{
 		ID: rel.ID, Status: release.StatusPublished,
-	}); !errors.Is(err, apperr.ErrInvalidInput) {
+	}); !isInvalidInput(err) {
 		t.Fatalf("没有产物必须拒绝发布，实际 %v", err)
 	}
 	if got := h.scalar("SELECT count(*) FROM releases WHERE public_id = $1 AND status = 'draft'", rel.ID); got != 1 {
@@ -211,7 +211,7 @@ func TestReleaseStatusMachine(t *testing.T) {
 	// 状态值域
 	if err := h.svc.SetReleaseStatus(h.ctx, actor, release.SetReleaseStatusInput{
 		ID: rel.ID, Status: "nightly",
-	}); !errors.Is(err, apperr.ErrInvalidInput) {
+	}); !isInvalidInput(err) {
 		t.Fatalf("未知状态必须 400，实际 %v", err)
 	}
 }
@@ -299,7 +299,7 @@ func TestAssetURLValidation(t *testing.T) {
 			ReleaseID: rel.ID, Platform: "windows", Arch: "x86_64",
 			URL: u, SHA256: strings.Repeat("d", 64),
 		})
-		if !errors.Is(err, apperr.ErrInvalidInput) {
+		if !isInvalidInput(err) {
 			t.Fatalf("%q 必须被拒（400），实际 %v", u, err)
 		}
 	}
@@ -307,7 +307,7 @@ func TestAssetURLValidation(t *testing.T) {
 	if _, err := h.svc.UpsertAsset(h.ctx, h.adminActor(), release.UpsertAssetInput{
 		ReleaseID: rel.ID, Platform: "windows", Arch: "x86_64",
 		URL: "https://example.com/a.zip", SHA256: "ABC",
-	}); !errors.Is(err, apperr.ErrInvalidInput) {
+	}); !isInvalidInput(err) {
 		t.Fatalf("坏 sha256 必须 400，实际 %v", err)
 	}
 }
@@ -348,4 +348,11 @@ func TestDeleteAsset(t *testing.T) {
 	if n := h.scalar("SELECT count(*) FROM release_assets"); n != 0 {
 		t.Fatalf("产物应当删掉，实际剩 %d", n)
 	}
+}
+
+// isInvalidInput 判 code：apperr.Invalid 造的是新值，不是 ErrInvalidInput 这个哨兵，
+// 所以只能按 Code 判（handler 也是这么做的）。
+func isInvalidInput(err error) bool {
+	var ae *apperr.Error
+	return errors.As(err, &ae) && ae.Code == apperr.CodeInvalidInput
 }

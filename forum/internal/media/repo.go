@@ -39,16 +39,30 @@ type imageRow struct {
 	OwnerID    *int64
 }
 
-// incRefTx 是 images 的 upsert（d5 §2.3-A）：同 hash 再上传就 +1，不去重成一行。
-func incRefTx(ctx context.Context, q sqlExec, hash string, size int64, mime string, w, h int, visibility int, ownerID *int64) error {
-	_, err := q.ExecContext(ctx, `
-INSERT INTO images (hash, size, mime, width, height, refcount, visibility, owner_id, created_at, updated_at)
+// refTx 是本次「落盘 + 登记 + 计一次引用」的**唯一**写入口：
+//   - 新建（xmax = 0）→ refcount = 1：这一行就代表本次上传的那一次引用，落地即被引用；
+//   - 已存在 → refcount + 1，且**不覆盖** size/mime/width/height/visibility（它们是第一次上传写下的真值）。
+//
+// 同一张图被两个用户上传 = 两次引用 = +2，这是对的（d5 §1.2「上传两次就该算两次引用」）。
+// xmax = 0 是 PostgreSQL 里判「这一行是本次 INSERT 新写的」的常规手法。
+func refTx(ctx context.Context, q sqlExec, hash string, size int64, mime string, w, h int, visibility int, ownerID *int64) (created bool, err error) {
+	err = row1(ctx, q, `INSERT INTO images (hash, size, mime, width, height, refcount, visibility, owner_id, created_at, updated_at)
 VALUES ($1, $2, $3, $4, $5, 1, $6, $7, now(), now())
 ON CONFLICT (hash) DO UPDATE
-   SET refcount = images.refcount + 1, updated_at = now()`,
-		hash, size, mime, w, h, visibility, ownerID)
+   SET refcount = images.refcount + 1, updated_at = now()
+RETURNING (xmax = 0)`,
+		[]any{hash, size, mime, w, h, visibility, ownerID}, &created)
 	if err != nil {
-		return fmt.Errorf("media: upsert image %s: %w", hash, err)
+		return false, fmt.Errorf("media: ref image %s: %w", hash, err)
+	}
+	return created, nil
+}
+
+// incRef 只给「行一定已经存在」的调用方用（d5 §4.3 的 IncRefTx）。
+func incRef(ctx context.Context, q sqlExec, hash string) error {
+	_, err := q.ExecContext(ctx, `UPDATE images SET refcount = refcount + 1, updated_at = now() WHERE hash = $1`, hash)
+	if err != nil {
+		return fmt.Errorf("media: incref image %s: %w", hash, err)
 	}
 	return nil
 }

@@ -100,19 +100,21 @@ func TestUploadRejectsBadAndTooLarge(t *testing.T) {
 
 	svg := []byte("<svg xmlns=\"http://www.w3.org/2000/svg\"><script>alert(1)</script></svg>")
 	_, err := h.svc.UploadAvatar(h.ctx, actor, media.UploadAvatarInput{Body: svg})
-	if !errors.Is(err, media.ErrBadType) {
+	if !hasCode(err, "media.bad_type") {
 		t.Fatalf("SVG 必须被拒，实际 %v", err)
 	}
 	if n := h.scalar("SELECT count(*) FROM images"); n != 0 {
 		t.Fatalf("被拒的图不许落库，实际 %d 行", n)
 	}
 
-	big := pngBytes(t, 512, 512, color.RGBA{A: 255})
-	if int64(len(big)) <= 64<<10 {
-		t.Skip("这张 PNG 压得太小，换一张更大的再测超限")
+	// 判限额看的是**读到的真实字节数**，与画的内容无关：512×512 的纯色 PNG 压缩后只有几 KB，
+	// 所以这里手工拼一个超 64KiB 的合法 PNG（魔数在，额度也超）。
+	big := append(pngBytes(t, 1, 1, color.RGBA{A: 255}), make([]byte, 70<<10)...)
+	if _, err := h.svc.UploadAvatar(h.ctx, actor, media.UploadAvatarInput{Body: big}); !hasCode(err, "media.too_large") {
+		t.Fatalf("超 64KiB 必须 media.too_large，实际 %v", err)
 	}
-	if _, err := h.svc.UploadAvatar(h.ctx, actor, media.UploadAvatarInput{Body: big}); !errors.Is(err, media.ErrTooLarge) {
-		t.Fatalf("超 64KiB 必须 ErrTooLarge，实际 %v", err)
+	if n := h.scalar("SELECT count(*) FROM images"); n != 0 {
+		t.Fatalf("超限的图不许登记，实际 %d 行", n)
 	}
 }
 
@@ -124,7 +126,7 @@ func TestUploadRequiresActivation(t *testing.T) {
 	actor.Activated = false
 	if _, err := h.svc.UploadAvatar(h.ctx, actor, media.UploadAvatarInput{
 		Body: pngBytes(t, 4, 4, color.RGBA{A: 255}),
-	}); !errors.Is(err, media.ErrNotActivated) {
+	}); !hasCode(err, "auth.not_activated") {
 		t.Fatalf("未激活必须被挡，实际 %v", err)
 	}
 }
@@ -153,7 +155,7 @@ func TestAttachTopicImageLimitsAndPermission(t *testing.T) {
 		TopicPublicID: topicID,
 		Body:          pngBytes(t, 5, 5, color.RGBA{G: 255, A: 255}),
 	})
-	if !errors.Is(err, media.ErrLimitReached) {
+	if !hasCode(err, "media.limit_reached") {
 		t.Fatalf("第 10 张必须 ErrLimitReached，实际 %v", err)
 	}
 
@@ -183,7 +185,7 @@ func TestAttachTopicImageLimitsAndPermission(t *testing.T) {
 	// 再删一次：404（不泄漏「这张图存在过」）
 	if err := h.svc.DetachTopicImage(h.ctx, aliceActor, media.DetachTopicImageInput{
 		TopicPublicID: topicID, Hash: hash,
-	}); !errors.Is(err, media.ErrNotFound) {
+	}); !hasCode(err, "media.not_found") {
 		t.Fatalf("重复删除必须 404，实际 %v", err)
 	}
 }
@@ -226,7 +228,7 @@ func TestAttachTopicImageConcurrent(t *testing.T) {
 		switch {
 		case err == nil:
 			ok++
-		case errors.Is(err, media.ErrLimitReached):
+		case hasCode(err, "media.limit_reached"):
 			limited++
 		default:
 			t.Fatalf("并发结果只允许「成功」或「超限」，实际 %v", err)
@@ -245,8 +247,7 @@ func TestFetchImageVisibility(t *testing.T) {
 	h := newHarness(t)
 	alice := h.newUser("alice")
 	bob := h.newUser("bob")
-	if _, _, _, _, _, err := h.svc.PutImage(h.ctx, h.actor(alice), pngBytes(t, 5, 5, color.RGBA{A: 255}),
-		1<<20, media.VisibilityPrivate); err != nil {
+	if err := h.putImage(h.actor(alice), pngBytes(t, 5, 5, color.RGBA{A: 255}), media.VisibilityPrivate); err != nil {
 		t.Fatalf("放一张私有图: %v", err)
 	}
 	hash := h.text("SELECT hash FROM images LIMIT 1")
@@ -282,11 +283,11 @@ func TestFetchImageVisibility(t *testing.T) {
 	}
 
 	// 格式不对：400，不是 404
-	if _, err := h.svc.FetchImage(h.ctx, nil, "not-a-hash"); !errors.Is(err, media.ErrBadType) {
+	if _, err := h.svc.FetchImage(h.ctx, nil, "not-a-hash"); !hasCode(err, "media.bad_type") {
 		t.Fatalf("hash 格式错必须 400，实际 %v", err)
 	}
 	// 没有这行：404（格式合法但库里没有）
-	if _, err := h.svc.FetchImage(h.ctx, nil, strings.Repeat("a", 64)); !errors.Is(err, media.ErrNotFound) {
+	if _, err := h.svc.FetchImage(h.ctx, nil, strings.Repeat("a", 64)); !hasCode(err, "media.not_found") {
 		t.Fatalf("不存在的图必须 404，实际 %v", err)
 	}
 }
@@ -317,7 +318,7 @@ func TestPaymentChannels(t *testing.T) {
 	}
 	if _, err := h.svc.AddPaymentChannel(h.ctx, actor, media.AddPaymentChannelInput{
 		Body: pngBytes(t, 9, 9, color.RGBA{G: 1, A: 255}),
-	}); !errors.Is(err, media.ErrLimitReached) {
+	}); !hasCode(err, "media.limit_reached") {
 		t.Fatalf("第 6 张必须 ErrLimitReached，实际 %v", err)
 	}
 
@@ -331,7 +332,7 @@ func TestPaymentChannels(t *testing.T) {
 	}
 
 	// 别人删不掉：404
-	if err := h.svc.DeletePaymentChannel(h.ctx, h.actor(bob), lastID); !errors.Is(err, media.ErrNotFound) {
+	if err := h.svc.DeletePaymentChannel(h.ctx, h.actor(bob), lastID); !hasCode(err, "media.not_found") {
 		t.Fatalf("删别人的收款码必须 404，实际 %v", err)
 	}
 	// 本人删：204 语义（无错误），引用计数 −1
@@ -408,8 +409,7 @@ func TestGCImages(t *testing.T) {
 func TestIncDecRefTxRollsBack(t *testing.T) {
 	h := newHarness(t)
 	alice := h.newUser("alice")
-	if _, _, _, _, _, err := h.svc.PutImage(h.ctx, h.actor(alice),
-		pngBytes(t, 3, 3, color.RGBA{A: 255}), 1<<20, media.VisibilityPublic); err != nil {
+	if err := h.putImage(h.actor(alice), pngBytes(t, 3, 3, color.RGBA{A: 255}), media.VisibilityPublic); err != nil {
 		t.Fatal(err)
 	}
 	hash := h.text("SELECT hash FROM images LIMIT 1")
@@ -436,4 +436,10 @@ func TestIncDecRefTxRollsBack(t *testing.T) {
 	if n := h.scalar("SELECT refcount FROM images WHERE hash = $1", hash); n != 0 {
 		t.Fatalf("提交后应当归零，实际 %d", n)
 	}
+}
+
+// hasCode 按错误码判定：WithMsg 造的是新值，不是那批包级哨兵（handler 也是按 code 判的）。
+func hasCode(err error, code string) bool {
+	var ae *apperr.Error
+	return errors.As(err, &ae) && ae.Code == code
 }

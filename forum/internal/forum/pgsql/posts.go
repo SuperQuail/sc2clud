@@ -196,9 +196,9 @@ func InsertPost(ctx context.Context, tx Querier, publicID string, topicID, autho
 	err := queryOneQ(ctx, tx, `
 INSERT INTO posts (public_id, topic_id, author_id, parent_id, floor,
                    content_md, content_html, client_token, created_at, updated_at)
-SELECT $1, $2, $3, $4,
-       COALESCE((SELECT max(floor) FROM posts WHERE topic_id = $2), 0) + 1,
-       $5, $6, $7, $8, $8
+SELECT $1::uuid, $2::bigint, $3::bigint, $4::bigint,
+       COALESCE((SELECT max(floor) FROM posts WHERE topic_id = $2::bigint), 0) + 1,
+       $5::text, $6::text, $7::varchar, $8::timestamptz, $8::timestamptz
 RETURNING id, floor`,
 		[]any{publicID, topicID, authorID, parentID, contentMD, contentHTML, clientToken, now.UTC()},
 		func(rows *sql.Rows) error { return rows.Scan(&id, &floor) })
@@ -247,8 +247,13 @@ UPDATE topics t
 // DeletePostRow 是删楼层（§4.6）：只软删楼层本身，主题行不动（1 楼也是这条）。
 // 该楼层的票一并删掉——多态表没有外键，孤儿行必须由应用清理。
 func DeletePostRow(ctx context.Context, tx Querier, postID int64, now time.Time) error {
-	return exec(ctx, tx, `UPDATE posts SET visibility = 'deleted', updated_at = $2 WHERE id = $1;
-DELETE FROM likes WHERE target_type = 'post' AND target_id = $1`, postID, now.UTC())
+	// 一条 Exec 一条语句：pgx 的扩展协议不接受多语句。
+	if err := exec(ctx, tx, "UPDATE posts SET visibility = 'deleted', updated_at = $2 WHERE id = $1",
+		postID, now.UTC()); err != nil {
+		return err
+	}
+	// 多态表没有外键：这一行的票必须由应用清掉，否则变成孤儿行。
+	return exec(ctx, tx, "DELETE FROM likes WHERE target_type = 'post' AND target_id = $1", postID)
 }
 
 // PostByID 回读一条楼层（带父楼 public_id、楼中楼条数与前 3 条预览、我的票）：

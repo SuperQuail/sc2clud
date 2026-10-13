@@ -8,7 +8,6 @@ import (
 	"context"
 	"log/slog"
 	"net/url"
-	"regexp"
 	"strings"
 	"time"
 
@@ -35,10 +34,60 @@ const (
 	ChannelBeta   = "beta"
 )
 
-// 版本号形如 1.2.3 / 1.2.3-beta.1。
-var versionRe = regexp.MustCompile(`^\d+(\d+)*([-+][0-9A-Za-z.-]+)?$`)
+// 版本号的形状（d5 §5.4）：数字与点，可带 - / + 后缀。
+const versionHint = "版本号形如 1.2.3"
 
-var sha256Re = regexp.MustCompile(`^[0-9a-f]{64}$`)
+// validVersion：至少一段数字；除可选后缀外只允许数字与点；点不能相邻或收尾。
+func validVersion(s string) bool {
+	core, suffix := s, ""
+	if i := strings.IndexAny(s, "-+"); i >= 0 {
+		core, suffix = s[:i], s[i+1:]
+	}
+	if core == "" || suffix == "" && strings.IndexAny(s, "-+") >= 0 {
+		return false
+	}
+	for i, r := range suffix {
+		if !isVersionChar(r, i == 0) {
+			return false
+		}
+	}
+	parts := strings.Split(core, ".")
+	for _, p := range parts {
+		if p == "" {
+			return false
+		}
+		for _, r := range p {
+			if r < '0' || r > '9' {
+				return false
+			}
+		}
+	}
+	return true
+}
+
+func isVersionChar(r rune, first bool) bool {
+	switch {
+	case r >= '0' && r <= '9', r >= 'a' && r <= 'z', r >= 'A' && r <= 'Z':
+		return true
+	case r == '.' || (r == '-' && !first):
+		return true
+	}
+	return false
+}
+
+// isSHA256 判 64 位小写十六进制（sha256 列上的 CHECK 与它同义）。
+func isSHA256(s string) bool {
+	if len(s) != 64 {
+		return false
+	}
+	for i := 0; i < len(s); i++ {
+		c := s[i]
+		if (c < '0' || c > '9') && (c < 'a' || c > 'f') {
+			return false
+		}
+	}
+	return true
+}
 
 // Service 是下载域的全部业务逻辑。actor 由 handler 显式传入（拍板 §5.3）。
 type Service struct {
@@ -125,8 +174,8 @@ func (s *Service) UpsertRelease(ctx context.Context, actor *authz.Actor, in Upse
 		return nil, err
 	}
 	in.Version = strings.TrimSpace(in.Version)
-	if !versionRe.MatchString(in.Version) {
-		return nil, invalid("version", "版本号形如 1.2.3")
+	if !validVersion(in.Version) {
+		return nil, invalid("version", versionHint)
 	}
 	if in.Channel != "" && in.Channel != ChannelStable && in.Channel != ChannelBeta {
 		return nil, invalid("channel", "只支持 stable / beta")
@@ -231,7 +280,7 @@ func (s *Service) UpsertAsset(ctx context.Context, actor *authz.Actor, in Upsert
 		return nil, err
 	}
 	in.SHA256 = strings.ToLower(strings.TrimSpace(in.SHA256))
-	if !sha256Re.MatchString(in.SHA256) {
+	if !isSHA256(in.SHA256) {
 		return nil, invalid("sha256", "必须是 64 位小写十六进制")
 	}
 	if in.Size < 0 {

@@ -3,13 +3,12 @@ package auth
 import (
 	"context"
 	"crypto/subtle"
+	"database/sql"
 	"errors"
 	"strconv"
 	"strings"
 	"sync"
 	"time"
-
-	"github.com/jackc/pgx/v5"
 
 	"forum/internal/auth/pgsql"
 	"forum/internal/authz"
@@ -95,7 +94,8 @@ func (s *Service) VerifyEmailCode(ctx context.Context, in VerifyCodeInput) error
 			return err
 		}
 		if !ok {
-			s.noteBadCode(ctx, u.ID, purposeVerify, row.ID)
+			id := row.ID
+			s.noteBadCode(ctx, tx, u.ID, purposeVerify, &id)
 			return ErrTokenInvalid
 		}
 		// 拍板 §12.2：输码成功时 email_verified_at 与 activated_at **一起置**。
@@ -142,7 +142,8 @@ func (s *Service) VerifyResetCode(ctx context.Context, in VerifyCodeInput) (*Res
 			return err
 		}
 		if !ok {
-			s.noteBadCode(ctx, u.ID, purposeReset, row.ID)
+			id := row.ID
+			s.noteBadCode(ctx, tx, u.ID, purposeReset, &id)
 			return ErrTokenInvalid
 		}
 		return s.upsertCode(ctx, tx, u.ID, purposeReset, codeHash(ticket), now)
@@ -217,19 +218,22 @@ func consumeCode(ctx context.Context, tx *ent.Tx, userID int64, purpose string, 
 // noteBadCode 记一次失败：满 5 次直接删掉该码（用户必须重新发送）。
 // 设计 §10.4 支 B 是把 consumed_at 置为现在；DELETE 加部分唯一索引达到同一效果，
 // 而且不需要 attempt_count 列。
-func (s *Service) noteBadCode(ctx context.Context, userID int64, purpose string, tokenID int64) {
-	if s.codes.bump(userID, purpose) < maxCodeAttempts {
+//
+// 删除**必须走调用方的事务**：它被在 WithTx 回调里调用，而事务已经占着池里的一条连接——
+// 在那里用池再发一条语句就是自锁（池被这个事务占满时永远拿不到第二条连接）。
+func (s *Service) noteBadCode(ctx context.Context, tx *ent.Tx, userID int64, purpose string, tokenID *int64) {
+	if s.codes.bump(userID, purpose) < maxCodeAttempts || tokenID == nil {
 		return
 	}
-	if _, err := s.db.EmailToken.Delete().Where(emailtoken.IDEQ(tokenID)).Exec(ctx); err != nil {
-		s.log.Error("auth: 作废验证码失败", "token_id", tokenID, "err", err.Error())
+	if _, err := tx.EmailToken.Delete().Where(emailtoken.IDEQ(*tokenID)).Exec(ctx); err != nil {
+		s.log.Error("auth: 作废验证码失败", "token_id", *tokenID, "err", err.Error())
 	}
 }
 
 // noteBadCodeForTest 是**测试钩子**（名字带 ForTest 就是为了评审时一眼看见）：
-// 把一次失败直接记进单码计数器并触发第 5 次的作废，不必真去猜 5 次码。
+// 把一次失败直接记进单码计数器，不必真去猜 5 次码。它只记数，不作废任何行。
 func (s *Service) noteBadCodeForTest(userID int64, purpose string) {
-	s.noteBadCode(context.Background(), userID, purpose, 0)
+	s.codes.bump(userID, purpose)
 }
 
 // ResendResult 只说「发出去了没有」。前端该显示哪种界面由注册响应里的 auto_activate 决定
@@ -364,7 +368,7 @@ DELETE FROM email_tokens
  WHERE token_hash = $1 AND purpose = 'reset' AND used_at IS NULL AND expires_at > $2
 RETURNING user_id`, digest, now).Scan(&userID)
 		if err != nil {
-			if errors.Is(err, pgx.ErrNoRows) {
+			if errors.Is(err, sql.ErrNoRows) {
 				return ErrTokenInvalid
 			}
 			return err
