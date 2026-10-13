@@ -1,4 +1,5 @@
 import Button from '@jetbrains/ring-ui-built/components/button/button';
+import { ControlsHeight } from '@jetbrains/ring-ui-built/components/global/controls-height';
 import Island from '@jetbrains/ring-ui-built/components/island/island';
 // ButtonSet 是**默认导出**（命名导出在这个包里不存在，typecheck 直接报 TS2614）
 import ButtonSet from '@jetbrains/ring-ui-built/components/button-set/button-set';
@@ -314,18 +315,12 @@ export default function ProfilePage() {
             要更清楚只能抬平均、换封面素材，或给文字加局部底（用户已否决）。
             mb-2 而不是 mb-4：hero 还要装 144px 壁纸条，这 8px 是补给首屏预算的（见上面的警告，**不要改 padding/gap**）。 */}
         <div className='relative z-10 mx-4 -mt-20 mb-2 flex flex-col gap-5 rounded-xl border-x border-b border-border bg-gradient-to-b from-background/0 from-35% via-background/70 via-65% to-background/95 p-5'>
-          <div className='flex flex-wrap items-end justify-between gap-4'>
+          <div className='flex flex-wrap items-end gap-4'>
             {/* 头像外圈原来用实色 ring-background：在渐变里它是一枚不透明的白/黑环，
                 和身后 50% 的渐变一比就像贴上去的圆片。改成 /60 让环与身后的底同一档透明度，
                 仍然能分出头像与壁纸，但不突兀。 */}
             <span className='rounded-full ring-4 ring-background/60'>
               <UserAvatar name='示范管理员' src={assetUrl('miyin/smile-160.webp')} size='xl' />
-            </span>
-            {/* 右侧动作组自己带一层底：整卡不再模糊之后，压在壁纸上的按钮要自己保证可读 */}
-            <span className='flex flex-nowrap items-center gap-2 rounded-md bg-background/70 p-1'>
-              <Button primary icon={icon16(UserPlus)}>关注</Button>
-              <Button icon={icon16(MessageSquare)}>发私信</Button>
-              <Button icon={icon16(MoreHorizontal)} aria-label='更多操作' />
             </span>
           </div>
           <div className='flex flex-col gap-2'>
@@ -346,18 +341,40 @@ export default function ProfilePage() {
               战役作者，负责关卡设计与剧情。有问题直接回复，我每天都在。
             </p>
           </div>
-          <div className='flex flex-wrap items-center gap-8 border-t border-border pt-4'>
-            {[
-              { n: '42', label: '帖子' },
-              { n: '318', label: '回复' },
-              { n: '1.2k', label: '获赞' },
-              { n: '86', label: '关注者' },
-            ].map((st) => (
-              <span key={st.label} className='flex items-baseline gap-1.5'>
-                <span className='text-[20px] leading-none font-semibold tabular-nums text-foreground'>{st.n}</span>
-                <span className='text-[13px] text-muted-foreground'>{st.label}</span>
-              </span>
-            ))}
+          <div className='flex flex-wrap items-center justify-between gap-x-8 gap-y-3 border-t border-border pt-4'>
+            <span className='flex flex-wrap items-center gap-8'>
+              {[
+                { n: '42', label: '帖子' },
+                { n: '318', label: '回复' },
+                { n: '1.2k', label: '获赞' },
+                { n: '86', label: '关注者' },
+              ].map((st) => (
+                <span key={st.label} className='flex items-baseline gap-1.5'>
+                  <span className='text-[20px] leading-none font-semibold tabular-nums text-foreground'>{st.n}</span>
+                  <span className='text-[13px] text-muted-foreground'>{st.label}</span>
+                </span>
+              ))}
+            </span>
+            {/* 动作组挂在**卡片右下角**（落在统计行右侧，所以卡片不会变高；窄屏时它换行到统计行下方）。
+                为什么不再要那层自保的底：上一版它压在头像右侧的壁纸上（那一带渐变 alpha=0），所以自带 bg-background/70；
+                现在它落在卡片底部 —— 那里渐变的 alpha 已经 0.95（近乎实底），底是现成的，再加一层只是多一个方块。
+                为什么用 ghost：Ring 默认态自带一圈描边，两个带框按钮并排挂在右下角，看着像两个「控件盒」；
+                ghost 去掉描边，读起来是「一对轻动作」。关注保留 primary（这一组唯一的实心动作，填充色见下），
+                height 用 S：这一行的高度由 20px 的统计数字决定，默认高度的按钮会把整行顶高几像素，
+                而 hero 高度是首屏预算（见上方警告）。 */}
+            <span className='flex flex-nowrap items-center gap-1'>
+              {/* 关注保持 primary（这一组里的主动作），发私信/更多用 ghost（去掉 Ring 默认态自带的描边）；
+                  **三颗都必须 inline={false}** —— 这是踩过第四次的那个坑：
+                    Ring 的 isInline = inline ?? text ?? !!icon，只要传了 icon 又没显式给 inline，
+                    按钮就落到 .ring-button-inline（display:inline、padding:0、color:link），
+                    于是 primary 也不填充、看起来像一行蓝字。
+                  实测（2026-10-13，同一套像素扫描）：inline 时饱和蓝像素 135 个、最长连续横向 run 12px（只有字形）；
+                  加 inline={false} 后 1626 个、最长 run 76px，bbox 76×23 = 一颗真正的填充按钮。
+                  （先前"Ring primary 没定义背景变量"的判断是错的，已撤回：填充一直是好的，是 inline 把它压掉了。） */}
+              <Button primary inline={false} height={ControlsHeight.S} icon={icon16(UserPlus)}>关注</Button>
+              <Button ghost inline={false} height={ControlsHeight.S} icon={icon16(MessageSquare)}>发私信</Button>
+              <Button ghost inline={false} height={ControlsHeight.S} icon={icon16(MoreHorizontal)} aria-label='更多操作' />
+            </span>
           </div>
         </div>
       </section>

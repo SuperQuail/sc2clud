@@ -1,0 +1,18 @@
+11-profile：动作组移到右下角、去底去框、关注恢复实心（inline 第四次咬人）
+
+用户要求：动作组移到右下角 + 去「底」的边框（两层都去掉）。
+
+改法：
+- 动作组从头像行（右上角）移到统计行右侧（justify-between），卡片因此不变高；
+- 删掉自保底 rounded-md bg-background/70 p-1（原来压在 alpha=0 的壁纸上才需要；现在落在卡片底部 alpha 0.95 上）；
+- 发私信/更多 改 ghost；关注 保持 primary；三颗都 height=S（该行高度由 20px 统计数字决定，M 会顶高整行）。
+- 窄屏 700：整组换到统计行下方左对齐，三颗不被拆散。
+
+量化：赞助入口 bottom 896 <= 900；关注填充↔白字 CR 4.58(浅)/4.89(深)；两个 ghost 动作 CR 5.24/7.2。
+
+一条诊断的撤回（值得记）：执行者先报「Ring primary 在本项目没有填充色，要改 tokens.css 补
+--ring-button-primary-background-color」。我怀疑是那台按钮传了 icon 却没给 inline（isInline = inline ?? text ?? !!icon），
+要求做决定性实验：给 inline={false} 后同一套像素扫描 —— 饱和蓝像素 135 -> 1626、最长连续 run 12px -> 76px、
+bbox 从「高 11px 的一行字」变成 76x23 的真按钮；DOM class 由 ring-button-inline 变为 ring-button-block + ring-button-primaryBlock。
+结论：真因是 inline，不是缺令牌。**已撤回那条诊断并在代码注释里写明「先前判断是错的」，避免后人照旧结论去改全站令牌**
+（结论指错方向比没有结论更贵）。这个 icon 触发的 inline 坑今天是第四次咬人。
