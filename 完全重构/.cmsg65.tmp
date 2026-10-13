@@ -1,8 +1,0 @@
-权限键改对了（post.create -> topic.create），并修回被我写坏的两个文件
-
-后端 24 个权限键里是 topic.create / topic.edit.own / ...，没有 post.create；
-前端原来在 compose/profile/topic 三处检查 post.create，连 superadmin 都过不了 ——
-所以登录后评论区显示「你的账号还不能发帖回复」、发帖框判成没权限。
-
-过程如实记：我第一版用 PowerShell 的 -replace 批量改，把 compose.tsx 与 profile.tsx 写坏了
-（未闭合字符串），已从上一版恢复并用 edit 逐处重做，tsc 通过。
