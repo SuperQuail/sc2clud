@@ -3,7 +3,7 @@ import { appPath } from '@/lib/url';
 import { TopicTaskTabs, type TopicTaskTab } from './_task/task-tabs';
 import { AuthorCard } from './author-card';
 import { BoardSummary } from './board-summary';
-import { DesignActionNote } from './design-action';
+import { DESIGN_ACTION_NOTE, DesignActionNote } from './design-action';
 import { EditTopicDialog } from './edit-dialog';
 import { IssueNudge } from './issue-nudge';
 import { LeftRail } from './left-rail';
@@ -114,7 +114,6 @@ const REVIEW_NOTE_REJECTED =
   '并附带两个短链跳转与一个未备案的网盘口令。按站规第 3 条（推广与来源标注）判为推广内容：' +
   '请去掉「唯一指定」表述、标注「非官方整合」、把短链替换为可核对的原始地址后重新提交。';
 const APPEAL_SENT = '已提交人工复核，队列里有记录（mock）。';
-const DESIGN_NOTE = '设计稿：这个按钮还没接线，点了不会有别的动作。';
 
 /** ?review=… —— 只影响 DevRoom 的初始态，非法值一律按 pending（= 最需要看的那一态）。
  *  pending-human = 审核中且已转人工（同一态的第二档文案）。
@@ -148,7 +147,7 @@ export default function TopicPage() {
   // 弹层与回执（?report=1 / ?edit=1 / ?receipt=design 是给截图用的初值）
   const [reportOpen, setReportOpen] = useState(() => params.get('report') === '1');
   const [editOpen, setEditOpen] = useState(() => params.get('edit') === '1');
-  const [receipt, setReceipt] = useState<string | null>(() => (params.get('receipt') === 'design' ? DESIGN_NOTE : null));
+  const [receipt, setReceipt] = useState<string | null>(() => (params.get('receipt') === 'design' ? DESIGN_ACTION_NOTE : null));
 
   // DevRoom 演示用：真实页面读后端返回的 review_state，没有这个开关（见 review-state.tsx 的注释）。
   // 初值可以走 URL（?review=pending|approved|rejected），这样每一态都能单独出图、也能分享链接。
@@ -230,7 +229,7 @@ export default function TopicPage() {
       delete next[id];
       return next;
     });
-    setReceipt('这条回复已删除（本页是本地状态；真接线走后端软删，正文变成「该回复已删除」）');
+    setReceipt('这条回复已删除，评论数已减 1（本页是本地状态，刷新即还原）');
   }
 
   function voteComment(id: string, value: 1 | -1) {
@@ -288,7 +287,7 @@ export default function TopicPage() {
           setAppealed(true);
           setReceipt(APPEAL_SENT);
         }}
-        onDesignAction={() => setReceipt(DESIGN_NOTE)}
+        onDesignAction={() => setReceipt(DESIGN_ACTION_NOTE)}
         appealNote={appealed ? APPEAL_SENT : null}
       />
 

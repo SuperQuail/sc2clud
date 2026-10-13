@@ -143,18 +143,3 @@ function RowAction({
 function deletedAria(comment: CommentData): string {
   return '删除我的这条回复：' + comment.body.replace(/<[^>]+>/g, '').replace(/&nbsp;/g, ' ').trim().slice(0, 16);
 }
-
-/** 自己的回复被删掉之后占的位置。**不整行消失**：整行消失会让人以为「刚才看错了」，
- *  真实后端也是软删（正文变成「该回复已删除」）。 */
-export function DeletedCommentItem({ comment }: { comment: CommentData }) {
-  return (
-    <article className='flex gap-3'>
-      <UserAvatar name='已删除' src={null} size='md' />
-      <div className='flex min-w-0 flex-1 flex-col gap-1.5'>
-        <Username nickname='已删除用户' className='text-[15px]' />
-        <span className='text-[15px] leading-[1.7] text-muted-foreground'>该回复已删除。</span>
-        <span className='tabular-nums text-[13px] text-muted-foreground'>{comment.createdAt}</span>
-      </div>
-    </article>
-  );
-}

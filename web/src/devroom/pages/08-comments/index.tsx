@@ -132,6 +132,8 @@ export default function CommentsPage() {
   // 赞踩必须有状态：**只传 comments 不传 onVote 时，按钮上只有数字、点了没反应**。
   // 这个包装件就是那条检查——点了要看到数字变、active 态跟着翻。
   const [comments, setComments] = useState<CommentData[]>(COMMENTS);
+  // 下方示例行的赞踩（同上：示例也要能点）
+  const [demo, setDemo] = useState({ liked: false, disliked: false });
   function vote(id: string, value: 1 | -1) {
     setComments((list) =>
       list.map((c) => {
@@ -159,8 +161,18 @@ export default function CommentsPage() {
         name='拆出来的小控件（每个都能单独复用）'
         note='这块是为了看清拆分：动作行 / 一条评论 / 楼中楼 / 回复框，各自独立。'
       >
-        <Row label='CommentActions（动作行）' hint='复用 Ring UI Button（ghost）＋ lucide 图标经 icon16 包装'>
-          <CommentActions likes={12} dislikes={0} />
+        {/* 示例行也要能点：只摆一个不带 onVote 的动作行，会被当成「这里坏了」——
+            上一轮就有人点在这里，得出「08 的赞踩点不动」的结论（实测问题在示例，不在列表）。
+            传了 onVote 之后三个按钮与列表里那颗行为一致（数字变、active 翻）。 */}
+        <Row label='CommentActions（动作行）' hint='复用 Ring UI Button（ghost）＋ lucide 图标经 icon16 包装；示例也接了状态，点了数字要变'>
+          <CommentActions
+            likes={12 + (demo.liked ? 1 : 0)}
+            dislikes={demo.disliked ? 1 : 0}
+            liked={demo.liked}
+            disliked={demo.disliked}
+            onLike={() => setDemo((d) => ({ liked: !d.liked, disliked: false }))}
+            onDislike={() => setDemo((d) => ({ liked: false, disliked: !d.disliked }))}
+          />
           <CommentActions likes={48} dislikes={1} liked replyLabel='回复楼主' />
         </Row>
         <Row label='CommentItem（一条评论）' hint='身份部分全部复用 src/ui/user（头像/用户名/权限/头衔）'>
