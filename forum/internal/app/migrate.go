@@ -5,8 +5,8 @@ import (
 	"fmt"
 
 	"forum/internal/config"
-	"forum/migrations"
 	"forum/internal/platform/db"
+	"forum/migrations"
 )
 
 // Migrate 执行全部未应用的迁移。失败即非 0 退出（由 main 负责退出码）。

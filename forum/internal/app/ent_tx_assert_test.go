@@ -3,7 +3,7 @@ package app
 import (
 	"testing"
 
-	"entgo.io/ent"
+	ent "forum/internal/ent"
 
 	"forum/internal/platform/queue"
 )

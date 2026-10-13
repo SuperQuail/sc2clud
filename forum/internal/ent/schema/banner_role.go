@@ -26,6 +26,7 @@ type BannerRole struct {
 // Fields 见 d6-reward.md §4.7。
 func (BannerRole) Fields() []ent.Field {
 	return []ent.Field{
+		field.Int64("id"),
 		field.Int64("banner_id"),
 		field.Int64("role_id"),
 	}

@@ -36,6 +36,7 @@ func (PaymentChannel) Mixin() []ent.Mixin {
 // Fields 见 0010_media.up.sql。
 func (PaymentChannel) Fields() []ent.Field {
 	return []ent.Field{
+		field.Int64("id"),
 		field.Int64("user_id"),
 		field.String("label").MaxLen(32),
 		field.String("image_hash").MaxLen(64).Comment("char(64)；images.hash"),
@@ -50,8 +51,6 @@ func (PaymentChannel) Edges() []ent.Edge {
 	return []ent.Edge{
 		edge.To("user", User.Type).Field("user_id").Unique().Required().
 			Annotations(entsql.OnDelete(entsql.Cascade)),
-		edge.To("image", Image.Type).Field("image_hash").Unique().Required().
-			Annotations(entsql.OnDelete(entsql.Restrict)),
 		edge.To("donations", DonationRecord.Type),
 	}
 }

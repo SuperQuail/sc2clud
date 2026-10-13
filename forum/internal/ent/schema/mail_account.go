@@ -38,6 +38,7 @@ func (MailAccount) Mixin() []ent.Mixin {
 // Fields 见 d6-reward.md §4.8。
 func (MailAccount) Fields() []ent.Field {
 	return []ent.Field{
+		field.Int64("id"),
 		field.String("name").MaxLen(64).Unique(),
 		field.String("provider").MaxLen(8).Comment("resend / smtp"),
 		field.Int("priority").Default(0).Comment("越大越优先"),

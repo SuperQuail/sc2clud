@@ -36,6 +36,7 @@ func (Release) Mixin() []ent.Mixin {
 // Fields 见 d5-content.md §5.1。
 func (Release) Fields() []ent.Field {
 	return []ent.Field{
+		field.Int64("id"),
 		field.String("version").MaxLen(32).Unique(),
 		field.String("channel").MaxLen(8).Default("stable").Comment("stable / beta"),
 		field.Text("notes_md").Default(""),

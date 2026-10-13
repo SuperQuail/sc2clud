@@ -24,6 +24,7 @@ type BannerDismissal struct {
 // Fields 见 d6-reward.md §4.7。
 func (BannerDismissal) Fields() []ent.Field {
 	return []ent.Field{
+		field.Int64("id"),
 		field.Int64("banner_id"),
 		field.Int64("user_id"),
 		field.Time("created_at").Default(time.Now).Immutable().

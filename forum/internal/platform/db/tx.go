@@ -6,7 +6,7 @@ import (
 	"errors"
 	"fmt"
 
-	"entgo.io/ent"
+	ent "forum/internal/ent"
 )
 
 // WithTx 是事务的唯一入口。panic 与 error 都会回滚。

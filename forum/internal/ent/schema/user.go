@@ -46,6 +46,7 @@ func (User) Mixin() []ent.Mixin {
 // Fields 见 d2-auth.md §5.1，逐列对齐。
 func (User) Fields() []ent.Field {
 	return []ent.Field{
+		field.Int64("id"),
 		field.Int64("role_id").
 			Comment("基线角色（单一，拍板 §1.4）；FK roles(id) ON DELETE RESTRICT 在迁移里"),
 		field.String("username").MaxLen(32).Immutable().
@@ -93,25 +94,19 @@ func (User) Edges() []ent.Edge {
 	return []ent.Edge{
 		edge.To("role", Role.Type).Field("role_id").Unique().Required().
 			Annotations(entsql.OnDelete(entsql.Restrict)),
-		edge.To("avatar", Image.Type).Field("avatar_hash").Unique().
-			Annotations(entsql.OnDelete(entsql.SetNull)),
-		edge.To("avatar_small", Image.Type).Field("avatar_small_hash").Unique().
-			Annotations(entsql.OnDelete(entsql.SetNull)),
-		edge.To("default_avatar", Image.Type).Field("default_avatar_hash").Unique().
-			Annotations(entsql.OnDelete(entsql.SetNull)),
 		edge.To("equipped_title", Title.Type).Field("equipped_title_id").Unique().
 			Annotations(entsql.OnDelete(entsql.SetNull)),
 		// 以下十六条是别人 .Ref() 过来的反向边，边本身没有新列。
 		// 名字必须与对方 .Ref("...") 的参数逐字相同，否则 entc 报
 		// 「edge "x" is missing for inverse edge」——别人改 schema 时先看这里。
-		edge.From("images", Image.Type).Ref("owner"),
+		edge.To("images", Image.Type),
 		edge.To("payment_channels", PaymentChannel.Type),
 		edge.To("notifications", Notification.Type),
-		edge.From("acted_notifications", Notification.Type).Ref("actor"),
+		edge.To("acted_notifications", Notification.Type),
 		edge.To("notification_mutes", NotificationMute.Type),
-		edge.From("messages_as_low", Message.Type).Ref("low"),
-		edge.From("messages_as_high", Message.Type).Ref("high"),
-		edge.From("messages_sent", Message.Type).Ref("sender"),
+		edge.To("messages_as_low", Message.Type),
+		edge.To("messages_as_high", Message.Type),
+		edge.To("messages_sent", Message.Type),
 		edge.To("donations_sent", DonationRecord.Type),
 		edge.To("donations_received", DonationRecord.Type),
 		edge.To("donations_verified", DonationRecord.Type),

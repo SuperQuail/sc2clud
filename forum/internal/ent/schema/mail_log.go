@@ -31,6 +31,7 @@ type MailLog struct {
 // Fields 见 d6-reward.md §4.8。
 func (MailLog) Fields() []ent.Field {
 	return []ent.Field{
+		field.Int64("id"),
 		field.String("idempotency_key").MaxLen(128).Unique(),
 		field.String("to_address").MaxLen(254),
 		field.String("template").MaxLen(64),

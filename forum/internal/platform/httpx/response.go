@@ -48,10 +48,10 @@ func NoContent(c *gin.Context) {
 
 // Fail 是 handler 唯一的错误出口。
 //
-//	1. *apperr.Error        → 用它（带 fields 时一起写）
-//	2. context.Canceled     → 499，只记 Debug（客户端断开不是服务端故障）
-//	3. 参数超限 / 超时      → 对应码（413 / 408）
-//	4. 其它                 → 500 common.internal，细节只进日志
+//  1. *apperr.Error        → 用它（带 fields 时一起写）
+//  2. context.Canceled     → 499，只记 Debug（客户端断开不是服务端故障）
+//  3. 参数超限 / 超时      → 对应码（413 / 408）
+//  4. 其它                 → 500 common.internal，细节只进日志
 func Fail(c *gin.Context, err error) {
 	if err == nil {
 		return

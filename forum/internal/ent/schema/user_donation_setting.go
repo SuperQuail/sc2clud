@@ -26,6 +26,7 @@ type UserDonationSetting struct {
 // Fields 见 d6-reward.md §4.2。
 func (UserDonationSetting) Fields() []ent.Field {
 	return []ent.Field{
+		field.Int64("id"),
 		field.Int64("user_id").Comment("主键；手写迁移里是 PRIMARY KEY"),
 		field.Bool("show_channels").Default(false).Comment("展示收款码（旧站默认关）"),
 		field.Bool("records_public").Default(false).Comment("我的打赏记录可公开（旧站默认关）"),

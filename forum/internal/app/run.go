@@ -12,8 +12,8 @@ import (
 	"golang.org/x/sync/errgroup"
 
 	"forum/internal/config"
-	"forum/migrations"
 	"forum/internal/platform/db"
+	"forum/migrations"
 )
 
 // Run 是 forum run：起 HTTP + worker + cron + counter，并按固定顺序优雅关闭。

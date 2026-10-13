@@ -39,6 +39,7 @@ func (DonationRecord) Mixin() []ent.Mixin {
 // Fields 见 d6-reward.md §4.1。
 func (DonationRecord) Fields() []ent.Field {
 	return []ent.Field{
+		field.Int64("id"),
 		field.Int64("donor_id").Comment("打赏人"),
 		field.Int64("recipient_id").Comment("收款人；check donor_id <> recipient_id"),
 		field.Int64("amount_cents").Comment("金额（分），申报值"),
@@ -60,11 +61,11 @@ func (DonationRecord) Fields() []ent.Field {
 // Edges：donor / recipient 是 RESTRICT（users 永不硬删）；verifier / post / channel 是 SET NULL。
 func (DonationRecord) Edges() []ent.Edge {
 	return []ent.Edge{
-		edge.From("donor", User.Type).Ref("donations_sent").Field("donor_id").Unique().Required().
+		edge.To("donor", User.Type).Field("donor_id").Unique().Required().
 			Annotations(entsql.OnDelete(entsql.Restrict)),
-		edge.From("recipient", User.Type).Ref("donations_received").Field("recipient_id").Unique().Required().
+		edge.To("recipient", User.Type).Field("recipient_id").Unique().Required().
 			Annotations(entsql.OnDelete(entsql.Restrict)),
-		edge.From("verifier", User.Type).Ref("donations_verified").Field("verified_by").Unique().
+		edge.To("verifier", User.Type).Field("verified_by").Unique().
 			Annotations(entsql.OnDelete(entsql.SetNull)),
 		edge.From("post", Topic.Type).Ref("donations").Field("post_id").Unique().
 			Annotations(entsql.OnDelete(entsql.SetNull)),

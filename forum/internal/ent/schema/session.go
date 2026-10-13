@@ -30,6 +30,7 @@ type Session struct {
 // Fields 见 d2-auth.md §5.2。
 func (Session) Fields() []ent.Field {
 	return []ent.Field{
+		field.Int64("id"),
 		field.Bytes("token_hash").
 			Comment("原始 token 的 SHA-256（32 字节）；长度 CHECK 在迁移"),
 		field.Int64("user_id").

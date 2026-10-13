@@ -33,7 +33,7 @@
 ## 2. 目录与文件（只列本域，路径相对 forum/）
 
     internal/authz/                 # 纯逻辑，不碰 DB、不碰 gin
-    ├── permissions.go              # 24 个权限点常量 + Groups() 目录
+    ├── permissions.go              # 25 个权限点常量 + Groups() 目录
     ├── set.go                      # Set 类型（map 背书）
     ├── actor.go                    # Actor 结构体、Require、CanInBoard、HasAny
     ├── errors.go                   # ErrForbidden（403 common.forbidden）
@@ -42,7 +42,7 @@
     internal/auth/                  # 注册/登录/会话/令牌/我的账号/提权写操作
     ├── service.go                  # Service、NewService、登录/注册/令牌/会话
     ├── password.go                 # argon2id 哈希/校验/rehash 判定 + 并发信号量
-    ├── middleware.go               # LoadPrincipal、RequireLogin、RequireVerified、Perm、PermAny
+    ├── middleware.go               # LoadPrincipal、RequireLogin、RequireActivated、Perm、PermAny
     ├── principal.go                # Principal、ctxKey、FromGin、ClearCookie
     ├── privileges.go               # 角色/权限/追加/封号/审计（危险写操作，service 层再 Require 一次）
     ├── handler.go                  # Handler、Register
@@ -180,11 +180,14 @@ CREATE TABLE users (
                         CONSTRAINT ck_users_status CHECK (status IN ('active','banned','deleted')),
   email_verified_at   ts          NULL,
   activated_at        ts          NULL,
+  activation_pending  text        NULL
+                        CONSTRAINT ck_users_activation_pending CHECK (activation_pending IN ('email','manual')),
   trusted             boolean     NOT NULL DEFAULT false,
   role_id             bigint      NOT NULL REFERENCES roles(id) ON DELETE RESTRICT,
   equipped_title_id   bigint      NULL REFERENCES titles(id) ON DELETE SET NULL,
   exp                 int         NOT NULL DEFAULT 0 CONSTRAINT ck_users_exp_nonneg CHECK (exp >= 0),
   level               int         NOT NULL DEFAULT 1 CONSTRAINT ck_users_level_min CHECK (level >= 1),
+  default_avatar_hash char(64)    NULL REFERENCES images(hash) ON DELETE SET NULL,
   last_login_at       ts          NULL,
   created_at          ts          NOT NULL DEFAULT now(),
   updated_at          ts          NOT NULL DEFAULT now()
@@ -197,27 +200,36 @@ CREATE INDEX idx_users_role           ON users (role_id);                   -- F
 CREATE INDEX idx_users_avatar         ON users (avatar_hash);              -- 纯 FK 索引（SET NULL）
 CREATE INDEX idx_users_avatar_small   ON users (avatar_small_hash);        -- 纯 FK 索引（SET NULL）
 CREATE INDEX idx_users_equipped_title ON users (equipped_title_id);        -- 纯 FK 索引（SET NULL）
+CREATE INDEX idx_users_default_avatar ON users (default_avatar_hash);      -- 纯 FK 索引（SET NULL）
 ```
 
-**为什么头像列与 equipped_title_id 也有单列索引**（拍板 §5.9 第 6 条）：它们是 `ON DELETE SET NULL` 外键，PG 删父行要扫子表；`role_id` 是 RESTRICT，同样要扫。数据库文档 §12.1 的自检按 `pg_constraint` 扫，**没有排除名单**——所以这三条是「不加就红」的。它们是纯 FK 索引（没有查询用它），代价是每次写 users 多维护三个 B 树：1 万用户量级下合计约 0.6MB，可以接受；真到十万用户再考虑改用「status <> 'deleted' 的部分索引 + 自检加例外」，那时候有数据可依。
+**两列是 2026-10-13 拍板新增的**（拍板 §9.11 / U12）：
+
+- `activation_pending`：**一个互斥状态**（email / manual / NULL=已激活），不是三个布尔——三布尔会出现「既 email 又 manual」这种要靠约定排除的组合。完整状态机见 §10.1。
+- `default_avatar_hash`：旧站「分一次就固定」的落点。语义见 §10.7；
+  它是 NULL 时由读路径按 `users.id` 对池子大小取模，**首次分配后写回、此后不变**。本域只提供列与索引，"分配"发生在 media 的读写路径上。
+
+**为什么头像列、equipped_title_id、default_avatar_hash 也有单列索引**（拍板 §5.9 第 6 条）：四个列都是外键，PG 删父行要扫子表（`role_id` 是 RESTRICT，其余是 SET NULL）。数据库文档 §12.1 的自检按 `pg_constraint` 扫，**没有排除名单**——所以这几条是「不加就红」的。它们是纯 FK 索引（没有查询用它们），代价是每次写 users 多维护几个 B 树：1 万用户量级下合计约 0.8MB，可以接受；真到十万用户再考虑改用「status <> 'deleted' 的部分索引 + 自检加例外」，那时候有数据可依。
 
 **手写迁移专属**（ent 生成不了，Atlas diff 会想删）：
 
 1. uq_users_username_lower / uq_users_email_lower：表达式唯一索引（数据库文档 §2.9）。**查询必须写 `lower(username) = lower($1)` 才走索引**——本设计里只有三处查 username：登录（§7.2）、GET /users/{handle}（§11.1）、handle 占用检查（§7.1）。别的地方不许再查 username。email 同理，只有登录与找回密码查。
-2. ck_users_status / ck_users_exp_nonneg / ck_users_level_min：CHECK（ent 的 field.Enum 在 PG 上只生成 varchar）。
+2. ck_users_status / ck_users_activation_pending / ck_users_exp_nonneg / ck_users_level_min：CHECK（ent 的 field.Enum 在 PG 上只生成 varchar）。
 3. 大小写不同的重名注册由这个索引直接拒绝（返回 409 common.conflict）。
 
 **不变量**：
 
 - username 建后不可改（旧站语义）；没有改登录名的端点，DTO 里也没有这个字段。
 - nickname 非空、允许重复；只在导入时旧 display_name 为空才回落到 username。
-- exp 与 level 的公式见 §12；三根状态轴见 §9.1。
+- exp 与 level 的公式见 §12；三根状态轴的判定见 §9.1。
+- `status` 的 CHECK 里保留 `'deleted'`，但**注销端点本轮不做**（拍板 U16）：保留是为了以后加时不用改已上线的 CHECK。
 
 ### 5.2 sessions
 
 ```sql
 CREATE TABLE sessions (
   id            bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+  public_id     uuid        NOT NULL UNIQUE,
   token_hash    bytea       NOT NULL CONSTRAINT ck_sessions_hash_len CHECK (octet_length(token_hash) = 32),
   user_id       bigint      NOT NULL REFERENCES users(id) ON DELETE CASCADE,
   csrf_token    varchar(64) NOT NULL,
@@ -233,7 +245,7 @@ CREATE INDEX        idx_sessions_user    ON sessions (user_id);      -- FK：删
 CREATE INDEX        idx_sessions_expires ON sessions (expires_at);   -- 过期清理 + FK
 ```
 
-- **不存 public_id**：会话列表要能踢单条，`DELETE /me/sessions/{id}` 里那个 id 用 token_hash 的 **base64url 前 16 字节（22 字符）**——它已唯一、已不可反推，再加一列 public_id 是纯冗余。
+- **有 `public_id`**（拍板 U13，2026-10-13 定案）：`GET /me/sessions` 返回的 `id` 与 `DELETE /me/sessions/{id}` 收的都是它。本设计原来打算用「token_hash 的 base64url 前 16 字节」省一列，**被推翻**：对外 ID 一律走 `idgen.NewPublicID()`（拍板 §5.6），会话表不该是唯一的例外——对前端两者都是不透明串，但对「所有对外 ID 都是 v7」这条约定有区别。**响应里不回 token、不回 token_hash**（U21）。
 - **不存 updated_at**：last_seen_at 就是它。
 - **不存「设备名」**：前端从 user_agent 现解析，后端不留第三份。
 - idx_sessions_expires 是**普通索引**不是部分索引：FK 索引检查（§14.3）会把部分索引判为「不可用」（数据库文档 §12.1 ②）。
@@ -248,17 +260,24 @@ CREATE TABLE email_tokens (
   token_hash  bytea       NOT NULL CONSTRAINT ck_email_tokens_hash_len CHECK (octet_length(token_hash) = 32),
   purpose     text        NOT NULL CONSTRAINT ck_email_tokens_purpose CHECK (purpose IN ('verify','reset')),
   expires_at  ts          NOT NULL,
-  used_at     ts          NULL,
+  consumed_at ts          NULL,
+  attempt_count   smallint NOT NULL DEFAULT 0 CONSTRAINT ck_email_tokens_attempts CHECK (attempt_count >= 0),
+  last_attempt_at ts       NULL,
   created_at  ts          NOT NULL DEFAULT now()
 );
 
 CREATE UNIQUE INDEX uq_email_tokens_token ON email_tokens (token_hash);
 CREATE INDEX        idx_email_tokens_user ON email_tokens (user_id);
--- 一个用户同一 purpose 只允许一条未消费的令牌：让「重发」变成一次 upsert（§10.2）
-CREATE UNIQUE INDEX uq_email_tokens_live  ON email_tokens (user_id, purpose) WHERE used_at IS NULL;
+-- 一个用户同一 purpose 只允许一条未消费的记录：让「重发」变成一次 upsert（§10.2）
+CREATE UNIQUE INDEX uq_email_tokens_live  ON email_tokens (user_id, purpose) WHERE consumed_at IS NULL;
 ```
 
-**expires_at 不给默认值**：verify 24 小时、reset 1 小时，两个值不同，由应用写死并写进测试。
+**这一节的形态由拍板 §11（2026-10-12 定案：邮箱激活从「点链接」改成「输 6 位验证码」）决定**，四处与最初设计不同：
+
+1. **`token_hash` 里存的是 6 位数字码的 sha256**（拍板 §11.3：库里不存明文，与 session token 同一套做法）。列名与长度 CHECK 都不变（32 字节摘要）。
+2. **`used_at` 改名 `consumed_at`**，与拍板 §11/§9.10 的用词一致；它同时是「一次性」与「试错 5 次后作废」的落点。
+3. **新增 `attempt_count` 与 `last_attempt_at`**（拍板 §11.3 明确要求的两列）：前者数单个码的失败次数（第 5 次失败即作废），后者是下一次失败的时间（限流与排障用）。
+4. **有效期缩短到 10 分钟**（拍板 §11.4）：两个 purpose 都是 10 分钟——`verify` 是验证码本身的有效期，`reset` 与它同张码、同一套试错上限，两条流程保持一致（拍板 §11.7 明确找回密码也是「输入验证码」）。**expires_at 仍然不给默认值**，由应用写死并写进测试。
 
 ### 5.4 roles
 
@@ -287,6 +306,7 @@ CREATE UNIQUE INDEX uq_roles_super ON roles (is_super) WHERE is_super;
 - priority **只用于后台展示排序，禁止用于授权判断**（数据库文档 §4.1）。
 - uq_roles_super：全库最多一个 is_super 角色，这是「超管短路」的结构性保证。
 - **is_super 是本设计新增的一列**（拍板 §1.3 只用文字描述「不可被降权」）。理由：没有它，authz.Require 的超管短路只能比较 `role.key == "superadmin"`，而方案 §15.23 明令禁止比较角色字符串。代价是多一列 + 一条自检，见 §17 U3。
+- depth 的语义是**写入时算并存**（拍板 U18，2026-10-13 定案）：新建角色时按父角色的 depth+1 写入，改父节点时由 service 递归重算子孙。角色表 ≤ 几十行、改动极少，维护成本为零；读时递归算反而每处调用都要算一次。
 - depth 不加「≤3」这类上界 CHECK：移动父节点时中间态会违反它；值域由 service 保证。
 - **四个内置角色的 parent_id 都是 NULL**（各自独立，不是链）。理由与写穿规则见 §8.4——层级是给自定义角色用的，内置四个角色的权限矩阵本来就是完整列出的。
 
@@ -397,7 +417,7 @@ CREATE INDEX idx_audit_logs_dump   ON audit_logs (created_at DESC, id DESC);
 | idx_sessions_user | FK（删用户级联） | 纯 FK 索引 |
 | idx_sessions_expires | 「删过期会话」保留任务的范围扫 | 见 §15.3：不建它那个任务就是全表扫 |
 | uq_email_tokens_token | 验证/重置令牌兑换 | — |
-| uq_email_tokens_live (user_id, purpose) WHERE used_at IS NULL | 「重发」的 ON CONFLICT 目标 + 「一个 purpose 一条有效令牌」 | 唯一性约束本身，不只是查询 |
+| uq_email_tokens_live (user_id, purpose) WHERE consumed_at IS NULL | 「重发」的 ON CONFLICT 目标 + 「一个 purpose 一条活跃记录」 | 唯一性约束本身，不只是查询 |
 | idx_email_tokens_user | FK | 纯 FK 索引 |
 | uq_roles_super WHERE is_super | 「全库最多一个超管角色」 | 唯一性约束，服务 §8.4 的短路 |
 | idx_roles_parent | FK | 纯 FK 索引 |
@@ -416,7 +436,7 @@ CREATE INDEX idx_audit_logs_dump   ON audit_logs (created_at DESC, id DESC);
 | 部分索引 idx_user_permissions_live | 授权迁移 |
 | 全部 CHECK 约束（ck_users_* / ck_sessions_* / ck_email_tokens_* / ck_roles_* / ck_user_permissions_* / ck_audit_logs_*） | 各表迁移 |
 | 全部外键的单列索引（ent 的 Index 只声明列，不建 FK 索引） | 各表迁移 |
-| 四个角色 + 24 个权限点 + 勾选矩阵的 seed INSERT | `00xx_seed_rbac.sql` |
+| 四个角色 + 25 个权限点 + 勾选矩阵的 seed INSERT | `00xx_seed_rbac.sql` |
 | images / titles 表必须先于 users 建立（FK 依赖） | 迁移顺序 |
 
 迁移文件顺序（本域）：
@@ -546,7 +566,7 @@ func (s *Service) LoadPrincipal() gin.HandlerFunc {
 ```
 
 - **中间件只做认证**：不判权限、不读 body、不写响应体（除了清失效 Cookie）。没登录**不报错**。
-- 中间件顺序：`requestid → access log → recover → LoadPrincipal → 限流 → RequireLogin → RequireVerified → Perm → handler`。
+- 中间件顺序：`requestid → access log → recover → LoadPrincipal → 限流 → RequireLogin → RequireActivated → Perm → handler`。
   `/static`、`/healthz`、`/readyz`、`/img/**` **不挂 LoadPrincipal**（白查一次库）。
 - **401 / 403 分界**：没有 Principal → 401 `common.unauthorized`；有 Principal 但缺权限 → 403 `common.forbidden`。
   只在一处实现（`requirePerm(c, perms, any bool)`），`RequireLogin` / `Perm` / `PermAny` 都调它（方案 §9.2 决策 5）。
@@ -873,7 +893,7 @@ func HasAny(a *Actor, perms ...string) bool { … }   // PermAny 中间件用
 
 ### 8.6 RBAC 迁移数据（唯一真源在这里）
 
-#### 权限点常量（`internal/authz/permissions.go`，24 个）
+#### 权限点常量（`internal/authz/permissions.go`，25 个）
 
 ```go
 const (
@@ -885,6 +905,7 @@ const (
     PermTopicPin         = "topic.pin"
     PermTopicFeature     = "topic.feature"
     PermTopicMove        = "topic.move"
+    PermResourcePublish  = "resource.publish" // 发 kind='resource' 的主题（service 层加判）
     PermBoardManage      = "board.manage"
     PermBoardModerate    = "board.moderate"    // 作用域：只在 board_moderators 命中的分区
     PermPostReview       = "post.review"
@@ -904,9 +925,17 @@ const (
 )
 ```
 
-**两条与拍板字面的差异**（都写进 §17 未决问题）：
-- 拍板 §1.2 的表头写「全集（23 个）」，但表里是 **24 行**，而 §1.3 的 creator 又要求 `topic.feature`。**本设计取 24**（U1）。
-- 拍板 §1.3 的 creator 说明里的 `resource.publish` **不在本集合里**（U2）。
+**25 个，与拍板 §1.2 的关系（2026-10-13 复核）**：
+- 拍板 §1.2 的表里数出 **24 行**（含 `topic.feature`；§9.12 也确认表头原来写的「23 个」是笔误，以 24 为准）；
+- 拍板 §9.9 的 U1/U2 裁决要求**补上 `resource.publish`**（"发 `kind='resource'` 的主题要比普通发帖多这一条（service 层判，因为它依赖 body 里的 kind）"），而 §1.2 的表里实际没有它 → **24 + 1 = 25**；
+- 所以本设计取 **25 个**。**Lead 回写时请把 §1.2 的表补上 `resource.publish` 这一行**——否则常量表与迁移数据会差一个点，§14.1 的启动自检会红。
+
+**一条必须与 P1 对齐的待办**（拍板 §10.8 第 1 条已把它记为待拍板）：P1b 已落库的迁移里是 **24 个**权限点（`topic.pin` 兼管 `/feature`，且没有 `resource.publish`）。如果 P1b 已经执行过，那么两条路必须选一条并落到迁移里：
+
+- **A（补）**：新增迁移插入 `resource.publish`，并决定 `topic.feature` 的归处——**保留它就必须把 `/feature` 端点改成判 `topic.feature`**，否则它就是一个永不生效的勾；
+- **B（退）**：常量表回退到 24 个（删 `topic.feature` 与 `resource.publish`，精华回到 `topic.pin` 兼管）。
+
+**在两处对齐之前不要跑 §14.1 的自检**——它会红，而那是它该有的行为。
 
 #### permissions 迁移数据（`0008_seed_rbac.sql`）
 
@@ -919,6 +948,7 @@ INSERT INTO permissions (key, grp, name, description) VALUES
  ('topic.lock','topic','锁定主题','锁定/解锁'),
  ('topic.pin','topic','置顶','置顶/取消'),
  ('topic.feature','topic','精华','精华/取消，独立权限点'),
+ ('resource.publish','topic','发布资源帖','发 kind=resource 的主题；与 topic.create 同时判定'),
  ('topic.move','topic','移动主题','把主题移到别的分区'),
  ('board.manage','board','分区管理','分区增删改、排序、封面、BoardACL'),
  ('board.moderate','board','分区版主','作用域权限，只在被任命的分区内生效'),
@@ -970,6 +1000,7 @@ ON CONFLICT (key) DO UPDATE SET name = EXCLUDED.name, description = EXCLUDED.des
 | topic.move | — | ✓ | ✓ | ✓ |
 | topic.pin | — | ✓ | ✓ | ✓ |
 | topic.feature | — | ✓ | ✓ | ✓ |
+| resource.publish | — | ✓ | ✓ | ✓ |
 | topic.delete.any | — | — | ✓ | ✓ |
 | board.manage | — | — | ✓ | ✓ |
 | board.moderate | — | — | ✓ | ✓ |
@@ -988,9 +1019,10 @@ ON CONFLICT (key) DO UPDATE SET name = EXCLUDED.name, description = EXCLUDED.des
 | audit.view | — | — | — | ✓ |
 | audit.export | — | — | — | ✓ |
 
-合计：user 3 个、creator 7 个、admin 17 个、superadmin 24 个。
+合计：user 3 个、creator 8 个、admin 18 个、superadmin 25 个。
 
 - `creator` 拿 `topic.move` 是拍板 §1.3「creator 能管自己的帖子」的落地：移动**自己的**帖子到别的分区是作者动作（归属判定在 forum）。**若产品认为移动分区只能由管理员做，把这一格去掉即可。**
+- `resource.publish` 只给 creator 及以上（拍板 U2）：它**不替代** `topic.create`，而是发 `kind='resource'` 时**多要的一条**——forum 的判定顺序是「先 `topic.create`，若 kind=resource 再要 `resource.publish`」，两者 AND。
 - `board.moderate` 给 admin 是**无害且必要**的：它只在 `board_moderators` 命中时生效，而"管理员被任命为某分区版主"是正常用法。
 
 ```sql
@@ -1001,31 +1033,32 @@ SELECT r.id, p.id FROM roles r JOIN permissions p ON p.key IN
  WHERE r.key = 'user'
 ON CONFLICT DO NOTHING;
 
--- 认证创作者 7 个
+-- 认证创作者 8 个
 INSERT INTO role_permissions (role_id, permission_id)
 SELECT r.id, p.id FROM roles r JOIN permissions p ON p.key IN
   ('topic.create','topic.edit.own','topic.delete.own',
-   'topic.lock','topic.move','topic.pin','topic.feature')
+   'topic.lock','topic.move','topic.pin','topic.feature','resource.publish')
  WHERE r.key = 'creator'
 ON CONFLICT DO NOTHING;
 
--- 管理员 17 个（user 3 + creator 4 + 管理类 10）
+-- 管理员 18 个（user 3 + creator 5 + 管理类 10）
 INSERT INTO role_permissions (role_id, permission_id)
 SELECT r.id, p.id FROM roles r JOIN permissions p ON p.key IN
   ('topic.create','topic.edit.own','topic.delete.own',
-   'topic.lock','topic.move','topic.pin','topic.feature',
+   'topic.lock','topic.move','topic.pin','topic.feature','resource.publish',
    'topic.delete.any','board.manage','board.moderate','post.review',
    'report.handle','reward.verify','title.grant','title.manage','user.ban','user.mute')
  WHERE r.key = 'admin'
 ON CONFLICT DO NOTHING;
 
--- 超级管理员 24 个
+-- 超级管理员 25 个
 INSERT INTO role_permissions (role_id, permission_id)
 SELECT r.id, p.id FROM roles r CROSS JOIN permissions p WHERE r.key = 'superadmin'
 ON CONFLICT DO NOTHING;
 ```
 
-**迁移幂等且不覆盖后台调整**：`ON CONFLICT DO NOTHING`——重跑不会把管理员改过的勾选抹回原样。新增权限点的流程见 RBAC 文档 §8（加常量 → 迁移插 `permissions` 行 + 给需要它的**内置**角色补行；新权限点不会自动授予自定义角色，这是 RBAC 固有行为）。
+**迁移幂等且不覆盖后台调整**：`ON CONFLICT DO NOTHING`——重跑不会把管理员改过的勾选抹回原样。
+（**注意**：如果 P1b 已经跑过 24 个的版本，这一段 `ON CONFLICT DO NOTHING` **不会**把新加的 `resource.publish` 补进已有的 creator/admin/superadmin 行——新增权限点的迁移必须显式写"给哪些角色补这一条"，见 RBAC 文档 §8。）新增权限点的流程见 RBAC 文档 §8（加常量 → 迁移插 `permissions` 行 + 给需要它的**内置**角色补行；新权限点不会自动授予自定义角色，这是 RBAC 固有行为）。
 
 ### 8.7 create-admin（`forum create-admin`）
 
@@ -1172,9 +1205,11 @@ SELECT t.was_super, (SELECT n FROM remaining) AS remaining FROM target t;
 | permission.revoke | 回收 | user / public_id | `{"before":{"perm":"user.ban"}}` |
 | permission.expire | cron 清理过期追加 | user / public_id | `{"before":{"perm":"user.ban","expires_at":…}}` |
 | auth.password.change | 改密码 / 重置密码 | user / public_id | `{"after":{"sessions_revoked":2}}` |
-| auth.email.verify | 邮箱验证通过 | user / public_id | `{}` |
+| auth.email.verify | 邮箱验证码校验通过（激活） | user / public_id | `{}` |
+| audit.export | 导出审计日志（**U10 定案：导出的动作自己必须留痕**） | audit_log / `<from>~<to>` | `{"after":{"rows":1234,"from":"…","to":"…","format":"csv"}}` |
 
-**不写审计的**（写了就是噪声，会把真实事件淹掉）：登录失败（由限流计数覆盖）、登出、改昵称/简介/头像、看审计日志；导出审计日志本设计不写但建议改成写（U10）。
+**不写审计的**（写了就是噪声，会把真实事件淹掉）：登录失败（由限流计数覆盖）、登出、改昵称/简介/头像、看审计日志、**验证码校验失败**（拍板与本文都没有这一条；爆破痕迹由限流计数与邮件日志承担）。
+**`audit.export` 自己在导出前写一行**（U10 定案）：它是唯一"能一次导走全站操作痕迹"的动作，不留痕等于把审计的意义反着用。于是导出的 CSV **不含**这一行（它写在读取之前）。
 **`ip` 的来源**：handler 取 `c.ClientIP()`（已 SetTrustedProxies），service 的入参里带 `ip netip.Addr`，**不从 context 取**（方案 §15.26）。
 
 ---
@@ -1220,8 +1255,8 @@ func FromGin(c *gin.Context) (*authz.Actor, bool)
 ```go
 func (h *Handler) Register(rg *gin.RouterGroup, authSvc *Service) {
     v := rg.Group("/api/v1")
-    login    := authSvc.RequireLogin()
-    verified := authSvc.RequireVerified()   // 登录 + EmailVerified
+    login     := authSvc.RequireLogin()
+    activated := authSvc.RequireActivated()  // 登录 + activated_at 非空（写闸门，拍板 §9.12）
 
     // 认证（游客）
     v.GET ("/captcha",              h.captcha)
@@ -1255,25 +1290,29 @@ func (h *Handler) Register(rg *gin.RouterGroup, authSvc *Service) {
 }
 ```
 
-- **`RequireVerified()` 挂在本域所有"写内容/发信/上传"路由上**（§9.3 的 ❌ 清单就是挂载清单），**不挂**在只读与资料修改上。别的模块（forum / media / message / reward）的写路由也要挂它——**那是各自的责任，本域只提供这个中间件**。
+- **本域没有"写内容"路由**，所以 `RequireActivated()` 不在上面这张注册表里出现，它是给别的模块用的：**forum / media / message / reward 的写路由必须挂它**（§9.3 的 ❌ 清单就是挂载清单）。那是各自的责任，本域只提供这个中间件。
+- 三个中间件的分工：`RequireLogin()`（登录）→ `RequireActivated()`（登录 + `activated_at` 非空，写操作专用）→ `Perm(...)` / `PermAny(...)`（权限点）。**顺序不能换**：先知道"你是谁"、再判"你能不能写"、最后判"你有没有这个权限"。
 - `Perm(...)` 默认 AND；`PermAny(...)` 用于任一。
 - **一条路由级测试**（方案 §9.8 要求）：遍历 gin 路由表，断言"除白名单外的路由都必须带 `RequireLogin`"。白名单：`/healthz`、`/readyz`、`/captcha`、`/auth/register|login|email/verify|password/forgot|password/reset`、`GET /me`、`GET /users/*`、`GET /topics*`、`GET /boards*`、`GET /site`、`GET /titles`、`GET /search`、`/img/*`。
 
-### 9.3 未验证用户（`email_verified_at IS NULL`）的逐端点影响面
+### 9.3 未**激活**用户（`activated_at IS NULL`）的逐端点影响面
 
-判定只写一次：`RequireVerified()` 中间件（路由层）。**service 层对"写内容"的判定由业务模块自己按 `actor.EmailVerified` 做**——本域只提供字段。
+> **写闸门只有一条：`activated_at IS NULL` → 写操作 403 `auth.not_activated`**（拍板 §9.12，2026-10-13 定案）。
+> `email_verified_at` **不再挡任何功能**（只影响展示与"能不能再要一个验证码"），`auth.email_unverified` 这个错误码**作废**（回写时应从方案 §21.4 删掉）。
+> 判定只写一次：`RequireActivated()` 中间件（路由层）。**service 层对"写内容"的判定由业务模块自己按 `actor.Activated` 做**——本域只提供字段。
 
-| 端点 | 未验证用户 | 依据 |
+| 端点 | 未激活用户 | 依据 |
 |---|---|---|
-| GET /me、GET /users/{handle}、列表/详情/搜索/图片 | ✅ 可读（与游客同权） | 20.2 第 22 条「可读」 |
-| PATCH /me（nickname / bio） | ✅ 允许 | 20.2 第 22 条「改自己的资料」 |
-| POST /me/avatar、DELETE /me/avatar | ❌ 403 `auth.email_unverified` | 严格读法：**上传字节**不是"改资料"；旧站把"换头像"与"发帖/回复/上传"并列禁掉（旧站用户表提取 §5 第 3 条） |
-| POST /me/payment-channels、GET、DELETE | ❌ 403 | 收款码要对外展示，先验证邮箱 |
-| POST /auth/email/resend | ✅ 唯一出路（限流 1/分钟、5/天） | — |
-| 发帖 / 回复 / issue / issue 评论 / 投票 / 收藏 / 私信 / 举报 / 打赏申报 | ❌ 403 `auth.email_unverified` | 20.2 第 22 条「写内容一律 403」 |
-| POST /me/password、GET/DELETE /me/sessions、POST /auth/logout | ✅ 允许 | 账号自保动作，不属于"写内容"；不然未验证用户连密码都改不了 |
+| GET /me、GET /users/{handle}、列表/详情/搜索/图片 | ✅ 可读（与游客同权） | 拍板 §9.4「未激活：能登录、能读」 |
+| PATCH /me（nickname / bio） | ✅ 允许 | 改自己的资料不是"写内容" |
+| POST /me/avatar、DELETE /me/avatar | ✅ 允许（**本轮改了**） | U20 定案：头像归 media，与激活轴无关；旧站把"换头像"算写操作的做法随 `auth.email_unverified` 一起作废 |
+| POST /me/payment-channels、GET、DELETE | ✅ 允许（**本轮改了**） | 收款码是"我自己的展示设置"，不是内容；挡它只会让用户先去要管理员激活 |
+| POST /auth/email/verify、/auth/email/resend | ✅ **必须允许**（激活的唯一出路） | 拍板 §9.6 第 4/5 种情形：未激活者要能点"重新发送" |
+| POST /me/password、GET/DELETE /me/sessions、POST /auth/logout | ✅ 允许 | 账号自保动作；否则未激活用户连密码都改不了 |
+| 发帖 / 回复 / issue / issue 评论 / 投票 / 收藏 / 私信 / 举报 / 打赏申报 | ❌ 403 `auth.not_activated` | 拍板 §9.12：**唯一的写闸门** |
 
-**这一条与方案 §9.1「注册必须完成邮箱验证才能登录」直接冲突**——本设计按 20.2 第 22 条实现（未验证**可以登录**）。见 U6，那里写了另一条路要改哪几行。
+**为什么要允许未激活者登录**（拍板 §9.12 的第 1 条理由）：不允许的话他连"重新发送验证码"都点不到——登录页那两种情形（等邮件 / 等管理员）就没有入口了。
+**为什么把闸门从"邮箱验证"换成"激活"**（拍板 §9.4）：手动激活的用户 `email_verified_at` 永远是 NULL，若按邮箱验证挡，这批人激活了却仍然不能写——与本次需求直接冲突。
 
 ### 9.4 handler 模板
 
@@ -1303,11 +1342,12 @@ func (h *Handler) changePassword(c *gin.Context) {
 | PATCH | /api/v1/me | ✔ | 不必 | — | — | 只更新请求里出现的字段 |
 | POST | /api/v1/me/password | ✔ | 不必 | — | auth:login:user:<n> 5/m | 成功后删全部会话 → 第二次带旧 cookie 即 401 |
 | GET | /api/v1/me/sessions | ✔ | 不必 | — | — | — |
-| DELETE | /api/v1/me/sessions/{id} | ✔ | 不必 | — | — | `{id}` = 摘要的 base64url 前 22 字符；删不到 404 |
-| POST | /api/v1/auth/email/verify | — | — | — | auth:mail:ip:<ip> 10/h | 令牌一次性；第二次 400 auth.token_invalid |
-| POST | /api/v1/auth/email/resend | ✔ | 不必 | — | auth:mail:user:<id> 1/m、5/d | 已验证 → 409 auth.email_already_verified |
+| DELETE | /api/v1/me/sessions/{id} | ✔ | 不必 | — | — | `{id}` 是 **public_id**（U13）；删不到 404 |
+| POST | /api/v1/auth/email/verify | — | — | — | auth:mail:verify:user:<id> 10 次失败/15 分钟 | 码一次性；正确后该码作废，第二次 400 auth.token_invalid |
+| POST | /api/v1/auth/email/resend | ✔ | 不必 | — | auth:mail:user:<id> 1/m、5/d | 重发顶掉旧码；已验证 → 409 auth.email_already_verified；无发信账号 → 503 auth.mail_unavailable |
 | POST | /api/v1/auth/password/forgot | — | — | — | auth:mail:ip:<ip> 3/h | 恒 200 |
-| POST | /api/v1/auth/password/reset | — | — | — | auth:mail:ip:<ip> 10/h | 令牌一次性；第二次 400 |
+| POST | /api/v1/auth/password/verify-code | — | — | — | 同 email/verify 的按账号窗口 | 返回 reset_ticket（10 分钟、一次性），**不消费码** |
+| POST | /api/v1/auth/password/reset | — | — | — | auth:mail:ip:<ip> 10/h | 消费 reset_ticket（GETDEL）；第二次 → 400 auth.token_invalid |
 | GET | /api/v1/users/{handle} | — | — | — | — | — |
 | GET | /api/v1/users/search | — | — | — | global:ip | limit ≤ 20 |
 | PATCH | /api/v1/admin/users/{id}/role | ✔ | ✔ | role.assign | — | 重复执行结果相同 |
@@ -1320,100 +1360,182 @@ func (h *Handler) changePassword(c *gin.Context) {
 | GET | /api/v1/admin/audit-logs | ✔ | — | audit.view | — | — |
 | GET | /api/v1/admin/audit-logs/export | ✔ | — | audit.export | — | — |
 
-**为什么管理端要 `RequireVerified()`**：未验证的 admin 改了角色矩阵 = 用一个未验证的邮箱换了提权能力。写进测试（§18.5 第 62 条）。
+**管理端不需要 `RequireActivated()` 吗？** 需要，而且**必须**：拍板 §9.12 把 `activated_at` 定为唯一写闸门，而"改角色矩阵"就是写操作——一个未激活的 admin 不该能提权。挂法与其它写路由一致（`Perm(...)` 之前加 `RequireActivated()`），测试见 §18.5 第 62 条。
 
 ---
 
-## 10. 邮箱验证、找回密码、改密码
+## 10. 邮箱验证码、激活、找回密码、改密码
 
-### 10.1 令牌的形状（三条流程共用）
+> 本节按 **拍板 §11（2026-10-12 定案：邮箱激活从「点链接」改成「输 6 位验证码」）** 与 **拍板 §9（注册激活：两条激活路，互不阻塞）** 重写。
+> 触发这次改写的三个真实故障（拍板 §11.1）：跨设备点链接必然断、邮箱网关会拦/改写链接、链接是 GET 会被安全扫描器预取消费。**6 位码把这三条一起消掉。**
 
-    明文     32 字节 crypto/rand → base64url（43 字符）
-    库里     sha256(明文) 的 32 字节 → bytea
-    有效期   purpose='verify' 24 小时；purpose='reset' 1 小时
-    一次性   used_at（消费即写）
+### 10.1 激活状态机（先看这张图，后面所有判定都从它推）
 
-令牌放前端路由的查询串（`/verify-email?token=…`、`/reset-password?token=…`），由前端再 POST 给后端。
-**不让邮件里的链接直接打后端 GET**：GET 不该有副作用，且邮件客户端的链接预取会把它触发掉。
+    注册 → users(status='active', email_verified_at=NULL, activated_at=NULL)
 
-### 10.2 发验证邮件（注册时与重发）
+    立刻（同步，在注册的 handler 里）：查有没有可用的发信账号
+      ├─ 有 → 一个事务：插验证码 + activation_pending='email'；提交后 Queue.Enqueue(mail:send)
+      └─ 没有 → activation_pending='manual'，**不入队**，注册响应里带上这个值
+                 （拍板 §9.5：这种情况对用户报 503 auth.mail_unavailable，界面提示"等待管理员激活"）
+
+    路径 A（邮件，主路）
+      ├─ 用户把 6 位码抄回注册页 → POST /api/v1/auth/email/verify { username|email, code }
+      │    → email_verified_at = now()、activated_at = now()、activation_pending = NULL、码作废
+      └─ 没收到 → POST /api/v1/auth/email/resend（限流 1/分钟、5/天）
+           → **新码顶掉旧码**（uq_email_tokens_live 的 upsert）＋新任务；成功则 activation_pending 回到 'email'
+
+    路径 B（管理员手动，兜底）
+      └─ 后台「激活账号」→ activated_at = now()、activation_pending = NULL
+           → **email_verified_at 保持 NULL**（手动激活 ≠ 邮箱验证，两件事不合并）
+
+    任意时刻：只要 email_verified_at IS NULL，该账号都能请求验证码（不限阶段）。
+
+**为什么 `activation_pending` 是**一个**列而不是三个布尔**（拍板 §9.3）：它是互斥状态（email / manual / 已激活 = NULL），三个布尔会出现「既 email 又 manual」这种只能靠约定排除的组合。
+
+### 10.2 验证码的形状与爆破上限（拍板 §11.4）
+
+    明文     6 位数字（crypto/rand，**不用 math/rand**）
+    库里     sha256(明文) 的 32 字节 → bytea（与 session token 同一套做法）
+    有效期   10 分钟（verify 与 reset 同）
+    单码试错 **5 次**：第 5 次失败即 consumed_at = now()，该码作废
+    重发     1 次/分钟、5 次/天（限流）
+    按账号   15 分钟内累计 **10 次**校验失败 → 429 auth.too_many_requests（带 Retry-After）
+    失败响应 **统一「验证码不正确或已过期」**——不区分"码错"与"码过期"
+
+**6 位数字 + 5 次尝试 + 10 分钟 = 单码被猜中概率 5/1,000,000**，再加按账号限流，够用（拍板 §11.4 的原话）。
+**邮件正文里没有链接**（拍板 §11.2）：只有 6 位数字 + 有效期说明。**提示码不做**（拍板 §11.5）。
+
+**三样「验证码」不要混**（拍板 §11.6）：**邮箱验证码**存 `email_tokens`（本节）、**图形验证码**存 Redis `captcha:<id>`（§9.5）、**会话 token** 存 `sessions`（§6）。三者的有效期、失败计数、存储位置都不同，实现上不许合并。
+
+### 10.3 发码（注册时与重发）—— 一次 upsert
 
 ```sql
-INSERT INTO email_tokens (user_id, token_hash, purpose, expires_at)
-VALUES ($1, $2, 'verify', $3)
-ON CONFLICT (user_id, purpose) WHERE used_at IS NULL
-DO UPDATE SET token_hash = EXCLUDED.token_hash, expires_at = EXCLUDED.expires_at, created_at = now();
+INSERT INTO email_tokens (user_id, token_hash, purpose, expires_at, consumed_at, attempt_count, last_attempt_at)
+VALUES ($1, $2, 'verify', $3, NULL, 0, NULL)
+ON CONFLICT (user_id, purpose) WHERE consumed_at IS NULL
+DO UPDATE SET token_hash = EXCLUDED.token_hash,
+              expires_at = EXCLUDED.expires_at,
+              attempt_count = 0,          -- 新码从零开始数
+              last_attempt_at = NULL,
+              created_at = now();
 ```
 
-**重发的语义是"作废旧的、发新的"**：`token_hash` 一换，旧链接立刻失效（而不是两条都有效）。
-**不在事务里发邮件**：`Queue.Enqueue` 在提交之后。邮件任务重试时令牌不变（payload 只有 id），重跑只会重发同一封。
+- **重发的语义是"作废旧的、发新的"**：`token_hash` 一换，旧码立刻失效（不是两条都有效）。这正是拍板 §11.2 要求的行为，也是 `uq_email_tokens_live` 存在的理由。
+- **`attempt_count` 必须清零**：否则用户重发一次仍然只剩 0 次机会。
+- **不在事务里发邮件**：`Queue.Enqueue` 在提交之后（方案 §14.6）。邮件任务重试时码不变（payload 只有 id），重跑只会重发同一封。
+- **邮箱不可用（一个账号都没有）**：同步返回 503 `auth.mail_unavailable`，并把 `activation_pending` 置 `manual`（拍板 §9.5）；**注册仍然成功**（账号已经建好）。「额度满」不算不可用（额度会恢复），走正常的 manual 分支、不报错。
 
-### 10.3 邮箱验证 `POST /api/v1/auth/email/verify`
+### 10.4 校验验证码 `POST /api/v1/auth/email/verify`
+
+入参 `{ username | email, code }`（拍板 §11.3；两者都不给或都给 → 400 `common.invalid_input`）。
+
+**第一步：按账号/邮箱取那条活跃的码**（复用 §7.2 的 `findUserByLoginSQL`，`lower(col) = lower($1)`）。查不到账号也要走一次哑校验（恒时，同 §7.2 的做法），否则"这个账号存不存在"会从响应时间里漏出去。
+
+**第二步：分两支，都在一个事务里**
 
 ```sql
--- 一个事务里三条语句：先消费令牌，再置验证时间，最后写审计
+-- 支 A：码正确。一条语句同时完成「消费该码」「置验证时间」「激活」
 UPDATE email_tokens t
-   SET used_at = $2
+   SET consumed_at = $3
   FROM users u
- WHERE t.token_hash = $1
+ WHERE t.user_id = $1
    AND t.purpose = 'verify'
-   AND t.used_at IS NULL
-   AND t.expires_at > $2
+   AND t.token_hash = $2
+   AND t.consumed_at IS NULL
+   AND t.expires_at > $3
+   AND t.attempt_count < 5
    AND u.id = t.user_id
-RETURNING t.user_id, u.public_id;
+RETURNING t.id;
 
-UPDATE users SET email_verified_at = $2, updated_at = $2 WHERE id = $3;
+UPDATE users
+   SET email_verified_at = $3, activated_at = $3, activation_pending = NULL, updated_at = $3
+ WHERE id = $1;
 
-DELETE FROM email_tokens WHERE user_id = $3 AND purpose = 'verify' AND used_at IS NOT NULL;
+DELETE FROM email_tokens WHERE user_id = $1 AND purpose = 'verify' AND consumed_at IS NOT NULL;
 
 INSERT INTO audit_logs (actor_id, action, target_type, target_id, detail, ip)
-VALUES ($3, 'auth.email.verify', 'user', $4, '{}'::jsonb, $5);
+VALUES ($1, 'auth.email.verify', 'user', $4, '{}'::jsonb, $5);
 ```
 
-- **条件 UPDATE 就是"一次性"的实现**：`RowsAffected == 0` → 400 `auth.token_invalid`。无效/过期/已用过共用同一个码——区分了等于给爆破者一个 Oracle。
-- **不要先 SELECT 再 UPDATE**：两步之间留窗口，两个并发请求都能通过检查。
-- **幂等**：第一次成功；第二次 `used_at` 已有值 → 400。
-- 已验证的用户换新令牌再验证一次 → 也成功（`email_verified_at` 被写成更晚的时间）。不算问题，但要在测试里固定下来。
+```sql
+-- 支 B：码不正确（或过期、或已被 5 次作废）。一条语句完成「计数 +1」「第 5 次时作废」
+UPDATE email_tokens
+   SET attempt_count = attempt_count + 1,
+       last_attempt_at = $3,
+       consumed_at = CASE WHEN attempt_count + 1 >= 5 THEN $3 ELSE consumed_at END
+ WHERE user_id = $1
+   AND purpose = 'verify'
+   AND consumed_at IS NULL
+RETURNING attempt_count;
+```
 
-### 10.4 找回密码 `POST /api/v1/auth/password/forgot`
+**两条必须讲清的性质**：
+
+1. **判据只写在 WHERE 里，不先 SELECT 再 UPDATE**——两个并发请求都能在第一支里胜出，靠的是条件 UPDATE 的原子性（第二个的 `consumed_at IS NULL` 已经不成立）。
+2. **支 A 与支 B 的区分就在 `RETURNING` 有没有行**：支 A 没更新到行 → 说明码不对/过期/已作废 → 走支 B 计数，然后**统一**返回 400 `auth.token_invalid`（对外文案「验证码不正确或已过期」）。**绝不在响应里区分是哪种情况**（拍板 §11.4）。
+
+**限流**（在事务之前判，避免给爆破者省事）：
+
+    键   auth:mail:verify:user:<user_id>     窗口 15 分钟
+    值   累计校验失败次数；达到 10 → 429 auth.too_many_requests + Retry-After
+    成功一次 → 计数清零（用户已经证明了他有邮箱）
+
+3. **账号未激活但邮箱已验证**（管理员手动激活过、后又重发过码）：支 A 会把 `email_verified_at` 再写一次更晚的时间、`activation_pending` 再置 NULL。**无害**，但测试里要固定住（§18.4）。
+4. **失败不写审计**：拍板与 §8.10 的动作清单里都没有"验证码校验失败"这一条。爆破痕迹由限流计数与邮件日志承担；写进审计只会把真实事件淹掉。
+
+### 10.5 重发验证码 `POST /api/v1/auth/email/resend`
+
+    1. 限流 auth:mail:user:<id> 1 次/分钟、5 次/天 → 429 auth.too_many_requests + Retry-After
+    2. 已经 email_verified_at 非空 → 409 auth.email_already_verified
+    3. 同步查有没有可用发信账号 → 没有：activation_pending='manual' + 503 auth.mail_unavailable
+    4. 有 → §10.3 的 upsert（新码顶旧码）+ activation_pending='email'；提交后 Enqueue mail:send
+    5. 响应：200，body 里给 `activation_pending`（前端据此切「等邮件」/「等管理员」两种界面）
+
+**`activation_pending` 从 manual 回到 email 是允许的**（拍板 §9.2 路径 A）：发信能力恢复后用户自己点一下就回来了，不需要管理员介入。
+
+### 10.6 找回密码（也是验证码，两步一页）
+
+`POST /api/v1/auth/password/forgot`：
 
     1. 限流 auth:mail:ip:<ip> 3/小时
-    2. 查账号行（复用 §7.2 的 findUserByLoginSQL，参数是 body.email）
-    3. **无论查到与否都 200**（方案 §21.2：不暴露邮箱是否存在）
-    4. 查到但 status='banned' → 不发作废邮件，照样 200
-    5. 查到 → 一个事务：插 reset 令牌（§10.2 的 upsert，purpose='reset'）+ 写审计；提交后 Enqueue mail:send
+    2. 查账号行（复用 findUserByLoginSQL，参数是 body.email）
+    3. **无论查到与否都 200**（方案 §21.2：不暴露邮箱是否存在），且响应体除 request_id 外逐字节相同
+    4. 查到但 status='banned' → 不发码，照样 200
+    5. 查到 → §10.3 的 upsert（purpose='reset'）+ 提交后 Enqueue mail:send
 
-**令牌只进邮件链接，不进日志、不进响应体。**
+**码只进邮件正文，不进日志、不进响应体。**
 
-### 10.5 重置密码 `POST /api/v1/auth/password/reset`
+`POST /api/v1/auth/password/reset` 是**两步**（拍板 §11.7 的前端流程是「输入验证码 → 设新密码」）：
+
+    第一步：POST /api/v1/auth/password/verify-code { username|email, code }
+            → 校验同 §10.4（同一个 purpose='reset' 的码、同一套 5 次上限与限流）
+            → **不消费码**，返回 { reset_ticket }：Redis 里 auth:pwreset:<ticket> = user_id，TTL 10 分钟
+    第二步：POST /api/v1/auth/password/reset { reset_ticket, new_password }
+            → 消费票据（GETDEL，一次性）→ 一个事务：
+                 UPDATE users SET password_hash, updated_at
+                 DELETE FROM sessions WHERE user_id RETURNING token_hash
+                 UPDATE email_tokens SET consumed_at = now() WHERE user_id AND purpose='reset' AND consumed_at IS NULL
+                 INSERT INTO audit_logs('auth.password.change', after={sessions_revoked:n})
+
+**为什么中间要一张票据**：6 位码只有 10 分钟且只能错 5 次，而"想新密码 + 打字 + 确认"是人来做的，很容易超过 10 分钟；票据把"证明了我有邮箱"与"设置新密码"解耦，码在第一次校验后就不再需要（但**不提前消费**——提前消费会让用户输错新密码格式后再也回不去）。
+**票据不落库**：它是 10 分钟的临时凭据，放 Redis（`kv`）而不是又一张表；`GETDEL` 保证只用一次。**拍板 §10.8 第 5 条把「reset 改验证码制」列为待拍板**——本节的写法就是那条的落地，若 Lead 选另一条路（保留链接），改动只在 §10.6 这一段。
+
+**哈希在事务外算**（同 §7.1 第 3 步）。**失败停在什么状态**：要么全成，要么什么都没变（同一个事务）。不存在"密码改了但会话没删"的中间态。
+
+### 10.7 默认头像的分配（U12 定案，本域只提供列）
 
 ```sql
--- 一个事务四条语句；顺序：令牌 → 用户 → 会话 → 审计
-UPDATE email_tokens t
-   SET used_at = $2
-  FROM users u
- WHERE t.token_hash = $1
-   AND t.purpose = 'reset'
-   AND t.used_at IS NULL
-   AND t.expires_at > $2
-   AND u.id = t.user_id
-RETURNING t.user_id, u.public_id;
+-- 读路径：hash 为 NULL 时按 id 取模（这一步不写库）
+SELECT hash FROM default_avatars ORDER BY sort, hash OFFSET ($1 % (SELECT count(*) FROM default_avatars)) LIMIT 1;
 
-UPDATE users SET password_hash = $3, updated_at = $2 WHERE id = $4;
-
-DELETE FROM sessions WHERE user_id = $4 RETURNING token_hash;
-
-DELETE FROM email_tokens WHERE user_id = $4 AND purpose = 'reset' AND used_at IS NOT NULL;
-
-INSERT INTO audit_logs (actor_id, action, target_type, target_id, detail, ip)
-VALUES ($4, 'auth.password.change', 'user', $5,
-        jsonb_build_object('after', jsonb_build_object('sessions_revoked', $6)), $7);
+-- 首次分配：写回一列，此后固定不变（旧站「随机分一次就固定」的语义）
+UPDATE users SET default_avatar_hash = $2, updated_at = $3
+ WHERE id = $1 AND default_avatar_hash IS NULL;
 ```
 
-- **哈希在事务外算**（同 §7.1 第 3 步），事务里只写。
-- 删出来的 `token_hash` 用来 `InvalidateSession`（提交之后）。
-- **失败停在什么状态**：要么全成，要么什么都没变（同一个事务）。不存在"密码改了但会话没删"的中间态。
-- `RowsAffected == 0` → 400 `auth.token_invalid`。
+- **`AND default_avatar_hash IS NULL` 是这条语句的全部要点**：并发两次请求只会有一行被写上，第二个的 `RowsAffected = 0` 是无害的（它本来就该拿到同一个值吗？不——它拿到的是**同一个** hash，因为选择基于 `users.id` 而不是随机数）。**不用随机**：旧站是"随机分一次就固定"，用 id 取模能达到同样的"固定"效果且没有并发窗口。
+- **谁写这一列**：写路径（media 的读/写路径）负责；本域只保证列存在、有索引、`ON DELETE SET NULL` 在池子条目被删时把引用清空。
+- **池子为空**（`default_avatars` 没有行）：返回空字符串，由前端显示首字母占位。**不要**为这个分支加兜底图。
 
 ### 10.6 改密码 `POST /api/v1/me/password`
 
@@ -1654,7 +1776,7 @@ func (s *Service) CheckEnums(ctx context.Context) error {
 
 **正则必须同时认单引号与双引号**：`pg_get_constraintdef` 在某些设置下会输出双引号，写死单引号会在真库上**静默比不过**（检查通过但什么都没查）——这是本域最危险的一类自检 bug，测试里必须拿一条真的双引号 CHECK 定义当夹具（§18.7 第 81 条）。
 
-**`roles.key` 有自己的一条**（它不是 CHECK 列）：四个 key 必须存在，且权限数分别是 **3 / 7 / 17 / 24**：
+**`roles.key` 有自己的一条**（它不是 CHECK 列）：四个 key 必须存在，且权限数分别是 **3 / 8 / 18 / 25**：
 
 ```sql
 SELECT r.key, (SELECT count(*) FROM role_permissions rp WHERE rp.role_id = r.id) AS n
@@ -1709,7 +1831,7 @@ SELECT c.conrelid::regclass AS tbl, c.conname, a.attname
 | auth.token_invalid | 400 | 邮箱/重置令牌无效、过期、已用过 |
 | common.internal | 500 | 兜底 |
 
-### 15.2 本域新增（11 个，方案 §21.4 总表里没有，**建议 Lead 回写总表**）
+### 15.2 本域新增（14 个：11 个自己造的 + 3 个拍板 §9.5/§11.4 点名的，方案 §21.4 总表里没有，**建议 Lead 回写总表**）
 
 | code | 状态 | 出现场景 | 为什么不能复用现成的 |
 |---|---|---|---|
@@ -1804,7 +1926,39 @@ SELECT c.conrelid::regclass AS tbl, c.conname, a.attname
 
 ## 17. 未决问题（每条给两种选择的代价，**不要自己拍**）
 
-> 编号 U1–U21 供 Lead 回写与拍板时引用。凡本设计已按某一方案落地的地方，都在"我的取舍"里写明——**那是可被推翻的默认值，不是已定案**。
+> 编号 U1–U21 供 Lead 回写与拍板时引用。凡本设计已按某一方案落地的地方，都在"我的取舍"里写明。
+
+## 17.0 已定案（拍板 §9.9 / §9.12，2026-10-13）——本节是**追溯记录**，逐条写明落到了本文的哪一段
+
+Lead 已在拍板 §9.9（U1–U21 裁决）与 §9.12（最后两条 + 表头更正）里全部拍完，并追加了 §9（注册激活）与 §11（验证码）两节新需求。**本文已按裁决改完**，对应关系如下：
+
+| 拍板条目 | 定案 | 落到本文哪里 |
+|---|---|---|
+| U1 权限点 23/24 | **24 + resource.publish = 25** | §8.6 常量表、迁移数据、勾选矩阵（3/8/18/25）、§14.2 自检、§18.2 第 16 条 |
+| U2 `resource.publish` | **要**（发 `kind='resource'` 时多要一条，service 层判） | §8.6 矩阵下的说明与 forum 的判定顺序 |
+| U3 `roles.is_super` | **要**，不许比较 `role.key` | §5.4 + `uq_roles_super` |
+| U4 `idx_users_nickname_lower` | **要** | §5.10 索引表 + §11.4 |
+| U5 pgsql 子包 | **`internal/auth/pgsql`**（+ `internal/user/pgsql`） | §2 目录树；需回写方案 §3 与 §15.7 |
+| U6 未验证能不能登录 | **能**；写闸门只有 `auth.not_activated`；`auth.email_unverified` **作废** | §9.3 整节重写、§15 错误码、§18.4 |
+| U7 旧站未激活导入 | 照 §10.2 映射；未激活者用**同一个** `auth.not_activated`，不特判 | §9.3 表格末行 |
+| U8 角色层级 | **读时闭包** | §8.2 / §8.3 的 `WITH RECURSIVE chain` |
+| U9 `board.moderate` 给 admin | **给** | §8.6 矩阵 |
+| U10 导审计本身写审计 | **要写** | §8.10 动作清单新增 `audit.export` 一行 |
+| U11 登录防重复提交 | **不做** | §9.5 幂等列的说明 |
+| U12 `default_avatar_hash` | **要**（可空列 + 单列 FK 索引） | §5.1 列与索引 + §10.7 |
+| U13 会话 `{id}` | **public_id**（sessions 加这一列） | §5.2 + §9.5 |
+| U14 管理端用户列表 | **归独立 admin 模块**（不在 D2） | §17 U14（保留，供追溯） |
+| U15 `avatar` 形态 | **`/img/<hash>` 完整路径** | §11.2 |
+| U16 `status='deleted'` | CHECK 保留、**端点不做** | §5.1 不变量 |
+| U17 username/email 交叉占用 | **不交叉判** | §7.2 |
+| U18 角色树 `depth` | **写入时算并存** | §5.4 |
+| U19 `uq_email_tokens_live` | **要**，谓词 `WHERE consumed_at IS NULL`（**不带 now()**） | §5.3 / §5.10 |
+| U20 `/me` 与 media 的边界 | 纯文本字段归 user；**头像归 media**，两模块各写各的列 | §9.3（头像不再被闸门挡）、交接单 §2.3 |
+| U21 `GET /me/sessions` 字段 | `id`/`ip`/`user_agent`/`last_seen_at`/`created_at`/`is_current`；**不回 token** | §9.5 + §18.3 第 29 条 |
+
+**另外两条新需求（拍板 §9 + §11）已经改完**：注册激活的两条路与 `activation_pending` 状态机（§10.1）、邮箱激活改成 6 位验证码与它的爆破上限（§10.2–§10.5）、找回密码改成"验证码 + reset_ticket 两步"（§10.6）。
+
+**仍然需要 Lead 决定的一件（出现了一个新的不一致）**：拍板 §10.8 第 1 条自己记着「P1b 已落库的是 24 个权限点（`topic.pin` 兼管 `/feature`）」，而 §9.9 的 U1/U2 又要求 25 个（含 `topic.feature` 与 `resource.publish`）。两条并存的话 **`topic.feature` 是一个永不生效的勾**（端点判的是 `topic.pin`）。二选一：**A** 补迁移加 `resource.publish` 并把 `/feature` 改成判 `topic.feature`；**B** 常量表退回 24 个（删 `topic.feature`，精华回到 `topic.pin` 兼管）。**在选定之前 §14.1 的启动自检会红，那是它该有的行为。**
 
 ### U1 权限点到底 23 还是 24 个
 
@@ -2002,7 +2156,7 @@ SELECT c.conrelid::regclass AS tbl, c.conname, a.attname
 | 13 | `Status='banned'` | 即使 `IsSuper=true` 也返回 401（封号一票否决） |
 | 14 | `actor == nil` | 401 |
 | 15 | `CanInBoard` | BoardIDs 命中 true、不命中 false、IsSuper 恒 true |
-| 16 | **权限点常量集合** | `len(authz.All())` == 24，且与 §8.6 的表逐字相同（把表写成代码里的切片做对照） |
+| 16 | **权限点常量集合** | `len(authz.All())` == 25，且与 §8.6 的表逐字相同（把表写成代码里的切片做对照） |
 
 ### 18.3 会话生命周期（`service_test.go`）
 
@@ -2016,6 +2170,7 @@ SELECT c.conrelid::regclass AS tbl, c.conname, a.attname
 | 22 | 改密码后用旧 Cookie | 立刻 401（该用户全部 session 被删） |
 | 23 | **1000 次请求的 touch** | 累计被刷新的行数 == 1；`expires_at` 一次未改 |
 | 24 | touch 的 24 小时续期 | clock 前进 25 小时后一次请求 → 续期 SQL 命中 1 行，`expires_at` 变成 now+720h |
+| 24b | 封号后清缓存 | `BanUser` 之后再发一次请求：缓存条目里的 status 已是 banned → 401（**不等 TTL**） |
 | 25 | **权限缓存 60 秒** | 第二次请求不查库（用计数包装或 pg_stat 观测）；TTL 过后再查一次 |
 | 26 | 缓存条目内容 | 解 JSON：同时含 status、board_ids、perms、is_super（**盲审 B1 的要求**） |
 | 27 | 后台改权限后立刻失效 | 追加权限 → **下一个请求** Perms 里就有了 |
@@ -2034,21 +2189,26 @@ SELECT c.conrelid::regclass AS tbl, c.conname, a.attname
 | 35 | 登录失败不区分原因 | 不存在的用户与错误密码返回**同一个 code**，且都记一次限流 |
 | 36 | 登录限流 | 第 6 次（同账号）→ 429 且带 Retry-After |
 | 37 | 明文口令不进日志 | 捕获 slog 输出，断言不含密码 |
-| 38 | **邮箱未验证可登录** | `GET /me` 返回数据、`email_verified=false`；发帖 403 `auth.email_unverified`（U6 的选择在测试里锁死） |
-| 39 | 邮箱验证 | 正确令牌 → 200 + `email_verified_at` 有值；**第二次同一令牌 → 400 `auth.token_invalid`** |
-| 40 | 验证令牌过期 | clock 前进 25 小时 → 400（且 `users.email_verified_at` 仍为 NULL） |
-| 41 | 重发作废旧令牌 | 重发 → 旧令牌 400、新令牌 200；`email_tokens` 里只有一行活跃 |
-| 42 | 找回密码不暴露邮箱 | 存在与不存在的邮箱都 200，且响应体除 request_id 外相同 |
-| 43 | 重置密码 | 200 → 旧密码登录失败、新密码成功；**全部会话被删**（重置前的 cookie 立刻 401） |
-| 44 | 重置令牌一次性 | 第二次 → 400 |
-| 45 | 改密码 | 200 → 同 cookie `GET /me` 得到 `data:null`；旧密码登录 401、新密码 200 |
-| 46 | 改密码成同一个 | 400，fields 指向 new_password |
+| 38 | **未激活可登录**（拍板 §9.12） | 新注册用户 `GET /me` 返回数据、`activated=false`、`activation_pending='email'`；发帖 403 `auth.not_activated`；**读帖子 200** |
+| 39 | 验证码正确 | 200 → `email_verified_at` 与 `activated_at` 都非空、`activation_pending` 为 NULL、该码 `consumed_at` 非空；**第二次同一码 → 400** |
+| 40 | 验证码错 5 次 | 前 4 次都 400 且 `attempt_count` 递增；**第 5 次后该码 `consumed_at` 非空**；第 6 次即使输对也 400（拍板 §11.8 第 3 条） |
+| 41 | 验证码过期与统一文案 | clock 前进 11 分钟 → 400，且**响应体与"码错"逐字节相同**（除 request_id） |
+| 42 | 重发作废旧码 | 重发 → 旧码 400、新码 200；`email_tokens` 里只有一行 `consumed_at IS NULL`；`attempt_count` 归零（拍板 §11.8 第 4 条） |
+| 43 | 按账号限流 | 15 分钟内累计 10 次失败 → 429 `auth.too_many_requests` + Retry-After；**成功一次后计数清零** |
+| 44 | 无发信账号 | 清空 mail_accounts → 注册 → 201 + `activation_pending='manual'` + **503 `auth.mail_unavailable`**（拍板 §9.5）；`jobs` 里没有该邮件任务 |
+| 45 | 管理员手动激活 | `activated_at` 非空、`email_verified_at` **仍为 NULL**、`activation_pending` 为 NULL；此后发帖 200（拍板 §9.8 第 3 条） |
+| 46 | manual → email 回流 | manual 用户点重发且此时有账号 → `activation_pending='email'`，收到码（拍板 §9.2） |
+| 47 | 找回密码不暴露邮箱 | 存在与不存在的邮箱都 200，且响应体除 request_id 外相同 |
+| 48 | reset 两步 | verify-code → 拿 ticket（**码没有被消费**，还能再用一次）→ reset { ticket, new_password } → 旧密码登录失败、新密码成功、**全部会话被删** |
+| 49 | ticket 一次性 | 第二次带同一 ticket → 400；ticket 过期（clock +11 分钟）→ 400 |
+| 50 | 改密码 | 200 → 同 cookie `GET /me` 得到 `data:null`；旧密码登录 401、新密码 200 |
+| 51 | 改密码成同一个 | 400，fields 指向 new_password |
 
 ### 18.5 RBAC 数据与提权（`privileges_test.go`）
 
 | # | 用例 | 断言 |
 |---|---|---|
-| 47 | 迁移数据 | 4 个角色存在；权限数 3/7/17/24；`permissions` 表 24 行且 key 集合 == 常量集合 |
+| 47 | 迁移数据 | 4 个角色存在；权限数 3/8/18/25；`permissions` 表 25 行且 key 集合 == 常量集合 |
 | 48 | `is_super` 唯一 | 插第二个 `is_super` 角色 → 唯一索引冲突 |
 | 49 | 改角色矩阵 | 加一条 → 该角色的用户**下一个请求**就有了 |
 | 50 | 内置角色不可删 | 删 `user` → 409 `admin.role_system` |
@@ -2110,7 +2270,16 @@ SELECT c.conrelid::regclass AS tbl, c.conname, a.attname
 
 **数据量**：85/87/88/89 在**只有几行**的 schema 上跑会得到 Seq Scan（PG 对空表一律顺扫）。所以这组测试要先灌入**至少 1000 个用户 + 5000 个会话 + 2000 条审计**；或者断言"索引名出现在计划里"而不是"没有 Seq Scan"。两种写法二选一，但 **86 的反例必须在同一夹具下也是红的**，否则整组测试没有意义。
 
-### 18.9 单元测试之外的 CI 门禁
+### 18.9 迁移与拍板对齐（本轮新增，必须能红）
+
+| # | 用例 | 断言 |
+|---|---|---|
+| 91 | 权限点与迁移一致 | 跑完 `0008_seed_rbac.sql` 后 `CheckPermissions` **返回 nil**；`permissions` 表 25 行；四个角色 3/8/18/25（**P1b 若还是 24 个的版本，这条必须红——那是它该有的行为**） |
+| 92 | `resource.publish` 真的生效 | creator 发 `kind='discussion'` → 200；发 `kind='resource'` → 200；**user 发 `kind='resource'` → 403 forum...**（forum 的判定，本域只保证 `Perms` 里有这个点） |
+| 93 | 拍板索引谓词 | 迁移能建出 `uq_email_tokens_live ... WHERE consumed_at IS NULL`（**任何谓词里带 `now()` 的写法都必须建表失败**——这条用一条反例 SQL 证明） |
+| 94 | 三根轴互不干扰 | 手动激活（email_verified_at 仍 NULL）的用户能发帖；邮箱已验证但未激活的用户不能发帖（两个方向都要断言） |
+
+### 18.10 单元测试之外的 CI 门禁
 
     gofmt -l .            # 无输出
     go vet ./...

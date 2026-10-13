@@ -31,6 +31,7 @@ type ExpEvent struct {
 // Fields 见 d4-social.md §1.5。
 func (ExpEvent) Fields() []ent.Field {
 	return []ent.Field{
+		field.Int64("id"),
 		field.Int64("user_id"),
 		field.Int("delta").Comment("可正可负，但不得为 0（CHECK）"),
 		field.String("reason").MaxLen(32),

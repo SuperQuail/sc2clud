@@ -4,15 +4,15 @@ package apperr
 // 规则：新增一个码 = 在这里加一行 + 加一个错误变量 + 写进 §21.4 总表；三处同名。
 // 这里同时维护 code → status 的登记表，Fail 与契约测试都读它。
 const (
-	CodeInvalidInput     = "common.invalid_input"
-	CodeUnauthorized     = "common.unauthorized"
-	CodeForbidden        = "common.forbidden"
-	CodeNotFound         = "common.not_found"
-	CodeConflict         = "common.conflict"
-	CodeRateLimited      = "common.rate_limited"
-	CodeInternal         = "common.internal"
-	CodeEmailUnverified  = "auth.email_unverified"
-	CodeMediaTooLarge    = "media.too_large"
+	CodeInvalidInput    = "common.invalid_input"
+	CodeUnauthorized    = "common.unauthorized"
+	CodeForbidden       = "common.forbidden"
+	CodeNotFound        = "common.not_found"
+	CodeConflict        = "common.conflict"
+	CodeRateLimited     = "common.rate_limited"
+	CodeInternal        = "common.internal"
+	CodeEmailUnverified = "auth.email_unverified"
+	CodeMediaTooLarge   = "media.too_large"
 )
 
 // Statuses 是 code → HTTP status 的登记表。

@@ -23,6 +23,7 @@ type BoardACL struct {
 
 func (BoardACL) Fields() []ent.Field {
 	return []ent.Field{
+		field.Int64("id"),
 		field.Int64("board_id"),
 		field.Int64("role_id"),
 		field.Bool("can_post").Default(false),

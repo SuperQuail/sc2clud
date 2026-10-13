@@ -29,6 +29,7 @@ type MailQuota struct {
 // Fields 见 d6-reward.md §4.8。
 func (MailQuota) Fields() []ent.Field {
 	return []ent.Field{
+		field.Int64("id"),
 		field.Int64("account_id"),
 		field.Time("day").SchemaType(map[string]string{dialect.Postgres: "date"}).
 			Comment("PG 原生 date；一天一行"),

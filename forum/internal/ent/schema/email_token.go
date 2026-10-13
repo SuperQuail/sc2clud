@@ -32,6 +32,7 @@ type EmailToken struct {
 // Fields 见 d2-auth.md §5.3。
 func (EmailToken) Fields() []ent.Field {
 	return []ent.Field{
+		field.Int64("id"),
 		field.Int64("user_id").
 			Comment("FK users(id) ON DELETE CASCADE"),
 		field.Bytes("token_hash").

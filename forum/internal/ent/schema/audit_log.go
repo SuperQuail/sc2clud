@@ -34,6 +34,7 @@ type AuditLog struct {
 // Fields 见 d2-auth.md §5.8。
 func (AuditLog) Fields() []ent.Field {
 	return []ent.Field{
+		field.Int64("id"),
 		field.Int64("actor_id").Optional().Nillable().
 			Comment("操作者；CLI 与系统动作为 NULL。FK users(id) ON DELETE SET NULL"),
 		field.String("action").MaxLen(64).

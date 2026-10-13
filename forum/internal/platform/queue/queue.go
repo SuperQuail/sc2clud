@@ -50,12 +50,12 @@ type TxExecutor interface {
 
 // 任务类型常量集中在这里，payload 只放 id（拍板 §5.7）。
 const (
-	TypeMailSend    = "mail:send"     // payload {"id": <mail_log id>}
-	TypeNotifyReply = "notify:reply"  // payload {"id": <post id>}
-	TypeNotifyReward = "notify:reward" // payload {"id": <donation_record id>}
-	TypeSearchIndex  = "search:index"  // payload {"id": <topic id>}
-	TypeImageGC      = "image:gc"      // payload {}
-	TypeJobCleanup   = "queue:cleanup" // payload {}
+	TypeMailSend       = "mail:send"       // payload {"id": <mail_log id>}
+	TypeNotifyReply    = "notify:reply"    // payload {"id": <post id>}
+	TypeNotifyReward   = "notify:reward"   // payload {"id": <donation_record id>}
+	TypeSearchIndex    = "search:index"    // payload {"id": <topic id>}
+	TypeImageGC        = "image:gc"        // payload {}
+	TypeJobCleanup     = "queue:cleanup"   // payload {}
 	TypeBackupSnapshot = "backup:snapshot" // payload {}
 )
 

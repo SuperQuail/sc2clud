@@ -119,7 +119,9 @@ const (
 func TopicViewKey(topicID int64) string { return prefixTopicView + strconv.FormatInt(topicID, 10) }
 
 // AssetDownloadKey 外链下载量（release_assets.download_count）。
-func AssetDownloadKey(assetID int64) string { return prefixAssetDownload + strconv.FormatInt(assetID, 10) }
+func AssetDownloadKey(assetID int64) string {
+	return prefixAssetDownload + strconv.FormatInt(assetID, 10)
+}
 
 // Kind 与 ID 把键拆开；不认识的前缀返回 error——写回函数据此报错，而不是静默丢数。
 func Kind(key string) (kind string, id int64, err error) {

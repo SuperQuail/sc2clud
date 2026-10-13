@@ -26,6 +26,7 @@ type Like struct {
 
 func (Like) Fields() []ent.Field {
 	return []ent.Field{
+		field.Int64("id"),
 		field.Int64("user_id"),
 		field.String("target_type").SchemaType(pgType("text")).
 			Comment("topic/post/issue/issue_comment，CHECK 在迁移"),

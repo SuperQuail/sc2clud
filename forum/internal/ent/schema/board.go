@@ -30,6 +30,7 @@ type Board struct {
 // Fields 见 d3-forum.md §2.1/§2.2。
 func (Board) Fields() []ent.Field {
 	return []ent.Field{
+		field.Int64("id"),
 		field.String("slug").MaxLen(32).SchemaType(pgType("varchar(32)")).Unique().
 			Comment("URL 标识（/b/mod）。不可改：改 slug 等于废掉所有外链"),
 		field.String("name").MaxLen(32).SchemaType(pgType("varchar(32)")),

@@ -22,6 +22,7 @@ type DonationNoticeDefault struct {
 // Fields 见 d6-reward.md §4.3。
 func (DonationNoticeDefault) Fields() []ent.Field {
 	return []ent.Field{
+		field.Int64("id"),
 		field.String("channel").MaxLen(16).Comment("主键；手写迁移里是 PRIMARY KEY"),
 		field.String("text").MaxLen(200).Default(""),
 		field.Time("created_at").Default(time.Now).Immutable().

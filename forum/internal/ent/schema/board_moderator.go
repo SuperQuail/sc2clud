@@ -43,6 +43,7 @@ type BoardModerator struct {
 // Fields 见 d2-auth-交接 §2.2。
 func (BoardModerator) Fields() []ent.Field {
 	return []ent.Field{
+		field.Int64("id"),
 		field.Int64("board_id").
 			Comment("FK boards(id) ON DELETE CASCADE"),
 		field.Int64("user_id").

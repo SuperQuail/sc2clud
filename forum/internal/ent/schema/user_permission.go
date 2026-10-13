@@ -33,6 +33,7 @@ type UserPermission struct {
 // Fields 见 d2-auth.md §5.7。
 func (UserPermission) Fields() []ent.Field {
 	return []ent.Field{
+		field.Int64("id"),
 		field.Int64("user_id").
 			Comment("被授权的用户；无外键，理由见文件头"),
 		field.Int64("permission_id"),

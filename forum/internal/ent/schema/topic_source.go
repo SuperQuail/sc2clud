@@ -34,6 +34,7 @@ func (TopicSource) Mixin() []ent.Mixin {
 
 func (TopicSource) Fields() []ent.Field {
 	return []ent.Field{
+		field.Int64("id"),
 		field.Int64("topic_id"),
 		field.String("provider").MaxLen(24).SchemaType(pgType("varchar(24)")).
 			Comment("已知 13 个 key（baidu/aliyun/quark/lanzou/pan123/weiyun/onedrive/mega/website/github/gitee/other），CHECK 在迁移"),

@@ -25,6 +25,7 @@ type Sanction struct {
 
 func (Sanction) Fields() []ent.Field {
 	return []ent.Field{
+		field.Int64("id"),
 		field.Int64("user_id"),
 		field.Int64("board_id").Optional().Nillable().Comment("NULL = 全站；非空 = 只在该分区生效"),
 		field.String("action").SchemaType(pgType("text")).Default("reply").

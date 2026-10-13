@@ -34,6 +34,7 @@ func (Report) Mixin() []ent.Mixin {
 
 func (Report) Fields() []ent.Field {
 	return []ent.Field{
+		field.Int64("id"),
 		field.String("target_type").SchemaType(pgType("text")).
 			Comment("topic/post/user，CHECK 在迁移"),
 		field.Int64("target_id").Comment("多态，无外键（见文件头）"),

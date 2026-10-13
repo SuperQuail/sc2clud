@@ -33,6 +33,7 @@ type Role struct {
 // Fields 见 d2-auth.md §5.4。
 func (Role) Fields() []ent.Field {
 	return []ent.Field{
+		field.Int64("id"),
 		field.String("key").MaxLen(32).Unique().
 			Immutable().
 			Comment("机器名（user/creator/admin/superadmin 或自定义），授权判定只用它以外的数据"),

@@ -24,17 +24,17 @@ type Config struct {
 
 // HTTP：监听、可信代理、跨站与请求体上限。
 type HTTP struct {
-	Addr              string   `yaml:"addr" koanf:"addr"`
-	TrustedProxies    []string `yaml:"trusted_proxies" koanf:"trusted_proxies"` // 非空时必须交给 SetTrustedProxies，否则 ClientIP 可伪造、限流失效
+	Addr              string        `yaml:"addr" koanf:"addr"`
+	TrustedProxies    []string      `yaml:"trusted_proxies" koanf:"trusted_proxies"` // 非空时必须交给 SetTrustedProxies，否则 ClientIP 可伪造、限流失效
 	ReadHeaderTimeout time.Duration `yaml:"read_header_timeout" koanf:"read_header_timeout"`
 	ReadTimeout       time.Duration `yaml:"read_timeout" koanf:"read_timeout"`
 	WriteTimeout      time.Duration `yaml:"write_timeout" koanf:"write_timeout"`
 	IdleTimeout       time.Duration `yaml:"idle_timeout" koanf:"idle_timeout"`
 	ShutdownTimeout   time.Duration `yaml:"shutdown_timeout" koanf:"shutdown_timeout"`
-	MaxHeaderBytes    int      `yaml:"max_header_bytes" koanf:"max_header_bytes"`
-	BodyLimitDefault  int64    `yaml:"body_limit_default" koanf:"body_limit_default"`
-	Debug             bool     `yaml:"debug" koanf:"debug"`
-	CORS              CORS     `yaml:"cors" koanf:"cors"`
+	MaxHeaderBytes    int           `yaml:"max_header_bytes" koanf:"max_header_bytes"`
+	BodyLimitDefault  int64         `yaml:"body_limit_default" koanf:"body_limit_default"`
+	Debug             bool          `yaml:"debug" koanf:"debug"`
+	CORS              CORS          `yaml:"cors" koanf:"cors"`
 }
 
 // CORS 只在跨站部署时开启；它与 Cookie 的 SameSite 是一体两面，Validate 会一起校验。
@@ -45,58 +45,58 @@ type CORS struct {
 
 // Log 只控制 slog 的输出形态。
 type Log struct {
-	Level  string `yaml:"level" koanf:"level"`  // debug | info | warn | error
+	Level  string `yaml:"level" koanf:"level"`   // debug | info | warn | error
 	Format string `yaml:"format" koanf:"format"` // json | text
 }
 
 // DB：单池。连接数、生命周期与超时照数据库文档 §7 写死默认值。
 type DB struct {
-	DSN               string        `yaml:"dsn" koanf:"dsn"` // 只从环境变量 FORUM_DB__DSN 注入，缺失即拒绝启动
-	MaxConns          int32         `yaml:"max_conns" koanf:"max_conns"`
-	MinConns          int32         `yaml:"min_conns" koanf:"min_conns"`
-	MaxConnLifetime   time.Duration `yaml:"max_conn_lifetime" koanf:"max_conn_lifetime"`
-	MaxConnIdleTime   time.Duration `yaml:"max_conn_idle_time" koanf:"max_conn_idle_time"`
-	StatementTimeout  time.Duration `yaml:"statement_timeout" koanf:"statement_timeout"`
-	LockTimeout       time.Duration `yaml:"lock_timeout" koanf:"lock_timeout"`
-	IdleTxTimeout     time.Duration `yaml:"idle_tx_timeout" koanf:"idle_tx_timeout"`
+	DSN              string        `yaml:"dsn" koanf:"dsn"` // 只从环境变量 FORUM_DB__DSN 注入，缺失即拒绝启动
+	MaxConns         int32         `yaml:"max_conns" koanf:"max_conns"`
+	MinConns         int32         `yaml:"min_conns" koanf:"min_conns"`
+	MaxConnLifetime  time.Duration `yaml:"max_conn_lifetime" koanf:"max_conn_lifetime"`
+	MaxConnIdleTime  time.Duration `yaml:"max_conn_idle_time" koanf:"max_conn_idle_time"`
+	StatementTimeout time.Duration `yaml:"statement_timeout" koanf:"statement_timeout"`
+	LockTimeout      time.Duration `yaml:"lock_timeout" koanf:"lock_timeout"`
+	IdleTxTimeout    time.Duration `yaml:"idle_tx_timeout" koanf:"idle_tx_timeout"`
 }
 
 // KV：缓存与限流共用的 Redis 连接参数。Driver 允许 memory，但 env=prod 时 Validate 会拒绝。
 type KV struct {
-	Driver      string        `yaml:"driver" koanf:"driver"` // redis | memory
-	Addr        string        `yaml:"addr" koanf:"addr"`
-	Password    string        `yaml:"password" koanf:"password"`
-	DB          int           `yaml:"db" koanf:"db"`
-	DialTimeout time.Duration `yaml:"dial_timeout" koanf:"dial_timeout"`
-	ReadTimeout time.Duration `yaml:"read_timeout" koanf:"read_timeout"`
+	Driver       string        `yaml:"driver" koanf:"driver"` // redis | memory
+	Addr         string        `yaml:"addr" koanf:"addr"`
+	Password     string        `yaml:"password" koanf:"password"`
+	DB           int           `yaml:"db" koanf:"db"`
+	DialTimeout  time.Duration `yaml:"dial_timeout" koanf:"dial_timeout"`
+	ReadTimeout  time.Duration `yaml:"read_timeout" koanf:"read_timeout"`
 	WriteTimeout time.Duration `yaml:"write_timeout" koanf:"write_timeout"`
 }
 
 // Queue 是 PG 队列的档位与退避参数。
 type Queue struct {
-	Workers     int           `yaml:"workers" koanf:"workers"` // 0 = 按 capacity.profile 取（small 4 / standard 8）
+	Workers      int           `yaml:"workers" koanf:"workers"` // 0 = 按 capacity.profile 取（small 4 / standard 8）
 	PollInterval time.Duration `yaml:"poll_interval" koanf:"poll_interval"`
-	Lease       time.Duration `yaml:"lease" koanf:"lease"`
-	MaxRetry    int           `yaml:"max_retry" koanf:"max_retry"`
-	BackoffBase time.Duration `yaml:"backoff_base" koanf:"backoff_base"`
-	BackoffCap  time.Duration `yaml:"backoff_cap" koanf:"backoff_cap"`
-	DoneKeep    time.Duration `yaml:"done_keep" koanf:"done_keep"`
-	DeadKeep    time.Duration `yaml:"dead_keep" koanf:"dead_keep"`
+	Lease        time.Duration `yaml:"lease" koanf:"lease"`
+	MaxRetry     int           `yaml:"max_retry" koanf:"max_retry"`
+	BackoffBase  time.Duration `yaml:"backoff_base" koanf:"backoff_base"`
+	BackoffCap   time.Duration `yaml:"backoff_cap" koanf:"backoff_cap"`
+	DoneKeep     time.Duration `yaml:"done_keep" koanf:"done_keep"`
+	DeadKeep     time.Duration `yaml:"dead_keep" koanf:"dead_keep"`
 }
 
 // Mail 只有主密钥；发信账号本身在数据库里（后台配置）。
 type Mail struct {
-	KeyHex    string `yaml:"key" koanf:"key"`     // 32 字节 hex，只从 FORUM_MAIL__KEY 注入
+	KeyHex    string `yaml:"key" koanf:"key"`         // 32 字节 hex，只从 FORUM_MAIL__KEY 注入
 	OldKeyHex string `yaml:"old_key" koanf:"old_key"` // 轮换期用，多个用逗号分隔
 }
 
 // Auth 是认证参数，D2 使用；D1 只加载与校验。
 type Auth struct {
-	SessionTTL       time.Duration `yaml:"session_ttl" koanf:"session_ttl"`
-	Argon2Time       uint32        `yaml:"argon2_time" koanf:"argon2_time"`
-	Argon2MemoryKB   uint32        `yaml:"argon2_memory" koanf:"argon2_memory"`
-	Argon2Threads    uint8         `yaml:"argon2_threads" koanf:"argon2_threads"`
-	Argon2KeyLen     uint32        `yaml:"argon2_key_len" koanf:"argon2_key_len"`
+	SessionTTL     time.Duration `yaml:"session_ttl" koanf:"session_ttl"`
+	Argon2Time     uint32        `yaml:"argon2_time" koanf:"argon2_time"`
+	Argon2MemoryKB uint32        `yaml:"argon2_memory" koanf:"argon2_memory"`
+	Argon2Threads  uint8         `yaml:"argon2_threads" koanf:"argon2_threads"`
+	Argon2KeyLen   uint32        `yaml:"argon2_key_len" koanf:"argon2_key_len"`
 }
 
 // Image 是图片存储的根目录与三个上限。
@@ -123,8 +123,8 @@ type Site struct {
 // Web 是前端产物与运行期前缀。
 type Web struct {
 	DistDir     string `yaml:"dist_dir" koanf:"dist_dir"`
-	BasePath    string `yaml:"base_path" koanf:"base_path"`    // 运行期前缀：生产 "/"、dev "/dev/"
-	ServeShell  bool   `yaml:"serve_shell" koanf:"serve_shell"` // 本地用 Vite 提供 shell 时关掉
+	BasePath    string `yaml:"base_path" koanf:"base_path"`       // 运行期前缀：生产 "/"、dev "/dev/"
+	ServeShell  bool   `yaml:"serve_shell" koanf:"serve_shell"`   // 本地用 Vite 提供 shell 时关掉
 	ServeAssets bool   `yaml:"serve_assets" koanf:"serve_assets"` // 生产由 nginx 直出 /assets/ 时关掉
 }
 

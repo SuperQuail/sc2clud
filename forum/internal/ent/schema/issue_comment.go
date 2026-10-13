@@ -29,6 +29,7 @@ func (IssueComment) Mixin() []ent.Mixin {
 
 func (IssueComment) Fields() []ent.Field {
 	return []ent.Field{
+		field.Int64("id"),
 		field.Int64("issue_id"),
 		field.Int64("author_id"),
 		field.Int64("parent_id").Optional().Nillable().Comment("楼中楼父评论；只允许一级"),

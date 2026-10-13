@@ -24,6 +24,7 @@ type SiteDomain struct {
 // Fields 见 d6-reward.md §4.6。
 func (SiteDomain) Fields() []ent.Field {
 	return []ent.Field{
+		field.Int64("id"),
 		field.String("domain").MaxLen(253).Comment("主键；写前 lower() 归一化"),
 		field.Time("created_at").Default(time.Now).Immutable().
 			Annotations(entsql.DefaultExpr("now()")),

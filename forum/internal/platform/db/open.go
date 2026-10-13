@@ -7,9 +7,9 @@ import (
 	"fmt"
 	"time"
 
-	"entgo.io/ent"
 	"entgo.io/ent/dialect"
 	entsql "entgo.io/ent/dialect/sql"
+	ent "forum/internal/ent"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/jackc/pgx/v5/stdlib"
@@ -51,9 +51,6 @@ func Open(ctx context.Context, c config.DB) (*ent.Client, *pgxpool.Pool, error) 
 	client := ent.NewClient(ent.Driver(entsql.OpenDB(dialect.Postgres, stdlib.OpenDBFromPool(pool))))
 	return client, pool, nil
 }
-
-// 编译期断言：ent 的方言常量拼写错了会在这里断，而不是在运行期
-var _ dialect.Dialect = dialect.Postgres
 
 // 编译期断言 supabase：pgx 的错误类型在队列实现里用来判唯一冲突
 var _ = pgx.ErrNoRows

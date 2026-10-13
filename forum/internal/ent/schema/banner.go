@@ -35,6 +35,7 @@ func (Banner) Mixin() []ent.Mixin {
 // Fields 见 d6-reward.md §4.7。
 func (Banner) Fields() []ent.Field {
 	return []ent.Field{
+		field.Int64("id"),
 		field.String("kind").MaxLen(8).Comment("info / warning / promo"),
 		field.String("text").MaxLen(200),
 		field.Text("url").Optional().Nillable().Comment("可选跳转链接"),

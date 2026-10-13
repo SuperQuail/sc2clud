@@ -29,6 +29,7 @@ type Permission struct {
 // Fields 见 d2-auth.md §5.5。
 func (Permission) Fields() []ent.Field {
 	return []ent.Field{
+		field.Int64("id"),
 		field.String("key").MaxLen(64).Unique().
 			Immutable().
 			Comment("权限点 key，如 topic.create；与 Go 常量逐字同名"),

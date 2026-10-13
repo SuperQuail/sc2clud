@@ -36,6 +36,7 @@ type Job struct {
 // Fields 见 d1-platform.md §6.1。
 func (Job) Fields() []ent.Field {
 	return []ent.Field{
+		field.Int64("id"),
 		field.Text("type").Comment("任务类型常量集中在 platform/queue/types.go"),
 		field.JSON("payload", json.RawMessage{}).Default(json.RawMessage("{}")).
 			Comment("只放 id 的最小形状"),

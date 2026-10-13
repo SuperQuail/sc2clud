@@ -26,6 +26,7 @@ type UserTitle struct {
 // Fields 见 d4-social.md §1.4。
 func (UserTitle) Fields() []ent.Field {
 	return []ent.Field{
+		field.Int64("id"),
 		field.Int64("user_id"),
 		field.Int64("title_id"),
 		field.Int64("granted_by").Optional().Nillable().Comment("发头衔的人；NULL = 系统发放"),
@@ -39,9 +40,9 @@ func (UserTitle) Edges() []ent.Edge {
 	return []ent.Edge{
 		edge.To("user", User.Type).Field("user_id").Unique().Required().
 			Annotations(entsql.OnDelete(entsql.Cascade)),
-		edge.From("title", Title.Type).Ref("holders").Field("title_id").Unique().Required().
+		edge.To("title", Title.Type).Field("title_id").Unique().Required().
 			Annotations(entsql.OnDelete(entsql.Cascade)),
-		edge.From("granter", User.Type).Ref("granted_titles").Field("granted_by").Unique().
+		edge.To("granter", User.Type).Field("granted_by").Unique().
 			Annotations(entsql.OnDelete(entsql.SetNull)),
 	}
 }

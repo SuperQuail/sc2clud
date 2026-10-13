@@ -38,6 +38,7 @@ func (Message) Mixin() []ent.Mixin {
 // Fields 见 d4-social.md §1.3。
 func (Message) Fields() []ent.Field {
 	return []ent.Field{
+		field.Int64("id"),
 		field.Int64("low_id").Comment("规范化用户对：恒为较小的 user id"),
 		field.Int64("high_id"),
 		field.Int64("sender_id").Comment("必为 low_id / high_id 之一（CHECK）"),
@@ -53,11 +54,11 @@ func (Message) Fields() []ent.Field {
 // Edges：三条都 CASCADE。
 func (Message) Edges() []ent.Edge {
 	return []ent.Edge{
-		edge.From("low", User.Type).Ref("messages_as_low").Field("low_id").Unique().Required().
+		edge.To("low", User.Type).Field("low_id").Unique().Required().
 			Annotations(entsql.OnDelete(entsql.Cascade)),
-		edge.From("high", User.Type).Ref("messages_as_high").Field("high_id").Unique().Required().
+		edge.To("high", User.Type).Field("high_id").Unique().Required().
 			Annotations(entsql.OnDelete(entsql.Cascade)),
-		edge.From("sender", User.Type).Ref("messages_sent").Field("sender_id").Unique().Required().
+		edge.To("sender", User.Type).Field("sender_id").Unique().Required().
 			Annotations(entsql.OnDelete(entsql.Cascade)),
 	}
 }

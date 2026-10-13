@@ -38,6 +38,7 @@ type Image struct {
 // Fields 见 0002_accounts.up.sql。
 func (Image) Fields() []ent.Field {
 	return []ent.Field{
+		field.Int64("id"),
 		field.String("hash").MaxLen(64).Comment("char(64)，sha256 hex；主键，同时是对外标识"),
 		field.Int64("size").Comment("真实字节数"),
 		field.Text("mime").Comment("四值枚举，CHECK 在手写迁移"),
@@ -57,8 +58,11 @@ func (Image) Fields() []ent.Field {
 // Edges：owner 侧 SET NULL（users 永不硬删，数据库文档 §2 第 11 条）。
 func (Image) Edges() []ent.Edge {
 	return []ent.Edge{
-		edge.From("owner", User.Type).Ref("images").Field("owner_id").Unique().
+		edge.To("owner", User.Type).Field("owner_id").Unique().
 			Annotations(entsql.OnDelete(entsql.SetNull)),
+		// **刻意没有**「谁引用了这张图」的反向边：用户头像三列 / default_avatars.hash / payment_channels.image_hash
+		// 引用的是 images(hash) 而不是 images(id)，而 ent 的 edge 只能指向目标表主键 ——
+		// 所以这几条外键只存在于手写迁移里，读写走各域的原生 SQL（见各文件头）。
 	}
 }
 

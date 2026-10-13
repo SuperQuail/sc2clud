@@ -7,6 +7,7 @@ import { IssueNudge } from './issue-nudge';
 import { LeftRail } from './left-rail';
 import { MainColumn, TopicMeta } from './main-column';
 import { AUTHOR, BOARDS, BOARD_NAV, CANDIDATES, CHANNELS, MY_ACCOUNT, topicBody, topicComments } from './mock';
+import { AuthorOnlyHint, ReviewAppealButton, ReviewStateDemoBar, type ReviewState } from './review-state';
 import { RewardPanel } from './reward-panel';
 import { TopicTaskShowcase } from './_task/showcase';
 import type { TopicDetail, TopicSource } from './types';
@@ -82,15 +83,40 @@ const TOPIC: TopicDetail = {
 /** 未关闭的 Issue 数：顶栏 Issue 按钮上的计数（真值来自 GET /api/v1/topics/{id}/issues?status=open） */
 const ISSUE_OPEN_COUNT = 7;
 
+// 审核理由原文：后端 topics.review_note（varchar(500)），AI 给的中文理由。
+// **只在 rejected 时存在**——pending 没有理由，approved 会把它清空，所以这里不给默认值。
+const REVIEW_NOTE_REJECTED = '正文含未标明来源的第三方整合包下载地址，且缺少「非官方」声明，按站规第 3 条判为推广内容。';
+const APPEAL_SENT = '已提交人工复核，队列里有记录（mock）。';
+
+/** ?review=… —— 只影响 DevRoom 的初始态，非法值一律按 pending（= 最需要看的那一态） */
+function readReviewFromUrl(): ReviewState {
+  const v = new URLSearchParams(location.search).get('review');
+  return v === 'approved' || v === 'rejected' || v === 'pending' ? v : 'pending';
+}
+
 export default function TopicPage() {
   const [tab, setTab] = useState<TopicTaskTab>('content');
   const [nav, setNav] = useState('all');
+  // DevRoom 演示用：真实页面读后端返回的 review_state，没有这个开关（见 review-state.tsx 的注释）。
+  // 初值可以走 URL（?review=pending|approved|rejected），这样每一态都能单独出图、也能分享链接。
+  const [reviewState, setReviewState] = useState<ReviewState>(readReviewFromUrl);
+  const [appealed, setAppealed] = useState(false);
   // 共享件的验证现场仍要能打开：page=12-topic&view=showcase。
   // 独立入口（一个只挂着 showroom 的 index）被删掉了——同一页两个身份，出图时会看不出谁是主页面。
   const showcase = new URLSearchParams(location.search).get('view') === 'showcase';
 
   return (
     <div className='flex w-full flex-col gap-4'>
+      <ReviewStateDemoBar
+        value={reviewState}
+        onChange={(v) => {
+          setReviewState(v);
+          setAppealed(false);
+        }}
+        onAppeal={() => setAppealed(true)}
+        appealNote={appealed ? APPEAL_SENT : null}
+      />
+
       <TopicTaskTabs
         value={tab}
         onChange={setTab}
@@ -117,7 +143,18 @@ export default function TopicPage() {
             candidates={CANDIDATES}
             me={MY_ACCOUNT}
             issueCount={ISSUE_OPEN_COUNT}
+            reviewState={reviewState}
+            reviewNote={reviewState === 'rejected' ? REVIEW_NOTE_REJECTED : null}
+            reviewAppeal={
+              reviewState === 'rejected' ? (
+                <ReviewAppealButton onAppeal={() => setAppealed(true)} />
+              ) : null
+            }
           />
+          {/* 「只有作者能看到」的说明放在卡片外、动作条与评论区之后：
+              它是这一屏的注解，不是正文的一部分；正文与评论区照常渲染（作者当然能看自己的）。
+              approved 时不渲染——正常帖没有这句话可说。 */}
+          {reviewState === 'approved' ? null : <AuthorOnlyHint />}
         </main>
 
         {/* 右栏：分区简介 → 发帖者卡片 → 赞助 → 问题反馈入口。长帖里跟着滚 */}

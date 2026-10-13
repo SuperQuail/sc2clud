@@ -27,6 +27,7 @@ type TopicImage struct {
 
 func (TopicImage) Fields() []ent.Field {
 	return []ent.Field{
+		field.Int64("id"),
 		field.Int64("topic_id"),
 		field.Int64("post_id"),
 		field.String("image_hash").MaxLen(64).SchemaType(pgType("char(64)")).

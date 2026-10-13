@@ -29,6 +29,7 @@ type RolePermission struct {
 // Fields 见 d2-auth.md §5.6。
 func (RolePermission) Fields() []ent.Field {
 	return []ent.Field{
+		field.Int64("id"),
 		field.Int64("role_id"),
 		field.Int64("permission_id"),
 		field.Time("created_at").Default(time.Now).Immutable().

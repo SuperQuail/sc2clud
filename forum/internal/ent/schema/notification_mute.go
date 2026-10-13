@@ -30,6 +30,7 @@ type NotificationMute struct {
 // Fields 见 d4-social.md §1.2。
 func (NotificationMute) Fields() []ent.Field {
 	return []ent.Field{
+		field.Int64("id"),
 		field.Int64("user_id"),
 		field.String("type").MaxLen(16),
 		field.String("target_key").MaxLen(64).Default(""),

@@ -37,6 +37,7 @@ func (ReleaseAsset) Mixin() []ent.Mixin {
 // Fields 见 d5-content.md §5.1。
 func (ReleaseAsset) Fields() []ent.Field {
 	return []ent.Field{
+		field.Int64("id"),
 		field.Int64("release_id"),
 		field.String("platform").MaxLen(16).Comment("windows / macos / linux"),
 		field.String("arch").MaxLen(16).Comment("x86_64 / arm64"),

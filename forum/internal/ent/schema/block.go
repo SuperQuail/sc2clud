@@ -23,6 +23,7 @@ type Block struct {
 
 func (Block) Fields() []ent.Field {
 	return []ent.Field{
+		field.Int64("id"),
 		field.Int64("user_id"),
 		field.Int64("target_user_id"),
 		field.Time("created_at").Default(time.Now).Immutable().

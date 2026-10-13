@@ -42,6 +42,7 @@ func (Topic) Mixin() []ent.Mixin {
 // Fields 见 d3-forum.md §2.1/§2.2，逐列对齐。
 func (Topic) Fields() []ent.Field {
 	return []ent.Field{
+		field.Int64("id"),
 		field.Int64("board_id"),
 		field.Int64("author_id"),
 		field.String("kind").SchemaType(pgType("text")).Default("discussion").

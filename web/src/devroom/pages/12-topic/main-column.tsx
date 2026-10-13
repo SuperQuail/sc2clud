@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, type ReactNode } from 'react';
 import { appPath } from '@/lib/url';
 import { CommentList } from '@/ui/comment/comment-list';
 import { ReplyBox } from '@/ui/comment/reply-box';
@@ -8,6 +8,7 @@ import type { MentionCandidate } from '@/ui/comment/mention-types';
 import { FeaturedFlag, KindTag, PinnedFlag, RepostSource } from './badges';
 import { IssueNudge } from './issue-nudge';
 import { ResourceSources, UpkeepNote } from './resource-sources';
+import { ReviewStateBanner, type ReviewState } from './review-state';
 import { TopicActions } from './topic-actions';
 import { TopicBody } from './topic-body';
 import type { TopicDetail } from './types';
@@ -22,6 +23,9 @@ export function MainColumn({
   candidates,
   me,
   issueCount,
+  reviewState = 'approved',
+  reviewNote,
+  reviewAppeal,
 }: {
   topic: TopicDetail;
   comments: CommentData[];
@@ -29,6 +33,12 @@ export function MainColumn({
   candidates: MentionCandidate[];
   me: { nickname: string; avatar?: string | null };
   issueCount: number;
+  /** 审核态：作者视角的三个值（d7 §1）。approved 是默认——正常帖什么都不显示 */
+  reviewState?: ReviewState;
+  /** topics.review_note：AI 给的中文理由，**只有 rejected 才有值** */
+  reviewNote?: string | null;
+  /** 「申请人工复核」按钮（rejected 时才给）：横幅只摆位置，动作由页面接 */
+  reviewAppeal?: ReactNode;
 }) {
   const [liked, setLiked] = useState(topic.viewer.liked);
   const [bookmarked, setBookmarked] = useState(topic.viewer.bookmarked);
@@ -47,6 +57,9 @@ export function MainColumn({
         <h1 className='text-[19px] leading-snug font-semibold break-words text-foreground sm:text-[22px]'>
           {topic.title}
         </h1>
+        {/* 审核态横幅紧贴标题：它是「这篇现在是什么状态」，不是正文的一部分。
+            非作者收不到 pending/rejected 的主题（后端过滤），所以这里不需要「游客看到审核中」的分支。 */}
+        <ReviewStateBanner state={reviewState} note={reviewNote} appeal={reviewAppeal} />
         <div className='border-b border-border pb-3'>
           <UserBadge
             user={{ handle: topic.author.handle, nickname: topic.author.nickname, avatar: topic.author.avatar, role: topic.author.role, title: topic.author.title }}

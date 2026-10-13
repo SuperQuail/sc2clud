@@ -36,6 +36,7 @@ func (Title) Mixin() []ent.Mixin {
 // Fields 见 d4-social.md §1.4。
 func (Title) Fields() []ent.Field {
 	return []ent.Field{
+		field.Int64("id"),
 		field.String("key").MaxLen(32).Unique(),
 		field.String("name").MaxLen(32),
 		field.String("color").MaxLen(16).Default("").Comment("#rrggbb，空 = 前端用默认色"),
@@ -51,7 +52,7 @@ func (Title) Fields() []ent.Field {
 // Edges：持有关系（user_titles）与佩戴关系（users.equipped_title_id）的反向边都在这里声明。
 func (Title) Edges() []ent.Edge {
 	return []ent.Edge{
-		edge.To("holders", User.Type).Annotations(entsql.OnDelete(entsql.Cascade)),
+		edge.To("holders", UserTitle.Type),
 		edge.To("equipped_by", User.Type).Annotations(entsql.OnDelete(entsql.SetNull)),
 	}
 }

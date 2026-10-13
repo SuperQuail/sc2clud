@@ -35,6 +35,7 @@ func (PostIssue) Mixin() []ent.Mixin {
 
 func (PostIssue) Fields() []ent.Field {
 	return []ent.Field{
+		field.Int64("id"),
 		field.Int64("topic_id"),
 		field.Int64("author_id"),
 		field.Int64("assignee_id").Optional().Nillable().

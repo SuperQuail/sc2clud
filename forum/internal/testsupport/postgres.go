@@ -1,12 +1,15 @@
 // Package testsupport 是集成测试共用的真实 PostgreSQL 实例。
 //
 // 一个测试进程共享一个实例（TestMain 里起、退出停）；每个用例用独立 schema：
-//   CREATE SCHEMA test_xxx; SET search_path TO test_xxx;
+//
+//	CREATE SCHEMA test_xxx; SET search_path TO test_xxx;
+//
 // 端口必须显式改成随机值——embedded-postgres 默认 5432，会撞上真库。
 //
 // 用法：
-//   func TestMain(m *testing.M) { testsupport.Main(m) }
-//   在用例里：ctx, pool := testsupport.Pool(t)   // 已建好独立 schema 的池
+//
+//	func TestMain(m *testing.M) { testsupport.Main(m) }
+//	在用例里：ctx, pool := testsupport.Pool(t)   // 已建好独立 schema 的池
 package testsupport
 
 import (

@@ -7,8 +7,8 @@ import (
 	"strings"
 
 	"forum/internal/config"
-	"forum/migrations"
 	"forum/internal/platform/db"
+	"forum/migrations"
 )
 
 // Check 是「这条命还能不能干活」的体检：真实依赖探测 + 迁移版本 + 自检 SQL。

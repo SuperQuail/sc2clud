@@ -71,5 +71,7 @@ func (p poolExecer) ExecContext(ctx context.Context, query string, args ...any) 
 
 type tagAdapter struct{ tag pgconn.CommandTag }
 
-func (t tagAdapter) LastInsertId() (int64, error) { return 0, fmt.Errorf("pgx: LastInsertId unsupported") }
+func (t tagAdapter) LastInsertId() (int64, error) {
+	return 0, fmt.Errorf("pgx: LastInsertId unsupported")
+}
 func (t tagAdapter) RowsAffected() (int64, error) { return t.tag.RowsAffected(), nil }

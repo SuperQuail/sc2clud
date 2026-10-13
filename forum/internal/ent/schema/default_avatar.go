@@ -5,7 +5,6 @@ import (
 
 	"entgo.io/ent"
 	"entgo.io/ent/dialect/entsql"
-	"entgo.io/ent/schema/edge"
 	"entgo.io/ent/schema/field"
 	"entgo.io/ent/schema/index"
 )
@@ -24,6 +23,7 @@ type DefaultAvatar struct {
 // Fields 见 0002_accounts.up.sql。
 func (DefaultAvatar) Fields() []ent.Field {
 	return []ent.Field{
+		field.Int64("id"),
 		field.String("hash").MaxLen(64).Comment("char(64)；images.hash"),
 		field.Int("sort").Default(0),
 		field.Time("created_at").Default(time.Now).Immutable().
@@ -31,13 +31,9 @@ func (DefaultAvatar) Fields() []ent.Field {
 	}
 }
 
-// Edges：hash 指向 images，CASCADE。
-func (DefaultAvatar) Edges() []ent.Edge {
-	return []ent.Edge{
-		edge.To("image", Image.Type).Field("hash").Unique().Required().
-			Annotations(entsql.OnDelete(entsql.Cascade)),
-	}
-}
+// Edges：**没有 ent 边**。hash 指向的是 images(hash) 而不是 images(id)，
+// 而 ent 的 edge 只能指向目标表的主键，所以那条外键只存在于手写迁移里（0002_accounts）。
+// 池子的读取走平台层的原生 SQL（internal/platform/image 侧）。
 
 // Indexes：hash 唯一（手写迁移里就是 PRIMARY KEY）。
 func (DefaultAvatar) Indexes() []ent.Index {

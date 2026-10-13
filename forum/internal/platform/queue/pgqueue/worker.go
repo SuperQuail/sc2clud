@@ -42,7 +42,9 @@ UPDATE jobs SET status = 'done', locked_until = NULL, updated_at = $3, last_erro
 	retrySQL = `
 UPDATE jobs SET
        status       = 'pending',
-       run_at       = $4 + make_interval(secs => LEAST($5 * power(2, attempts), $6)),
+       -- timestamptz + interval 在 PG 里合法，但 make_interval 返回 interval、$4 是 timestamptz，
+       -- 直接相加会被解析成 timestamptz + ? 而报「表达式类型为 interval」。写成 interval * double precision 才是可加的。
+       run_at       = $4 + (LEAST($5 * power(2, attempts), $6) * interval '1 second'),
        locked_until = NULL,
        locked_by    = '',
        last_error   = $3,
@@ -261,4 +263,3 @@ func truncate(s string, n int) string {
 	}
 	return s[:n]
 }
-

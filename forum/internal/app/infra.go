@@ -11,7 +11,7 @@ import (
 	"os"
 	"strings"
 
-	"entgo.io/ent"
+	ent "forum/internal/ent"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/redis/go-redis/v9"
 

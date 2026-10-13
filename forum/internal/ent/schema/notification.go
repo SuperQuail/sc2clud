@@ -38,6 +38,7 @@ func (Notification) Mixin() []ent.Mixin {
 // Fields 见 d4-social.md §1.1。
 func (Notification) Fields() []ent.Field {
 	return []ent.Field{
+		field.Int64("id"),
 		field.Int64("user_id").Comment("收件人"),
 		field.Int64("actor_id").Optional().Nillable().Comment("触发者；系统通知为 NULL"),
 		field.String("type").MaxLen(16).Comment("reply/mention/like/reward/review/sanction/system，CHECK 在手写迁移"),
@@ -57,7 +58,7 @@ func (Notification) Edges() []ent.Edge {
 	return []ent.Edge{
 		edge.To("user", User.Type).Field("user_id").Unique().Required().
 			Annotations(entsql.OnDelete(entsql.Cascade)),
-		edge.From("actor", User.Type).Ref("acted_notifications").Field("actor_id").Unique().
+		edge.To("actor", User.Type).Field("actor_id").Unique().
 			Annotations(entsql.OnDelete(entsql.SetNull)),
 	}
 }

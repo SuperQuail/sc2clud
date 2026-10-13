@@ -22,6 +22,7 @@ type SiteSetting struct {
 // Fields 见 d6-reward.md §4.5。
 func (SiteSetting) Fields() []ent.Field {
 	return []ent.Field{
+		field.Int64("id"),
 		field.String("key").MaxLen(64).Comment("主键；手写迁移里是 PRIMARY KEY"),
 		field.Text("value").Default(""),
 		field.Time("updated_at").Default(time.Now).UpdateDefault(time.Now).
