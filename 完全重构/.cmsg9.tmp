@@ -1,0 +1,15 @@
+安全：去掉公开预览里的真实邮箱与预填口令
+
+问题（用户发现）：DevRoom 被公开部署在 http://191.40.41.97/dev/devroom/ ，而它的登录页 mock 里
+  - MOCK_ACCOUNT.email = 'tangtian@163.com'（**真人的真实邮箱**），注释却写着「邮箱是编的」——那句注释是假的；
+  - login-view 预填 password = 'demo-password-123'。
+两者都被构建进 bundle 并公开可取。真实邮箱挂在公网上会被爬去做垃圾邮件；预填口令会让浏览器的
+密码管理器把这个页面当成真表单（用户看到自己的真实口令出现在预览里就是这么来的）。
+
+改动：
+1. MOCK_ACCOUNT.email → 'demo@example.com'，并把注释改成「这里的每个值都必须是编的 + 为什么会这样」；
+2. 登录页密码框不再预填（改为空）——设计稿本就不该预填口令。
+
+待办（交给前端施工者，需要 CDP 量偏移量）：眼睛按钮移进输入框内部。
+Ring 的 Input 没有尾部槽位（只有前置 icon 与内建 clearButton），只能用绝对定位；
+同时要把演示页的 autoComplete 从 current-password 改掉，避免密码管理器自动填入真实口令。

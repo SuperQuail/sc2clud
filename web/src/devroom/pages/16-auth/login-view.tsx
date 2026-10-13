@@ -20,7 +20,9 @@ export type LoginViewProps = {
 
 export function LoginView({ scene, onScene, onView }: LoginViewProps) {
   const [username, setUsername] = useState(MOCK_ACCOUNT.username);
-  const [password, setPassword] = useState('demo-password-123');
+  // 密码框**不预填**：这是设计稿，而它被公开部署在公网上 —— 预填一个口令（哪怕看着像假的）
+  // 会让人以为「预览里就该有一段口令」，也会让浏览器的密码管理器把它当成真表单。真实页面当然也不该预填。
+  const [password, setPassword] = useState('');
   const [remember, setRemember] = useState(true);
   const [captcha, setCaptcha] = useState('');
   const [chars, setChars] = useState(CAPTCHA_SAMPLES[0]!);

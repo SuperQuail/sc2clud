@@ -63,11 +63,17 @@ export const FORGOT_SCENES: Array<Scene<ForgotScene>> = [
   { key: 'done', no: 5, label: '重置成功', hint: '⑤ 成功：该账号全部设备的会话被删，要用新密码重新登录。' },
 ];
 
-/** 页面里出现的假账号：邮箱是编的，只在设计稿里用 */
+/**
+ * 页面里出现的假账号。
+ *
+ * ⚠️ **这里的每个值都必须是编的。** 2026-10-13：这个对象原来放的是 `tangtian@163.com`（真人的真实邮箱），
+ * 而它被构建进 bundle 后**公开部署在 /dev/devroom/** —— 一个真实邮箱挂在公网上会被爬去做垃圾邮件。
+ * 注释当时还写着「邮箱是编的」，是假的。**往这个对象里填任何真实信息之前先想清楚它会被公开。**
+ */
 export const MOCK_ACCOUNT = {
   username: 'tangtian',
   nickname: '唐天',
-  email: 'tangtian@163.com',
+  email: 'demo@example.com',
   /** 验证码有效期（§11.4） */
   codeTtlMinutes: 10,
   /** 重新发送的冷却秒数（1 分钟 1 次） */

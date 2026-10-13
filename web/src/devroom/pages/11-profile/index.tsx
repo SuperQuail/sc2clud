@@ -293,12 +293,22 @@ export default function ProfilePage() {
           </Button>
         </span>
 
-        {/* 身份卡：实色卡面压在壁纸上（原来是 bg-background/70 + backdrop-blur，壁纸铺满之后
-            透过磨砂会花掉，正文与徽标全在卡里，可读性优先） */}
-        {/* mb-2 而不是 mb-4：hero 现在还要装 144px 壁纸条，这 8px 是补给首屏预算的 */}
-        <div className='relative z-10 mx-4 -mt-20 mb-2 flex flex-col gap-5 rounded-xl border border-border bg-background p-5'>
+        {/* 身份卡：**从上到下的透明渐变**（用户要求：别用实色把壁纸挡死，但上半要透出壁纸）。
+            数值是按卡内各行的实际高度定的（卡片 276px 高，位置用 CDP 量过、写在这里免得后人瞎调）：
+              头像 21–85、名字+徽标 105–133、简介 171–195、统计行 215–255。
+            渐变停靠点（沿着 276px 折算）：
+              from-background/50  → 头像那条带子透出壁纸，但仍压掉一半，人物不糊；
+              via-background/85   → 名字与徽标落在 85% 处，壁纸花纹只留一点点；
+              to-background       → 统计行整行在实底上（数字必须清楚，它是这一页的信息密度最高处）。
+            为什么顶部是 /50 而不是 /0：壁纸是战场插画（细节多），全透时 22px 的名字会与画面纹理打架；
+            /50 + backdrop-blur-lg 之后文字边缘干净，同时仍能明显看出壁纸。
+            mb-2 而不是 mb-4：hero 还要装 144px 壁纸条，这 8px 是补给首屏预算的（见上面的警告，**不要改 padding/gap**）。 */}
+        <div className='relative z-10 mx-4 -mt-20 mb-2 flex flex-col gap-5 rounded-xl border-x border-b border-border bg-gradient-to-b from-background/50 via-background/85 to-background p-5 backdrop-blur-lg'>
           <div className='flex flex-wrap items-end justify-between gap-4'>
-            <span className='rounded-full ring-4 ring-background'>
+            {/* 头像外圈原来用实色 ring-background：在渐变里它是一枚不透明的白/黑环，
+                和身后 50% 的渐变一比就像贴上去的圆片。改成 /60 让环与身后的底同一档透明度，
+                仍然能分出头像与壁纸，但不突兀。 */}
+            <span className='rounded-full ring-4 ring-background/60'>
               <UserAvatar name='唐天' src={assetUrl('miyin-portrait-320.webp')} size='xl' />
             </span>
             <span className='flex flex-nowrap items-center gap-2'>
