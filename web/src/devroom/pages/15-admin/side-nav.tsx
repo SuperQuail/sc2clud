@@ -3,7 +3,9 @@ import { ControlsHeight } from '@jetbrains/ring-ui-built/components/global/contr
 import { CountBadge } from '@/ui/message/count-badge';
 import { cn } from '@/lib/utils';
 
-// 后台侧边导航。**待提升为 src/ui**：它与管理后台无关，任何「分组 + 计数」的竖排导航都能用。
+// 后台侧边导航。**后台专用件**（已登记在 devroom/registry.ts 的 15-admin 下，见 side-nav 条目）：
+// 它是为管理后台的「12 项 / 4 组 / 按权限点渲染」这一种场景做的，不是通用房子件 ——
+// 「房子件」的判据是多个域都用；提到 src/ui 会让别人以为能直接拿去用（Lead 2026-10-13 裁定：先不提升）。
 //
 // 形态（调研与选型见 admin-map.md / 回报）：**平铺文字行 + 分组小标题 + 选中=背景块+左侧色条+文字加重**。
 // 上一版是「一竖排 Ring Button」——每一项都被一圈边框框起来，用户明确否掉了那种做法（像一排按钮，不像导航）。
