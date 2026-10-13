@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router';
 import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import Input from '@jetbrains/ring-ui-built/components/input/input';
+import Input, { Size } from '@jetbrains/ring-ui-built/components/input/input';
 import Button from '@jetbrains/ring-ui-built/components/button/button';
 import { ControlsHeight } from '@jetbrains/ring-ui-built/components/global/controls-height';
 import { Send } from 'lucide-react';
@@ -198,6 +198,9 @@ export function MessagesPage() {
                 onChange={(e) => setPeerInput(e.target.value)}
                 label='新会话'
                 placeholder='对方的 @handle'
+                // Ring 的 Input 默认是 **240px 定宽**（不是 100%）：不写 size 的话它比这一栏还宽，
+                // 右边那颗「开始」会被挤出容器裁成一条（2026-10-13 出图时看到的）。
+                size={Size.FULL}
               />
             </span>
             <Button type='submit' inline={false} height={ControlsHeight.M} disabled={peerInput.trim() === ''}>
@@ -239,12 +242,19 @@ export function MessagesPage() {
               }}
               className='flex flex-col gap-2 border-t border-border p-4'
             >
+              {/* 没有消息时那块面板是一片空白，看着像坏了：明说这一态，并给下一步 */}
+              {bubbles.length === 0 ? (
+                <p className='m-0 text-[12px] text-muted-foreground'>
+                  还没有和 {thread.data?.peer.nickname ?? handle} 的消息 —— 在下面写第一条。
+                </p>
+              ) : null}
               <Input
                 multiline
                 value={draft}
                 onChange={(e) => setDraft(e.target.value)}
                 label='写私信'
                 placeholder='内容会原样发给对方（纯文本）'
+                size={Size.FULL}
               />
               <span className='flex items-center justify-between gap-2'>
                 <span className='text-[11px] text-muted-foreground'>Enter 换行，写完点「发送」</span>
