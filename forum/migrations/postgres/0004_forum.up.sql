@@ -46,7 +46,7 @@ CREATE TABLE board_acls (
   deny_reply boolean     NOT NULL DEFAULT false,
   created_at timestamptz NOT NULL DEFAULT now(),
   updated_at timestamptz NOT NULL DEFAULT now(),
-  PRIMARY KEY (board_id, role_id),
+  UNIQUE (board_id, role_id),   -- 自然键降为唯一（id 才是主键）
   CONSTRAINT ck_board_acls_no_contradiction
     CHECK (NOT (deny_post AND can_post) AND NOT (deny_reply AND can_reply))
 );
@@ -155,7 +155,7 @@ CREATE TABLE topic_images (
   image_hash char(64)    NOT NULL REFERENCES images(hash)   ON DELETE RESTRICT,
   sort       int         NOT NULL DEFAULT 0,
   created_at timestamptz NOT NULL DEFAULT now(),
-  PRIMARY KEY (topic_id, post_id, image_hash),
+  UNIQUE (topic_id, post_id, image_hash),   -- 自然键降为唯一（id 才是主键）
   CONSTRAINT ck_topic_images_sort CHECK (sort BETWEEN 0 AND 8)
 );
 

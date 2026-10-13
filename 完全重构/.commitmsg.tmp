@@ -1,0 +1,12 @@
+迁移修复：17 份全部在空库跑通，补 16 张表的 id 列，修两处双主键
+
+起因：P2c 报告「空库跑迁移必失败」，查出两类问题——
+  1) 我之前给 board_acls / topic_images 加 id 列时没删原来的 PRIMARY KEY → PG 报 42P16（一张表两个主键）；
+  2) 我为了修 ent 的 int/int64 不匹配，给全部 46 个实体补了 field.Int64(id)，但迁移里有 16 张表没有 id 列 →
+     ent 读这些表会生成 SELECT id → 生产库报 column id does not exist。
+
+处理：
+- board_acls / topic_images 的自然键 PRIMARY KEY → UNIQUE；
+- 16 张表补 id（images / default_avatars 的 hash 主键降为 UNIQUE）；
+- 真库验证：.tools/migcheck 用 embedded-postgres 18.3 跑空库 === up: 17/17 ok ===、47 张表、
+  NO_ID_COLUMN 只剩 topic_search（派生表，不进 ent，拍板 8.9）、UNINDEXED_FK_COUNT=0。

@@ -6,6 +6,8 @@
 //  3. 作用域权限（board.moderate）与资源归属判定**不进中间件**，只在 service 层判。
 package authz
 
+import "sort"
+
 // 权限点全集：24 个（拍板 §1.2 + §10.9 定案：topic.pin 兼管精华，不设 topic.feature）。
 // 新增一个 = 加常量 + 加迁移往 permissions 表插一行 + 写穿给内置角色；启动自检会对比两边。
 const (
@@ -85,6 +87,17 @@ func (s Set) HasAny(perms ...string) bool {
 		}
 	}
 	return false
+}
+
+// Keys 是集合的排序副本：/me 的 perms 与审计的 before/after 都要稳定顺序，
+// 否则同一份权限两次序列化出来的 JSON 不一样，前端做 diff 会出现假变更。
+func (s Set) Keys() []string {
+	out := make([]string, 0, len(s))
+	for k := range s {
+		out = append(out, k)
+	}
+	sort.Strings(out)
+	return out
 }
 
 // Actor 是判定需要的最小身份。service 方法**显式接收它**，不从 context 取（拍板 §5.3）。

@@ -6,7 +6,8 @@
 -- 1) site_settings：站点键值（key 必须在代码表里，否则 400）
 -- ============================================================
 CREATE TABLE site_settings (
-  key        varchar(64) PRIMARY KEY,
+  id         bigint      GENERATED ALWAYS AS IDENTITY PRIMARY KEY,   -- ent 实体必须有 id；原自然键降为 UNIQUE
+  key        varchar(64) UNIQUE,   -- 原自然键：降为唯一
   value      text        NOT NULL DEFAULT '',
   updated_at timestamptz NOT NULL DEFAULT now()
 );
@@ -17,7 +18,8 @@ CREATE TABLE site_settings (
 -- 2) site_domains：域名白名单
 -- ============================================================
 CREATE TABLE site_domains (
-  domain     varchar(253) PRIMARY KEY,   -- 统一存 lower() 形式，写入时归一化
+  id         bigint      GENERATED ALWAYS AS IDENTITY PRIMARY KEY,   -- ent 实体必须有 id；原自然键降为 UNIQUE
+  domain     varchar(253) UNIQUE,   -- 统一存 lower() 形式，写入时归一化   -- 原自然键：降为唯一
   created_at timestamptz  NOT NULL DEFAULT now()
 );
 -- 没有 is_primary：真源是配置里的 site.base_url（拍板 §8.11 U2）
@@ -70,9 +72,10 @@ CREATE INDEX idx_banners_created_by ON banners (created_by);   -- 外键索引
 -- 5) banner_roles：横幅按角色定向（无行 = 所有人，拍板 §8.11 U10）
 -- ============================================================
 CREATE TABLE banner_roles (
+  id         bigint      GENERATED ALWAYS AS IDENTITY PRIMARY KEY,   -- ent 实体必须有 id；原自然键降为 UNIQUE
   banner_id bigint NOT NULL REFERENCES banners(id) ON DELETE CASCADE,
   role_id   bigint NOT NULL REFERENCES roles(id)   ON DELETE CASCADE,
-  PRIMARY KEY (banner_id, role_id)
+  UNIQUE (banner_id, role_id)   -- 原自然键：降为唯一
 );
 -- 复合主键的第二列不算「已索引」（数据库文档 §12 第 1 条）：删角色要扫子表，补单列索引
 CREATE INDEX idx_banner_roles_role ON banner_roles (role_id);
@@ -81,10 +84,11 @@ CREATE INDEX idx_banner_roles_role ON banner_roles (role_id);
 -- 6) banner_dismissals：不再显示
 -- ============================================================
 CREATE TABLE banner_dismissals (
+  id         bigint      GENERATED ALWAYS AS IDENTITY PRIMARY KEY,   -- ent 实体必须有 id；原自然键降为 UNIQUE
   banner_id  bigint      NOT NULL REFERENCES banners(id) ON DELETE CASCADE,
   user_id    bigint      NOT NULL REFERENCES users(id)   ON DELETE CASCADE,
   created_at timestamptz NOT NULL DEFAULT now(),
-  PRIMARY KEY (banner_id, user_id)
+  UNIQUE (banner_id, user_id)   -- 原自然键：降为唯一
 );
 -- 「我关过哪些横幅」按 (user_id, banner_id) 反查 → 方向与主键相反的额外唯一索引
 CREATE UNIQUE INDEX uq_banner_dismissals_user ON banner_dismissals (user_id, banner_id);

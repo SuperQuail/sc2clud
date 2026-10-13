@@ -41,11 +41,12 @@ CREATE TABLE mail_accounts (
 -- 2) mail_quota：每日额度账（必须持久化，禁止放内存）
 -- ============================================================
 CREATE TABLE mail_quota (
+  id         bigint      GENERATED ALWAYS AS IDENTITY PRIMARY KEY,   -- ent 实体必须有 id；原自然键降为 UNIQUE
   account_id bigint      NOT NULL REFERENCES mail_accounts(id) ON DELETE CASCADE,
   day        date        NOT NULL,        -- PG 原生 date，不是字符串
   count      int         NOT NULL DEFAULT 0,
   updated_at timestamptz NOT NULL DEFAULT now(),
-  PRIMARY KEY (account_id, day),
+  UNIQUE (account_id, day),   -- 原自然键：降为唯一
   CONSTRAINT ck_mail_quota_count CHECK (count >= 0)
 );
 -- account_id 是主键首列 → 级联删除路径已覆盖，不再补单列索引（拍板 §5.9 第 7 条：别建重复索引）。

@@ -30,14 +30,24 @@ export function ReviewStateBanner({
   state,
   note,
   appeal,
+  pendingHuman = false,
 }: {
   state: ReviewState;
   note?: string | null;
   /** rejected 时的「申请人工复核」按钮：由调用方给，横幅只负责摆位置 */
   appeal?: ReactNode;
+  /** 后端 review_pending_human：pending 是否已转人工。**只说「在不在等人」，不暴露谁判的** */
+  pendingHuman?: boolean;
 }) {
   if (state === 'approved') return null; // 正常帖：什么都不显示
   const tone = TONE[state];
+  // 两档文案：AI 在跑就说几十秒，已转人工就别说几十秒（d7 §1 第 3 条：调用失败/拿不准 → 人工队列）
+  const pendingTitle = pendingHuman
+    ? '这篇正在审核中，已转人工审核，通过后其他人才能看到'
+    : '这篇正在审核中，通过后其他人才能看到';
+  const pendingNote = pendingHuman
+    ? '已转人工审核，通常 1 个工作日内有结果；期间你可以继续编辑。'
+    : '正在自动检查，通常几十秒内完成；期间你可以继续编辑。';
   return (
     <section
       aria-label={state === 'pending' ? '审核中' : '未通过审核'}
@@ -54,15 +64,17 @@ export function ReviewStateBanner({
             'text-[14px] font-semibold ' + (state === 'pending' ? 'text-foreground' : 'text-destructive')
           }
         >
-          {state === 'pending' ? '这篇正在审核中，通过后其他人才能看到' : '未通过审核'}
+          {state === 'pending' ? pendingTitle : '未通过审核'}
         </span>
       </span>
       {state === 'pending' ? (
-        <span className='text-[12px] text-muted-foreground'>通常几分钟内完成，期间你可以继续编辑。</span>
+        <span className='text-[12px] text-muted-foreground'>{pendingNote}</span>
       ) : (
         <>
           {note ? (
-            <p className='text-[13px] leading-relaxed text-foreground'>
+            // 理由是 AI / 管理员写的中文句子，最长可到 varchar(500)、实际常见 100–200 字：
+            // **不给单行截断**，整段换行展开（break-words 防长串英文/URL 溢出），行高放宽到 1.7 便于读
+            <p className='text-[13px] leading-[1.7] break-words text-foreground'>
               <span className='text-muted-foreground'>审核理由：</span>
               {note}
             </p>
@@ -108,11 +120,16 @@ export function AuthorOnlyHint() {
 export function ReviewStateDemoBar({
   value,
   onChange,
+  pendingHuman,
+  onPendingHumanChange,
   onAppeal,
   appealNote,
 }: {
   value: ReviewState;
   onChange: (v: ReviewState) => void;
+  /** review_pending_human 的两档：只在 pending 时出现 */
+  pendingHuman: boolean;
+  onPendingHumanChange: (v: boolean) => void;
   onAppeal?: () => void;
   appealNote?: string | null;
 }) {
@@ -137,6 +154,16 @@ export function ReviewStateDemoBar({
           </Button>
         ))}
       </ButtonSet>
+      {value === 'pending' ? (
+        <ButtonSet>
+          <Button active={!pendingHuman} onClick={() => onPendingHumanChange(false)}>
+            自动检查中
+          </Button>
+          <Button active={pendingHuman} onClick={() => onPendingHumanChange(true)}>
+            已转人工
+          </Button>
+        </ButtonSet>
+      ) : null}
       {value === 'rejected' ? (
         <Button
           icon={icon16(Send)}

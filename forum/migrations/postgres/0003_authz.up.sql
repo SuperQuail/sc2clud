@@ -56,13 +56,14 @@ CREATE UNIQUE INDEX uq_email_tokens_live ON email_tokens (user_id, purpose) WHER
 -- user_permissions（点对点追加权限）
 -- ============================================================
 CREATE TABLE user_permissions (
+  id         bigint      GENERATED ALWAYS AS IDENTITY PRIMARY KEY,   -- ent 实体必须有 id；原自然键降为 UNIQUE
   user_id       bigint       NOT NULL,
   permission_id bigint       NOT NULL REFERENCES permissions(id) ON DELETE CASCADE,
   granted_by    bigint       NULL     REFERENCES users(id)       ON DELETE SET NULL,
   granted_at    timestamptz  NOT NULL DEFAULT now(),
   expires_at    timestamptz  NULL,
   reason        varchar(200) NOT NULL,
-  PRIMARY KEY (user_id, permission_id),
+  UNIQUE (user_id, permission_id),   -- 原自然键：降为唯一
   CONSTRAINT ck_user_permissions_expires CHECK (expires_at IS NULL OR expires_at > granted_at),
   CONSTRAINT ck_user_permissions_reason  CHECK (btrim(reason) <> '')
 );
@@ -104,12 +105,13 @@ CREATE INDEX idx_audit_logs_dump   ON audit_logs (created_at DESC, id DESC);
 -- board_moderators（分区版主 = board.moderate 的作用域来源）
 -- ============================================================
 CREATE TABLE board_moderators (
+  id         bigint      GENERATED ALWAYS AS IDENTITY PRIMARY KEY,   -- ent 实体必须有 id；原自然键降为 UNIQUE
   board_id   bigint      NOT NULL,   -- FK 在 0004_forum 补（boards 那时才存在）
   user_id    bigint      NOT NULL REFERENCES users(id) ON DELETE CASCADE,
   granted_by bigint      NULL REFERENCES users(id) ON DELETE SET NULL,
   granted_at timestamptz NOT NULL DEFAULT now(),
   expires_at timestamptz NULL,       -- NULL = 永久；「未过期」的判定留在查询里（拍板 §5.9 第 1 条）
-  PRIMARY KEY (board_id, user_id)
+  UNIQUE (board_id, user_id)   -- 原自然键：降为唯一
 );
 
 -- 复合主键的第二列不算已索引（数据库文档 §12 第 1 条）：删用户要扫这一列，

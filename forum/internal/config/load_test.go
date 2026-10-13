@@ -17,7 +17,12 @@ func setValidEnv(t *testing.T) {
 	t.Setenv("FORUM_MAIL__KEY", validKey)
 	t.Setenv("FORUM_SITE__BASE_URL", "http://127.0.0.1:8081")
 	t.Setenv("FORUM_IMAGE__ROOT", t.TempDir())
-	t.Setenv("FORUM_WEB__DIST_DIR", t.TempDir())
+	// web 校验要求 dist 目录里真的有 index.html（「前端产物没上传」要从运行期 404 变成启动失败）
+	dist := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dist, "index.html"), []byte("<!doctype html>"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("FORUM_WEB__DIST_DIR", dist)
 }
 
 func TestLoadDefaultsThenEnvOverride(t *testing.T) {
@@ -154,5 +159,88 @@ func TestLoadAcceptsRealYAMLShape(t *testing.T) {
 	}
 	if cfg.KV.Driver != "memory" {
 		t.Fatalf("kv.driver 没读到: %q", cfg.KV.Driver)
+	}
+}
+
+// Auth 这一组是「默认值 + env 覆盖」都容易踩坑的地方：
+// 默认值走 yaml.Marshal（读 yaml tag），env 走 koanf（读 koanf tag），
+// 两个 tag 不同名时默认值会落到别的键上、静默失效（Site / Web 都踩过）。
+func TestAuthDefaultsAndEnvOverride(t *testing.T) {
+	setValidEnv(t)
+	cfg, err := Load("")
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if cfg.Auth.SessionTTL != 720*time.Hour {
+		t.Fatalf("session_ttl 默认值丢了: %v", cfg.Auth.SessionTTL)
+	}
+	if cfg.Auth.Argon2MaxConcur != 2 {
+		t.Fatalf("argon2_max_concur 默认值丢了: %d", cfg.Auth.Argon2MaxConcur)
+	}
+	if cfg.Auth.Argon2WaitTimeout != 3*time.Second {
+		t.Fatalf("argon2_wait_timeout 默认值丢了: %v", cfg.Auth.Argon2WaitTimeout)
+	}
+	if cfg.Auth.TouchInterval != 10*time.Minute {
+		t.Fatalf("touch_interval 默认值丢了: %v", cfg.Auth.TouchInterval)
+	}
+	if cfg.Auth.RenewInterval != 24*time.Hour {
+		t.Fatalf("renew_interval 默认值丢了: %v", cfg.Auth.RenewInterval)
+	}
+
+	t.Setenv("FORUM_AUTH__ARGON2_MAX_CONCUR", "4")
+	t.Setenv("FORUM_AUTH__ARGON2_WAIT_TIMEOUT", "1500ms")
+	t.Setenv("FORUM_AUTH__TOUCH_INTERVAL", "1m")
+	t.Setenv("FORUM_AUTH__RENEW_INTERVAL", "6h")
+	cfg2, err := Load("")
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if cfg2.Auth.Argon2MaxConcur != 4 {
+		t.Fatalf("FORUM_AUTH__ARGON2_MAX_CONCUR 没生效: %d", cfg2.Auth.Argon2MaxConcur)
+	}
+	if cfg2.Auth.Argon2WaitTimeout != 1500*time.Millisecond {
+		t.Fatalf("FORUM_AUTH__ARGON2_WAIT_TIMEOUT 没生效: %v", cfg2.Auth.Argon2WaitTimeout)
+	}
+	if cfg2.Auth.TouchInterval != time.Minute {
+		t.Fatalf("FORUM_AUTH__TOUCH_INTERVAL 没生效: %v", cfg2.Auth.TouchInterval)
+	}
+	if cfg2.Auth.RenewInterval != 6*time.Hour {
+		t.Fatalf("FORUM_AUTH__RENEW_INTERVAL 没生效: %v", cfg2.Auth.RenewInterval)
+	}
+}
+
+// 数值类配置的「死值」必须在启动时拒绝：这些值下服务不是变慢，是不能工作。
+func TestValidateRejectsDeadValues(t *testing.T) {
+	cases := []struct {
+		name string
+		key  string
+		val  string
+	}{
+		{"并发信号量配成 0", "FORUM_AUTH__ARGON2_MAX_CONCUR", "0"},
+		{"并发信号量配成负数", "FORUM_AUTH__ARGON2_MAX_CONCUR", "-1"},
+		{"等信号量超时配成 0", "FORUM_AUTH__ARGON2_WAIT_TIMEOUT", "0"},
+		{"touch 间隔配成 0", "FORUM_AUTH__TOUCH_INTERVAL", "0"},
+		{"续期间隔配成负数", "FORUM_AUTH__RENEW_INTERVAL", "-1h"},
+		{"租约配成 0", "FORUM_QUEUE__LEASE", "0"},
+		{"租约配成负数", "FORUM_QUEUE__LEASE", "-5m"},
+		{"轮询间隔配成 0", "FORUM_QUEUE__POLL_INTERVAL", "0"},
+		{"锁等待超时配成 0", "FORUM_DB__LOCK_TIMEOUT", "0"},
+		{"空闲事务超时配成 0", "FORUM_DB__IDLE_TX_TIMEOUT", "0"},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			setValidEnv(t)
+			t.Setenv(c.key, c.val)
+			_, err := Load("")
+			if err == nil {
+				t.Fatalf("%s=%s 必须被拒绝启动", c.key, c.val)
+			}
+			// 用与加载器同一套映射（FORUM_ 前缀 + __ 分层），这样断言同时验证了
+			// 「错误信息里指出的是同一个配置项」和「env 名到配置键的映射没漂移」
+			wantKey := strings.ToLower(strings.ReplaceAll(strings.TrimPrefix(c.key, "FORUM_"), "__", "."))
+			if !strings.Contains(err.Error(), wantKey) {
+				t.Fatalf("错误信息里应当出现 %q，实际: %v", wantKey, err)
+			}
+		})
 	}
 }

@@ -39,9 +39,24 @@ func New(pool *pgxpool.Pool, c clock.Clock) *Flusher {
 }
 
 // Flush 按前缀把键分到两张表，各写一条语句。任一条失败即整批失败（由 counter 放回缓冲重试）。
+// flatten 把 map 摊成两个等长数组（SQL 用 unnest 并行展开它们）。
+func flatten(m map[int64]int64) ([]int64, []int64) {
+	if len(m) == 0 {
+		return nil, nil
+	}
+	ids := make([]int64, 0, len(m))
+	deltas := make([]int64, 0, len(m))
+	for id, d := range m {
+		ids, deltas = append(ids, id), append(deltas, d)
+	}
+	return ids, deltas
+}
+
 func (f *Flusher) Flush(ctx context.Context, keys []string, deltas []int64) error {
-	topicIDs, topicDeltas := make([]int64, 0, len(keys)), make([]int64, 0, len(keys))
-	assetIDs, assetDeltas := make([]int64, 0, len(keys)), make([]int64, 0, len(keys))
+	// 先按 id 合并：同一条 UPDATE 里若有重复 id，PG 只会更新该行一次（取第一个匹配），
+	// 后面几笔会被静默丢掉。合并放在 Go 里，SQL 就始终是「一个 id 最多出现一次」。
+	topic := make(map[int64]int64, len(keys))
+	asset := make(map[int64]int64, len(keys))
 	for i, k := range keys {
 		kind, id, err := counter.Kind(k)
 		if err != nil {
@@ -49,11 +64,13 @@ func (f *Flusher) Flush(ctx context.Context, keys []string, deltas []int64) erro
 		}
 		switch kind {
 		case "topic_view":
-			topicIDs, topicDeltas = append(topicIDs, id), append(topicDeltas, deltas[i])
+			topic[id] += deltas[i]
 		case "asset_download":
-			assetIDs, assetDeltas = append(assetIDs, id), append(assetDeltas, deltas[i])
+			asset[id] += deltas[i]
 		}
 	}
+	topicIDs, topicDeltas := flatten(topic)
+	assetIDs, assetDeltas := flatten(asset)
 	now := f.clock.Now()
 	if len(topicIDs) > 0 {
 		if _, err := f.pool.Exec(ctx, updateTopicViewsSQL, topicIDs, topicDeltas, now); err != nil {

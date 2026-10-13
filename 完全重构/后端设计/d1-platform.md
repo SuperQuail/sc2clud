@@ -51,6 +51,43 @@
 Validate() error 只做信任边界上的校验：必填非空、mail.key 是 64 个 hex 字符、env 属于 {dev,prod}、captcha.mode 属于三个已知值。
 **不做「DSN 能不能连」这类探测**——那是 NewInfra 的事，失败也在那里报（启动即失败）。
 
+**第二类：数值不能是「死值」（0 / 负数）。** 规则一句话：
+
+> **凡是「配成某个值会让服务永久卡住或无限循环」的数值配置，一律在 Validate 里拒绝启动；
+> 只影响性能 / 体验的数值不校验（那属于运维调参）。**
+
+判据是「这个值下服务还能不能工作」，不是「这个值好不好」。降级设计的前提是「降级后还能工作」，
+这些值下它不能工作，所以必须在启动时拒绝，而不是留给运行期表现成「变慢」或「时好时坏」。
+配套的一条推论：**非法值（0 / 负数这种契约外的量）与「调参差异」是两回事**——
+前者要在 Validate 里被指名道姓地说清，后者不校验。
+
+| 配置项 | 拒绝条件 | 配成死值时会发生什么 | 属于 |
+|---|---|---|---|
+| `auth.argon2_max_concur` | `< 1` | 哈希信号量容量为 0，永远取不到 → **所有登录永久挂住**（不是变慢，是不返回） | 永久卡住 |
+| `auth.argon2_wait_timeout` | `<= 0` | 等信号量立即超时 → 所有登录返回 503 `auth.hash_busy` | 全部不可用 |
+| `auth.touch_interval` | `<= 0` | 每个请求都写一次 `sessions.last_seen_at`，会话表变成写热点（§6.5 要节流正是为了这个） | 全部不可用 |
+| `auth.renew_interval` | `<= 0` | 每次 touch 都改 `expires_at`，把续期本身变成写热点 | 全部不可用 |
+| `queue.lease` | `<= 0` | `locked_until = now` → 恢复循环下一轮就把 running 收回 pending → **任务被无限重投**（永远做不完，还会把 attempts 打满进 dead） | 无限循环 |
+| `queue.poll_interval` | `<= 0` | `time.NewTicker` 的契约要求 d > 0 → **进程 panic** | 非法值 |
+| `db.lock_timeout` | `<= 0` | 锁等待无限期挂住一条连接；16 条全被挂住 = 服务永久卡住（§2.1 的原话就是「一个锁等待无限期挂住」） | 永久卡住 |
+| `db.idle_tx_timeout` | `<= 0` | 忘了提交的事务永久占住连接并顶住 vacuum（§2.1 原话） | 永久卡住 |
+
+**看过但决定不校验的**（都属于「调参」或已有兜底，写在这里免得以后重复讨论）：
+
+| 配置项 | 为什么不校验 |
+|---|---|
+| `db.statement_timeout` | 配成 0 只是「查询可以更慢」，查询最终会结束；真正无限等待的是 `lock_timeout`，已覆盖 |
+| `db.max_conns` | **已从源码核实**：`max_conns < 1` 时 puddle 直接返回 `MaxSize must be >= 1`，`db.Open` 报错，启动照样失败（只是信息不如 Validate 直白） |
+| `db.min_conns > max_conns` | **已从源码核实**：pgxpool 的 `createIdleResources` 忽略 `puddle.ErrNotAvailable`，不会阻塞 |
+| `queue.workers` | 已有兜底：`WorkersFor` 返回 ≥ 4，绝不返回 0（0 个 worker = 队列永远不动） |
+| `http.body_limit_default` | 已有兜底：`HTTP.BodyLimit()` 在 `<= 0` 时回落到 1MB |
+| `http.shutdown_timeout` | 已有兜底：`shutdownTimeout()` 在 `<= 0` 时回落到 15s |
+| `http.read_timeout` 等四个超时 | 0 = 不超时，属于 Slowloris 加固强度，是调参不是死值 |
+| `kv.read_timeout` 等 | go-redis 的负值是**故意的**「无超时」语义（-1），0 会取库的默认值；不是非法值 |
+
+这条是 Lead 在 2026-10-13 拍板的补充，属于「必填/格式/枚举」之外的同类（**数值不能是死值**），
+不改变「不做连通性探测」那条原则。检查在 `internal/config/validate.go`，用例 `TestValidateRejectsDeadValues`。
+
 ## 2. 数据库：internal/platform/db
 
 ### 2.1 打开（参数照数据库文档 §7 写死）

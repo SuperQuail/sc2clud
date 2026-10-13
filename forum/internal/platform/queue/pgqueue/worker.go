@@ -34,21 +34,23 @@ RETURNING id, type, payload, attempts, max_retry
 `
 
 const (
+	// 成功：只用 $1..$3，参数列表与 SQL 严格对应（多一个没被引用的参数会让 PG 推断不出类型）
 	doneSQL = `
-UPDATE jobs SET status = 'done', locked_until = NULL, updated_at = $3, last_error = ''
+UPDATE jobs SET status = 'done', locked_until = NULL, last_error = '', updated_at = $3
  WHERE id = $1 AND locked_by = $2 AND status = 'running'
 `
 
+	// 失败待重试。$4 必须显式 ::timestamptz：DescribeExec 模式下 PG 先推断参数类型，
+	// 而 "unknown + interval" 会被推断成 interval + interval（$4 成了 interval），
+	// 赋值给 timestamptz 列时就报「表达式的类型为 interval」（踩过）。
 	retrySQL = `
 UPDATE jobs SET
        status       = 'pending',
-       -- timestamptz + interval 在 PG 里合法，但 make_interval 返回 interval、$4 是 timestamptz，
-       -- 直接相加会被解析成 timestamptz + ? 而报「表达式类型为 interval」。写成 interval * double precision 才是可加的。
-       run_at       = $4 + (LEAST($5 * power(2, attempts), $6) * interval '1 second'),
+       run_at       = $4::timestamptz + (LEAST($5::double precision * power(2, attempts), $6::double precision) * interval '1 second'),
        locked_until = NULL,
        locked_by    = '',
        last_error   = $3,
-       updated_at   = $4
+       updated_at   = $4::timestamptz
  WHERE id = $1 AND locked_by = $2 AND status = 'running'
 `
 
@@ -71,6 +73,8 @@ UPDATE jobs SET status = 'pending', locked_until = NULL, locked_by = '', updated
 // ctx 取消后：不再领新任务，等在途任务结束再返回（超时上限 15s）。
 func (q *Queue) Run(ctx context.Context) error {
 	instance := newInstanceID(q.clock)
+	// 并发数由 app 层按容量档位算好（small 4 / standard 8）后写进 cfg，
+	// 这里只是兜底：真取不到就用 4，绝不用 0（0 个 worker = 队列永远不动）。
 	workers := q.cfg.WorkersFor("")
 	if workers <= 0 {
 		workers = 4
@@ -182,19 +186,19 @@ func (q *Queue) execute(ctx context.Context, id int64, typ string, payload []byt
 	if !ok {
 		// 类型常量是代码写死的：出现未知类型就是代码 bug，重试没有意义
 		q.log.Error("queue: 未注册的任务类型，直接置 dead", "type", typ, "id", id)
-		q.finish(finishCtx, deadSQL, id, instance, "unknown task type: "+typ)
+		q.markDead(finishCtx, id, instance, "unknown task type: "+typ)
 		return
 	}
 
 	err := runHandler(ctx, h, payload)
 	if err == nil {
-		q.finish(finishCtx, doneSQL, id, instance, "")
+		q.markDone(finishCtx, id, instance)
 		return
 	}
 	msg := truncate(err.Error(), 1000)
 	if errors.Is(err, queue.ErrSkipRetry) || errors.Is(err, context.Canceled) || attempts >= maxRetry {
 		q.log.Warn("queue: 任务失败转 dead", "type", typ, "id", id, "attempts", attempts, "err", msg)
-		q.finish(finishCtx, deadSQL, id, instance, msg)
+		q.markDead(finishCtx, id, instance, msg)
 		return
 	}
 	q.log.Warn("queue: 任务失败将重试", "type", typ, "id", id, "attempts", attempts, "err", msg)
@@ -213,9 +217,15 @@ func runHandler(ctx context.Context, h queue.Handler, payload []byte) (err error
 	return h(ctx, payload)
 }
 
-func (q *Queue) finish(ctx context.Context, sqlText string, id int64, instance, msg string) {
-	if _, err := q.pool.Exec(ctx, sqlText, id, instance, msg, q.clock.Now()); err != nil {
-		q.log.Error("queue: 写回状态失败", "id", id, "err", err.Error())
+func (q *Queue) markDone(ctx context.Context, id int64, instance string) {
+	if _, err := q.pool.Exec(ctx, doneSQL, id, instance, q.clock.Now()); err != nil {
+		q.log.Error("queue: 写回完成失败", "id", id, "err", err.Error())
+	}
+}
+
+func (q *Queue) markDead(ctx context.Context, id int64, instance, msg string) {
+	if _, err := q.pool.Exec(ctx, deadSQL, id, instance, msg, q.clock.Now()); err != nil {
+		q.log.Error("queue: 写回 dead 失败", "id", id, "err", err.Error())
 	}
 }
 

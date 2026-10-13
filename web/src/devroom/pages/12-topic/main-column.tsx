@@ -26,6 +26,7 @@ export function MainColumn({
   reviewState = 'approved',
   reviewNote,
   reviewAppeal,
+  reviewPendingHuman = false,
 }: {
   topic: TopicDetail;
   comments: CommentData[];
@@ -39,6 +40,8 @@ export function MainColumn({
   reviewNote?: string | null;
   /** 「申请人工复核」按钮（rejected 时才给）：横幅只摆位置，动作由页面接 */
   reviewAppeal?: ReactNode;
+  /** 后端 review_pending_human：pending 是否已转人工（决定两档文案） */
+  reviewPendingHuman?: boolean;
 }) {
   const [liked, setLiked] = useState(topic.viewer.liked);
   const [bookmarked, setBookmarked] = useState(topic.viewer.bookmarked);
@@ -59,7 +62,12 @@ export function MainColumn({
         </h1>
         {/* 审核态横幅紧贴标题：它是「这篇现在是什么状态」，不是正文的一部分。
             非作者收不到 pending/rejected 的主题（后端过滤），所以这里不需要「游客看到审核中」的分支。 */}
-        <ReviewStateBanner state={reviewState} note={reviewNote} appeal={reviewAppeal} />
+        <ReviewStateBanner
+          state={reviewState}
+          note={reviewNote}
+          appeal={reviewAppeal}
+          pendingHuman={reviewPendingHuman}
+        />
         <div className='border-b border-border pb-3'>
           <UserBadge
             user={{ handle: topic.author.handle, nickname: topic.author.nickname, avatar: topic.author.avatar, role: topic.author.role, title: topic.author.title }}

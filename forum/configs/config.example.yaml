@@ -35,9 +35,13 @@ queue:
 auth:
   session_ttl: 720h # 30 天
   argon2_time: 2
-  argon2_memory: 32768
+  argon2_memory: 32768 # KiB；2 并发 × 32MB 是 2GB 机器的峰值
   argon2_threads: 2
   argon2_key_len: 32
+  argon2_max_concur: 2 # 并发哈希的信号量容量
+  argon2_wait_timeout: 3s # 等信号量的上限，超时返回 503 auth.hash_busy
+  touch_interval: 10m # 同一会话两次写 last_seen_at 的最小间隔
+  renew_interval: 24h # expires_at 真正的续期间隔
 
 image:
   root: data/images

@@ -48,6 +48,14 @@ func Default() *Config {
 			Argon2MemoryKB: 32768,
 			Argon2Threads:  2,
 			Argon2KeyLen:   32,
+			// 并发哈希的上限：2 × 32MB 是 2GB 机器能承受的峰值
+			Argon2MaxConcur: 2,
+			// 等信号量的上限比一次哈希长得多，但比「请求超时」短
+			Argon2WaitTimeout: 3 * time.Second,
+			// 同一会话 10 分钟内不重复写 last_seen_at（会话表是写热点）
+			TouchInterval: 10 * time.Minute,
+			// expires_at 每 24h 才真的改一次，别把它变成新的写热点
+			RenewInterval: 24 * time.Hour,
 		},
 		Image: Image{
 			Root:         "data/images",
@@ -56,7 +64,9 @@ func Default() *Config {
 			PostMax:      2 << 20,
 			PaymentMax:   512 << 10,
 		},
-		Captcha:  Captcha{Mode: "off"},
+		Captcha: Captcha{Mode: "off"},
+		// dev/prod 同域部署时必须用不同的名字，否则两边会话互相顶掉（部署文档 §3.2）
+		Site:     Site{CookieName: "forum_session"},
 		Web:      Web{DistDir: "web/dist", BasePath: "/", ServeShell: true, ServeAssets: true},
 		Capacity: Capacity{Profile: "auto"},
 	}

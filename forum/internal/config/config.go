@@ -91,12 +91,24 @@ type Mail struct {
 }
 
 // Auth 是认证参数，D2 使用；D1 只加载与校验。
+//
+// 后四项（Argon2MaxConcur / Argon2WaitTimeout / TouchInterval / RenewInterval）是
+// 设计 d2-auth.md §4.3 的配置项，2026-10-13 由 D2 补进结构体：它们都是**运行期参数**，
+// 不配也能跑（service 有同值兜底），配上了才能不改代码地调。
 type Auth struct {
 	SessionTTL     time.Duration `yaml:"session_ttl" koanf:"session_ttl"`
 	Argon2Time     uint32        `yaml:"argon2_time" koanf:"argon2_time"`
 	Argon2MemoryKB uint32        `yaml:"argon2_memory" koanf:"argon2_memory"`
 	Argon2Threads  uint8         `yaml:"argon2_threads" koanf:"argon2_threads"`
 	Argon2KeyLen   uint32        `yaml:"argon2_key_len" koanf:"argon2_key_len"`
+	// Argon2MaxConcur 是并发哈希信号量容量（设计 §7.4：默认 2；10×32MB 会把 2GB 机器打爆）
+	Argon2MaxConcur int `yaml:"argon2_max_concur" koanf:"argon2_max_concur"`
+	// Argon2WaitTimeout 是等信号量的上限，超时返回 503 auth.hash_busy（设计 §7.4）
+	Argon2WaitTimeout time.Duration `yaml:"argon2_wait_timeout" koanf:"argon2_wait_timeout"`
+	// TouchInterval 是同一会话两次写 last_seen_at 的最小间隔（设计 §6.5）
+	TouchInterval time.Duration `yaml:"touch_interval" koanf:"touch_interval"`
+	// RenewInterval 是 expires_at 真正的续期间隔（设计 §6.5：默认 24h）
+	RenewInterval time.Duration `yaml:"renew_interval" koanf:"renew_interval"`
 }
 
 // Image 是图片存储的根目录与三个上限。

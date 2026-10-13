@@ -54,7 +54,8 @@ CREATE INDEX idx_donation_records_verifier ON donation_records (verified_by);
 -- user_donation_settings（一行一人；三个开关 + 文案）
 -- ============================================================
 CREATE TABLE user_donation_settings (
-  user_id        bigint       PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+  id         bigint      GENERATED ALWAYS AS IDENTITY PRIMARY KEY,   -- ent 实体必须有 id；原自然键降为 UNIQUE
+  user_id        bigint       UNIQUE REFERENCES users(id) ON DELETE CASCADE,   -- 原自然键：降为唯一
   show_channels  boolean      NOT NULL DEFAULT false,   -- 展示收款码（旧站默认关）
   records_public boolean      NOT NULL DEFAULT false,   -- 我收到的打赏可公开（旧站默认关）
   notice_visible boolean      NOT NULL DEFAULT true,    -- 显示打赏提示文案
@@ -68,7 +69,8 @@ CREATE TABLE user_donation_settings (
 -- donation_notice_defaults（按渠道的默认提示文案）
 -- ============================================================
 CREATE TABLE donation_notice_defaults (
-  channel    text         PRIMARY KEY,
+  id         bigint      GENERATED ALWAYS AS IDENTITY PRIMARY KEY,   -- ent 实体必须有 id；原自然键降为 UNIQUE
+  channel    text         UNIQUE,   -- 原自然键：降为唯一
   text       varchar(200) NOT NULL DEFAULT '',
   created_at timestamptz  NOT NULL DEFAULT now(),
   updated_at timestamptz  NOT NULL DEFAULT now(),

@@ -1,0 +1,819 @@
+package auth
+
+import (
+	"context"
+	"errors"
+	"net/mail"
+	"regexp"
+	"strconv"
+	"strings"
+	"time"
+
+	"github.com/jackc/pgx/v5/pgconn"
+
+	"forum/internal/auth/pgsql"
+	"forum/internal/authz"
+	ent "forum/internal/ent"
+	"forum/internal/ent/emailtoken"
+	"forum/internal/ent/role"
+	"forum/internal/ent/session"
+	"forum/internal/ent/user"
+	"forum/internal/ent/userpermission"
+	"forum/internal/platform/apperr"
+	"forum/internal/platform/idgen"
+)
+
+// ── 信任边界上的校验（唯一的校验处，内部调用之间不再加防御） ──────────────────
+
+var usernameRe = regexp.MustCompile(`^[A-Za-z0-9_][A-Za-z0-9_-]{2,23}$`)
+
+const (
+	nicknameMaxLen = 20 // 与 users.nickname varchar(20) 一致，按 rune 计
+	bioMaxLen      = 200
+	passwordMinLen = 8
+	passwordMaxLen = 128
+)
+
+// normalizeUsername 只去空白：大小写保持用户输入的原样，唯一性靠 uq_users_username_lower。
+func normalizeUsername(v string) string { return strings.TrimSpace(v) }
+
+// normalizeEmail 去空白 + 小写（设计 §7.1：落库前统一）。
+func normalizeEmail(v string) string { return strings.ToLower(strings.TrimSpace(v)) }
+
+func validateUsername(v string) error {
+	if !usernameRe.MatchString(v) {
+		return invalid("username", "3-24 位，只能用字母、数字、下划线、连字符，且不能以连字符开头")
+	}
+	return nil
+}
+
+func validateEmail(v string) error {
+	if v == "" || len(v) > 254 {
+		return invalid("email", "邮箱格式不正确")
+	}
+	addr, err := mail.ParseAddress(v)
+	if err != nil || addr.Address != v {
+		return invalid("email", "邮箱格式不正确")
+	}
+	at := strings.LastIndex(v, "@")
+	if at < 0 || !strings.Contains(v[at+1:], ".") {
+		return invalid("email", "邮箱格式不正确")
+	}
+	return nil
+}
+
+func validatePassword(v string) error {
+	if len(v) < passwordMinLen || len(v) > passwordMaxLen {
+		return invalid("password", "密码长度必须是 8-128 个字节")
+	}
+	if strings.TrimSpace(v) == "" {
+		return invalid("password", "密码不能全是空白")
+	}
+	return nil
+}
+
+// validateNickname 空串表示「没填」，由调用方回落到 username。
+func validateNickname(v string) error {
+	if v == "" {
+		return nil
+	}
+	if len([]rune(v)) > nicknameMaxLen {
+		return invalid("nickname", "昵称最多 20 个字")
+	}
+	if strings.TrimSpace(v) == "" {
+		return invalid("nickname", "昵称不能全是空白")
+	}
+	return nil
+}
+
+// ── 限流 key（设计 §9.5 的表，一处定义） ────────────────────────────────
+
+func keyRegisterIP(ip string) string   { return "auth:register:ip:" + ip }
+func keyLoginIP(ip string) string      { return "auth:login:ip:" + ip }
+func keyLoginUser(login string) string { return "auth:login:user:" + strings.ToLower(login) }
+func keyMailIP(ip string) string       { return "auth:mail:ip:" + ip }
+func keyMailUser(id int64) string      { return "auth:mail:user:" + strconv.FormatInt(id, 10) }
+func keyMailVerifyUser(id int64) string {
+	return "auth:mail:verify:user:" + strconv.FormatInt(id, 10)
+}
+func keyCaptchaIP(ip string) string { return "auth:captcha:ip:" + ip }
+
+// errLimiterUnavailable 是限流后端不可用：**必须拒绝放行**（platform/kv 的约定：
+// 缓存类调用方把不可用当未命中，限流类调用方必须拒绝，否则 Redis 一挂就等于没有限流）。
+var errLimiterUnavailable = errors.New("auth: 限流后端不可用")
+
+// allow 是限流判定的唯一出口：被拒时返回带 Retry-After 的 429。
+func (s *Service) allow(ctx context.Context, key string, limit int, window time.Duration) error {
+	if s.limiter == nil {
+		return nil
+	}
+	ok, retry, err := s.limiter.Allow(ctx, key, limit, window)
+	if err != nil {
+		s.log.Error("auth: 限流后端不可用", "key", key, "err", err.Error())
+		return errLimiterUnavailable
+	}
+	if ok {
+		return nil
+	}
+	secs := int(retry.Seconds())
+	if secs < 1 {
+		secs = 1
+	}
+	return ErrTooManyRequests.WithMsg("操作太频繁，请 " + strconv.Itoa(secs) + " 秒后再试")
+}
+
+// checkCaptcha 只在 captcha.mode=always 时要求（on_failure 的判定需要失败计数，
+// 那属于 captcha 模块自己的策略，本域不重新实现一遍）。
+func (s *Service) checkCaptcha(ctx context.Context, id, answer string) error {
+	if s.cfg.Captcha.Mode != "always" {
+		return nil
+	}
+	if s.captcha == nil {
+		return nil
+	}
+	if id == "" || answer == "" {
+		return ErrCaptchaRequired
+	}
+	ok, err := s.captcha.Verify(ctx, id, answer)
+	if err != nil {
+		return err
+	}
+	if !ok {
+		return ErrCaptchaWrong
+	}
+	return nil
+}
+
+// ── 注册 ────────────────────────────────────────────────────────────
+
+func (s *Service) Register(ctx context.Context, in RegisterInput) (*RegisterResult, error) {
+	if err := s.allow(ctx, keyRegisterIP(in.IP), 3, time.Hour); err != nil {
+		return nil, err
+	}
+	username := normalizeUsername(in.Username)
+	email := normalizeEmail(in.Email)
+	if err := validateUsername(username); err != nil {
+		return nil, err
+	}
+	if err := validateEmail(email); err != nil {
+		return nil, err
+	}
+	if err := validatePassword(in.Password); err != nil {
+		return nil, err
+	}
+	nickname := strings.TrimSpace(in.Nickname)
+	if err := validateNickname(nickname); err != nil {
+		return nil, err
+	}
+	if nickname == "" {
+		nickname = username
+	}
+	if err := s.checkCaptcha(ctx, in.CaptchaID, in.CaptchaAnswer); err != nil {
+		return nil, err
+	}
+
+	// 哈希在**事务外**算：32MB + 几十毫秒，绝不放事务里（设计 §7.1 第 3 步）。
+	if err := s.hash.acquire(ctx); err != nil {
+		return nil, err
+	}
+	phc, err := s.hash.Hash(in.Password)
+	s.hash.release()
+	if err != nil {
+		return nil, err
+	}
+
+	// 验证码也在事务外生成：如果它失败而账号已经建好，那个人就永远收不到码。
+	code, err := newNumericCode()
+	if err != nil {
+		return nil, err
+	}
+
+	// 注册前先知道「能不能发信」：它决定 activation_pending 是 email 还是 manual（拍板 §9.2）。
+	// 「额度满」不算不可用（额度会恢复），所以这里只问「有没有可用账号」。
+	canMail, err := s.canMail(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	pub, err := idgen.NewPublicID()
+	if err != nil {
+		return nil, err
+	}
+	now := s.clk.Now()
+	pending := PendingManual
+	if canMail {
+		pending = PendingEmail
+	}
+
+	var userID int64
+	err = s.withTx(ctx, func(tx *ent.Tx) error {
+		roleID, err := tx.Role.Query().Where(role.KeyEQ("user")).OnlyID(ctx)
+		if err != nil {
+			return err
+		}
+		u, err := tx.User.Create().
+			SetPublicID(pub).
+			SetUsername(username).
+			SetEmail(email).
+			SetPasswordHash(phc).
+			SetNickname(nickname).
+			SetRoleID(roleID).
+			SetStatus(StatusActive).
+			SetActivationPending(pending).
+			SetCreatedAt(now).
+			SetUpdatedAt(now).
+			Save(ctx)
+		if err != nil {
+			return err
+		}
+		userID = u.ID
+		if canMail {
+			if err := s.upsertCode(ctx, tx, userID, purposeVerify, codeHash(code), now); err != nil {
+				return err
+			}
+		}
+		return s.writeAudit(ctx, tx, AuditEntry{
+			Action: ActionUserRegister, TargetType: "user",
+			TargetID: pub.String(), IP: ipOf(in.IP), Detail: map[string]any{},
+		})
+	})
+	if err != nil {
+		return nil, s.mapRegisterErr(err)
+	}
+
+	// 提交后入队（方案 §14.6：事务里禁止发信）。入队失败不回滚注册：
+	// 用户点「重新发送」就能补上，而回滚会让「账号已建好但报错」变成更坏的结果（设计 §16.3）。
+	if canMail {
+		s.enqueueVerifyMail(ctx, userID, email, code, TemplateVerifyEmail)
+	}
+	return &RegisterResult{
+		ID:                pub.String(),
+		Handle:            username,
+		EmailVerified:     false,
+		ActivationPending: pending,
+	}, nil
+}
+
+// canMail 问 mail 模块「现在能不能发信」。没配实现时按不能（manual 兜底）。
+func (s *Service) canMail(ctx context.Context) (bool, error) {
+	if s.mail == nil {
+		return false, nil
+	}
+	return s.mail.HasUsable(ctx)
+}
+
+// enqueueVerifyMail 是发码的唯一下游动作：Mailer 建 mail_logs 行并返回 id，本域入队。
+// 两处调用（注册、重发）共用它，避免两份「建行 + 入队」的写法漂移。
+func (s *Service) enqueueVerifyMail(ctx context.Context, userID int64, to, code, tpl string) {
+	if s.mailer == nil || s.queue == nil {
+		s.log.Error("auth: 没有配发信实现，验证码没发出去", "user_id", userID, "template", tpl)
+		return
+	}
+	sendID, err := s.mailer.SendVerifyCode(ctx, userID, to, code, tpl)
+	if err != nil {
+		s.log.Error("auth: 建发信记录失败", "user_id", userID, "template", tpl, "err", err.Error())
+		return
+	}
+	if err := enqueueMail(ctx, s.queue, sendID); err != nil {
+		// 码还在库里、用户点重发就能补——这正是「事务里不发信」买来的性质（设计 §16.3）。
+		s.log.Error("auth: 入队 mail:send 失败", "send_id", sendID, "err", err.Error())
+	}
+}
+
+// upsertCode 写一条活跃验证码（注册时与重发共用）。重发的语义是「作废旧的、发新的」。
+func (s *Service) upsertCode(ctx context.Context, tx *ent.Tx, userID int64, purpose string, hash []byte, now time.Time) error {
+	// 先把该 purpose 的旧行物理删掉：部分唯一索引 uq_email_tokens_live 的谓词只有
+	// used_at IS NULL（拍板 §5.9 第 1 条：谓词里不能有 now()），所以「未消费」的行只能有一条，
+	// 重发必须让旧行让位（拍板 §11.2 / §11.8 第 4 条：旧码立刻失效）。
+	if _, err := tx.EmailToken.Delete().
+		Where(emailtoken.UserIDEQ(userID), emailtoken.PurposeEQ(purpose)).
+		Exec(ctx); err != nil {
+		return err
+	}
+	if _, err := tx.EmailToken.Create().
+		SetUserID(userID).
+		SetTokenHash(hash).
+		SetPurpose(purpose).
+		SetExpiresAt(now.Add(codeTTL)).
+		SetCreatedAt(now).
+		Save(ctx); err != nil {
+		return err
+	}
+	s.codes.forget(userID, purpose)
+	return nil
+}
+
+// mapRegisterErr 把唯一索引冲突翻成能挂到输入框上的码。
+// 约束名在迁移里写死（uq_users_username_lower / uq_users_email_lower），按它区分是哪一个撞了。
+func (s *Service) mapRegisterErr(err error) error {
+	var pg *pgconn.PgError
+	if errors.As(err, &pg) && pg.Code == "23505" {
+		switch {
+		case strings.Contains(pg.ConstraintName, "username"):
+			return ErrHandleTaken
+		case strings.Contains(pg.ConstraintName, "email"):
+			return ErrEmailTaken
+		}
+		return apperr.ErrConflict
+	}
+	return err
+}
+
+// ── 登录 ────────────────────────────────────────────────────────────
+
+func (s *Service) Login(ctx context.Context, in LoginInput) (*LoginResult, error) {
+	login := strings.TrimSpace(in.Login)
+	if login == "" || in.Password == "" {
+		return nil, ErrBadCredentials
+	}
+	if err := s.allow(ctx, keyLoginIP(in.IP), 10, time.Minute); err != nil {
+		return nil, err
+	}
+	if err := s.allow(ctx, keyLoginUser(login), 5, time.Minute); err != nil {
+		return nil, err
+	}
+	if err := s.checkCaptcha(ctx, in.CaptchaID, in.CaptchaAnswer); err != nil {
+		return nil, err
+	}
+
+	row, found, err := s.lookup(ctx, login)
+	if err != nil {
+		return nil, err
+	}
+
+	// 恒时校验：账号不存在也走一次同样参数的 argon2（设计 §7.2 第 3 步）。
+	// 两种失败返回**同一个码**，不区分「不存在」与「密码错」。
+	if err := s.hash.acquire(ctx); err != nil {
+		return nil, err
+	}
+	var verified bool
+	if found {
+		verified = s.hash.Verify(row.PasswordHash, in.Password)
+	} else {
+		s.hash.dummy(in.Password)
+	}
+	rehash := verified && found && s.hash.needsRehash(row.PasswordHash)
+	var phc string
+	if rehash {
+		phc, err = s.hash.Hash(in.Password)
+	}
+	s.hash.release()
+	if err != nil {
+		return nil, err
+	}
+	if !found || !verified {
+		return nil, ErrBadCredentials
+	}
+	// 封号不暴露（设计 §7.2 第 4 步）：对外与「密码错」完全一样。
+	// **邮箱未验证 / 未激活都允许登录**（拍板 §9.12）：不允许的话他连重发验证码都点不到。
+	if row.Status != StatusActive {
+		return nil, ErrBadCredentials
+	}
+
+	now := s.clk.Now()
+	var token string
+	var expires time.Time
+	err = s.withTx(ctx, func(tx *ent.Tx) error {
+		token, expires, err = s.newSession(ctx, tx, row.ID, in.IP, in.UserAgent)
+		if err != nil {
+			return err
+		}
+		if rehash {
+			// 与建会话同一个事务：失败就整体回滚，**不返回「登录成功但哈希没升级」**（设计 §7.3）。
+			if err := tx.User.UpdateOneID(row.ID).
+				SetPasswordHash(phc).
+				SetUpdatedAt(now).
+				Exec(ctx); err != nil {
+				return err
+			}
+		}
+		if err := tx.User.UpdateOneID(row.ID).SetLastLoginAt(now).SetUpdatedAt(now).Exec(ctx); err != nil {
+			return err
+		}
+		return s.writeAudit(ctx, tx, AuditEntry{
+			ActorID: row.ID, Action: ActionUserLogin, TargetType: "user",
+			TargetID: row.PublicID, IP: ipOf(in.IP), Detail: map[string]any{},
+		})
+	})
+	if err != nil {
+		return nil, err
+	}
+	return &LoginResult{Token: token, ExpiresAt: expires}, nil
+}
+
+// lookup 走 user 模块的实现（它拥有 users 表的读路径）。
+func (s *Service) lookup(ctx context.Context, login string) (*UserAuthRow, bool, error) {
+	if s.users == nil {
+		return nil, false, errors.New("auth: 没有配 UserLookup")
+	}
+	row, err := s.users.GetAuthRow(ctx, login)
+	if err != nil {
+		if errors.Is(err, ErrUserNotFound) {
+			return nil, false, nil
+		}
+		return nil, false, err
+	}
+	return row, true, nil
+}
+
+// ErrUserNotFound 是 UserLookup 的「查不到」约定（user 模块返回它）。
+var ErrUserNotFound = errors.New("auth: 用户不存在")
+
+// ── 我的账号 ────────────────────────────────────────────────────────
+
+func (s *Service) Me(ctx context.Context, actor *authz.Actor) (*MeResult, error) {
+	if actor == nil {
+		return nil, nil
+	}
+	u, err := s.db.User.Query().Where(user.IDEQ(actor.UserID)).Only(ctx)
+	if err != nil {
+		return nil, err
+	}
+	extra, err := s.extraOf(ctx, actor.UserID)
+	if err != nil {
+		return nil, err
+	}
+	return &MeResult{
+		ID:                u.PublicID.String(),
+		Handle:            u.Username,
+		Nickname:          u.Nickname,
+		Email:             u.Email,
+		Avatar:            deref(u.AvatarHash),
+		AvatarSmall:       deref(u.AvatarSmallHash),
+		Bio:               u.Bio,
+		Status:            u.Status,
+		EmailVerified:     u.EmailVerifiedAt != nil,
+		Activated:         u.ActivatedAt != nil,
+		ActivationPending: deref(u.ActivationPending),
+		Trusted:           u.Trusted,
+		Level:             u.Level,
+		Exp:               u.Exp,
+		ExpMax:            ExpMax(u.Level),
+		Role: RoleItem{
+			ID: actor.RoleID, Key: actor.RoleKey, Name: actor.RoleName, BadgeColor: actor.RoleBadge,
+		},
+		Perms:     actor.Perms.Keys(),
+		Extra:     extra,
+		BoardIDs:  actor.BoardIDs,
+		CreatedAt: u.CreatedAt,
+	}, nil
+}
+
+// extraOf 取点对点追加的权限（未过期的）。它只是 /me 的展示字段，不参与判定——
+// 判定用的权限集合已经在 Perms 里算好了。
+func (s *Service) extraOf(ctx context.Context, userID int64) ([]ExtraPermItem, error) {
+	rows, err := s.db.UserPermission.Query().
+		Where(userpermission.UserIDEQ(userID)).
+		WithPermission().
+		All(ctx)
+	if err != nil {
+		return nil, err
+	}
+	now := s.clk.Now()
+	out := make([]ExtraPermItem, 0, len(rows))
+	for _, r := range rows {
+		if r.ExpiresAt != nil && !r.ExpiresAt.After(now) {
+			continue
+		}
+		p, err := r.Edges.PermissionOrErr()
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, ExtraPermItem{Key: p.Key, ExpiresAt: r.ExpiresAt})
+	}
+	return out, nil
+}
+
+// UpdateProfile 只写**请求里出现的字段**。头像归 media 模块写，这里一列都不碰（拍板 U20）。
+type UpdateProfileInput struct {
+	Nickname *string
+	Bio      *string
+}
+
+func (s *Service) UpdateProfile(ctx context.Context, actor *authz.Actor, in UpdateProfileInput) error {
+	if actor == nil {
+		return unauthorized()
+	}
+	upd := s.db.User.UpdateOneID(actor.UserID).SetUpdatedAt(s.clk.Now())
+	if in.Nickname != nil {
+		n := strings.TrimSpace(*in.Nickname)
+		if err := validateNickname(n); err != nil {
+			return err
+		}
+		if n == "" {
+			return invalid("nickname", "昵称不能为空")
+		}
+		upd.SetNickname(n)
+	}
+	if in.Bio != nil {
+		b := strings.TrimSpace(*in.Bio)
+		if len([]rune(b)) > bioMaxLen {
+			return invalid("bio", "简介最多 200 个字")
+		}
+		upd.SetBio(b)
+	}
+	return upd.Exec(ctx)
+}
+
+// ChangePassword 成功后删掉该用户的**全部**会话（含当前会话）：带旧 Cookie 的请求立刻 401。
+type ChangePasswordInput struct {
+	OldPassword string
+	NewPassword string
+	IP          string
+}
+
+func (s *Service) ChangePassword(ctx context.Context, actor *authz.Actor, in ChangePasswordInput) error {
+	if actor == nil {
+		return unauthorized()
+	}
+	if err := s.allow(ctx, keyLoginUser(actor.PublicID), 5, time.Minute); err != nil {
+		return err
+	}
+	if err := validatePassword(in.NewPassword); err != nil {
+		return err
+	}
+	u, err := s.db.User.Query().Where(user.IDEQ(actor.UserID)).Only(ctx)
+	if err != nil {
+		return err
+	}
+
+	// 事务外：取信号量、校验旧密码、算新哈希。
+	if err := s.hash.acquire(ctx); err != nil {
+		return err
+	}
+	ok := s.hash.Verify(u.PasswordHash, in.OldPassword)
+	same := s.hash.Verify(u.PasswordHash, in.NewPassword)
+	var phc string
+	if ok {
+		phc, err = s.hash.Hash(in.NewPassword)
+	}
+	s.hash.release()
+	if err != nil {
+		return err
+	}
+	if !ok {
+		return ErrBadCredentials
+	}
+	if same {
+		return invalid("new_password", "新密码不能与旧密码相同")
+	}
+
+	now := s.clk.Now()
+	return s.withTx(ctx, func(tx *ent.Tx) error {
+		if err := tx.User.UpdateOneID(actor.UserID).
+			SetPasswordHash(phc).
+			SetUpdatedAt(now).
+			Exec(ctx); err != nil {
+			return err
+		}
+		revoked, err := tx.Session.Delete().
+			Where(session.UserIDEQ(actor.UserID)).
+			Exec(ctx)
+		if err != nil {
+			return err
+		}
+		return s.writeAudit(ctx, tx, AuditEntry{
+			ActorID: actor.UserID, Action: ActionPasswordChange, TargetType: "user",
+			TargetID: actor.PublicID, IP: ipOf(in.IP),
+			Detail: map[string]any{"after": map[string]any{"sessions_revoked": revoked}},
+		})
+	})
+}
+
+// ── 封号 / 强制下线 ─────────────────────────────────────────────────
+
+// BanInput 的 Action 只有 ban / unban 两个值。
+type BanInput struct {
+	UserPublicID string
+	Action       string
+	Reason       string
+	IP           string
+}
+
+type BanResult struct {
+	Status          string `json:"status"`
+	SessionsRevoked int    `json:"sessions_revoked"`
+}
+
+func (s *Service) BanUser(ctx context.Context, actor *authz.Actor, in BanInput) (*BanResult, error) {
+	if err := requirePerm(actor, authz.PermUserBan); err != nil {
+		return nil, err
+	}
+	target, err := s.userByPublicID(ctx, in.UserPublicID)
+	if err != nil {
+		return nil, err
+	}
+	var want string
+	switch in.Action {
+	case "ban":
+		want = StatusBanned
+	case "unban":
+		want = StatusActive
+	default:
+		return nil, invalid("action", "只能是 ban 或 unban")
+	}
+	if target.Status == want {
+		// 重复封号 = 置目标状态，不是错误（设计 §9.5 的幂等列）。
+		return &BanResult{Status: want}, nil
+	}
+	now := s.clk.Now()
+	var revoked int
+	err = s.withTx(ctx, func(tx *ent.Tx) error {
+		if want == StatusBanned {
+			// 设计 §8.9：改角色与封号**两条路都要挡**，少挡一条守卫就是摆设。
+			if err := s.guardLastSuper(ctx, tx, target.ID); err != nil {
+				return err
+			}
+		}
+		if err := tx.User.UpdateOneID(target.ID).SetStatus(want).SetUpdatedAt(now).Exec(ctx); err != nil {
+			return err
+		}
+		if want == StatusActive {
+			return s.writeAudit(ctx, tx, AuditEntry{
+				ActorID: actor.UserID, Action: ActionUserBan, TargetType: "user",
+				TargetID: target.PublicID.String(), IP: ipOf(in.IP),
+				Detail: map[string]any{"before": map[string]any{"status": target.Status},
+					"after": map[string]any{"status": want, "reason": in.Reason}},
+			})
+		}
+		// 封号删会话行：**不是**为了正确性（解析路径本来就判 status），
+		// 而是让「解封后要重新登录」这件事不发生——所以删行只发生在封号这一侧。
+		n, err := tx.Session.Delete().Where(session.UserIDEQ(target.ID)).Exec(ctx)
+		if err != nil {
+			return err
+		}
+		revoked = n
+		return s.writeAudit(ctx, tx, AuditEntry{
+			ActorID: actor.UserID, Action: ActionUserBan, TargetType: "user",
+			TargetID: target.PublicID.String(), IP: ipOf(in.IP),
+			Detail: map[string]any{"before": map[string]any{"status": target.Status},
+				"after": map[string]any{"status": want, "reason": in.Reason}},
+		})
+	})
+	if err != nil {
+		return nil, err
+	}
+	if want == StatusBanned {
+		// 会话行已删；缓存契约里那一条也走一遍（本轮无缓存，保留调用点）。
+		if err := s.InvalidateUser(ctx, target.ID); err != nil {
+			return nil, err
+		}
+	}
+	return &BanResult{Status: want, SessionsRevoked: revoked}, nil
+}
+
+// RevokeResult 是强制下线的结果：被踢条数（第二次是 0）。
+type RevokeResult struct {
+	Revoked int `json:"revoked"`
+}
+
+func (s *Service) RevokeUserSessions(ctx context.Context, actor *authz.Actor, userPublicID, ip string) (*RevokeResult, error) {
+	if err := requirePerm(actor, authz.PermUserBan); err != nil {
+		return nil, err
+	}
+	target, err := s.userByPublicID(ctx, userPublicID)
+	if err != nil {
+		return nil, err
+	}
+	var n int
+	err = s.withTx(ctx, func(tx *ent.Tx) error {
+		var err error
+		n, err = tx.Session.Delete().Where(session.UserIDEQ(target.ID)).Exec(ctx)
+		if err != nil {
+			return err
+		}
+		return s.writeAudit(ctx, tx, AuditEntry{
+			ActorID: actor.UserID, Action: ActionSessionsRevoke, TargetType: "user",
+			TargetID: target.PublicID.String(), IP: ipOf(ip),
+			Detail: map[string]any{"after": map[string]any{"revoked": n}},
+		})
+	})
+	if err != nil {
+		return nil, err
+	}
+	return &RevokeResult{Revoked: n}, nil
+}
+
+// guardLastSuper 是设计 §8.9 的守卫：目标当前是超管、且 write 会让 active 超管数减小时执行。
+// 与写操作同事务 + FOR UPDATE，保证判定与写入之间没有窗口。
+func (s *Service) guardLastSuper(ctx context.Context, tx *ent.Tx, targetID int64) error {
+	var wasSuper bool
+	var remaining int
+	err := pgsql.QueryRow(ctx, tx.Client(), `
+WITH target AS (
+    SELECT u.id, r.is_super AS was_super
+      FROM users u JOIN roles r ON r.id = u.role_id
+     WHERE u.id = $1
+     FOR UPDATE OF u
+),
+remaining AS (
+    SELECT count(*) AS n
+      FROM users u JOIN roles r ON r.id = u.role_id
+     WHERE r.is_super AND u.id <> $1 AND u.status = 'active'
+)
+SELECT t.was_super, (SELECT n FROM remaining) FROM target t`, targetID).Scan(&wasSuper, &remaining)
+	if err != nil {
+		return err
+	}
+	if wasSuper && remaining == 0 {
+		return ErrAdminLastSuper
+	}
+	return nil
+}
+
+// userByPublicID 按 public_id 找用户（管理端一律用它，不接受自增 id）。
+func (s *Service) userByPublicID(ctx context.Context, publicID string) (*ent.User, error) {
+	uid, err := idgen.ParsePublicID(publicID)
+	if err != nil {
+		return nil, ErrAdminUserNotFound
+	}
+	u, err := s.db.User.Query().Where(user.PublicIDEQ(uid)).Only(ctx)
+	if err != nil {
+		if ent.IsNotFound(err) {
+			return nil, ErrAdminUserNotFound
+		}
+		return nil, err
+	}
+	return u, nil
+}
+
+// CreateAdmin 是 CLI：全站必须有至少一个 superadmin，否则没人能进后台（设计 §8.7）。
+// 它自己**不受「最后一个超管」守卫限制**（只增不减），也不做隐式升级。
+type CreateAdminInput struct {
+	Handle   string
+	Email    string
+	Nickname string
+	Password string
+}
+
+func (s *Service) CreateAdmin(ctx context.Context, in CreateAdminInput) error {
+	username := normalizeUsername(in.Handle)
+	email := normalizeEmail(in.Email)
+	if err := validateUsername(username); err != nil {
+		return err
+	}
+	if err := validateEmail(email); err != nil {
+		return err
+	}
+	if err := validatePassword(in.Password); err != nil {
+		return err
+	}
+	nickname := strings.TrimSpace(in.Nickname)
+	if nickname == "" {
+		nickname = username
+	}
+	if err := validateNickname(nickname); err != nil {
+		return err
+	}
+	if _, found, err := s.lookup(ctx, username); err != nil {
+		return err
+	} else if found {
+		return ErrHandleTaken
+	}
+	if _, found, err := s.lookup(ctx, email); err != nil {
+		return err
+	} else if found {
+		return ErrEmailTaken
+	}
+
+	if err := s.hash.acquire(ctx); err != nil {
+		return err
+	}
+	phc, err := s.hash.Hash(in.Password)
+	s.hash.release()
+	if err != nil {
+		return err
+	}
+	pub, err := idgen.NewPublicID()
+	if err != nil {
+		return err
+	}
+	now := s.clk.Now()
+	return s.withTx(ctx, func(tx *ent.Tx) error {
+		superID, err := tx.Role.Query().Where(role.IsSuperEQ(true)).OnlyID(ctx)
+		if err != nil {
+			return err
+		}
+		u, err := tx.User.Create().
+			SetPublicID(pub).
+			SetUsername(username).
+			SetEmail(email).
+			SetPasswordHash(phc).
+			SetNickname(nickname).
+			SetRoleID(superID).
+			SetStatus(StatusActive).
+			SetTrusted(true).
+			SetEmailVerifiedAt(now).
+			SetActivatedAt(now).
+			SetCreatedAt(now).
+			SetUpdatedAt(now).
+			Save(ctx)
+		if err != nil {
+			return err
+		}
+		return s.writeAudit(ctx, tx, AuditEntry{
+			Action: ActionUserCreateAdmin, TargetType: "user", TargetID: u.PublicID.String(),
+			Detail: map[string]any{},
+		})
+	})
+}

@@ -55,10 +55,11 @@ CREATE TABLE permissions (
 -- role_permissions
 -- ============================================================
 CREATE TABLE role_permissions (
+  id         bigint      GENERATED ALWAYS AS IDENTITY PRIMARY KEY,   -- ent 实体必须有 id；原自然键降为 UNIQUE
   role_id       bigint      NOT NULL REFERENCES roles(id)       ON DELETE CASCADE,
   permission_id bigint      NOT NULL REFERENCES permissions(id) ON DELETE CASCADE,
   created_at    timestamptz NOT NULL DEFAULT now(),
-  PRIMARY KEY (role_id, permission_id)
+  UNIQUE (role_id, permission_id)   -- 原自然键：降为唯一
 );
 
 -- 复合主键的第二列不算「已索引」（数据库文档 §12 第 1 条），删权限点时要扫这一列
@@ -68,7 +69,8 @@ CREATE INDEX idx_role_permissions_permission ON role_permissions (permission_id)
 -- images（媒体域，内容寻址；提前理由同 roles —— users 的三根头像列引用它）
 -- ============================================================
 CREATE TABLE images (
-  hash        char(64)    PRIMARY KEY,
+  id         bigint      GENERATED ALWAYS AS IDENTITY PRIMARY KEY,   -- ent 实体必须有 id；原自然键降为 UNIQUE
+  hash        char(64)    UNIQUE,   -- 原自然键：降为唯一
   size        bigint      NOT NULL,
   mime        text        NOT NULL,
   width       int         NOT NULL DEFAULT 0,
@@ -93,7 +95,8 @@ CREATE INDEX idx_images_gc ON images (refcount) WHERE refcount = 0;
 -- default_avatars（默认头像池）
 -- ============================================================
 CREATE TABLE default_avatars (
-  hash       char(64)    PRIMARY KEY REFERENCES images(hash) ON DELETE CASCADE,
+  id         bigint      GENERATED ALWAYS AS IDENTITY PRIMARY KEY,   -- ent 实体必须有 id；原自然键降为 UNIQUE
+  hash       char(64)    UNIQUE REFERENCES images(hash) ON DELETE CASCADE,   -- 原自然键：降为唯一
   sort       int         NOT NULL DEFAULT 0,
   created_at timestamptz NOT NULL DEFAULT now()
 );

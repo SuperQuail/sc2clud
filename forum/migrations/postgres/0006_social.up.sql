@@ -29,10 +29,11 @@ CREATE INDEX idx_likes_target ON likes (target_type, target_id);
 -- bookmarks（收藏主题）
 -- ============================================================
 CREATE TABLE bookmarks (
+  id         bigint      GENERATED ALWAYS AS IDENTITY PRIMARY KEY,   -- ent 实体必须有 id；原自然键降为 UNIQUE
   user_id    bigint      NOT NULL REFERENCES users(id)  ON DELETE CASCADE,
   topic_id   bigint      NOT NULL REFERENCES topics(id) ON DELETE CASCADE,
   created_at timestamptz NOT NULL DEFAULT now(),
-  PRIMARY KEY (user_id, topic_id)
+  UNIQUE (user_id, topic_id)   -- 原自然键：降为唯一
 );
 
 -- 收藏页按时间倒序翻（主键的 (user_id, topic_id) 列序服务不了 ORDER BY created_at）。
@@ -47,10 +48,11 @@ CREATE INDEX idx_bookmarks_topic ON bookmarks (topic_id);
 -- blocks（拉黑；方向性明确：A 拉黑 B 不影响 B 看 A）
 -- ============================================================
 CREATE TABLE blocks (
+  id         bigint      GENERATED ALWAYS AS IDENTITY PRIMARY KEY,   -- ent 实体必须有 id；原自然键降为 UNIQUE
   user_id        bigint      NOT NULL REFERENCES users(id) ON DELETE CASCADE,
   target_user_id bigint      NOT NULL REFERENCES users(id) ON DELETE CASCADE,
   created_at     timestamptz NOT NULL DEFAULT now(),
-  PRIMARY KEY (user_id, target_user_id),
+  UNIQUE (user_id, target_user_id),   -- 原自然键：降为唯一
   CONSTRAINT ck_blocks_not_self CHECK (user_id <> target_user_id)
 );
 

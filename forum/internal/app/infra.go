@@ -50,6 +50,16 @@ type Infra struct {
 	closers []func() error
 }
 
+// resolveQueue 把容量档位落成具体数值：queue 只认「最终几个 worker」。
+//
+// 抽成函数是为了能被断言。原来的写法是日志按 profile 算（standard → 8）、
+// 而 queue 自己在 Run 里按 "" 算（永远 → 4），于是**日志打 8、实际跑 4**——
+// 日志与行为不一致比配错更难查，因为所有表面证据都指向正确。
+func resolveQueue(q config.Queue, profile string) config.Queue {
+	q.Workers = q.WorkersFor(profile)
+	return q
+}
+
 // TxFunc 是 db.WithTx 的绑定形态：业务模块拿到它就能开事务，不必自己 import ent 的 client。
 type TxFunc func(ctx context.Context, fn func(tx *ent.Tx) error) error
 
@@ -59,8 +69,9 @@ func NewInfra(ctx context.Context, cfg *config.Config, log *slog.Logger) (*Infra
 
 	profile := cfg.Capacity.Resolve(memoryLimit())
 	in.Profile = profile
+	queueCfg := resolveQueue(cfg.Queue, profile)
 	log.Info("容量档位", "profile", profile, "memory_limit_bytes", memoryLimit(),
-		"db_max_conns", cfg.DB.MaxConns, "queue_workers", cfg.Queue.WorkersFor(profile))
+		"db_max_conns", cfg.DB.MaxConns, "queue_workers", queueCfg.Workers)
 
 	client, pool, err := db.Open(ctx, cfg.DB)
 	if err != nil {
@@ -86,7 +97,7 @@ func NewInfra(ctx context.Context, cfg *config.Config, log *slog.Logger) (*Infra
 		in.closers = append(in.closers, func() error { return rdb.Close() })
 	}
 
-	q := pgqueue.New(pool, in.Clock, log, cfg.Queue)
+	q := pgqueue.New(pool, in.Clock, log, queueCfg)
 	in.Queue, in.Worker = q, q
 
 	in.Counter = counter.New(log, pgcounter.New(pool, in.Clock).Flush)

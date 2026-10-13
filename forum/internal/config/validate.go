@@ -72,6 +72,40 @@ func (c *Config) Validate() error {
 		errs = append(errs, fmt.Errorf("kv.driver must be redis|memory, got %q", c.KV.Driver))
 	}
 
+	// 数值类配置不能是「死值」。它们为 0 或负数时的故障不是「慢」，而是「永远不动」：
+	// 信号量永远取不到、每次请求都写一次热点行。这属于配置错误，必须启动时拒绝，
+	// 不能留给运行期降级——降级的前提是「还能工作」，而这些值下它不能工作。
+	if c.Auth.Argon2MaxConcur < 1 {
+		errs = append(errs, errors.New("auth.argon2_max_concur 必须 >= 1：配成 0 时哈希信号量永远取不到，所有登录会挂住"))
+	}
+	if c.Auth.Argon2WaitTimeout <= 0 {
+		errs = append(errs, errors.New("auth.argon2_wait_timeout 必须 > 0：配成 0 时等信号量立即超时，登录会全部返回 503"))
+	}
+	if c.Auth.TouchInterval <= 0 {
+		errs = append(errs, errors.New("auth.touch_interval 必须 > 0：配成 0 时每个请求都写一次 last_seen_at，会话表变成写热点"))
+	}
+	if c.Auth.RenewInterval <= 0 {
+		errs = append(errs, errors.New("auth.renew_interval 必须 > 0：配成 0 时每次 touch 都改 expires_at，续期本身变成写热点"))
+	}
+	// 租约配成 0 时 locked_until = now，恢复循环下一轮就把 running 收回 pending → 任务被无限重投
+	// （永远做不完，还会把 attempts 打满进 dead）
+	if c.Queue.Lease <= 0 {
+		errs = append(errs, errors.New("queue.lease 必须 > 0：配成 0 时租约立即过期，恢复循环会把在跑的任务无限重投"))
+	}
+	// 这条不是「卡死」而是「panic」：time.NewTicker 的契约要求 d > 0。
+	// 配置错导致进程 panic 同样不是「值好不好」的问题——非法值就该在 Validate 里被说清。
+	if c.Queue.PollInterval <= 0 {
+		errs = append(errs, errors.New("queue.poll_interval 必须 > 0：配成 0 时 time.NewTicker 会 panic"))
+	}
+	// 这两个是连接池的护栏，配成 0 = 关掉护栏：锁等待无限期挂住、忘了提交的事务永久占连接。
+	// 单条连接被挂住不会立刻出事，但 16 条全被挂住就是服务永久卡住。
+	if c.DB.LockTimeout <= 0 {
+		errs = append(errs, errors.New("db.lock_timeout 必须 > 0：配成 0 时锁等待无限期挂住，连接被逐条耗光"))
+	}
+	if c.DB.IdleTxTimeout <= 0 {
+		errs = append(errs, errors.New("db.idle_tx_timeout 必须 > 0：配成 0 时忘了提交的事务永久占住连接并顶住 vacuum"))
+	}
+
 	return errors.Join(errs...)
 }
 

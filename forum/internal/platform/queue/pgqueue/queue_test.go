@@ -2,6 +2,7 @@ package pgqueue
 
 import (
 	"context"
+	"errors"
 	"io"
 	"log/slog"
 	"os"
@@ -11,10 +12,15 @@ import (
 	"testing"
 	"time"
 
+	"entgo.io/ent/dialect"
+	entsql "entgo.io/ent/dialect/sql"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/jackc/pgx/v5/stdlib"
 
 	"forum/internal/config"
+	entgen "forum/internal/ent"
 	"forum/internal/platform/clock"
+	"forum/internal/platform/db"
 	"forum/internal/platform/queue"
 	"forum/internal/testsupport"
 )
@@ -201,22 +207,25 @@ func TestRetryBackoffAndDead(t *testing.T) {
 		t.Fatal("last_error 必须记下失败原因")
 	}
 
-	for i := 0; i < 2; i++ {
-		if _, err := pool.Exec(ctx, "UPDATE jobs SET run_at = now() - interval '1s'"); err != nil {
-			t.Fatal(err)
-		}
-		if _, err := q.step(ctx, "inst", 0); err != nil {
-			t.Fatal(err)
-		}
+	// max_retry=2 的含义是「最多尝试 2 次」：第 2 次失败后直接 dead，不再排期
+	if _, err := pool.Exec(ctx, "UPDATE jobs SET run_at = now() - interval '1s'"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := q.step(ctx, "inst", 0); err != nil {
+		t.Fatal(err)
 	}
 	if err := pool.QueryRow(ctx, "SELECT status, attempts FROM jobs").Scan(&status, &attempts); err != nil {
 		t.Fatal(err)
 	}
 	if status != "dead" {
-		t.Fatalf("到达 max_retry 后必须 dead，实际 %s", status)
+		t.Fatalf("第 max_retry 次失败后必须 dead，实际 %s", status)
 	}
-	if attempts != 3 {
-		t.Fatalf("attempts 应当累加到 3，实际 %d", attempts)
+	if attempts != 2 {
+		t.Fatalf("attempts 应当等于 max_retry(2)，实际 %d", attempts)
+	}
+	// dead 的任务不该再被领走
+	if n, err := q.step(ctx, "inst", 0); err != nil || n != 0 {
+		t.Fatalf("dead 的任务不该再被领取: n=%d err=%v", n, err)
 	}
 	var locked *time.Time
 	if err := pool.QueryRow(ctx, "SELECT locked_until FROM jobs").Scan(&locked); err != nil {
@@ -338,6 +347,79 @@ func TestNoopHandlerRunsToDone(t *testing.T) {
 	}
 	if n := count(t, pool, "status = 'done' AND locked_until IS NULL"); n != 1 {
 		t.Fatalf("成功任务必须 done 且释放租约，实际 %d", n)
+	}
+}
+
+// 这三条验的是 d1 §6.3 的核心性质：EnqueueTx 与业务数据**同事务**。
+// 它同时是「*ent.Tx 的 ExecContext 跑在同一个 *sql.Tx 上」的可执行证明——
+// 如果哪天它跑到别的连接上，回滚那条会立刻红。
+func TestEnqueueTxSharesBusinessTransaction(t *testing.T) {
+	q, pool, ctx := newQueue(t)
+	client := entgen.NewClient(entgen.Driver(entsql.OpenDB(dialect.Postgres, stdlib.OpenDBFromPool(pool))))
+	t.Cleanup(func() { _ = client.Close() })
+
+	if _, err := pool.Exec(ctx, "CREATE TABLE biz (id bigint PRIMARY KEY, note text NOT NULL)"); err != nil {
+		t.Fatal(err)
+	}
+	biz := func() int {
+		var n int
+		if err := pool.QueryRow(ctx, "SELECT count(*) FROM biz").Scan(&n); err != nil {
+			t.Fatal(err)
+		}
+		return n
+	}
+
+	// ① 提交：业务行与任务一起落库
+	if err := db.WithTx(ctx, client, func(tx *entgen.Tx) error {
+		if _, err := tx.ExecContext(ctx, "INSERT INTO biz (id, note) VALUES (1, 'a')"); err != nil {
+			return err
+		}
+		return q.EnqueueTx(ctx, tx, queue.Task{Type: "test:noop", UniqueKey: "tx-1"})
+	}); err != nil {
+		t.Fatalf("WithTx: %v", err)
+	}
+	if n := biz(); n != 1 {
+		t.Fatalf("提交后业务行应当是 1，实际 %d", n)
+	}
+	if n := count(t, pool, ""); n != 1 {
+		t.Fatalf("提交后任务应当是 1，实际 %d", n)
+	}
+
+	// ② 回滚：业务行与任务一起消失（这条证明 EnqueueTx 用的是同一个事务）
+	want := boomErr{}
+	if err := db.WithTx(ctx, client, func(tx *entgen.Tx) error {
+		if _, err := tx.ExecContext(ctx, "INSERT INTO biz (id, note) VALUES (2, 'b')"); err != nil {
+			return err
+		}
+		if err := q.EnqueueTx(ctx, tx, queue.Task{Type: "test:noop", UniqueKey: "tx-2"}); err != nil {
+			return err
+		}
+		return want
+	}); !errors.Is(err, want) {
+		t.Fatalf("WithTx 应当返回业务错误，实际 %v", err)
+	}
+	if n := biz(); n != 1 {
+		t.Fatalf("回滚后业务行应当还是 1，实际 %d", n)
+	}
+	if n := count(t, pool, ""); n != 1 {
+		t.Fatalf("回滚后任务数应当还是 1（新任务必须一起回滚），实际 %d", n)
+	}
+
+	// ③ unique_key 冲突不能把业务事务一起回滚（盲审 M5 的裁定）
+	if err := db.WithTx(ctx, client, func(tx *entgen.Tx) error {
+		if _, err := tx.ExecContext(ctx, "INSERT INTO biz (id, note) VALUES (3, 'c')"); err != nil {
+			return err
+		}
+		// tx-1 已存在且是 pending：这一次必须静默跳过
+		return q.EnqueueTx(ctx, tx, queue.Task{Type: "test:noop", UniqueKey: "tx-1"})
+	}); err != nil {
+		t.Fatalf("unique_key 冲突必须静默跳过，不能报错: %v", err)
+	}
+	if n := biz(); n != 2 {
+		t.Fatalf("冲突时业务行必须照常提交，实际 %d", n)
+	}
+	if n := count(t, pool, ""); n != 1 {
+		t.Fatalf("冲突时任务数不变，实际 %d", n)
 	}
 }
 

@@ -42,12 +42,12 @@ func Load(path string) (*Config, error) {
 	return cfg, nil
 }
 
-// envKeyReplacer：FORUM_ 前缀、__ 分隔层级、单下划线当词内连字符。
-// FORUM_DB__DSN → db.dsn，FORUM_SITE__COOKIE_NAME → site.cookie_name。
+// envKeyReplacer：FORUM_ 前缀、__ 分隔层级、单下划线保留（它是字段名的一部分）。
+// FORUM_DB__DSN → db.dsn，FORUM_SITE__COOKIE_NAME → site.cookie_name，FORUM_WEB__DIST_DIR → web.dist_dir。
+//
+// 单下划线不能换成点：那样 FORUM_WEB__DIST_DIR 会变成 web.dist.dir，
+// 而字段 tag 是 dist_dir —— 配置项会静默地读不到（踩过）。
 func envKeyReplacer(key string) string {
 	key = strings.TrimPrefix(key, "FORUM_")
-	key = strings.ToLower(key)
-	key = strings.ReplaceAll(key, "__", "\x00")
-	key = strings.ReplaceAll(key, "_", ".")
-	return strings.ReplaceAll(key, "\x00", ".")
+	return strings.ToLower(strings.ReplaceAll(key, "__", "."))
 }

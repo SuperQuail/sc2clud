@@ -85,13 +85,21 @@ const ISSUE_OPEN_COUNT = 7;
 
 // 审核理由原文：后端 topics.review_note（varchar(500)），AI 给的中文理由。
 // **只在 rejected 时存在**——pending 没有理由，approved 会把它清空，所以这里不给默认值。
-const REVIEW_NOTE_REJECTED = '正文含未标明来源的第三方整合包下载地址，且缺少「非官方」声明，按站规第 3 条判为推广内容。';
+// 故意写成一条接近上限的长理由（评审要看长文案的换行表现，而不是看它有多整齐）
+const REVIEW_NOTE_REJECTED =
+  '正文含未标明来源的第三方整合包下载地址，且缺少「非官方」声明；' +
+  '同时贴文里出现了「官网唯一指定下载」这类容易让人误认为是官方渠道的措辞，' +
+  '并附带两个短链跳转与一个未备案的网盘口令。按站规第 3 条（推广与来源标注）判为推广内容：' +
+  '请去掉「唯一指定」表述、标注「非官方整合」、把短链替换为可核对的原始地址后重新提交。';
 const APPEAL_SENT = '已提交人工复核，队列里有记录（mock）。';
 
-/** ?review=… —— 只影响 DevRoom 的初始态，非法值一律按 pending（= 最需要看的那一态） */
-function readReviewFromUrl(): ReviewState {
+/** ?review=… —— 只影响 DevRoom 的初始态，非法值一律按 pending（= 最需要看的那一态）。
+ *  pending-human = 审核中且已转人工（同一态的第二档文案）。 */
+function readReviewFromUrl(): { state: ReviewState; pendingHuman: boolean } {
   const v = new URLSearchParams(location.search).get('review');
-  return v === 'approved' || v === 'rejected' || v === 'pending' ? v : 'pending';
+  if (v === 'approved' || v === 'rejected' || v === 'pending') return { state: v, pendingHuman: false };
+  if (v === 'pending-human') return { state: 'pending', pendingHuman: true };
+  return { state: 'pending', pendingHuman: false };
 }
 
 export default function TopicPage() {
@@ -99,7 +107,9 @@ export default function TopicPage() {
   const [nav, setNav] = useState('all');
   // DevRoom 演示用：真实页面读后端返回的 review_state，没有这个开关（见 review-state.tsx 的注释）。
   // 初值可以走 URL（?review=pending|approved|rejected），这样每一态都能单独出图、也能分享链接。
-  const [reviewState, setReviewState] = useState<ReviewState>(readReviewFromUrl);
+  const [reviewState, setReviewState] = useState<ReviewState>(() => readReviewFromUrl().state);
+  // 后端 review_pending_human：pending 时的两档文案（自动检查 / 已转人工）
+  const [pendingHuman, setPendingHuman] = useState(() => readReviewFromUrl().pendingHuman);
   const [appealed, setAppealed] = useState(false);
   // 共享件的验证现场仍要能打开：page=12-topic&view=showcase。
   // 独立入口（一个只挂着 showroom 的 index）被删掉了——同一页两个身份，出图时会看不出谁是主页面。
@@ -109,6 +119,8 @@ export default function TopicPage() {
     <div className='flex w-full flex-col gap-4'>
       <ReviewStateDemoBar
         value={reviewState}
+        pendingHuman={pendingHuman}
+        onPendingHumanChange={setPendingHuman}
         onChange={(v) => {
           setReviewState(v);
           setAppealed(false);
@@ -144,6 +156,7 @@ export default function TopicPage() {
             me={MY_ACCOUNT}
             issueCount={ISSUE_OPEN_COUNT}
             reviewState={reviewState}
+            reviewPendingHuman={pendingHuman}
             reviewNote={reviewState === 'rejected' ? REVIEW_NOTE_REJECTED : null}
             reviewAppeal={
               reviewState === 'rejected' ? (

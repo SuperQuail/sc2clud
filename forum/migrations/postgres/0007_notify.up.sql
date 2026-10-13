@@ -46,11 +46,12 @@ CREATE UNIQUE INDEX uq_notifications_user_dedup ON notifications (user_id, dedup
 -- notification_mutes（一行两义，由 type 区分：整类静音 / 单条内容静音）
 -- ============================================================
 CREATE TABLE notification_mutes (
+  id         bigint      GENERATED ALWAYS AS IDENTITY PRIMARY KEY,   -- ent 实体必须有 id；原自然键降为 UNIQUE
   user_id    bigint      NOT NULL REFERENCES users(id) ON DELETE CASCADE,
   type       varchar(16) NOT NULL,
   target_key varchar(64) NOT NULL DEFAULT '',
   created_at timestamptz NOT NULL DEFAULT now(),
-  PRIMARY KEY (user_id, type, target_key),
+  UNIQUE (user_id, type, target_key),   -- 原自然键：降为唯一
   CONSTRAINT ck_notification_mutes_type
     CHECK (type IN ('reply','mention','like','reward','review','sanction','system','link')),
   CONSTRAINT ck_notification_mutes_key

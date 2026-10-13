@@ -31,11 +31,12 @@ CREATE TABLE titles (
 -- user_titles（多对多：一个用户可持多个头衔；佩戴的那一个在 users.equipped_title_id）
 -- ============================================================
 CREATE TABLE user_titles (
+  id         bigint      GENERATED ALWAYS AS IDENTITY PRIMARY KEY,   -- ent 实体必须有 id；原自然键降为 UNIQUE
   user_id    bigint      NOT NULL REFERENCES users(id)  ON DELETE CASCADE,
   title_id   bigint      NOT NULL REFERENCES titles(id) ON DELETE CASCADE,
   granted_by bigint      NULL REFERENCES users(id)      ON DELETE SET NULL,
   granted_at timestamptz NOT NULL DEFAULT now(),
-  PRIMARY KEY (user_id, title_id),
+  UNIQUE (user_id, title_id),   -- 原自然键：降为唯一
   CONSTRAINT ck_user_titles_not_self CHECK (granted_by IS NULL OR granted_by <> user_id)
 );
 
