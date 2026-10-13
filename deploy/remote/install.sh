@@ -37,7 +37,19 @@ if [ "$src" = "archive" ]; then
   mv -f "$archive" "$SC2CLUD_DIR/artifacts/$name"
 fi
 
-test -x "$staging/bin/forum"           || { echo 'bin/forum missing or not executable' >&2; exit 1; }
+# The artifact is packaged on Windows, which has no unix permission bits: tar records 0666,
+# so the binary arrives non-executable even though it is a perfectly good ELF. The mode is a
+# property of the packaging machine, not a signal about this artifact -- so set it here, and
+# let the checks below be about the binary itself (non-empty + actually an ELF).
+# (2026-10-13: this is what 'bin/forum missing or not executable' meant on the first deploy.
+#  The install step refused instead of switching current -- which is why it was safe to fix.)
+if [ -f "$staging/bin/forum" ]; then chmod 0755 "$staging/bin/forum"; fi
+
+test -s "$staging/bin/forum"           || { echo 'bin/forum missing or empty' >&2; exit 1; }
+# 7f 45 4c 46 = \x7fELF
+elf=$(head -c 4 "$staging/bin/forum" | od -An -tx1 | tr -d ' \n')
+[ "$elf" = '7f454c46' ]               || { echo "bin/forum is not an ELF binary (magic=$elf)" >&2; exit 1; }
+test -x "$staging/bin/forum"           || { echo 'chmod failed on bin/forum' >&2; exit 1; }
 test -f "$staging/web/dist/index.html" || { echo 'web/dist/index.html missing' >&2; exit 1; }
 test -f "$staging/VERSION"             || { echo 'VERSION missing' >&2; exit 1; }
 
