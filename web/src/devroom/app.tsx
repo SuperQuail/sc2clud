@@ -1,3 +1,4 @@
+import { useEffect, useState } from 'react';
 import Button from '@jetbrains/ring-ui-built/components/button/button';
 import Island from '@jetbrains/ring-ui-built/components/island/island';
 import { VERIFIED } from './registry';
@@ -74,8 +75,35 @@ const PAGES: Record<string, PageEntry> = Object.fromEntries(
 
 export function DevRoom({ page }: { page: string }) {
   const current = PAGES[page] ?? PAGES['00-showroom']!;
+  const [blockedHref, setBlockedHref] = useState<string | null>(null);
+
+  // 房间内的站内链接一律不导航到房间外。
+  // 理由（盲审一号报的「所有站内链接都是死路」）：房间部署在**旧站域名**下（/dev/devroom/），
+  // 像 /p/xxx、/settings 这类路径会被浏览器解析到旧站，旧站没有这些路由 -> 落到一个与房间无关的 404，
+  // 而且那个 404 页上的链接也 404、用户**回不到刚才在看的页面**。
+  // 拦在一个地方，比在 17 个页面里逐个改链接可靠：新加的页面自动受保护。
+  useEffect(() => {
+    const onClick = (e: MouseEvent) => {
+      const el = e.target as HTMLElement | null;
+      const a = el && typeof el.closest === 'function' ? (el.closest('a') as HTMLAnchorElement | null) : null;
+      if (!a) return;
+      const href = a.getAttribute('href') ?? '';
+      if (!href || href.startsWith('#') || /^https?:/i.test(href)) return; // 锚点与外链放行
+      if (href.startsWith('?') || href.includes('page=')) return;          // 房间内链接放行
+      e.preventDefault();
+      setBlockedHref(href); // 明确反馈，而不是静默跳到旧站 404
+    };
+    document.addEventListener('click', onClick, true);
+    return () => document.removeEventListener('click', onClick, true);
+  }, []);
   return (
     <div className='min-h-screen bg-background text-foreground'>
+      {blockedHref ? (
+        <div role='status' className='border-b border-border bg-muted px-5 py-2 text-[13px] text-foreground'>
+          这句话是设计稿里的站内链接（{blockedHref}），**本房间不导航到房间外** —— 真实站点里它会跳到对应页面。
+          <Button inline onClick={() => setBlockedHref(null)}>知道了</Button>
+        </div>
+      ) : null}
       <header className='border-b border-border bg-background'>
         <div className='mx-auto flex w-full max-w-[1280px] flex-col gap-2 px-5 py-4'>
           <h1 className='text-lg font-semibold'>开发者房间 · DevRoom</h1>
@@ -85,6 +113,14 @@ export function DevRoom({ page }: { page: string }) {
               业务代码只允许使用已登记（src/devroom/registry.ts）的控件
             </strong>
             ；需要新控件 → 先在本房间加一页验证 → 登记 → 才能用。未登记会被 pnpm gate:controls 挡住。
+          </p>
+          {/* 盲审一号（2026-10-13）：「点了没反应」与「坏了」与「我没权限」三者分不清。
+              这是设计稿，多数按钮本来就没有真实动作 —— 与其在每个按钮上写一遍，不如在房间唯一的位置说明一次。 */}
+          <p className='rounded-md border border-dashed border-border px-2.5 py-1.5 text-[12px] leading-relaxed text-muted-foreground'>
+            <strong className='font-medium text-foreground'>这是设计稿：</strong>
+            页面里的按钮大多不接后端动作，<strong className='font-medium text-foreground'>点了没反应 ≠ 坏了</strong>；
+            房间还没有的页面/接口会标 <span className='rounded-sm bg-muted px-1 text-[11px]'>未做</span>
+            ，房间里的站内链接一律指向房间内的页面（不会把你带到站外）。
           </p>
           <nav aria-label='开发者房间页面' className='flex flex-col gap-2 pt-1'>
             {GROUPS.map((group) => (
