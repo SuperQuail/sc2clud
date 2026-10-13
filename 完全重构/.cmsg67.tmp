@@ -1,0 +1,6 @@
+修个人主页「最近发布」无限加载：被禁用的查询 isPending 恒为 true
+
+profile.tsx 的 topics 查询带 enabled: tab === 'topics'，而「概览」页签也画「最近发布」——
+react-query v5 里被禁用的查询 isPending 永远是 true，所以那个加载态一直转（用户实测）。
+接口本身是好的：GET /users/tangtian/topics 200 且返回真数据；GET /users/tangtian 也有数据。
+改成不按页签禁用（一次加载，两个页签共用）。

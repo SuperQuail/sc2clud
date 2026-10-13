@@ -31,10 +31,12 @@ export function ProfilePage() {
     enabled: handle !== '',
     staleTime: 60_000,
   });
+  // **不要按页签禁用它**：react-query v5 里被禁用的查询 `isPending` 恒为 true，
+  // 而「概览」页签也画「最近发布」—— 于是那个加载态会一直转（用户实测「无限加载帖子」）。
   const topics = useQuery({
     queryKey: qk.userTopics(handle),
     queryFn: ({ signal }) => fetchUserTopics(handle, {}, signal),
-    enabled: handle !== '' && tab === 'topics',
+    enabled: handle !== '',
   });
 
   if (profile.isPending) return <Loading what='个人主页' />;
