@@ -6,9 +6,9 @@ import (
 	"fmt"
 	"time"
 
+	"forum/internal/authz"
 	ent "forum/internal/ent"
 	"forum/internal/ent/notification"
-	"forum/internal/authz"
 	"forum/internal/notify/pgsql"
 	"forum/internal/platform/apperr"
 	"forum/internal/platform/clock"

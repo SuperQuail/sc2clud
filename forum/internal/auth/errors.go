@@ -22,6 +22,8 @@ var (
 	ErrEmailTaken  = apperr.New("auth.email_taken", http.StatusConflict, "这个邮箱已被注册")
 	// 对已验证账号请求重发验证码。
 	ErrEmailAlreadyVerified = apperr.New("auth.email_already_verified", http.StatusConflict, "邮箱已经验证过了")
+	// auto_activate=false（注册走人工激活）时请求重发验证码：**没有码可发**（拍板 §12.2）。
+	ErrResendDisabled = apperr.New("auth.resend_disabled", http.StatusConflict, "本站注册后由管理员激活，无需验证码")
 	// argon2 信号量等超时：503 是「我这会儿处理不了」，与 429「你太快了」语义不同（方案 §9.1 写的就是 503）。
 	ErrHashBusy = apperr.New("auth.hash_busy", http.StatusServiceUnavailable, "服务器繁忙，请稍后再试")
 	// 一个发信账号都没有（确定性失败）。「额度满」不算——额度会恢复，那种情况只置 activation_pending='manual'（拍板 §9.5）。

@@ -276,23 +276,36 @@ func (s *Service) CreateTopic(ctx context.Context, actor *authz.Actor, in Create
 		}
 	}
 
+	// 幂等键的常规路径：这个 token 已经发过一次了，直接返回那一条（连事务都不开）。
+	if in.ClientToken != "" {
+		if _, existing, err := s.repo.TopicIDByClientToken(ctx, actor.UserID, in.ClientToken); err == nil {
+			return s.TopicDetail(ctx, actor, existing)
+		} else if err != pgsql.ErrNoRows {
+			return nil, err
+		}
+	}
 	// 事务内只做数据库读写 + EnqueueTx（拍板 §5.4）；出参是那一行的 public_id。
 	now := s.clk.Now().UTC()
 	publicID := newPublicID()
-	err = db.WithTx(ctx, s.db, func(tx *ent.Tx) error {
-		id, err := pgsql.InsertTopic(ctx, tx, publicID, boardID, actor.UserID, kind, title,
+	err = s.insertTopic(ctx, actor, boardID, kind, title, html, plain, state, in, now, &publicID)
+	if err != nil {
+		return nil, err
+	}
+	return s.TopicDetail(ctx, actor, publicID)
+}
+
+// insertTopic 是发主题的写事务。
+//
+// 幂等键撞车走**回滚后重来一次**这条路（§4.3）：PostgreSQL 里一条语句报错会把整个事务
+// 置为 aborted，同一事务内再查也是 25P02——所以「插入失败后回查」只能在事务**之外**做。
+// 先用 token 查一次是最便宜的那条路（返回到同一行、连事务都不开）；并发漏网的那一次
+// 由唯一索引兜住，然后外层重跑一遍、这次先查到已有行。
+func (s *Service) insertTopic(ctx context.Context, actor *authz.Actor, boardID int64, kind, title, html, plain, state string,
+	in CreateTopicInput, now time.Time, publicID *string) error {
+	err := db.WithTx(ctx, s.db, func(tx *ent.Tx) error {
+		id, err := pgsql.InsertTopic(ctx, tx, *publicID, boardID, actor.UserID, kind, title,
 			clipExcerpt(plain), state, nil, in.ClientToken, now)
 		if err != nil {
-			// 只有一种约束能撞：同一作者的同一个 token。回查那一条、返回 200 而不是 409（§4.3）。
-			// **不是先查再插**：那会在并发下两个请求都查到「不存在」然后都插。
-			if in.ClientToken != "" && isUniqueViolation(err) {
-				_, existing, err := s.repo.TopicIDByClientToken(ctx, actor.UserID, in.ClientToken)
-				if err != nil {
-					return err
-				}
-				publicID = existing
-				return nil
-			}
 			return err
 		}
 		if _, err := pgsql.InsertTopicBody(ctx, tx, newPublicID(), id, actor.UserID, in.ContentMD, html, now); err != nil {
@@ -302,10 +315,16 @@ func (s *Service) CreateTopic(ctx context.Context, actor *authz.Actor, in Create
 			Type: queue.TypeSearchIndex, Payload: map[string]int64{"id": id}, UniqueKey: "topic:" + itoa64(id),
 		})
 	})
-	if err != nil {
-		return nil, err
+	if err == nil || in.ClientToken == "" || !isUniqueViolation(err) {
+		return err
 	}
-	return s.TopicDetail(ctx, actor, publicID)
+	// 撞车了：重跑一遍。这一次开头那次回查会命中（并发的对方已经提交）。
+	_, existing, lookupErr := s.repo.TopicIDByClientToken(ctx, actor.UserID, in.ClientToken)
+	if lookupErr != nil {
+		return err // 回查不到说明撞的不是 token 那一条索引，把原始错误报上去
+	}
+	*publicID = existing
+	return nil
 }
 
 // UpdateTopic 是 PATCH /topics/{id}（§4.5）：

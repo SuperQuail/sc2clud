@@ -14,8 +14,8 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/jackc/pgx/v5/stdlib"
 
-	ent "forum/internal/ent"
 	"forum/internal/authz"
+	ent "forum/internal/ent"
 	"forum/internal/notify/pgsql"
 	"forum/internal/platform/clock"
 	"forum/internal/testsupport"
@@ -60,9 +60,6 @@ func applyMigrations(t *testing.T, ctx context.Context, pool *pgxpool.Pool) {
 			t.Fatal(err)
 		}
 		ddl := string(raw)
-		for _, fix := range migrationFixes {
-			ddl = strings.ReplaceAll(ddl, fix.from, fix.to)
-		}
 		// 简单协议：一个迁移文件里的多条语句一次发过去
 		if _, err := conn.Conn().PgConn().Exec(ctx, ddl).ReadAll(); err != nil {
 			t.Fatalf("跑迁移 %s 失败: %v", name, err)

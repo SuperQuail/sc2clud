@@ -113,9 +113,9 @@ func sameSet(got, want []string) bool {
 	return strings.Join(g, "\x00") == strings.Join(w, "\x00")
 }
 
-// rolePermCounts 是迁移数据的期望值（0017_seed_authz：user 3 / creator 8 / admin 17 / superadmin 24）。
+// rolePermCounts 是迁移数据的期望值（0017_seed_authz 的 INSERT 集合：3 / 7 / 16 / 24）。
 // 数字对不上只 Warn 不失败：生产上管理员合法地调过矩阵也会触发它（设计 §14.2）。
-var rolePermCounts = map[string]int{"user": 3, "creator": 8, "admin": 17, "superadmin": 24}
+var rolePermCounts = map[string]int{"user": 3, "creator": 7, "admin": 16, "superadmin": 24}
 
 // CheckRoleSeeds 返回统计并在数字不对时 Warn。它同时能回答「迁移数据被谁改过」。
 func (s *Service) CheckRoleSeeds(ctx context.Context) error {

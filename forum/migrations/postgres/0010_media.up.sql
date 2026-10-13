@@ -13,6 +13,7 @@
 -- ============================================================
 CREATE TABLE payment_channels (
   id         bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+  public_id  uuid        NOT NULL UNIQUE,   -- 端点按它寻址（拍板 §5.6：自增 id 不出 API）
   user_id    bigint      NOT NULL REFERENCES users(id)  ON DELETE CASCADE,
   label      varchar(32) NOT NULL,
   image_hash char(64)    NOT NULL REFERENCES images(hash) ON DELETE RESTRICT,

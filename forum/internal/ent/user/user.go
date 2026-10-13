@@ -40,8 +40,6 @@ const (
 	FieldEmailVerifiedAt = "email_verified_at"
 	// FieldActivatedAt holds the string denoting the activated_at field in the database.
 	FieldActivatedAt = "activated_at"
-	// FieldActivationPending holds the string denoting the activation_pending field in the database.
-	FieldActivationPending = "activation_pending"
 	// FieldTrusted holds the string denoting the trusted field in the database.
 	FieldTrusted = "trusted"
 	// FieldEquippedTitleID holds the string denoting the equipped_title_id field in the database.
@@ -238,7 +236,6 @@ var Columns = []string{
 	FieldStatus,
 	FieldEmailVerifiedAt,
 	FieldActivatedAt,
-	FieldActivationPending,
 	FieldTrusted,
 	FieldEquippedTitleID,
 	FieldExp,
@@ -290,8 +287,6 @@ var (
 	DefaultStatus string
 	// StatusValidator is a validator for the "status" field. It is called by the builders before save.
 	StatusValidator func(string) error
-	// ActivationPendingValidator is a validator for the "activation_pending" field. It is called by the builders before save.
-	ActivationPendingValidator func(string) error
 	// DefaultTrusted holds the default value on creation for the "trusted" field.
 	DefaultTrusted bool
 	// DefaultExp holds the default value on creation for the "exp" field.
@@ -377,11 +372,6 @@ func ByEmailVerifiedAt(opts ...sql.OrderTermOption) OrderOption {
 // ByActivatedAt orders the results by the activated_at field.
 func ByActivatedAt(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldActivatedAt, opts...).ToFunc()
-}
-
-// ByActivationPending orders the results by the activation_pending field.
-func ByActivationPending(opts ...sql.OrderTermOption) OrderOption {
-	return sql.OrderByField(FieldActivationPending, opts...).ToFunc()
 }
 
 // ByTrusted orders the results by the trusted field.

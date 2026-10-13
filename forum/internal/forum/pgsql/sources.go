@@ -36,7 +36,9 @@ func scanSource(rows *sql.Rows, r *SourceRow) error {
 // 想不公开它就不要填。
 func (s *Store) Sources(ctx context.Context, topicID int64) ([]SourceRow, error) {
 	var out []SourceRow
-	err := s.query(ctx, "SELECT "+sourceColumns+" FROM topic_sources s WHERE s.topic_id = $1 ORDER BY s.sort, s.id",
+	// JOIN topics 只为拿 t.public_id（GoPath 要用它拼「302 地址」）。
+	err := s.query(ctx, "SELECT "+sourceColumns+" FROM topic_sources s JOIN topics t ON t.id = s.topic_id"+
+		" WHERE s.topic_id = $1 ORDER BY s.sort, s.id",
 		[]any{topicID}, func(rows *sql.Rows) error {
 			var r SourceRow
 			if err := scanSource(rows, &r); err != nil {

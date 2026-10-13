@@ -13,6 +13,7 @@ package auth
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"log/slog"
 	"os"
 	"strings"
@@ -26,6 +27,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/jackc/pgx/v5/stdlib"
 
+	"forum/internal/auth/pgsql"
 	"forum/internal/authz"
 	"forum/internal/config"
 	ent "forum/internal/ent"
@@ -155,6 +157,9 @@ func newFixture(t *testing.T, opts ...func(*Deps)) *fixture {
 	for _, opt := range opts {
 		opt(&d)
 	}
+	if d.Users == nil {
+		d.Users = userLookupStub{q: client}
+	}
 	svc, err := NewService(cfg, client, clk, d)
 	if err != nil {
 		t.Fatalf("NewService: %v", err)
@@ -252,9 +257,51 @@ func (f *fixture) hashPassword(pw string) string {
 	return phc
 }
 
+// ptrBool 取布尔地址：config.Auth.AutoActivate 是 *bool，nil = 用默认（true）。
+func ptrBool(v bool) *bool { return &v }
+
 // stdsqlOf 把 pgx 池包成 database/sql 的 *sql.DB：全库自检（CheckForeignKeys）要这个形状。
 func stdsqlOf(pool *pgxpool.Pool) *sql.DB {
 	return stdlib.OpenDBFromPool(pool)
+}
+
+// userLookupStub 是本域测试用的 UserLookup 实现。
+//
+// 生产里这个接口由 internal/user.Service 实现（app 层注入）。测试**不能** import 它：
+// internal/user 反过来 import 本域的类型（auth.UserAuthRow），在 *_test.go 里引它会形成
+// 测试依赖环。所以在测试里用同一份 SQL（auth/pgsql.FindUserByLogin，就是生产用的那条）
+// 走一遍，测的仍然是真库真查询。**接线本身的测试**放在 internal/app。
+type userLookupStub struct{ q pgsql.Querier }
+
+func (u userLookupStub) GetAuthRow(ctx context.Context, login string) (*UserAuthRow, error) {
+	row, found, err := pgsql.FindUserByLogin(ctx, u.q, login)
+	if err != nil {
+		return nil, err
+	}
+	if !found {
+		return nil, ErrUserNotFound
+	}
+	return &UserAuthRow{
+		ID: row.ID, PublicID: row.PublicID, Username: row.Username, Email: row.Email,
+		PasswordHash: row.PasswordHash, Nickname: row.Nickname, Status: row.Status,
+		EmailVerifiedAt: row.EmailVerifiedAt, ActivatedAt: row.ActivatedAt,
+		Trusted: row.Trusted, RoleID: row.RoleID, RoleKey: row.RoleKey, IsSuper: row.IsSuper,
+	}, nil
+}
+
+func (u userLookupStub) GetBasic(ctx context.Context, userID int64) (UserBasic, error) {
+	var b UserBasic
+	err := pgsql.QueryRow(ctx, u.q,
+		"SELECT id, public_id, username, nickname, COALESCE(avatar_hash,''), COALESCE(avatar_small_hash,''), status "+
+			"FROM users WHERE id = $1", userID).
+		Scan(&b.ID, &b.PublicID, &b.Handle, &b.Nickname, &b.AvatarHash, &b.AvatarSmall, &b.Status)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return UserBasic{}, ErrUserNotFound
+		}
+		return UserBasic{}, err
+	}
+	return b, nil
 }
 
 // login 走真实登录拿 token（顺带证明注册/登录链路能跑）。

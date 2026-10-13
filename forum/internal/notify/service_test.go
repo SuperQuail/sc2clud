@@ -16,6 +16,7 @@ import (
 	"forum/internal/authz"
 	ent "forum/internal/ent"
 	"forum/internal/platform/apperr"
+	"forum/internal/platform/clock"
 	"forum/internal/platform/db"
 	"forum/internal/platform/queue"
 )
@@ -612,7 +613,7 @@ func TestNotifyRewardReviewSanction(t *testing.T) {
 
 	// 处罚：收件人是被处罚的人
 	victim := newUser(t, ctx, pool, "victim")
-	until := time.Now().Add(24 * time.Hour)
+	until := clock.Real{}.Now().Add(24 * time.Hour)
 	sanction := newSanction(t, ctx, pool, victim, admin, &until)
 	if err := svc.NotifySanction(ctx, CreateNotifyInput{ActorID: admin, RefType: RefSanction, RefID: sanction}); err != nil {
 		t.Fatal(err)
@@ -717,7 +718,7 @@ func TestPurgeOnlyRemovesExpiredSoftDeleted(t *testing.T) {
 UPDATE notifications SET deleted_at = CASE WHEN id = 1 THEN now() - interval '100 days' ELSE now() END`); err != nil {
 		t.Fatal(err)
 	}
-	n, err := svc.Purge(ctx, time.Now().Add(-90*24*time.Hour), 5000)
+	n, err := svc.Purge(ctx, clock.Real{}.Now().Add(-90*24*time.Hour), 5000)
 	if err != nil {
 		t.Fatal(err)
 	}

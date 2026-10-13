@@ -121,11 +121,6 @@ func ActivatedAt(v time.Time) predicate.User {
 	return predicate.User(sql.FieldEQ(FieldActivatedAt, v))
 }
 
-// ActivationPending applies equality check predicate on the "activation_pending" field. It's identical to ActivationPendingEQ.
-func ActivationPending(v string) predicate.User {
-	return predicate.User(sql.FieldEQ(FieldActivationPending, v))
-}
-
 // Trusted applies equality check predicate on the "trusted" field. It's identical to TrustedEQ.
 func Trusted(v bool) predicate.User {
 	return predicate.User(sql.FieldEQ(FieldTrusted, v))
@@ -934,81 +929,6 @@ func ActivatedAtIsNil() predicate.User {
 // ActivatedAtNotNil applies the NotNil predicate on the "activated_at" field.
 func ActivatedAtNotNil() predicate.User {
 	return predicate.User(sql.FieldNotNull(FieldActivatedAt))
-}
-
-// ActivationPendingEQ applies the EQ predicate on the "activation_pending" field.
-func ActivationPendingEQ(v string) predicate.User {
-	return predicate.User(sql.FieldEQ(FieldActivationPending, v))
-}
-
-// ActivationPendingNEQ applies the NEQ predicate on the "activation_pending" field.
-func ActivationPendingNEQ(v string) predicate.User {
-	return predicate.User(sql.FieldNEQ(FieldActivationPending, v))
-}
-
-// ActivationPendingIn applies the In predicate on the "activation_pending" field.
-func ActivationPendingIn(vs ...string) predicate.User {
-	return predicate.User(sql.FieldIn(FieldActivationPending, vs...))
-}
-
-// ActivationPendingNotIn applies the NotIn predicate on the "activation_pending" field.
-func ActivationPendingNotIn(vs ...string) predicate.User {
-	return predicate.User(sql.FieldNotIn(FieldActivationPending, vs...))
-}
-
-// ActivationPendingGT applies the GT predicate on the "activation_pending" field.
-func ActivationPendingGT(v string) predicate.User {
-	return predicate.User(sql.FieldGT(FieldActivationPending, v))
-}
-
-// ActivationPendingGTE applies the GTE predicate on the "activation_pending" field.
-func ActivationPendingGTE(v string) predicate.User {
-	return predicate.User(sql.FieldGTE(FieldActivationPending, v))
-}
-
-// ActivationPendingLT applies the LT predicate on the "activation_pending" field.
-func ActivationPendingLT(v string) predicate.User {
-	return predicate.User(sql.FieldLT(FieldActivationPending, v))
-}
-
-// ActivationPendingLTE applies the LTE predicate on the "activation_pending" field.
-func ActivationPendingLTE(v string) predicate.User {
-	return predicate.User(sql.FieldLTE(FieldActivationPending, v))
-}
-
-// ActivationPendingContains applies the Contains predicate on the "activation_pending" field.
-func ActivationPendingContains(v string) predicate.User {
-	return predicate.User(sql.FieldContains(FieldActivationPending, v))
-}
-
-// ActivationPendingHasPrefix applies the HasPrefix predicate on the "activation_pending" field.
-func ActivationPendingHasPrefix(v string) predicate.User {
-	return predicate.User(sql.FieldHasPrefix(FieldActivationPending, v))
-}
-
-// ActivationPendingHasSuffix applies the HasSuffix predicate on the "activation_pending" field.
-func ActivationPendingHasSuffix(v string) predicate.User {
-	return predicate.User(sql.FieldHasSuffix(FieldActivationPending, v))
-}
-
-// ActivationPendingIsNil applies the IsNil predicate on the "activation_pending" field.
-func ActivationPendingIsNil() predicate.User {
-	return predicate.User(sql.FieldIsNull(FieldActivationPending))
-}
-
-// ActivationPendingNotNil applies the NotNil predicate on the "activation_pending" field.
-func ActivationPendingNotNil() predicate.User {
-	return predicate.User(sql.FieldNotNull(FieldActivationPending))
-}
-
-// ActivationPendingEqualFold applies the EqualFold predicate on the "activation_pending" field.
-func ActivationPendingEqualFold(v string) predicate.User {
-	return predicate.User(sql.FieldEqualFold(FieldActivationPending, v))
-}
-
-// ActivationPendingContainsFold applies the ContainsFold predicate on the "activation_pending" field.
-func ActivationPendingContainsFold(v string) predicate.User {
-	return predicate.User(sql.FieldContainsFold(FieldActivationPending, v))
 }
 
 // TrustedEQ applies the EQ predicate on the "trusted" field.

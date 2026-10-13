@@ -98,10 +98,11 @@ func (s *Service) VerifyEmailCode(ctx context.Context, in VerifyCodeInput) error
 			s.noteBadCode(ctx, u.ID, purposeVerify, row.ID)
 			return ErrTokenInvalid
 		}
+		// 拍板 §12.2：输码成功时 email_verified_at 与 activated_at **一起置**。
+		// 没有 activation_pending 要清——模式是全局开关，不是每用户状态（拍板 §12.5）。
 		if err := tx.User.UpdateOneID(u.ID).
 			SetEmailVerifiedAt(now).
 			SetActivatedAt(now).
-			ClearActivationPending().
 			SetUpdatedAt(now).
 			Exec(ctx); err != nil {
 			return err
@@ -231,9 +232,10 @@ func (s *Service) noteBadCodeForTest(userID int64, purpose string) {
 	s.noteBadCode(context.Background(), userID, purpose, 0)
 }
 
-// ResendResult 是重发的响应：前端据此切「等邮件」/「等管理员」两种界面（设计 §10.5 第 5 步）。
+// ResendResult 只说「发出去了没有」。前端该显示哪种界面由注册响应里的 auto_activate 决定
+// （拍板 §12.2：模式是全局开关，不是每用户状态，所以这里不再回 activation_pending）。
 type ResendResult struct {
-	ActivationPending string `json:"activation_pending"`
+	Sent bool `json:"sent"`
 }
 
 // ResendVerify 重发验证码：新码顶掉旧码；限流 1 次/分钟、5 次/天（拍板 §11.4）。
@@ -248,6 +250,10 @@ func (s *Service) ResendVerify(ctx context.Context, actor *authz.Actor, ip strin
 		return nil, err
 	}
 	_ = ip
+	// 开关关掉时**根本没有码**可重发：管理员选的模式就是「等我来激活」（拍板 §12.2 表格）。
+	if !s.cfg.Auth.AutoActivateOn() {
+		return nil, ErrResendDisabled
+	}
 	u, err := s.db.User.Query().Where(user.IDEQ(actor.UserID)).Only(ctx)
 	if err != nil {
 		return nil, err
@@ -255,19 +261,12 @@ func (s *Service) ResendVerify(ctx context.Context, actor *authz.Actor, ip strin
 	if u.EmailVerifiedAt != nil {
 		return nil, ErrEmailAlreadyVerified
 	}
-
+	// 一个可用发信账号都没有：确定性失败，503（不自作主张改成「等管理员」）。
 	canMail, err := s.canMail(ctx)
 	if err != nil {
 		return nil, err
 	}
 	if !canMail {
-		// 确定性失败（一个发信账号都没有）：置 manual 并告诉用户（拍板 §9.5）。
-		if err := s.db.User.UpdateOneID(u.ID).
-			SetActivationPending(PendingManual).
-			SetUpdatedAt(s.clk.Now()).
-			Exec(ctx); err != nil {
-			return nil, err
-		}
 		return nil, ErrMailUnavailable
 	}
 
@@ -276,21 +275,13 @@ func (s *Service) ResendVerify(ctx context.Context, actor *authz.Actor, ip strin
 		return nil, err
 	}
 	now := s.clk.Now()
-	err = s.withTx(ctx, func(tx *ent.Tx) error {
-		if err := s.upsertCode(ctx, tx, u.ID, purposeVerify, codeHash(code), now); err != nil {
-			return err
-		}
-		// manual → email 是允许的（拍板 §9.2 路径 A：发信能力恢复后用户自己点一下就回来）。
-		return tx.User.UpdateOneID(u.ID).
-			SetActivationPending(PendingEmail).
-			SetUpdatedAt(now).
-			Exec(ctx)
-	})
-	if err != nil {
+	if err := s.withTx(ctx, func(tx *ent.Tx) error {
+		return s.upsertCode(ctx, tx, u.ID, purposeVerify, codeHash(code), now)
+	}); err != nil {
 		return nil, err
 	}
 	s.enqueueVerifyMail(ctx, u.ID, u.Email, code, TemplateVerifyEmail)
-	return &ResendResult{ActivationPending: PendingEmail}, nil
+	return &ResendResult{Sent: true}, nil
 }
 
 // ── 找回密码 ────────────────────────────────────────────────────────

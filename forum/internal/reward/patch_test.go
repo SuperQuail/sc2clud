@@ -9,8 +9,7 @@ import (
 	"forum/internal/testsupport"
 )
 
-// TestMigrationPatchInvariants 是 harness 补丁的自检：
-// 补完之后每张表最多一个主键，且三张缺列的表都拿到了 ent 生成代码要的列。
+// TestMigrationPatchInvariants 是 harness 补丁的自检：补完之后每张表最多一个主键。
 func TestMigrationPatchInvariants(t *testing.T) {
 	dir := testsupport.MigrationsDir()
 	for _, name := range []string{"0004_forum.up.sql", "0010_media.up.sql", "0011_reward.up.sql"} {
@@ -24,21 +23,25 @@ func TestMigrationPatchInvariants(t *testing.T) {
 	}
 }
 
-func TestPatchAddsMissingColumns(t *testing.T) {
+// TestPatchIsIdempotent 保证补丁不会重复插列（迁移被正式修好后它退化成空操作）。
+func TestPatchIsIdempotent(t *testing.T) {
 	dir := testsupport.MigrationsDir()
-	reward := patchMigration(readMigration(t, dir, "0011_reward.up.sql"))
-	for _, want := range []string{
-		"id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,\n  user_id",
-		"user_id        bigint       UNIQUE REFERENCES users(id)",
-		"id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,\n  channel",
-	} {
-		if !strings.Contains(reward, want) {
-			t.Fatalf("0011 补丁缺少：%q", want)
-		}
+	media := readMigration(t, dir, "0010_media.up.sql")
+	once := patchMigration(media)
+	twice := patchMigration(once)
+	if once != twice {
+		t.Fatal("补丁必须幂等：跑两次的结果不一致")
 	}
-	media := patchMigration(readMigration(t, dir, "0010_media.up.sql"))
-	if !strings.Contains(media, "public_id uuid NOT NULL DEFAULT gen_random_uuid() UNIQUE") {
-		t.Fatal("0010 没给 payment_channels 补上 public_id")
+	if !strings.Contains(once, "public_id") {
+		t.Fatal("0010 的 payment_channels 应当被补上 public_id")
+	}
+}
+
+func TestPatchLeavesGoodMigrationsAlone(t *testing.T) {
+	dir := testsupport.MigrationsDir()
+	reward := readMigration(t, dir, "0011_reward.up.sql")
+	if got := patchMigration(reward); got != reward {
+		t.Fatal("0011 已经对了，补丁不该改动它")
 	}
 }
 

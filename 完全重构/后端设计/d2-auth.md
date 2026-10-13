@@ -180,8 +180,6 @@ CREATE TABLE users (
                         CONSTRAINT ck_users_status CHECK (status IN ('active','banned','deleted')),
   email_verified_at   ts          NULL,
   activated_at        ts          NULL,
-  activation_pending  text        NULL
-                        CONSTRAINT ck_users_activation_pending CHECK (activation_pending IN ('email','manual')),
   trusted             boolean     NOT NULL DEFAULT false,
   role_id             bigint      NOT NULL REFERENCES roles(id) ON DELETE RESTRICT,
   equipped_title_id   bigint      NULL REFERENCES titles(id) ON DELETE SET NULL,
@@ -203,18 +201,20 @@ CREATE INDEX idx_users_equipped_title ON users (equipped_title_id);        -- �
 CREATE INDEX idx_users_default_avatar ON users (default_avatar_hash);      -- 纯 FK 索引（SET NULL）
 ```
 
-**两列是 2026-10-13 拍板新增的**（拍板 §9.11 / U12）：
+**`default_avatar_hash` 是 2026-10-13 拍板新增的列**（拍板 §8.8 / U12）：它是旧站「分一次就固定」的落点，语义见 §10.7；为 NULL 时由读路径按 `users.id` 对池子大小取模，**首次分配后写回、此后不变**。本域只提供列与索引，"分配"发生在 media 的读写路径上。
 
-- `activation_pending`：**一个互斥状态**（email / manual / NULL=已激活），不是三个布尔——三布尔会出现「既 email 又 manual」这种要靠约定排除的组合。完整状态机见 §10.1。
-- `default_avatar_hash`：旧站「分一次就固定」的落点。语义见 §10.7；
-  它是 NULL 时由读路径按 `users.id` 对池子大小取模，**首次分配后写回、此后不变**。本域只提供列与索引，"分配"发生在 media 的读写路径上。
+**曾经加过、又被删掉的一列：`activation_pending`**（2026-10-13 用户定案，拍板 §12）。2026-10-12 的设计里它是 `users` 上的一列（`email` / `manual` / NULL），表达"这封验证信发出去了没有"。改成**由一个开关决定模式**之后它就没有存在理由了——**模式是全局配置，不是每个用户各自的状态**。所以：
+
+- `users` **没有** `activation_pending` 列（迁移与 ent schema 里都已删除，拍板 §12.5 的回写清单有这一条）；
+- 那个开关是 `site_settings` 的键 `auth.registration.auto_activate`（默认 `true`），读法与 30 秒缓存见 §10.1；
+- 这条改动的"四问"（现象 / 根因 / 堵法 / 是否误操作）写在 §17.2。
 
 **为什么头像列、equipped_title_id、default_avatar_hash 也有单列索引**（拍板 §5.9 第 6 条）：四个列都是外键，PG 删父行要扫子表（`role_id` 是 RESTRICT，其余是 SET NULL）。数据库文档 §12.1 的自检按 `pg_constraint` 扫，**没有排除名单**——所以这几条是「不加就红」的。它们是纯 FK 索引（没有查询用它们），代价是每次写 users 多维护几个 B 树：1 万用户量级下合计约 0.8MB，可以接受；真到十万用户再考虑改用「status <> 'deleted' 的部分索引 + 自检加例外」，那时候有数据可依。
 
 **手写迁移专属**（ent 生成不了，Atlas diff 会想删）：
 
 1. uq_users_username_lower / uq_users_email_lower：表达式唯一索引（数据库文档 §2.9）。**查询必须写 `lower(username) = lower($1)` 才走索引**——本设计里只有三处查 username：登录（§7.2）、GET /users/{handle}（§11.1）、handle 占用检查（§7.1）。别的地方不许再查 username。email 同理，只有登录与找回密码查。
-2. ck_users_status / ck_users_activation_pending / ck_users_exp_nonneg / ck_users_level_min：CHECK（ent 的 field.Enum 在 PG 上只生成 varchar）。
+2. ck_users_status / ck_users_exp_nonneg / ck_users_level_min：CHECK（ent 的 field.Enum 在 PG 上只生成 varchar）。
 3. 大小写不同的重名注册由这个索引直接拒绝（返回 409 common.conflict）。
 
 **不变量**：
@@ -1311,7 +1311,7 @@ func (h *Handler) Register(rg *gin.RouterGroup, authSvc *Service) {
 | POST /me/password、GET/DELETE /me/sessions、POST /auth/logout | ✅ 允许 | 账号自保动作；否则未激活用户连密码都改不了 |
 | 发帖 / 回复 / issue / issue 评论 / 投票 / 收藏 / 私信 / 举报 / 打赏申报 | ❌ 403 `auth.not_activated` | 拍板 §9.12：**唯一的写闸门** |
 
-**为什么要允许未激活者登录**（拍板 §9.12 的第 1 条理由）：不允许的话他连"重新发送验证码"都点不到——登录页那两种情形（等邮件 / 等管理员）就没有入口了。
+**为什么要允许未激活者登录**（拍板 §9.12 的第 1 条理由）：不允许的话他连"重新发送验证码"都点不到（`auto_activate=true` 模式），也看不到"等待管理员激活"这条说明（`false` 模式）——登录页那两种文案（拍板 §12.5）就没有入口了。
 **为什么把闸门从"邮箱验证"换成"激活"**（拍板 §9.4）：手动激活的用户 `email_verified_at` 永远是 NULL，若按邮箱验证挡，这批人激活了却仍然不能写——与本次需求直接冲突。
 
 ### 9.4 handler 模板
@@ -1344,7 +1344,7 @@ func (h *Handler) changePassword(c *gin.Context) {
 | GET | /api/v1/me/sessions | ✔ | 不必 | — | — | — |
 | DELETE | /api/v1/me/sessions/{id} | ✔ | 不必 | — | — | `{id}` 是 **public_id**（U13）；删不到 404 |
 | POST | /api/v1/auth/email/verify | — | — | — | auth:mail:verify:user:<id> 10 次失败/15 分钟 | 码一次性；正确后该码作废，第二次 400 auth.token_invalid |
-| POST | /api/v1/auth/email/resend | ✔ | 不必 | — | auth:mail:user:<id> 1/m、5/d | 重发顶掉旧码；已验证 → 409 auth.email_already_verified；无发信账号 → 503 auth.mail_unavailable |
+| POST | /api/v1/auth/email/resend | ✔ | 不必 | — | auth:mail:user:<id> 1/m、5/d | `auto_activate=false` → **403 auth.activation_is_manual**（策略决定，不是故障）；已验证 → 409 auth.email_already_verified；`true` 但没有发信账号 → 503 auth.mail_unavailable |
 | POST | /api/v1/auth/password/forgot | — | — | — | auth:mail:ip:<ip> 3/h | 恒 200 |
 | POST | /api/v1/auth/password/verify-code | — | — | — | 同 email/verify 的按账号窗口 | 返回 reset_ticket（10 分钟、一次性），**不消费码** |
 | POST | /api/v1/auth/password/reset | — | — | — | auth:mail:ip:<ip> 10/h | 消费 reset_ticket（GETDEL）；第二次 → 400 auth.token_invalid |
@@ -1366,31 +1366,45 @@ func (h *Handler) changePassword(c *gin.Context) {
 
 ## 10. 邮箱验证码、激活、找回密码、改密码
 
-> 本节按 **拍板 §11（2026-10-12 定案：邮箱激活从「点链接」改成「输 6 位验证码」）** 与 **拍板 §9（注册激活：两条激活路，互不阻塞）** 重写。
+> 本节按 **拍板 §11（2026-10-12：邮箱激活从「点链接」改成「输 6 位验证码」）** 与 **拍板 §12（2026-10-13：注册激活简化为「一个开关决定走哪条路」）** 重写。
+> **拍板 §9 的两条激活路与"发不出去就降级到 manual"已作废**——那是把一个全局配置当成了每用户状态；替代它的是一条 `site_settings` 开关（§10.1）。
 > 触发这次改写的三个真实故障（拍板 §11.1）：跨设备点链接必然断、邮箱网关会拦/改写链接、链接是 GET 会被安全扫描器预取消费。**6 位码把这三条一起消掉。**
 
-### 10.1 激活状态机（先看这张图，后面所有判定都从它推）
+### 10.1 激活模式：一个开关决定走哪条路（拍板 §12.2）
 
-    注册 → users(status='active', email_verified_at=NULL, activated_at=NULL)
+    开关：site_settings 的键 auth.registration.auto_activate（默认 true，管理员可改、不发版）
 
-    立刻（同步，在注册的 handler 里）：查有没有可用的发信账号
-      ├─ 有 → 一个事务：插验证码 + activation_pending='email'；提交后 Queue.Enqueue(mail:send)
-      └─ 没有 → activation_pending='manual'，**不入队**，注册响应里带上这个值
-                 （拍板 §9.5：这种情况对用户报 503 auth.mail_unavailable，界面提示"等待管理员激活"）
+    auto_activate = true（默认）                  auto_activate = false
+    ───────────────────────────────            ───────────────────────────────
+    注册 → 立刻发 6 位验证码                      注册 → **不发任何邮件**
+      （同步判发信能力：没有可用账号              用户以未激活状态注册
+        → 503 auth.mail_unavailable，注册失败）     activated_at = NULL
+    用户在「输入验证码」页输码                     管理员在后台点「激活」
+      → email_verified_at = now()                 → activated_at = now()
+      → activated_at = now()                      → email_verified_at **保持 NULL**
+      （两根轴一起置）                             （没有码可验，这是正常的）
+    能登录、能读、**能重发码**；写 403             能登录、能读；写 403；
+                                                 **不能重发（没有码）**
 
-    路径 A（邮件，主路）
-      ├─ 用户把 6 位码抄回注册页 → POST /api/v1/auth/email/verify { username|email, code }
-      │    → email_verified_at = now()、activated_at = now()、activation_pending = NULL、码作废
-      └─ 没收到 → POST /api/v1/auth/email/resend（限流 1/分钟、5/天）
-           → **新码顶掉旧码**（uq_email_tokens_live 的 upsert）＋新任务；成功则 activation_pending 回到 'email'
+    两种模式下写闸门完全一样：activated_at IS NOT NULL（拍板 §12.3）。
 
-    路径 B（管理员手动，兜底）
-      └─ 后台「激活账号」→ activated_at = now()、activation_pending = NULL
-           → **email_verified_at 保持 NULL**（手动激活 ≠ 邮箱验证，两件事不合并）
+**读开关的写法（本域唯一一处 `site_settings` 读）**：
 
-    任意时刻：只要 email_verified_at IS NULL，该账号都能请求验证码（不限阶段）。
+```sql
+-- internal/auth/pgsql/queries.go :: const autoActivateSQL
+SELECT COALESCE((SELECT value FROM site_settings
+                  WHERE key = 'auth.registration.auto_activate'), 'true');
+```
 
-**为什么 `activation_pending` 是**一个**列而不是三个布尔**（拍板 §9.3）：它是互斥状态（email / manual / 已激活 = NULL），三个布尔会出现「既 email 又 manual」这种只能靠约定排除的组合。
+- **缺行 = 默认 `true`**；值只认 `"true"` / `"false"`（大小写不敏感、去空白），**其他值按 `true` 走并记一次 Warn**（默认值本来就是 true，坏值不该把全站注册变成"等管理员"）。
+- **缓存 30 秒**（拍板 §12.6 第 6 条：开关切换后立刻生效，允许 ≤30 秒的读缓存）。它是一个**全局布尔**，实现就是一个 `atomic.Value` + 到期时间戳 —— **不引入第二套缓存框架**，也不进 §6.3 那个会话缓存。
+- **不在迁移里插这一行的默认值**：SQL 里的 `COALESCE` 已经兜住了"首次读不到"，再插一行就是"默认值写在两处"的第二份真源。
+
+**为什么删掉 `activation_pending`（拍板 §12.2 的三条简化）**：
+
+1. 模式由**配置**决定，不由"发信成功与否"推断 → 那个状态**不是每用户不同的**，就不该是用户字段。用一个字段表达一个互斥状态本身没错，错的是**把它放在了用户上**。
+2. **删掉"发不出去就降级到 manual"的自动逻辑**：那是"一个开关做不到、于是用两套机制兜底"。现在管理员**明确选择**模式；选了 `auto_activate=true` 却没配发信账号 → **注册接口直接 503 `auth.mail_unavailable`**，后台提示去配。**不静默降级** —— 静默降级会让管理员以为"注册走人工"是产品设计，而真实原因是配置坏了。
+3. `email_verified_at` 与 `activated_at` 仍是两根轴：`auto_activate=false` 时前者永远是 NULL，**那是正常的，不是缺陷**。
 
 ### 10.2 验证码的形状与爆破上限（拍板 §11.4）
 
@@ -1423,7 +1437,8 @@ DO UPDATE SET token_hash = EXCLUDED.token_hash,
 - **重发的语义是"作废旧的、发新的"**：`token_hash` 一换，旧码立刻失效（不是两条都有效）。这正是拍板 §11.2 要求的行为，也是 `uq_email_tokens_live` 存在的理由。
 - **`attempt_count` 必须清零**：否则用户重发一次仍然只剩 0 次机会。
 - **不在事务里发邮件**：`Queue.Enqueue` 在提交之后（方案 §14.6）。邮件任务重试时码不变（payload 只有 id），重跑只会重发同一封。
-- **邮箱不可用（一个账号都没有）**：同步返回 503 `auth.mail_unavailable`，并把 `activation_pending` 置 `manual`（拍板 §9.5）；**注册仍然成功**（账号已经建好）。「额度满」不算不可用（额度会恢复），走正常的 manual 分支、不报错。
+- **邮箱不可用（一个账号都没有）**：**注册请求同步返回 503 `auth.mail_unavailable`，整个注册回滚（账号不建）**。理由：`auto_activate=true` 模式下没有码就等于把用户永久卡在未激活态，那比"请管理员先配发信账号"更糟；而且删掉 `activation_pending` 之后，"账号建了但没发码"这个状态**已经没有任何字段能表达它**，留一个孤儿用户是纯粹的坏账。
+  **判定顺序：先问发信能力，再开事务**（拍板 §12.2 第 2 条：不静默降级）。「额度满」不算不可用（额度会恢复，只是晚几分钟到），照常发。
 
 ### 10.4 校验验证码 `POST /api/v1/auth/email/verify`
 
@@ -1448,7 +1463,7 @@ UPDATE email_tokens t
 RETURNING t.id;
 
 UPDATE users
-   SET email_verified_at = $3, activated_at = $3, activation_pending = NULL, updated_at = $3
+   SET email_verified_at = $3, activated_at = $3, updated_at = $3
  WHERE id = $1;
 
 DELETE FROM email_tokens WHERE user_id = $1 AND purpose = 'verify' AND consumed_at IS NOT NULL;
@@ -1480,18 +1495,31 @@ RETURNING attempt_count;
     值   累计校验失败次数；达到 10 → 429 auth.too_many_requests + Retry-After
     成功一次 → 计数清零（用户已经证明了他有邮箱）
 
-3. **账号未激活但邮箱已验证**（管理员手动激活过、后又重发过码）：支 A 会把 `email_verified_at` 再写一次更晚的时间、`activation_pending` 再置 NULL。**无害**，但测试里要固定住（§18.4）。
+3. **已激活的用户又输了一次码**（管理员先手动激活、用户随后才拿到码）：支 A 会把 `email_verified_at` 与 `activated_at` 都刷新成更晚的时间。**无害**（两根轴只是被写晚了一次），但要在测试里固定住（§18.4），否则以后有人会把它当 bug 去"修"。
 4. **失败不写审计**：拍板与 §8.10 的动作清单里都没有"验证码校验失败"这一条。爆破痕迹由限流计数与邮件日志承担；写进审计只会把真实事件淹掉。
 
 ### 10.5 重发验证码 `POST /api/v1/auth/email/resend`
 
-    1. 限流 auth:mail:user:<id> 1 次/分钟、5 次/天 → 429 auth.too_many_requests + Retry-After
-    2. 已经 email_verified_at 非空 → 409 auth.email_already_verified
-    3. 同步查有没有可用发信账号 → 没有：activation_pending='manual' + 503 auth.mail_unavailable
-    4. 有 → §10.3 的 upsert（新码顶旧码）+ activation_pending='email'；提交后 Enqueue mail:send
-    5. 响应：200，body 里给 `activation_pending`（前端据此切「等邮件」/「等管理员」两种界面）
+    1. auto_activate = false → **403 auth.activation_is_manual**（本站按配置就是不发邮件，重试无意义）
+    2. 限流 auth:mail:user:<id> 1 次/分钟、5 次/天 → 429 auth.too_many_requests + Retry-After
+    3. 已经 email_verified_at 非空 → 409 auth.email_already_verified
+    4. 同步查有没有可用发信账号 → 没有：503 auth.mail_unavailable（**不改任何用户状态**）
+    5. 有 → §10.3 的 upsert（新码顶旧码）；提交后 Enqueue mail:send
+    6. 响应：200 + `resend_after`（秒，前端拿它做倒计时）；**不返回任何"模式"字段**
 
-**`activation_pending` 从 manual 回到 email 是允许的**（拍板 §9.2 路径 A）：发信能力恢复后用户自己点一下就回来了，不需要管理员介入。
+**两种模式下的语义**（拍板 §12.2 的表格 + §12.5 的前端那行）：
+
+- `auto_activate=true`：正常重发，旧码立刻失效；
+- `auto_activate=false`：**没有码可发** → 503。前端在"等待管理员激活"那种文案下**不显示重发按钮**（拍板 §12.5），这个 503 是"后端不信任前端"的那一半，不是主路径。
+
+**为什么这里必须是 403 + 一个专门的码（U22 定案，2026-10-13）**：这不是服务故障，是**策略决定**——客户端不该重试，运维也不该去查发信系统。所以：
+
+| 情形 | 码 | 状态 | 含义 | 谁该动 |
+|---|---|---|---|---|
+| `auto_activate=false`，用户请求重发 | `auth.activation_is_manual` | **403** | 本站采用管理员激活，没有码可发 | **没人**（这是产品选择） |
+| `auto_activate=true` 但没有可用发信账号 | `auth.mail_unavailable` | **503** | 发信系统出问题了 | **管理员**（去配发信账号） |
+
+**两个码不能合并**：它们一个是"配置错了"、一个是"产品就是这样"。合并之后，同一句"发不出验证码"会让运维分不清该不该去修 —— 这正是本项目一直在清的那类"一个东西顶两件事"。文案：`auth.activation_is_manual` = 「本站当前采用管理员激活，不需要验证码」。
 
 ### 10.6 找回密码（也是验证码，两步一页）
 
@@ -1822,7 +1850,7 @@ SELECT c.conrelid::regclass AS tbl, c.conname, a.attname
 | common.invalid_input | 400 | 参数校验失败（带 fields） |
 | common.unauthorized | 401 | 未登录；封号后的旧 Cookie |
 | common.forbidden | 403 | 已登录但缺权限 |
-| auth.email_unverified | 403 | 未验证用户做了 §9.3 里被标 ❌ 的动作 |
+| ~~auth.email_unverified~~ | ~~403~~ | **已作废**（拍板 §9.12）：写闸门只有 `auth.not_activated` 一个。留着这一行只是为了让实现者知道"看到这个码不要用" |
 | common.not_found | 404 | 会话/令牌/用户不存在（**公开接口一律用它**，别用 admin.user_not_found 去泄露"这个人存在但被封了"） |
 | common.conflict | 409 | 唯一索引冲突（lower(username) / lower(email) / uq_email_tokens_live） |
 | common.rate_limited | 429 | 限流；带 Retry-After |
@@ -1831,7 +1859,7 @@ SELECT c.conrelid::regclass AS tbl, c.conname, a.attname
 | auth.token_invalid | 400 | 邮箱/重置令牌无效、过期、已用过 |
 | common.internal | 500 | 兜底 |
 
-### 15.2 本域新增（14 个：11 个自己造的 + 3 个拍板 §9.5/§11.4 点名的，方案 §21.4 总表里没有，**建议 Lead 回写总表**）
+### 15.2 本域新增（**15 个**：12 个自己造的 + 3 个拍板点名的，方案 §21.4 总表里没有，**建议 Lead 回写总表**）
 
 | code | 状态 | 出现场景 | 为什么不能复用现成的 |
 |---|---|---|---|
@@ -1846,8 +1874,12 @@ SELECT c.conrelid::regclass AS tbl, c.conname, a.attname
 | admin.role_in_use | 409 | 删还有用户在用的角色（FK RESTRICT） | 要能提示"先把这个角色的人改到别的角色" |
 | admin.last_super | 409 | 降权或封禁最后一名 active 的 superadmin | **必须有自己的码**：前端要显示"这是最后一名超管"的专用提示 |
 | admin.perm_unknown | 400 | 追加权限时 perm_key 不在 permissions 表里 | 参数错，但错在枚举值域不是格式，前端要提示"权限点不存在" |
+| auth.not_activated | 403 | 未**激活**用户的写操作（拍板 §9.4 / §9.12；**唯一的写闸门**） | 它要能单独挂到"去激活"那条引导上，用 common.forbidden 前端分不出"没权限"与"还没激活" |
+| auth.activation_is_manual | 403 | `auto_activate=false` 时请求重发验证码（拍板 §12.2 定案，U22） | **403 而不是 503**：这是**策略决定**（本模式没有码），不是服务故障，客户端不该重试；也要与 `auth.mail_unavailable` 分开——那个是"配置错了，该去修" |
+| auth.mail_unavailable | 503 | `auto_activate=true` 但**没有可用发信账号**（注册时同步返回，注册回滚） | 它是**配置错了**：503 表示"现在做不了，修好就能做"，运维该去配发信账号。**额度满不算**（额度会恢复） |
+| auth.too_many_requests | 429 | 重发超限，以及 15 分钟内累计 10 次验证码校验失败（拍板 §11.4；带 Retry-After） | 与 common.rate_limited 并存：**拍板点名的场景用这个**，图形验证码/登录/注册等旧场景仍用 common.rate_limited（回写时把这条差异写进方案 §21.4） |
 
-**不新增的**：user.not_found（配套的 `GET /admin/users/{id}` 不在本域范围内，见 U14）、令牌与重发的细分错误（用 auth.token_invalid 与 auth.email_already_verified 两条覆盖）。
+**不新增的**：user.not_found（配套的 `GET /admin/users/{id}` 归独立 admin 模块，见 U14）、令牌与重发的细分错误（用 auth.token_invalid 一条覆盖——**"码错"与"码过期"必须同一个响应**，拍板 §11.4）。
 
 ---
 
@@ -1955,8 +1987,20 @@ Lead 已在拍板 §9.9（U1–U21 裁决）与 §9.12（最后两条 + 表头�
 | U19 `uq_email_tokens_live` | **要**，谓词 `WHERE consumed_at IS NULL`（**不带 now()**） | §5.3 / §5.10 |
 | U20 `/me` 与 media 的边界 | 纯文本字段归 user；**头像归 media**，两模块各写各的列 | §9.3（头像不再被闸门挡）、交接单 §2.3 |
 | U21 `GET /me/sessions` 字段 | `id`/`ip`/`user_agent`/`last_seen_at`/`created_at`/`is_current`；**不回 token** | §9.5 + §18.3 第 29 条 |
+| 拍板 §12 注册激活一个开关 | **取代 §9 的两条激活路**：删 `activation_pending`、删自动降级；模式 = `site_settings` 的 `auth.registration.auto_activate`（默认 true） | §5.1（列已删）、§10.1（两种模式 + 读开关）、§10.3（503 且注册回滚）、§10.5（false 时不重发）、§15.2、§17.2、§18.4 |
 
-**另外两条新需求（拍板 §9 + §11）已经改完**：注册激活的两条路与 `activation_pending` 状态机（§10.1）、邮箱激活改成 6 位验证码与它的爆破上限（§10.2–§10.5）、找回密码改成"验证码 + reset_ticket 两步"（§10.6）。
+**三条新需求已经改完**：邮箱激活改成 6 位验证码与它的爆破上限（拍板 §11 → §10.2–§10.5）、找回密码改成"验证码 + reset_ticket 两步"（§10.6）、**注册激活简化为一个开关**（拍板 §12 → §10.1；§9.2/§9.3 的 `activation_pending` 与自动降级已删）。
+
+### 17.2 本次设计变更的「四问」（缺陷处理总纲 §4）
+
+拍板 §12 把 §9 的"两条激活路 + 发不出去就降级"换成了一个开关。按缺陷处理总纲 §4 记四问——**这不是"改个设计"，是一次设计缺陷的根因处理**：
+
+| 问 | 答 |
+|---|---|
+| **现象** | 同一次注册会出现两种完全不同的旅程（"等邮件输码" vs "等管理员点激活"），前后端都要先读一个用户字段才知道该不该发信、该不该给重发按钮；而那个字段的值还取决于"当时发信成不成功"，于是同一个用户的旅途会在重发之后**改道**（manual → email） |
+| **根因** | **把一个全局配置当成了每用户状态**。`activation_pending` 想表达的是"发信成功没有"，但"发不发信"从一开始就是**管理员选的一个模式**，不是每个用户各自产生的结果。用用户字段承载配置，就必然要再造一套"从 manual 回 email"的迁移逻辑，并且让"注册走人工"这个**产品选择**与"配置坏了"这个**故障**长得一模一样 |
+| **堵法** | ① 删字段（迁移 + ent schema + 本文档三处，见 §5.1）；② 模式由一个 `site_settings` 键决定（§10.1），**读开关时顺带把"要不要发码"判掉**，不需要第二份状态；③ 删掉"发不出去就降级"的分支，改成"没配好就 503 且注册回滚"——**让配置错误在注册那一刻暴露**，而不是静默变成另一种产品行为；④ 验收里加一条"全库不存在 `activation_pending` 列"（拍板 §12.6 第 7 条），让"删干净了没有"可断言；⑤ 前端两种未激活文案由同一开关派生（拍板 §12.5），不引入第三种状态 |
+| **是否误操作** | **不是**。这是设计层面的判断错误（字段放错了层），所以按上面五条堵，不按"打错字"处理 |
 
 **仍然需要 Lead 决定的一件（出现了一个新的不一致）**：拍板 §10.8 第 1 条自己记着「P1b 已落库的是 24 个权限点（`topic.pin` 兼管 `/feature`）」，而 §9.9 的 U1/U2 又要求 25 个（含 `topic.feature` 与 `resource.publish`）。两条并存的话 **`topic.feature` 是一个永不生效的勾**（端点判的是 `topic.pin`）。二选一：**A** 补迁移加 `resource.publish` 并把 `/feature` 改成判 `topic.feature`；**B** 常量表退回 24 个（删 `topic.feature`，精华回到 `topic.pin` 兼管）。**在选定之前 §14.1 的启动自检会红，那是它该有的行为。**
 
@@ -2127,6 +2171,21 @@ Lead 已在拍板 §9.9（U1–U21 裁决）与 §9.12（最后两条 + 表头�
 
 ---
 
+### U22（**已定案 2026-10-13**）`auto_activate=false` 时 `POST /auth/email/resend` 返回什么
+
+- ① **503 `auth.mail_unavailable`**（本设计）：用户可见的事实是同一句"现在发不出验证码"；前端在那种模式下本来就不显示重发按钮（拍板 §12.5），所以这个码只服务"后端不信任前端"的那一半。代价是语义略宽——它同时表示"没配账号"与"这个模式没有码"。
+- ② 新造一个码（例如 `auth.resend_unavailable`）：语义更准；代价是多一个码、多一处要用对的地方，而主路径根本不经过它。
+
+**定案：两个都不选，选第三种——403 + 新码 `auth.activation_is_manual`**（文案「本站当前采用管理员激活，不需要验证码」）。Lead 的三条理由：
+
+1. **403 正确**：不是服务故障，是**策略决定**，客户端不该重试；
+2. **新码值得**：它精确说出"为什么"不能重发（本模式没有码），而 `auth.mail_unavailable` 表达的是"发信系统出问题"——**两件不同的事不该共用一个码**；
+3. 它把**配置错误**与**产品选择**分开了：`true` + 没配账号 → 503 `auth.mail_unavailable`（该去修）；`false` → 403 `auth.activation_is_manual`（无需修）。
+
+我原来选的 ① 是错的：503 会让前端与运维以为"等会儿就好"，而这个站**按配置就是不发邮件**，重试一万次也一样。已落到 §10.5、§15.2 与 §9.5 的路由表。
+
+---
+
 ## 18. 测试清单（每条写清断言什么）
 
 > 铁律：**没有测试的"必须"等于没有"必须"**（复盘根因 11）。下面每条都能在 CI 里跑红。
@@ -2189,15 +2248,19 @@ Lead 已在拍板 §9.9（U1–U21 裁决）与 §9.12（最后两条 + 表头�
 | 35 | 登录失败不区分原因 | 不存在的用户与错误密码返回**同一个 code**，且都记一次限流 |
 | 36 | 登录限流 | 第 6 次（同账号）→ 429 且带 Retry-After |
 | 37 | 明文口令不进日志 | 捕获 slog 输出，断言不含密码 |
-| 38 | **未激活可登录**（拍板 §9.12） | 新注册用户 `GET /me` 返回数据、`activated=false`、`activation_pending='email'`；发帖 403 `auth.not_activated`；**读帖子 200** |
-| 39 | 验证码正确 | 200 → `email_verified_at` 与 `activated_at` 都非空、`activation_pending` 为 NULL、该码 `consumed_at` 非空；**第二次同一码 → 400** |
+| 38 | **未激活可登录**（拍板 §9.12） | 新注册用户 `GET /me` 返回数据、`activated=false`；发帖 403 `auth.not_activated`；**读帖子 200** |
+| 39 | 验证码正确 | 200 → `email_verified_at` 与 `activated_at` 都非空、该码 `consumed_at` 非空；**第二次同一码 → 400** |
 | 40 | 验证码错 5 次 | 前 4 次都 400 且 `attempt_count` 递增；**第 5 次后该码 `consumed_at` 非空**；第 6 次即使输对也 400（拍板 §11.8 第 3 条） |
 | 41 | 验证码过期与统一文案 | clock 前进 11 分钟 → 400，且**响应体与"码错"逐字节相同**（除 request_id） |
 | 42 | 重发作废旧码 | 重发 → 旧码 400、新码 200；`email_tokens` 里只有一行 `consumed_at IS NULL`；`attempt_count` 归零（拍板 §11.8 第 4 条） |
 | 43 | 按账号限流 | 15 分钟内累计 10 次失败 → 429 `auth.too_many_requests` + Retry-After；**成功一次后计数清零** |
-| 44 | 无发信账号 | 清空 mail_accounts → 注册 → 201 + `activation_pending='manual'` + **503 `auth.mail_unavailable`**（拍板 §9.5）；`jobs` 里没有该邮件任务 |
-| 45 | 管理员手动激活 | `activated_at` 非空、`email_verified_at` **仍为 NULL**、`activation_pending` 为 NULL；此后发帖 200（拍板 §9.8 第 3 条） |
-| 46 | manual → email 回流 | manual 用户点重发且此时有账号 → `activation_pending='email'`，收到码（拍板 §9.2） |
+| 44 | **开关 true + 没配发信账号**（拍板 §12.6 第 2 条） | 清空 mail_accounts → 注册 → **503 `auth.mail_unavailable`**，且**账号没有建**（`users` 里查不到）、`jobs` 里没有邮件任务。**不是**"201 + 默默等人激活" |
+| 45 | **开关 false**（拍板 §12.6 第 3 条） | 注册 → 201、**不发任何邮件**、`email_verified_at` 与 `activated_at` **都是 NULL**；注册响应里**没有任何"模式"字段** |
+| 46 | **开关 false 时的重发** | `POST /auth/email/resend` → **403 `auth.activation_is_manual`**（**不是** 503，见 §17 U22 定案），且**用户的任何列都没被改** |
+| 46a | **两个码各归各位** | 同一次跑里断言两种情形不同码：`false` → 403 `auth.activation_is_manual`；`true` 且清空 mail_accounts → 503 `auth.mail_unavailable` |
+| 46b | **管理员激活**（拍板 §12.6 第 4 条） | `auto_activate=false` 的用户被后台「激活」→ `activated_at` 非空、`email_verified_at` **仍为 NULL**；此后发帖 200 |
+| 46c | **开关切换立刻生效**（拍板 §12.6 第 6 条） | 开关 true→false → **≤30 秒内**下一次注册就不发码（clock.Fake 前进 31 秒断言；同时断言 30 秒内仍走旧值） |
+| 46d | **全库没有那一列**（拍板 §12.6 第 7 条） | 迁移跑完后查 `information_schema.columns`，断言 `users` 上没有 `activation_pending` |
 | 47 | 找回密码不暴露邮箱 | 存在与不存在的邮箱都 200，且响应体除 request_id 外相同 |
 | 48 | reset 两步 | verify-code → 拿 ticket（**码没有被消费**，还能再用一次）→ reset { ticket, new_password } → 旧密码登录失败、新密码成功、**全部会话被删** |
 | 49 | ticket 一次性 | 第二次带同一 ticket → 400；ticket 过期（clock +11 分钟）→ 400 |

@@ -149,35 +149,47 @@ func applyMigrations(t *testing.T, ctx context.Context, pool *pgxpool.Pool) {
 }
 
 // demoteExtraPrimaryKeys 把每个 CREATE TABLE 块里第二个及以后的主键降成 UNIQUE（唯一性不变）。
+// demoteExtraPrimaryKeys 把每个 CREATE TABLE 块里第二个及以后的主键降成 UNIQUE（唯一性不变）。
+// 按块文本做替换：块内容唯一，不需要维护搜索位置（第一版在这里写出了死循环）。
 func demoteExtraPrimaryKeys(sql string) string {
+	for _, block := range createBlocks(sql) {
+		if strings.Count(block, "PRIMARY KEY") < 2 {
+			continue
+		}
+		seen := false
+		fixed := strings.Split(block, "\n")
+		for j, ln := range fixed {
+			if !strings.Contains(ln, "PRIMARY KEY") {
+				continue
+			}
+			if seen {
+				fixed[j] = strings.Replace(ln, "PRIMARY KEY", "UNIQUE", 1)
+			}
+			seen = true
+		}
+		sql = strings.Replace(sql, block, strings.Join(fixed, "\n"), 1)
+	}
+	return sql
+}
+
+// createBlocks 切出每个完整的 CREATE TABLE 块（到第一个 "\n);" 为止）。
+func createBlocks(sql string) []string {
 	const marker = "CREATE TABLE "
-	for i := strings.Index(sql, marker); i >= 0; {
+	var out []string
+	for {
+		i := strings.Index(sql, marker)
+		if i < 0 {
+			return out
+		}
 		rest := sql[i:]
 		end := strings.Index(rest, "\n);")
 		if end < 0 {
-			break
+			return out
 		}
 		block := rest[:end+3]
-		if strings.Count(block, "PRIMARY KEY") >= 2 {
-			seen := false
-			fixed := strings.Split(block, "\n")
-			for j, ln := range fixed {
-				if !strings.Contains(ln, "PRIMARY KEY") {
-					continue
-				}
-				if seen {
-					fixed[j] = strings.Replace(ln, "PRIMARY KEY", "UNIQUE", 1)
-				}
-				seen = true
-			}
-			sql = strings.Replace(sql, block, strings.Join(fixed, "\n"), 1)
-		}
-		i = strings.Index(sql[i+len(block):], marker)
-		if i >= 0 {
-			i += len(sql) - len(sql[i+len(block):])
-		}
+		out = append(out, block)
+		sql = rest[len(block):]
 	}
-	return sql
 }
 
 // countFiles 数磁盘上的真图片文件（Walk 只认 64 位小写 hex 的名字）。

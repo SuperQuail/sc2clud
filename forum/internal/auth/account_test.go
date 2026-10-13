@@ -38,8 +38,8 @@ func TestRegisterCreatesAccountWithoutSession(t *testing.T) {
 	f.seedRBAC()
 	out := f.register("tangtian", "passw0rd-1")
 
-	if out.ActivationPending != PendingEmail {
-		t.Fatalf("activation_pending = %q，有可用发信账号时应当走邮件路", out.ActivationPending)
+	if !out.AutoActivate {
+		t.Fatal("默认开关下 auto_activate 应当是 true（拍板 §12.2）")
 	}
 	if out.EmailVerified {
 		t.Fatal("刚注册就 email_verified=true")
@@ -122,23 +122,89 @@ func TestRegisterPasswordRules(t *testing.T) {
 	}
 }
 
-// 用例 44 + 拍板 §9.2/§9.5：一个发信账号都没有 → manual、**不入队**、注册仍然成功。
-func TestRegisterWithoutMailAccountsGoesManual(t *testing.T) {
+// 拍板 §12.6 第 2 条：auto_activate=true 但**没有可用发信账号** → 注册返回 503 auth.mail_unavailable，
+// **不是**默默变成人工激活。
+func TestRegisterWithoutMailAccountsFails(t *testing.T) {
 	f := newFixture(t, func(d *Deps) { d.Mail = noMailAccounts{} })
 	f.seedRBAC()
-	out := f.register("nomail", "passw0rd-1")
-	if out.ActivationPending != PendingManual {
-		t.Fatalf("activation_pending = %q，想要 manual", out.ActivationPending)
+	_, err := f.svc.Register(f.ctx, RegisterInput{
+		Username: "nomail", Email: "nomail@example.com", Password: "passw0rd-1", IP: "127.0.0.1",
+	})
+	if errCode(err) != "auth.mail_unavailable" {
+		t.Fatalf("没有发信账号时注册 -> %v（code=%q），想要 auth.mail_unavailable", err, errCode(err))
+	}
+	// 事务回滚：**一个用户都不该留下**（否则用户会看到一个「注册失败但用户名被占」的幽灵）。
+	var users int
+	if err := f.pool.QueryRow(f.ctx, "SELECT count(*) FROM users").Scan(&users); err != nil {
+		t.Fatal(err)
+	}
+	if users != 0 {
+		t.Fatalf("503 之后留下了 %d 行用户", users)
 	}
 	if f.queue.count() != 0 {
-		t.Fatalf("没有可用账号却入了 %d 条任务（拍板 §9.2：这种情况不入队、不重试）", f.queue.count())
+		t.Fatalf("没有可用账号却入了 %d 条任务", f.queue.count())
+	}
+}
+
+// 拍板 §12.6 第 3 条：auto_activate=false → 注册成功、**不发邮件**、两个验证时间都是 NULL。
+func TestRegisterManualModeSendsNoMail(t *testing.T) {
+	f := newFixture(t)
+	f.seedRBAC()
+	f.cfg.Auth.AutoActivate = ptrBool(false)
+	out := f.register("waitadmin", "passw0rd-1")
+	if out.AutoActivate {
+		t.Fatal("开关关掉了，响应里的 auto_activate 仍是 true")
+	}
+	if f.queue.count() != 0 {
+		t.Fatalf("人工激活模式下入了 %d 条发信任务", f.queue.count())
 	}
 	var tokens int
 	if err := f.pool.QueryRow(f.ctx, "SELECT count(*) FROM email_tokens").Scan(&tokens); err != nil {
 		t.Fatal(err)
 	}
 	if tokens != 0 {
-		t.Fatalf("没有发信能力却写了 %d 条验证码", tokens)
+		t.Fatalf("人工激活模式下写了 %d 条验证码", tokens)
+	}
+	var verified, activated *time.Time
+	if err := f.pool.QueryRow(f.ctx,
+		"SELECT email_verified_at, activated_at FROM users WHERE username = 'waitadmin'").Scan(&verified, &activated); err != nil {
+		t.Fatal(err)
+	}
+	if verified != nil || activated != nil {
+		t.Fatalf("人工激活模式下两个时间都该是 NULL：%v / %v", verified, activated)
+	}
+}
+
+// 拍板 §12.6 第 4 条 + §12.2：管理员手工激活只动 activated_at，**email_verified_at 保持 NULL**。
+func TestAdminManualActivationKeepsEmailUnverified(t *testing.T) {
+	f := newFixture(t)
+	f.seedRBAC()
+	f.cfg.Auth.AutoActivate = ptrBool(false)
+	f.register("manual-activate", "passw0rd-1")
+	root := f.newSuperAdmin("root")
+
+	var pub string
+	if err := f.pool.QueryRow(f.ctx, "SELECT public_id FROM users WHERE username = 'manual-activate'").Scan(&pub); err != nil {
+		t.Fatal(err)
+	}
+	if err := f.svc.ActivateUser(f.ctx, root, pub, "127.0.0.1"); err != nil {
+		t.Fatalf("管理员激活失败: %v", err)
+	}
+	var verified, activated *time.Time
+	if err := f.pool.QueryRow(f.ctx,
+		"SELECT email_verified_at, activated_at FROM users WHERE public_id = $1", pub).Scan(&verified, &activated); err != nil {
+		t.Fatal(err)
+	}
+	if activated == nil {
+		t.Fatal("activated_at 仍是 NULL")
+	}
+	if verified != nil {
+		t.Fatal("手工激活不该写 email_verified_at（两根轴，拍板 §12.2）")
+	}
+	// 未激活 → 激活之后 actor 的 Activated 变 true（写闸门放行）。
+	actor := f.actor(f.login("manual-activate", "passw0rd-1"))
+	if !actor.Activated {
+		t.Fatal("激活后 actor.Activated 仍是 false")
 	}
 }
 
@@ -174,8 +240,11 @@ func TestInactiveUserCanLogin(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if me.Activated || me.ActivationPending != "" {
-		t.Fatalf("me.Activated=%v activation_pending=%q", me.Activated, me.ActivationPending)
+	if me.Activated {
+		t.Fatal("me.Activated 应当是 false（activated_at 为 NULL）")
+	}
+	if !me.AutoActivate {
+		t.Fatal("me.auto_activate 应当是 true（默认开关）")
 	}
 }
 
@@ -300,8 +369,8 @@ func TestChangePasswordRevokesAllSessions(t *testing.T) {
 	if _, err := f.svc.Resolve(f.ctx, tok); !errors.Is(err, ErrSessionInvalid) {
 		t.Fatalf("改密码后旧 cookie 仍有效: %v", err)
 	}
-	if _, err := f.svc.Login(f.ctx, LoginInput{Login: "frank", Password: "passw0rd-1", IP: "127.0.0.1"}); errCode(err) != "auth.bad_credentials" {
-		t.Fatalf("旧口令还能登录: %v", err)
+	if _, err2 := f.svc.Login(f.ctx, LoginInput{Login: "frank", Password: "passw0rd-1", IP: "127.0.0.1"}); errCode(err2) != "auth.bad_credentials" {
+		t.Fatalf("旧口令还能登录: %v", err2)
 	}
 	if _, err := f.svc.Login(f.ctx, LoginInput{Login: "frank", Password: "passw0rd-2", IP: "127.0.0.1"}); err != nil {
 		t.Fatalf("新口令登录失败: %v", err)

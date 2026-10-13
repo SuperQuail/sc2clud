@@ -37154,7 +37154,6 @@ type UserMutation struct {
 	status                     *string
 	email_verified_at          *time.Time
 	activated_at               *time.Time
-	activation_pending         *string
 	trusted                    *bool
 	exp                        *int
 	addexp                     *int
@@ -37856,55 +37855,6 @@ func (m *UserMutation) ActivatedAtCleared() bool {
 func (m *UserMutation) ResetActivatedAt() {
 	m.activated_at = nil
 	delete(m.clearedFields, user.FieldActivatedAt)
-}
-
-// SetActivationPending sets the "activation_pending" field.
-func (m *UserMutation) SetActivationPending(s string) {
-	m.activation_pending = &s
-}
-
-// ActivationPending returns the value of the "activation_pending" field in the mutation.
-func (m *UserMutation) ActivationPending() (r string, exists bool) {
-	v := m.activation_pending
-	if v == nil {
-		return
-	}
-	return *v, true
-}
-
-// OldActivationPending returns the old "activation_pending" field's value of the User entity.
-// If the User object wasn't provided to the builder, the object is fetched from the database.
-// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
-func (m *UserMutation) OldActivationPending(ctx context.Context) (v *string, err error) {
-	if !m.op.Is(OpUpdateOne) {
-		return v, errors.New("OldActivationPending is only allowed on UpdateOne operations")
-	}
-	if m.id == nil || m.oldValue == nil {
-		return v, errors.New("OldActivationPending requires an ID field in the mutation")
-	}
-	oldValue, err := m.oldValue(ctx)
-	if err != nil {
-		return v, fmt.Errorf("querying old value for OldActivationPending: %w", err)
-	}
-	return oldValue.ActivationPending, nil
-}
-
-// ClearActivationPending clears the value of the "activation_pending" field.
-func (m *UserMutation) ClearActivationPending() {
-	m.activation_pending = nil
-	m.clearedFields[user.FieldActivationPending] = struct{}{}
-}
-
-// ActivationPendingCleared returns if the "activation_pending" field was cleared in this mutation.
-func (m *UserMutation) ActivationPendingCleared() bool {
-	_, ok := m.clearedFields[user.FieldActivationPending]
-	return ok
-}
-
-// ResetActivationPending resets all changes to the "activation_pending" field.
-func (m *UserMutation) ResetActivationPending() {
-	m.activation_pending = nil
-	delete(m.clearedFields, user.FieldActivationPending)
 }
 
 // SetTrusted sets the "trusted" field.
@@ -39177,7 +39127,7 @@ func (m *UserMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *UserMutation) Fields() []string {
-	fields := make([]string, 0, 21)
+	fields := make([]string, 0, 20)
 	if m.public_id != nil {
 		fields = append(fields, user.FieldPublicID)
 	}
@@ -39216,9 +39166,6 @@ func (m *UserMutation) Fields() []string {
 	}
 	if m.activated_at != nil {
 		fields = append(fields, user.FieldActivatedAt)
-	}
-	if m.activation_pending != nil {
-		fields = append(fields, user.FieldActivationPending)
 	}
 	if m.trusted != nil {
 		fields = append(fields, user.FieldTrusted)
@@ -39275,8 +39222,6 @@ func (m *UserMutation) Field(name string) (ent.Value, bool) {
 		return m.EmailVerifiedAt()
 	case user.FieldActivatedAt:
 		return m.ActivatedAt()
-	case user.FieldActivationPending:
-		return m.ActivationPending()
 	case user.FieldTrusted:
 		return m.Trusted()
 	case user.FieldEquippedTitleID:
@@ -39326,8 +39271,6 @@ func (m *UserMutation) OldField(ctx context.Context, name string) (ent.Value, er
 		return m.OldEmailVerifiedAt(ctx)
 	case user.FieldActivatedAt:
 		return m.OldActivatedAt(ctx)
-	case user.FieldActivationPending:
-		return m.OldActivationPending(ctx)
 	case user.FieldTrusted:
 		return m.OldTrusted(ctx)
 	case user.FieldEquippedTitleID:
@@ -39441,13 +39384,6 @@ func (m *UserMutation) SetField(name string, value ent.Value) error {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.SetActivatedAt(v)
-		return nil
-	case user.FieldActivationPending:
-		v, ok := value.(string)
-		if !ok {
-			return fmt.Errorf("unexpected type %T for field %s", value, name)
-		}
-		m.SetActivationPending(v)
 		return nil
 	case user.FieldTrusted:
 		v, ok := value.(bool)
@@ -39570,9 +39506,6 @@ func (m *UserMutation) ClearedFields() []string {
 	if m.FieldCleared(user.FieldActivatedAt) {
 		fields = append(fields, user.FieldActivatedAt)
 	}
-	if m.FieldCleared(user.FieldActivationPending) {
-		fields = append(fields, user.FieldActivationPending)
-	}
 	if m.FieldCleared(user.FieldEquippedTitleID) {
 		fields = append(fields, user.FieldEquippedTitleID)
 	}
@@ -39607,9 +39540,6 @@ func (m *UserMutation) ClearField(name string) error {
 		return nil
 	case user.FieldActivatedAt:
 		m.ClearActivatedAt()
-		return nil
-	case user.FieldActivationPending:
-		m.ClearActivationPending()
 		return nil
 	case user.FieldEquippedTitleID:
 		m.ClearEquippedTitleID()
@@ -39663,9 +39593,6 @@ func (m *UserMutation) ResetField(name string) error {
 		return nil
 	case user.FieldActivatedAt:
 		m.ResetActivatedAt()
-		return nil
-	case user.FieldActivationPending:
-		m.ResetActivationPending()
 		return nil
 	case user.FieldTrusted:
 		m.ResetTrusted()

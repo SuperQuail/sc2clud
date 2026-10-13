@@ -2,6 +2,9 @@ package config
 
 import "time"
 
+// autoActivate 取布尔地址：默认值必须能与「管理员显式设成 false」区分开（nil = 用默认）。
+func autoActivate(v bool) *bool { return &v }
+
 // Default 返回全部默认值。加载顺序的第一段就是它（不是 yaml、不是 env）。
 func Default() *Config {
 	return &Config{

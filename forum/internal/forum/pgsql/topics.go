@@ -147,7 +147,7 @@ func (s *Store) ListTopics(ctx context.Context, f TopicFilter, featured bool) ([
 			" AND t.featured_at IS NOT NULL" +
 			" AND (t.featured_at, t.id) < ($3::timestamptz, $4::bigint)" +
 			" ORDER BY t.featured_at DESC, t.id DESC LIMIT $5"
-		args = []any{f.BoardID, nil, f.CursorT.UTC(), f.CursorID, f.Limit, f.ViewerID}
+		args = []any{f.BoardID, f.CursorT.UTC(), f.CursorID, f.Limit}
 	} else {
 		sqlText = "SELECT " + topicColumns + " FROM topics t" + boardJoin + authorJoin + coverJoin +
 			" WHERE t.visibility = 'normal' AND t.review_state = 'approved'" +
@@ -155,7 +155,7 @@ func (s *Store) ListTopics(ctx context.Context, f TopicFilter, featured bool) ([
 			" AND ($2::text IS NULL OR t.kind = $2)" +
 			" AND (" + col + ", t.id) < ($3::timestamptz, $4::bigint)" +
 			" ORDER BY " + col + " DESC NULLS LAST, t.id DESC LIMIT $5"
-		args = []any{f.BoardID, nullIfEmpty(f.Kind), f.CursorT.UTC(), f.CursorID, f.Limit, f.ViewerID}
+		args = []any{f.BoardID, nullIfEmpty(f.Kind), f.CursorT.UTC(), f.CursorID, f.Limit}
 	}
 
 	var out []TopicRow
@@ -233,8 +233,7 @@ type TopicDetailRow struct {
 // 1 楼被软删时内容列仍然返回（floor 不会消失，前端渲染成「正文已被作者删除」）——
 // 这就是「正文删了标题还在」的实现方式。
 func (s *Store) TopicDetail(ctx context.Context, publicID string, viewerID int64, canSeePending bool) (*TopicDetailRow, error) {
-	sqlText := `
-SELECT ` + topicColumns + `,
+	sqlText := "SELECT " + topicColumns + " " + `,
        t.board_id, b.acl_enabled, b.min_post_level, t.review_note, t.resource_status,
        (SELECT count(*) FROM post_issues i
          WHERE i.topic_id = t.id AND i.status = 'keep_open'),

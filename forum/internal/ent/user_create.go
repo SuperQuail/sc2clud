@@ -167,20 +167,6 @@ func (_c *UserCreate) SetNillableActivatedAt(v *time.Time) *UserCreate {
 	return _c
 }
 
-// SetActivationPending sets the "activation_pending" field.
-func (_c *UserCreate) SetActivationPending(v string) *UserCreate {
-	_c.mutation.SetActivationPending(v)
-	return _c
-}
-
-// SetNillableActivationPending sets the "activation_pending" field if the given value is not nil.
-func (_c *UserCreate) SetNillableActivationPending(v *string) *UserCreate {
-	if v != nil {
-		_c.SetActivationPending(*v)
-	}
-	return _c
-}
-
 // SetTrusted sets the "trusted" field.
 func (_c *UserCreate) SetTrusted(v bool) *UserCreate {
 	_c.mutation.SetTrusted(v)
@@ -666,11 +652,6 @@ func (_c *UserCreate) check() error {
 			return &ValidationError{Name: "status", err: fmt.Errorf(`ent: validator failed for field "User.status": %w`, err)}
 		}
 	}
-	if v, ok := _c.mutation.ActivationPending(); ok {
-		if err := user.ActivationPendingValidator(v); err != nil {
-			return &ValidationError{Name: "activation_pending", err: fmt.Errorf(`ent: validator failed for field "User.activation_pending": %w`, err)}
-		}
-	}
 	if _, ok := _c.mutation.Trusted(); !ok {
 		return &ValidationError{Name: "trusted", err: errors.New(`ent: missing required field "User.trusted"`)}
 	}
@@ -762,10 +743,6 @@ func (_c *UserCreate) createSpec() (*User, *sqlgraph.CreateSpec) {
 	if value, ok := _c.mutation.ActivatedAt(); ok {
 		_spec.SetField(user.FieldActivatedAt, field.TypeTime, value)
 		_node.ActivatedAt = &value
-	}
-	if value, ok := _c.mutation.ActivationPending(); ok {
-		_spec.SetField(user.FieldActivationPending, field.TypeString, value)
-		_node.ActivationPending = &value
 	}
 	if value, ok := _c.mutation.Trusted(); ok {
 		_spec.SetField(user.FieldTrusted, field.TypeBool, value)

@@ -14,6 +14,14 @@ import (
 	"forum/internal/reward"
 )
 
+func mustCode(err error) string {
+	var ae *apperr.Error
+	if errors.As(err, &ae) {
+		return ae.Code
+	}
+	return ""
+}
+
 // code 取错误的业务码；不是 *apperr.Error 就失败。
 func code(t *testing.T, err error) string {
 	t.Helper()
@@ -77,8 +85,8 @@ func TestCreateDonationDisabled(t *testing.T) {
 
 func TestCreateDonationRejectsForeignPostAndChannel(t *testing.T) {
 	h := newHarness(t)
-	// 帖子的作者是 alice，收款人却是 bob
-	postID, _ := h.newTopic(h.alice)
+	// 帖子的作者是 bob，收款人却是 alice：在别人帖子里给第三者打赏是数据错
+	postID, _ := h.newTopic(h.bob)
 	_, err := h.svc().CreateDonation(h.ctx, h.actor(h.bob), reward.CreateDonationInput{
 		ToHandle: "alice", AmountCents: 100, PostID: postID,
 	})
@@ -320,8 +328,8 @@ func TestVerifyBatchRollsBackOnQueueFailure(t *testing.T) {
 			t.Fatalf("整批必须回滚，行 %d 实际 %s", id, h.state(id))
 		}
 	}
-	if h.audit.count() != 0 {
-		t.Fatalf("回滚后不该留审计，实际 %d", h.audit.count())
+	if n := h.scalar("SELECT count(*) FROM donation_records WHERE verified_by IS NOT NULL"); n != 0 {
+		t.Fatalf("回滚后不该留下核验人，实际 %d 行", n)
 	}
 }
 
@@ -429,8 +437,9 @@ func TestUserDonationsOnlyPublic(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(page.Items) != 1 || page.Items[0].AmountCents != 300 {
-		t.Fatalf("只应返回双方都公开的 approved，实际 %+v", page.Items)
+	// alice 与 admin 都公开且 approved → 两条；pending 那条与不公开的那些都不出现
+	if len(page.Items) != 2 {
+		t.Fatalf("只应返回双方都公开的 approved，实际 %d 条: %+v", len(page.Items), page.Items)
 	}
 }
 

@@ -188,11 +188,19 @@ func (s *Service) Register(ctx context.Context, in RegisterInput) (*RegisterResu
 		return nil, err
 	}
 
-	// 注册前先知道「能不能发信」：它决定 activation_pending 是 email 还是 manual（拍板 §9.2）。
-	// 「额度满」不算不可用（额度会恢复），所以这里只问「有没有可用账号」。
-	canMail, err := s.canMail(ctx)
-	if err != nil {
-		return nil, err
+	// 拍板 §12.2：模式由**一个开关**决定，不再按「发信成功与否」推断。
+	//   auto_activate=true  且没有可用发信账号 → 503 auth.mail_unavailable（**不静默降级成人工**，
+	//                        否则管理员会以为「注册走人工」是产品设计，而真实原因是配置坏了）；
+	//   auto_activate=false → 不发任何邮件，等管理员在后台激活。
+	auto := s.cfg.Auth.AutoActivateOn()
+	if auto {
+		canMail, err := s.canMail(ctx)
+		if err != nil {
+			return nil, err
+		}
+		if !canMail {
+			return nil, ErrMailUnavailable
+		}
 	}
 
 	pub, err := idgen.NewPublicID()
@@ -200,10 +208,6 @@ func (s *Service) Register(ctx context.Context, in RegisterInput) (*RegisterResu
 		return nil, err
 	}
 	now := s.clk.Now()
-	pending := PendingManual
-	if canMail {
-		pending = PendingEmail
-	}
 
 	var userID int64
 	err = s.withTx(ctx, func(tx *ent.Tx) error {
@@ -219,7 +223,6 @@ func (s *Service) Register(ctx context.Context, in RegisterInput) (*RegisterResu
 			SetNickname(nickname).
 			SetRoleID(roleID).
 			SetStatus(StatusActive).
-			SetActivationPending(pending).
 			SetCreatedAt(now).
 			SetUpdatedAt(now).
 			Save(ctx)
@@ -227,7 +230,7 @@ func (s *Service) Register(ctx context.Context, in RegisterInput) (*RegisterResu
 			return err
 		}
 		userID = u.ID
-		if canMail {
+		if auto {
 			if err := s.upsertCode(ctx, tx, userID, purposeVerify, codeHash(code), now); err != nil {
 				return err
 			}
@@ -243,14 +246,14 @@ func (s *Service) Register(ctx context.Context, in RegisterInput) (*RegisterResu
 
 	// 提交后入队（方案 §14.6：事务里禁止发信）。入队失败不回滚注册：
 	// 用户点「重新发送」就能补上，而回滚会让「账号已建好但报错」变成更坏的结果（设计 §16.3）。
-	if canMail {
+	if auto {
 		s.enqueueVerifyMail(ctx, userID, email, code, TemplateVerifyEmail)
 	}
 	return &RegisterResult{
-		ID:                pub.String(),
-		Handle:            username,
-		EmailVerified:     false,
-		ActivationPending: pending,
+		ID:            pub.String(),
+		Handle:        username,
+		EmailVerified: false,
+		AutoActivate:  auto,
 	}, nil
 }
 
@@ -434,21 +437,21 @@ func (s *Service) Me(ctx context.Context, actor *authz.Actor) (*MeResult, error)
 		return nil, err
 	}
 	return &MeResult{
-		ID:                u.PublicID.String(),
-		Handle:            u.Username,
-		Nickname:          u.Nickname,
-		Email:             u.Email,
-		Avatar:            deref(u.AvatarHash),
-		AvatarSmall:       deref(u.AvatarSmallHash),
-		Bio:               u.Bio,
-		Status:            u.Status,
-		EmailVerified:     u.EmailVerifiedAt != nil,
-		Activated:         u.ActivatedAt != nil,
-		ActivationPending: deref(u.ActivationPending),
-		Trusted:           u.Trusted,
-		Level:             u.Level,
-		Exp:               u.Exp,
-		ExpMax:            ExpMax(u.Level),
+		ID:            u.PublicID.String(),
+		Handle:        u.Username,
+		Nickname:      u.Nickname,
+		Email:         u.Email,
+		Avatar:        deref(u.AvatarHash),
+		AvatarSmall:   deref(u.AvatarSmallHash),
+		Bio:           u.Bio,
+		Status:        u.Status,
+		EmailVerified: u.EmailVerifiedAt != nil,
+		Activated:     u.ActivatedAt != nil,
+		AutoActivate:  s.cfg.Auth.AutoActivateOn(),
+		Trusted:       u.Trusted,
+		Level:         u.Level,
+		Exp:           u.Exp,
+		ExpMax:        ExpMax(u.Level),
 		Role: RoleItem{
 			ID: actor.RoleID, Key: actor.RoleKey, Name: actor.RoleName, BadgeColor: actor.RoleBadge,
 		},
@@ -660,6 +663,33 @@ func (s *Service) BanUser(ctx context.Context, actor *authz.Actor, in BanInput) 
 		}
 	}
 	return &BanResult{Status: want, SessionsRevoked: revoked}, nil
+}
+
+// ActivateUser 是管理员手工激活（拍板 §12.2 路径 B）：auto_activate=false 时它是**唯一**的激活入口。
+//
+// 它只写 activated_at：**email_verified_at 保持 NULL**——手工激活不等于邮箱验证，两根轴不要合并
+// （拍板 §12.2 验收第 4 条）。幂等：已激活再点一次返回成功。
+func (s *Service) ActivateUser(ctx context.Context, actor *authz.Actor, userPublicID, ip string) error {
+	if err := requirePerm(actor, authz.PermUserBan); err != nil {
+		return err
+	}
+	target, err := s.userByPublicID(ctx, userPublicID)
+	if err != nil {
+		return err
+	}
+	now := s.clk.Now()
+	return s.withTx(ctx, func(tx *ent.Tx) error {
+		if target.ActivatedAt == nil {
+			if err := tx.User.UpdateOneID(target.ID).SetActivatedAt(now).SetUpdatedAt(now).Exec(ctx); err != nil {
+				return err
+			}
+		}
+		return s.writeAudit(ctx, tx, AuditEntry{
+			ActorID: actor.UserID, Action: ActionUserActivate, TargetType: "user",
+			TargetID: target.PublicID.String(), IP: ipOf(ip),
+			Detail: map[string]any{"after": map[string]any{"activated_at": now}},
+		})
+	})
 }
 
 // RevokeResult 是强制下线的结果：被踢条数（第二次是 0）。

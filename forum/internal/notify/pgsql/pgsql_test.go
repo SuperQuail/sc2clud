@@ -35,6 +35,10 @@ func newSchema(t *testing.T) (context.Context, *pgxpool.Pool) {
 			t.Fatalf("跑迁移 %s 失败: %v", name, execErr)
 		}
 	}
+	// 0017_seed_authz 没在这里跑，users.role_id 的外键自己补一行
+	if _, err := pool.Exec(ctx, "INSERT INTO roles (key, name) VALUES ('user', '普通用户')"); err != nil {
+		t.Fatal(err)
+	}
 	return ctx, pool
 }
 

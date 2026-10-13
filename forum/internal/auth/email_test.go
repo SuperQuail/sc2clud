@@ -47,17 +47,13 @@ func TestVerifyEmailCodeActivatesAccount(t *testing.T) {
 		t.Fatalf("校验失败: %v", err)
 	}
 	var verified, activated *time.Time
-	var pending *string
 	if err := f.pool.QueryRow(f.ctx,
-		"SELECT email_verified_at, activated_at, activation_pending FROM users WHERE username = 'activate-me'").
-		Scan(&verified, &activated, &pending); err != nil {
+		"SELECT email_verified_at, activated_at FROM users WHERE username = 'activate-me'").
+		Scan(&verified, &activated); err != nil {
 		t.Fatal(err)
 	}
 	if verified == nil || activated == nil {
-		t.Fatalf("激活失败：verified=%v activated=%v", verified, activated)
-	}
-	if pending != nil {
-		t.Fatalf("activation_pending = %q，想要 NULL", *pending)
+		t.Fatalf("激活失败：verified=%v activated=%v（拍板 §12.2：输码成功时两根轴一起置）", verified, activated)
 	}
 	// 码已被消费：第二次同一个码失败（拍板 §11.8）。
 	if err := f.svc.VerifyEmailCode(f.ctx, VerifyCodeInput{Login: "activate-me", Code: code}); !errors.Is(err, ErrTokenInvalid) {
@@ -150,8 +146,8 @@ func TestResendInvalidatesOldCode(t *testing.T) {
 	if err != nil {
 		t.Fatalf("重发失败: %v", err)
 	}
-	if out.ActivationPending != PendingEmail {
-		t.Fatalf("重发后 activation_pending = %q", out.ActivationPending)
+	if !out.Sent {
+		t.Fatal("重发没有投出去")
 	}
 	newCode := f.sent.get(t)
 	if newCode == old {
@@ -184,8 +180,8 @@ func TestResendRejectsVerifiedAccount(t *testing.T) {
 	}
 }
 
-// 用例 44 的另一半：没有发信账号时重发 → 503 auth.mail_unavailable + activation_pending=manual。
-func TestResendWithoutMailAccountsGoesManual(t *testing.T) {
+// 没有发信账号时重发 → 503 auth.mail_unavailable（自适应降级已作废，拍板 §12.2）。
+func TestResendWithoutMailAccountsFails(t *testing.T) {
 	f := newFixture(t, func(d *Deps) { d.Mail = noMailAccounts{} })
 	f.seedRBAC()
 	f.newUserRow("manual", "passw0rd-1", "user", false)
@@ -194,12 +190,18 @@ func TestResendWithoutMailAccountsGoesManual(t *testing.T) {
 	if errCode(err) != "auth.mail_unavailable" {
 		t.Fatalf("重发 -> %v（code=%q），想要 auth.mail_unavailable", err, errCode(err))
 	}
-	var pending *string
-	if err := f.pool.QueryRow(f.ctx, "SELECT activation_pending FROM users WHERE username = 'manual'").Scan(&pending); err != nil {
-		t.Fatal(err)
-	}
-	if pending == nil || *pending != PendingManual {
-		t.Fatalf("activation_pending = %v，想要 manual（拍板 §9.5）", pending)
+}
+
+// auto_activate=false 时重发 → 409：**没有码可发**（拍板 §12.2 表格的最后一列）。
+func TestResendDisabledInManualMode(t *testing.T) {
+	f := newFixture(t)
+	f.seedRBAC()
+	f.newUserRow("noc0de", "passw0rd-1", "user", false)
+	f.cfg.Auth.AutoActivate = ptrBool(false)
+	actor := f.actor(f.login("noc0de", "passw0rd-1"))
+	_, err := f.svc.ResendVerify(f.ctx, actor, "127.0.0.1")
+	if errCode(err) != "auth.resend_disabled" {
+		t.Fatalf("人工激活模式下重发 -> %v（code=%q），想要 auth.resend_disabled", err, errCode(err))
 	}
 }
 
@@ -274,7 +276,7 @@ func TestPasswordResetTwoSteps(t *testing.T) {
 		t.Fatalf("重置密码后旧会话仍有效: %v", err)
 	}
 	// 旧口令失效、新口令可用。
-	if _, err := f.svc.Login(f.ctx, LoginInput{Login: "resetme", Password: "passw0rd-1", IP: "127.0.0.1"}); errCode(err) != "auth.bad_credentials" {
+	if _, err2 := f.svc.Login(f.ctx, LoginInput{Login: "resetme", Password: "passw0rd-1", IP: "127.0.0.1"}); errCode(err2) != "auth.bad_credentials" {
 		t.Fatalf("旧口令还能登录: %v", err)
 	}
 	if _, err := f.svc.Login(f.ctx, LoginInput{Login: "resetme", Password: "brand-new-pw-9", IP: "127.0.0.1"}); err != nil {

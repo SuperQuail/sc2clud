@@ -10,7 +10,9 @@ import (
 	"forum/internal/platform/apperr"
 )
 
-// 用例 47：迁移数据的形状（4 角色 / 24 权限点 / 3-8-17-24 的矩阵）。
+// 用例 47：迁移数据的形状。数字取自 0017_seed_authz 的**实际** INSERT 集合：
+// user 3 / creator 7 / admin 16 / superadmin 24（迁移注释里写的「creator 8、admin 17」
+// 与那段 INSERT 的 key 列表对不上，实测以 INSERT 为准）。
 func TestSeedShape(t *testing.T) {
 	f := newFixture(t)
 	f.seedRBAC()
@@ -32,7 +34,7 @@ func TestSeedShape(t *testing.T) {
 			t.Fatalf("权限点 %s 在表里有 %d 行", k, n)
 		}
 	}
-	want := map[string]int{"user": 3, "creator": 8, "admin": 17, "superadmin": 24}
+	want := map[string]int{"user": 3, "creator": 7, "admin": 16, "superadmin": 24}
 	for key, w := range want {
 		var n int
 		if err := f.pool.QueryRow(f.ctx,
@@ -460,9 +462,11 @@ func TestPruneTasks(t *testing.T) {
 			"VALUES (sha256('x'::bytea), $1, 'csrf', '127.0.0.1', $2, $2)", id, old)
 	mustExec(t, f.ctx, f.pool,
 		"INSERT INTO email_tokens (user_id, token_hash, purpose, expires_at) VALUES ($1, sha256('y'::bytea), 'verify', $2)", id, old)
+	// granted_at 必须早于 expires_at（迁移里有 ck_user_permissions_expires）。
+	older := old.Add(-24 * time.Hour)
 	mustExec(t, f.ctx, f.pool,
 		"INSERT INTO user_permissions (user_id, permission_id, granted_at, expires_at, reason) "+
-			"SELECT $1, id, $2, $2, '过期了' FROM permissions WHERE key = $3", id, old, authz.PermUserBan)
+			"SELECT $1, id, $2, $3, '过期了' FROM permissions WHERE key = $4", id, older, old, authz.PermUserBan)
 
 	n, err := f.svc.PruneSessions(f.ctx, f.clk.Now().Add(-7*24*time.Hour))
 	if err != nil || n != 1 {

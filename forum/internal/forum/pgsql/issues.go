@@ -29,9 +29,14 @@ type IssueRow struct {
 	Assignee     *UserRow
 }
 
+
+// topicScopeColumns 是「主题只用来限定范围」时的那三列：issues 的两条列表都用它，
+// 不要用 topicColumns（那一条还带 boards / users / topic_images 的列，这里没有那些 JOIN）。
+const topicScopeColumns = `t.id, t.title, b.slug, b.name`
+
 const issueColumns = `i.id, i.public_id, i.number, i.kind, i.title, i.status, i.body_html, i.tags,
        i.created_at, i.updated_at, i.closed_at,
-       t.id, t.title, b.slug, b.name,
+       ` + " + topicScopeColumns + " + `,
        a.id, a.public_id, a.username, a.nickname, a.avatar_hash, a.avatar_small_hash, a.status`
 
 // 指派人是可空的外键：LEFT JOIN + 一组可空标量，扫完再拼成一个可空的 UserRow。

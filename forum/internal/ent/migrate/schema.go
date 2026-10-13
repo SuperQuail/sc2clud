@@ -1899,7 +1899,6 @@ var (
 		{Name: "status", Type: field.TypeString, Size: 8, Default: "active"},
 		{Name: "email_verified_at", Type: field.TypeTime, Nullable: true},
 		{Name: "activated_at", Type: field.TypeTime, Nullable: true},
-		{Name: "activation_pending", Type: field.TypeString, Nullable: true, Size: 8},
 		{Name: "trusted", Type: field.TypeBool, Default: false},
 		{Name: "exp", Type: field.TypeInt, Default: 0},
 		{Name: "level", Type: field.TypeInt, Default: 1},
@@ -1918,19 +1917,19 @@ var (
 		ForeignKeys: []*schema.ForeignKey{
 			{
 				Symbol:     "users_titles_equipped_by",
-				Columns:    []*schema.Column{UsersColumns[20]},
+				Columns:    []*schema.Column{UsersColumns[19]},
 				RefColumns: []*schema.Column{TitlesColumns[0]},
 				OnDelete:   schema.SetNull,
 			},
 			{
 				Symbol:     "users_roles_role",
-				Columns:    []*schema.Column{UsersColumns[21]},
+				Columns:    []*schema.Column{UsersColumns[20]},
 				RefColumns: []*schema.Column{RolesColumns[0]},
 				OnDelete:   schema.Restrict,
 			},
 			{
 				Symbol:     "users_titles_equipped_title",
-				Columns:    []*schema.Column{UsersColumns[22]},
+				Columns:    []*schema.Column{UsersColumns[21]},
 				RefColumns: []*schema.Column{TitlesColumns[0]},
 				OnDelete:   schema.SetNull,
 			},
@@ -1939,7 +1938,7 @@ var (
 			{
 				Name:    "idx_users_created_at",
 				Unique:  false,
-				Columns: []*schema.Column{UsersColumns[18], UsersColumns[0]},
+				Columns: []*schema.Column{UsersColumns[17], UsersColumns[0]},
 			},
 		},
 	}

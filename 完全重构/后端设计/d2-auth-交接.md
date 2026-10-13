@@ -126,7 +126,7 @@ type AuditQuery            struct{ TargetType, TargetID, Action, ActorPublicID s
 type CreateAdminInput      struct{ Handle, Email, Nickname, Password string }
 type VerifyCodeInput       struct{ Login, Code string; IP netip.Addr }   // Login = username 或 email
 type ResetTicket           struct{ Ticket string; ExpiresAt time.Time } // Redis auth:pwreset:<ticket>，10 分钟、GETDEL 一次性
-type ResendResult          struct{ ActivationPending string }           // "email" | "manual"
+type ResendResult          struct{ ResendAfter int }                     // 秒；前端拿它做倒计时。**没有"模式"字段**（模式是全局配置，见拍板 §12）
 ```
 
 ### 1.3 Handler 路由注册
@@ -174,10 +174,10 @@ type AvatarURL interface {
 | 限流 | `ratelimit.RateLimiter`：`Allow(ctx, key, limit, window) (bool, time.Duration, error)` | 本域的 key 见设计 §9.5；验证码校验另有一个**按账号的失败窗口**：`auth:mail:verify:user:<id>` 10 次/15 分钟（拍板 §11.4） |
 | 队列 | `queue.Queue.Enqueue`（事务外）与 `EnqueueTx`（事务内） | 邮件任务类型常量放 `platform/queue/types.go`，payload `{"id":<userID>}` |
 | 邮件 | 只需要「入队」这一条：`mail:send` 任务 + 模板 id `verify_code`（验证码）/ `reset_code` | **业务代码不许直接发信**（方案 §15.10）。**邮件正文里不给链接**（拍板 §11.2） |
-| 发信能力查询 | `MailAccounts`（本域 deps.go 定义）：`HasUsable(ctx) (bool, error)` | **注册与重发要同步判**：一个可用账号都没有 → 503 `auth.mail_unavailable` + `activation_pending='manual'`（拍板 §9.5）。**额度满不算不可用**（额度会恢复），那种情况只置 manual。这个接口由 `mail` 的 Router 实现 |
+| 发信能力查询 | `MailAccounts`（本域 deps.go 定义）：`HasUsable(ctx) (bool, error)` | **注册与重发要同步判**（拍板 §12.2）：`auto_activate=true` 且一个可用账号都没有 → **注册直接 503 `auth.mail_unavailable` 并回滚**（不建账号、不写任何降级状态）；`auto_activate=false` 时重发也返回它。**额度满不算不可用**（额度会恢复）。由 `mail` 的 Router 实现 |
 | 自检的例外说明 | `user_permissions` **故意没有指向 users 的外键**（提权记录不能因为删用户而消失），所以 §14.3 的全库外键索引自检不会要求它建索引——这不是漏 | 见设计 §5.7 |
 | 时钟 | `clock.Clock`；`clock.Fake` 必须能冻结时间 | 会话过期、令牌过期、touch 节流全靠它 |
-| 错误 | `apperr.Error{Code,Status,Msg,Fields}` + `Invalid(fields)` | 本域新增的 14 个码见设计 §15.2（含 `auth.not_activated` / `auth.mail_unavailable` / `auth.too_many_requests`；**`auth.email_unverified` 已作废**） |
+| 错误 | `apperr.Error{Code,Status,Msg,Fields}` + `Invalid(fields)` | 本域新增的 **15** 个码见设计 §15.2（含 `auth.not_activated` / `auth.mail_unavailable` / `auth.activation_is_manual` / `auth.too_many_requests`；**`auth.email_unverified` 已作废**）。注意 **403 与 503 的分工**：策略决定用 403（`activation_is_manual`），配置错误用 503（`mail_unavailable`） |
 | HTTP | `httpx.Bind / OK / Created / Fail`；`httpx.Fail` 负责 500 + request_id | **我要一个例外**：审计导出的 handler 自己写 `c.Writer`（CSV 流式） |
 | ID | `idgen.NewPublicID()`（UUID v7）、`idgen.RandomToken(n)`、`idgen.NumericCode(6)`（6 位数字，**crypto/rand**） | DB 不设默认值；**会话表也要 public_id**（U13） |
 | 日志 | `*slog.Logger` | — |
@@ -258,14 +258,16 @@ type AvatarURL interface {
 - [ ] **Lead 回写：拍板 §1.2 的表补上 `resource.publish` 这一行**（U1/U2 定案是 25 个，表里现在只有 24 行）；
 - [ ] **Lead 决定 `topic.feature` 的归处**：拍板 §10.8 记着「P1b 已落库 24 个，`topic.pin` 兼管 `/feature`」，而 §9.9 又要求 25 个 —— 两条并存时 `topic.feature` 是一个永不生效的勾。**A** 补迁移 + `/feature` 改用 `topic.feature`；**B** 退回 24 个。选定前 §14.1 的启动自检会红；
 - [ ] Lead 回写：方案 §3 目录树补 `internal/auth/pgsql`、`internal/user/pgsql`（U5 定案：放业务模块下）；
-- [ ] Lead 回写：方案 §21.4 删除 `auth.email_unverified`、补本域新增的 14 个码（含 `auth.not_activated` / `auth.mail_unavailable` / `auth.too_many_requests`）；
+- [ ] Lead 回写：方案 §21.4 删除 `auth.email_unverified`、补本域新增的 **15** 个码（含 `auth.not_activated` / `auth.mail_unavailable` / `auth.activation_is_manual` / `auth.too_many_requests`）；
 - [ ] Lead 回写：方案 §9.1 那句「注册必须完成邮箱验证才能登录」→「注册后需**激活**才能发帖；未激活可登录以便重发验证码」（拍板 §9.12 已给出措辞）；§21.2 的 `/auth/email/verify` 入参改成 `{username|email, code}`，并补 `/auth/password/verify-code`；
-- [ ] Lead 回写：数据库文档 §4.1 的 `email_tokens` 补 `attempt_count`/`last_attempt_at`，`used_at` 改名 `consumed_at`；`users` 补 `activation_pending` 与 `default_avatar_hash`（拍板 §9.11）；
+- [ ] Lead 回写：数据库文档 §4.1 的 `email_tokens` 补 `attempt_count`/`last_attempt_at`，`used_at` 改名 `consumed_at`；`users` 补 `default_avatar_hash`（拍板 §8.8）。**`activation_pending` 已被拍板 §12 删除**——数据库文档不要写它；若某个已提交的迁移加过这一列，按拍板 §12.5 新增一条 `ALTER TABLE users DROP COLUMN activation_pending`；
 - [ ] Lead 回写：拍板 §9.2 状态机里「点链接 POST /auth/email/verify { token }」→「输入 6 位码」（拍板 §11.9 自己列了这条）；
 - [ ] D1 确认 `mixin/time.go`、`generate.go` 的 `sql/lock`、`idgen.parsePublicID`+`idgen.NumericCode`（6 位数字，crypto/rand）、`auth.*`/`user.*` 配置项，以及 `MailAccounts.HasUsable` 这个能力从哪来（它是注册与重发路径上的**同步**判定，不能等队列任务告诉你"发不出去"）；
 - [ ] D3 确认 `board_moderators` 的列与 `user_id` 单列索引 + 回调 `InvalidateUser`；写路由挂 `RequireActivated()`；
 - [ ] D4 确认 `user.AvatarURL` 的两个方法（含 `SetDefaultAvatar`）与"头像列归 media 写"的列划分（U12/U15/U20）；
-- [ ] 前端确认 `GET /me/sessions` 的字段集（U21 已定案：`id`(public_id)/`ip`/`user_agent`/`last_seen_at`/`created_at`/`is_current`）与 `GET /me` 的 `extra` 形状。
+- [ ] 前端确认 `GET /me/sessions` 的字段集（U21 已定案：`id`(public_id)/`ip`/`user_agent`/`last_seen_at`/`created_at`/`is_current`）与 `GET /me` 的 `extra` 形状；
+- [ ] **前端按拍板 §12.5 做两种未激活文案**：`auto_activate=true` → 「验证码已发到邮箱」+ 重发按钮；`false` → 「等待管理员激活」+ **不显示重发按钮**（两个文案由同一个开关派生，不要引入第三态）；
+- [ ] **D1（site 模块）**：`site_settings` 的键 `auth.registration.auto_activate`（默认 true）要能在后台「站点设置」里改，并且**不插默认行**（缺行即 true，见设计 §10.1）；
 
 ---
 
@@ -301,12 +303,12 @@ type AvatarURL interface {
 
 ---
 
-## 7. 本轮修订清单（2026-10-13，按拍板 §9 / §9.9 / §9.12 / §11）
+## 7. 本轮修订清单（2026-10-13，按拍板 §9 / §9.9 / §9.11 / §9.12 / §11 / **§12**）
 
 | 改了什么 | 影响面 |
 |---|---|
 | 写闸门从 `email_verified_at` 换成 `activated_at`；`RequireVerified()` → `RequireActivated()`；`auth.email_unverified` 作废 | 设计 §9.3（整节重写）、§9.2 路由说明、§6.4 中间件顺序、§15 错误码、§18 测试 |
-| 新增 `users.activation_pending` 状态机（email/manual/NULL）+ 两条激活路 | 设计 §5.1 列、§10.1 状态机、§10.5 重发、§18.4 第 44–46 条 |
+| ~~新增 `users.activation_pending` 状态机 + 两条激活路~~ **已作废**（2026-10-13，拍板 §12）：字段删除、模式改由 `site_settings` 的 `auth.registration.auto_activate` 决定 | 设计 §5.1（列已删）、§10.1（两种模式 + 读开关）、§10.3（503 且注册回滚）、§10.5、§17.2（四问）、§18.4 第 44–46d 条 |
 | 邮箱激活改 6 位验证码：`attempt_count`/`last_attempt_at`、10 分钟、5 次作废、15 分钟 10 次 429、统一文案、邮件不给链接 | 设计 §5.3 表、§10.2–§10.5、§9.5 路由表、§15 错误码 |
 | 找回密码改成「验证码 → reset_ticket → 设新密码」两步 | 设计 §10.6、§9.5 路由表（新增 `/auth/password/verify-code`） |
 | 新增 `users.default_avatar_hash`（U12） | 设计 §5.1 列与索引、§10.7 分配规则、交接单 §2.3 |

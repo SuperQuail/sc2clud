@@ -109,24 +109,31 @@ func applyMigrations(t *testing.T, ctx context.Context, pool *pgxpool.Pool) {
 	}
 }
 
-// patchMigration 兜住已确认的三处迁移缺陷。它们都不在本模块的写作用域（migrations/** 不许改），
-// 所以只能在这里做等价修补，好让本模块的测试跑在真库上；迁移被正式修好后这里应当整体删掉：
-//
-//  1. 0004_forum 的 board_acls / topic_images 同时写了 "id ... PRIMARY KEY" 与复合 "PRIMARY KEY (...)"，
-//     PostgreSQL 直接拒收（指定多个主键是不允许的）→ 迁移在 0004 就断，之后一张表都建不出来。
-//     按 DDL 本意保留 id 主键，把复合/列内主键降成唯一约束（语义不变：仍唯一）。
-//  2. 0011_reward / 0010_media 的三张表缺 ent 生成代码要的列：
-//     user_donation_settings、donation_notice_defaults 缺 id（ent 的 SELECT 固定带 id），
-//     payment_channels 缺 public_id（PaymentChannel schema 带 mixin.PublicID）。
+// patchMigration 兜住 0010_media 里 payment_channels 缺的 public_id 列（PaymentChannel schema 带
+// mixin.PublicID，端点是 /me/payment-channels/{id}），并保留一条防重复主键的兜底。
+// migrations/** 不在本模块的写作用域，迁移被正式修好后这个函数整体删掉即可。
 func patchMigration(sql string) string {
-	// 先补列，再降主键：补完之后这两张表才算「有两个主键」，降掉的是原来那个自然键
-	for _, t := range []string{"user_donation_settings", "donation_notice_defaults"} {
-		sql = strings.Replace(sql, "CREATE TABLE "+t+" (\n", "CREATE TABLE "+t+" (\n  id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,\n", 1)
-	}
-
-	// 收款码表补 public_id（schema 上是 mixin.PublicID；默认值只是为了让 NOT NULL 能加上）
-	sql = strings.Replace(sql, "CREATE TABLE payment_channels (\n", "CREATE TABLE payment_channels (\n  public_id uuid NOT NULL DEFAULT gen_random_uuid() UNIQUE,\n", 1)
+	// 0010 的收 width/height 说明：这里只补 public_id，重复执行不会重复补
+	sql = addColumn(sql, "payment_channels", "public_id", "public_id uuid NOT NULL DEFAULT gen_random_uuid() UNIQUE")
 	return demotePrimaryKeys(sql)
+}
+
+// addColumn 在 "CREATE TABLE <table> (" 之后插一列；已经有了就什么都不做（幂等）。
+func addColumn(sql, table, column, decl string) string {
+	open := "CREATE TABLE " + table + " (\n"
+	i := strings.Index(sql, open)
+	if i < 0 {
+		return sql
+	}
+	end := strings.Index(sql[i:], "\n);")
+	if end < 0 {
+		return sql
+	}
+	block := sql[i : i+end]
+	if strings.Contains(block, "\n  "+column+" ") || strings.HasPrefix(block, open+column+" ") {
+		return sql
+	}
+	return sql[:i+len(open)] + "  " + decl + ",\n" + sql[i+len(open):]
 }
 
 // demotePrimaryKeys 把同一张表里的「第二个主键」降成 UNIQUE（保留唯一性，只是不再是主键）：

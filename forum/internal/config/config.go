@@ -109,6 +109,11 @@ type Auth struct {
 	TouchInterval time.Duration `yaml:"touch_interval" koanf:"touch_interval"`
 	// RenewInterval 是 expires_at 真正的续期间隔（设计 §6.5：默认 24h）
 	RenewInterval time.Duration `yaml:"renew_interval" koanf:"renew_interval"`
+	// AutoActivate 是注册激活的唯一开关（拍板 §12.2）：
+	// true  = 注册即发 6 位验证码，用户自助激活；
+	// false = 不发任何邮件，等管理员在后台点「激活」。
+	// 它**不是**每用户状态，所以 users 表没有 activation_pending 列（拍板 §12.5）。
+	AutoActivate *bool `yaml:"auto_activate" koanf:"auto_activate"`
 }
 
 // Image 是图片存储的根目录与三个上限。
@@ -138,6 +143,12 @@ type Web struct {
 	BasePath    string `yaml:"base_path" koanf:"base_path"`       // 运行期前缀：生产 "/"、dev "/dev/"
 	ServeShell  bool   `yaml:"serve_shell" koanf:"serve_shell"`   // 本地用 Vite 提供 shell 时关掉
 	ServeAssets bool   `yaml:"serve_assets" koanf:"serve_assets"` // 生产由 nginx 直出 /assets/ 时关掉
+}
+
+// AutoActivateOn 返回注册是否走「发验证码自助激活」（拍板 §12.2 默认 true）。
+// nil 表示没配：按默认 true。它是全局开关，不是每用户状态。
+func (a Auth) AutoActivateOn() bool {
+	return a.AutoActivate == nil || *a.AutoActivate
 }
 
 // BodyLimit 返回请求体默认上限。

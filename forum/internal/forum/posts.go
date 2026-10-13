@@ -3,6 +3,7 @@ package forum
 import (
 	"context"
 	"strings"
+	"time"
 
 	ent "forum/internal/ent"
 	"forum/internal/platform/apperr"
@@ -119,7 +120,25 @@ func (s *Service) CreatePost(ctx context.Context, actor *authz.Actor, topicPubli
 
 	now := s.clk.Now().UTC()
 	var postID int64
-	err = db.WithTx(ctx, s.db, func(tx *ent.Tx) error {
+	err = s.insertPost(ctx, actor, ref, in, html, now, &postID)
+	if err != nil {
+		return nil, err
+	}
+	row, err := s.repo.PostByID(ctx, postID, actor.UserID)
+	if err != nil {
+		return nil, err
+	}
+	d := postDTO(*row)
+	return &d, nil
+}
+
+// insertPost 是发回复的写事务（§4.4）。
+//
+// 幂等键撞车走**回滚后重来一次**这条路（§4.3）：一条语句报错会把整个事务置为 aborted，
+// 同一事务内再查只会拿到 25P02，所以「插入失败后回查」必须在事务之外做。
+func (s *Service) insertPost(ctx context.Context, actor *authz.Actor, ref *pgsql.TopicRef, in CreatePostInput,
+	html string, now time.Time, postID *int64) error {
+	err := db.WithTx(ctx, s.db, func(tx *ent.Tx) error {
 		// ① 顶行锁。锁的是主题行不是 posts：posts 上没有「帖内计数」要保护。
 		locked, err := pgsql.TopicRefForUpdate(ctx, tx, ref.ID)
 		if err != nil {
@@ -156,38 +175,27 @@ func (s *Service) CreatePost(ctx context.Context, actor *authz.Actor, topicPubli
 		id, _, err := pgsql.InsertPost(ctx, tx, newPublicID(), ref.ID, actor.UserID, parentID,
 			in.ContentMD, html, in.ClientToken, now)
 		if err != nil {
-			if in.ClientToken != "" && isUniqueViolation(err) {
-				existing, _, err := s.repo.PostIDByClientToken(ctx, actor.UserID, in.ClientToken)
-				if err != nil {
-					return err
-				}
-				postID = existing
-				return nil
-			}
 			return err
 		}
-		postID = id
+		*postID = id
 		// ④ reply_count 与 last_reply_at：重算而不是增量（§3.7 Q8a 的取舍）。
 		if err := pgsql.RecountTopic(ctx, tx, ref.ID); err != nil {
 			return err
 		}
 		// ⑤ 通知与索引。payload 只放 id（拍板 §5.7）：任务执行时再查一次库。
-		if err := s.enqueue(ctx, tx, queue.Task{
+		return s.enqueue(ctx, tx, queue.Task{
 			Type: queue.TypeNotifyReply, Payload: map[string]int64{"id": id},
-		}); err != nil {
-			return err
-		}
-		return nil
+		})
 	})
-	if err != nil {
-		return nil, err
+	if err == nil || in.ClientToken == "" || !isUniqueViolation(err) {
+		return err
 	}
-	row, err := s.repo.PostByID(ctx, postID, actor.UserID)
-	if err != nil {
-		return nil, err
+	existing, _, lookupErr := s.repo.PostIDByClientToken(ctx, actor.UserID, in.ClientToken)
+	if lookupErr != nil {
+		return err
 	}
-	d := postDTO(*row)
-	return &d, nil
+	*postID = existing
+	return nil
 }
 
 // UpdatePost 是 PATCH /posts/{id}：作者或管理端。**不动 last_reply_at**（编辑不是回复）。

@@ -224,26 +224,6 @@ func (_u *UserUpdate) ClearActivatedAt() *UserUpdate {
 	return _u
 }
 
-// SetActivationPending sets the "activation_pending" field.
-func (_u *UserUpdate) SetActivationPending(v string) *UserUpdate {
-	_u.mutation.SetActivationPending(v)
-	return _u
-}
-
-// SetNillableActivationPending sets the "activation_pending" field if the given value is not nil.
-func (_u *UserUpdate) SetNillableActivationPending(v *string) *UserUpdate {
-	if v != nil {
-		_u.SetActivationPending(*v)
-	}
-	return _u
-}
-
-// ClearActivationPending clears the value of the "activation_pending" field.
-func (_u *UserUpdate) ClearActivationPending() *UserUpdate {
-	_u.mutation.ClearActivationPending()
-	return _u
-}
-
 // SetTrusted sets the "trusted" field.
 func (_u *UserUpdate) SetTrusted(v bool) *UserUpdate {
 	_u.mutation.SetTrusted(v)
@@ -1022,11 +1002,6 @@ func (_u *UserUpdate) check() error {
 			return &ValidationError{Name: "status", err: fmt.Errorf(`ent: validator failed for field "User.status": %w`, err)}
 		}
 	}
-	if v, ok := _u.mutation.ActivationPending(); ok {
-		if err := user.ActivationPendingValidator(v); err != nil {
-			return &ValidationError{Name: "activation_pending", err: fmt.Errorf(`ent: validator failed for field "User.activation_pending": %w`, err)}
-		}
-	}
 	if _u.mutation.RoleCleared() && len(_u.mutation.RoleIDs()) > 0 {
 		return errors.New(`ent: clearing a required unique edge "User.role"`)
 	}
@@ -1089,12 +1064,6 @@ func (_u *UserUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 	}
 	if _u.mutation.ActivatedAtCleared() {
 		_spec.ClearField(user.FieldActivatedAt, field.TypeTime)
-	}
-	if value, ok := _u.mutation.ActivationPending(); ok {
-		_spec.SetField(user.FieldActivationPending, field.TypeString, value)
-	}
-	if _u.mutation.ActivationPendingCleared() {
-		_spec.ClearField(user.FieldActivationPending, field.TypeString)
 	}
 	if value, ok := _u.mutation.Trusted(); ok {
 		_spec.SetField(user.FieldTrusted, field.TypeBool, value)
@@ -2102,26 +2071,6 @@ func (_u *UserUpdateOne) ClearActivatedAt() *UserUpdateOne {
 	return _u
 }
 
-// SetActivationPending sets the "activation_pending" field.
-func (_u *UserUpdateOne) SetActivationPending(v string) *UserUpdateOne {
-	_u.mutation.SetActivationPending(v)
-	return _u
-}
-
-// SetNillableActivationPending sets the "activation_pending" field if the given value is not nil.
-func (_u *UserUpdateOne) SetNillableActivationPending(v *string) *UserUpdateOne {
-	if v != nil {
-		_u.SetActivationPending(*v)
-	}
-	return _u
-}
-
-// ClearActivationPending clears the value of the "activation_pending" field.
-func (_u *UserUpdateOne) ClearActivationPending() *UserUpdateOne {
-	_u.mutation.ClearActivationPending()
-	return _u
-}
-
 // SetTrusted sets the "trusted" field.
 func (_u *UserUpdateOne) SetTrusted(v bool) *UserUpdateOne {
 	_u.mutation.SetTrusted(v)
@@ -2913,11 +2862,6 @@ func (_u *UserUpdateOne) check() error {
 			return &ValidationError{Name: "status", err: fmt.Errorf(`ent: validator failed for field "User.status": %w`, err)}
 		}
 	}
-	if v, ok := _u.mutation.ActivationPending(); ok {
-		if err := user.ActivationPendingValidator(v); err != nil {
-			return &ValidationError{Name: "activation_pending", err: fmt.Errorf(`ent: validator failed for field "User.activation_pending": %w`, err)}
-		}
-	}
 	if _u.mutation.RoleCleared() && len(_u.mutation.RoleIDs()) > 0 {
 		return errors.New(`ent: clearing a required unique edge "User.role"`)
 	}
@@ -2997,12 +2941,6 @@ func (_u *UserUpdateOne) sqlSave(ctx context.Context) (_node *User, err error) {
 	}
 	if _u.mutation.ActivatedAtCleared() {
 		_spec.ClearField(user.FieldActivatedAt, field.TypeTime)
-	}
-	if value, ok := _u.mutation.ActivationPending(); ok {
-		_spec.SetField(user.FieldActivationPending, field.TypeString, value)
-	}
-	if _u.mutation.ActivationPendingCleared() {
-		_spec.ClearField(user.FieldActivationPending, field.TypeString)
 	}
 	if value, ok := _u.mutation.Trusted(); ok {
 		_spec.SetField(user.FieldTrusted, field.TypeBool, value)

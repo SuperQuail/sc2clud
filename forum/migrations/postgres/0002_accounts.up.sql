@@ -116,7 +116,6 @@ CREATE TABLE users (
   avatar_small_hash   char(64)     NULL REFERENCES images(hash) ON DELETE SET NULL,
   -- default_avatar_hash 不在这里，在 0010_media（拍板 §8.8 / §9.11 U12）
   status              text         NOT NULL DEFAULT 'active',
-  activation_pending  text         NULL,
   email_verified_at   timestamptz  NULL,
   activated_at        timestamptz  NULL,
   trusted             boolean      NOT NULL DEFAULT false,
@@ -128,7 +127,6 @@ CREATE TABLE users (
   created_at          timestamptz  NOT NULL DEFAULT now(),
   updated_at          timestamptz  NOT NULL DEFAULT now(),
   CONSTRAINT ck_users_status             CHECK (status IN ('active','banned','deleted')),
-  CONSTRAINT ck_users_activation_pending CHECK (activation_pending IN ('email','manual')),
   CONSTRAINT ck_users_exp_nonneg         CHECK (exp >= 0),
   CONSTRAINT ck_users_level_min          CHECK (level >= 1)
 );

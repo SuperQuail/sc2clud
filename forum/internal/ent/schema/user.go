@@ -22,7 +22,8 @@ import (
 //   - uq_users_email_lower     UNIQUE (lower(email))
 //   - idx_users_nickname_lower (lower(nickname))         —— d4 §4.14 昵称前缀搜索 + dup 子查询（拍板 U4）
 //   - ck_users_status             CHECK (status IN ('active','banned','deleted'))
-//   - ck_users_activation_pending CHECK (activation_pending IN ('email','manual'))
+//   （不再有 activation_pending：模式由 site_settings 的 auth.registration.auto_activate 决定，
+//     它是**全局配置**不是每用户状态 —— 拍板 §12.2）
 //   - ck_users_exp_nonneg         CHECK (exp >= 0)
 //   - ck_users_level_min          CHECK (level >= 1)
 //   - fk_users_role            FK (role_id)           → roles(id)  ON DELETE RESTRICT
@@ -70,8 +71,6 @@ func (User) Fields() []ent.Field {
 			Comment("邮箱验证轴；NULL = 未验证，不影响任何权限（拍板 §9.12）"),
 		field.Time("activated_at").Optional().Nillable().
 			Comment("激活轴；NULL = 未激活：可登录可读，写操作 403 auth.not_activated（拍板 §9.4）"),
-		field.String("activation_pending").MaxLen(8).Optional().Nillable().
-			Comment("email/manual 两个互斥待激活态（拍板 §9.3），CHECK 在迁移"),
 		field.Bool("trusted").Default(false).
 			Comment("true = 发帖跳过人工审核"),
 		field.Int64("equipped_title_id").Optional().Nillable().

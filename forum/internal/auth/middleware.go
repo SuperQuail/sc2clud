@@ -81,6 +81,10 @@ func (s *Service) PermAny(perms ...string) gin.HandlerFunc {
 // requirePerm 把 401 与 403 的分界实现一次（设计 §6.4）：
 // 没有 Principal → 401；有 Principal 但缺权限 → 403。
 func (s *Service) requirePerm(perms []string, any bool) gin.HandlerFunc {
+	if len(perms) == 0 {
+		// 路由写错了：Perm() 不带权限点等于把这条路由对所有人放行。启动即炸比线上静默放行好。
+		panic("auth: Perm() 必须至少给一个权限点")
+	}
 	return func(c *gin.Context) {
 		p, ok := principalFrom(c)
 		if !ok || p.Status != StatusActive {

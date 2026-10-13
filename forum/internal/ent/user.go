@@ -47,8 +47,6 @@ type User struct {
 	EmailVerifiedAt *time.Time `json:"email_verified_at,omitempty"`
 	// 激活轴；NULL = 未激活：可登录可读，写操作 403 auth.not_activated（拍板 §9.4）
 	ActivatedAt *time.Time `json:"activated_at,omitempty"`
-	// email/manual 两个互斥待激活态（拍板 §9.3），CHECK 在迁移
-	ActivationPending *string `json:"activation_pending,omitempty"`
 	// true = 发帖跳过人工审核
 	Trusted bool `json:"trusted,omitempty"`
 	// 佩戴中的头衔（只有一个）；FK titles(id) ON DELETE SET NULL
@@ -288,7 +286,7 @@ func (*User) scanValues(columns []string) ([]any, error) {
 			values[i] = new(sql.NullBool)
 		case user.FieldID, user.FieldRoleID, user.FieldEquippedTitleID, user.FieldExp, user.FieldLevel:
 			values[i] = new(sql.NullInt64)
-		case user.FieldUsername, user.FieldEmail, user.FieldPasswordHash, user.FieldNickname, user.FieldBio, user.FieldAvatarHash, user.FieldAvatarSmallHash, user.FieldDefaultAvatarHash, user.FieldStatus, user.FieldActivationPending:
+		case user.FieldUsername, user.FieldEmail, user.FieldPasswordHash, user.FieldNickname, user.FieldBio, user.FieldAvatarHash, user.FieldAvatarSmallHash, user.FieldDefaultAvatarHash, user.FieldStatus:
 			values[i] = new(sql.NullString)
 		case user.FieldEmailVerifiedAt, user.FieldActivatedAt, user.FieldLastLoginAt, user.FieldCreatedAt, user.FieldUpdatedAt:
 			values[i] = new(sql.NullTime)
@@ -399,13 +397,6 @@ func (_m *User) assignValues(columns []string, values []any) error {
 			} else if value.Valid {
 				_m.ActivatedAt = new(time.Time)
 				*_m.ActivatedAt = value.Time
-			}
-		case user.FieldActivationPending:
-			if value, ok := values[i].(*sql.NullString); !ok {
-				return fmt.Errorf("unexpected type %T for field activation_pending", values[i])
-			} else if value.Valid {
-				_m.ActivationPending = new(string)
-				*_m.ActivationPending = value.String
 			}
 		case user.FieldTrusted:
 			if value, ok := values[i].(*sql.NullBool); !ok {
@@ -631,11 +622,6 @@ func (_m *User) String() string {
 	if v := _m.ActivatedAt; v != nil {
 		builder.WriteString("activated_at=")
 		builder.WriteString(v.Format(time.ANSIC))
-	}
-	builder.WriteString(", ")
-	if v := _m.ActivationPending; v != nil {
-		builder.WriteString("activation_pending=")
-		builder.WriteString(*v)
 	}
 	builder.WriteString(", ")
 	builder.WriteString("trusted=")

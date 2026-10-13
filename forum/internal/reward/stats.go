@@ -47,13 +47,11 @@ func (s *Service) Stats(ctx context.Context, actor *authz.Actor, in StatsInput) 
 	}
 	out := &DonationStats{Leaderboard: []RecipientIncome{}}
 
-	all, err := approved().
-		Aggregate(ent.Sum(donationrecord.FieldAmountCents), ent.Count()).
-		Ints(ctx)
+	all, err := aggregateAmounts(ctx, approved())
 	if err != nil {
 		return nil, fmt.Errorf("统计全部收入: %w", err)
 	}
-	out.AllTotalCents, out.AllCount = pair(all)
+	out.AllTotalCents, out.AllCount = all.TotalCents, all.Count
 
 	recipients, donors, err := s.publicSets(ctx)
 	if err != nil {
@@ -69,13 +67,11 @@ func (s *Service) Stats(ctx context.Context, actor *authz.Actor, in StatsInput) 
 		)
 	}
 
-	sum, err := public().
-		Aggregate(ent.Sum(donationrecord.FieldAmountCents), ent.Count()).
-		Ints(ctx)
+	sum, err := aggregateAmounts(ctx, public())
 	if err != nil {
 		return nil, fmt.Errorf("统计公开收入: %w", err)
 	}
-	out.PublicTotalCents, out.PublicCount = pair(sum)
+	out.PublicTotalCents, out.PublicCount = sum.TotalCents, sum.Count
 
 	// 排行榜在定义上就要看全体收款人，全表聚合是有意的（d6-reward §7.8）；只在管理端跑。
 	var rows []struct {
@@ -124,10 +120,20 @@ func (s *Service) Stats(ctx context.Context, actor *authz.Actor, in StatsInput) 
 	return out, nil
 }
 
-// pair 把 Aggregate(...).Ints() 的 [sum, count] 拆开。
-func pair(v []int) (int64, int64) {
-	if len(v) < 2 {
-		return 0, 0
+// totals 是「金额合计 + 笔数」的一次聚合结果。别名要与 Aggregate 的 As(...) 逐字一致。
+type totals struct {
+	TotalCents int64 `json:"total_cents"`
+	Count      int64 `json:"count"`
+}
+
+func aggregateAmounts(ctx context.Context, q *ent.DonationRecordQuery) (totals, error) {
+	var rows []totals
+	err := q.Aggregate(
+		ent.As(ent.Sum(donationrecord.FieldAmountCents), "total_cents"),
+		ent.As(ent.Count(), "count"),
+	).Scan(ctx, &rows)
+	if err != nil || len(rows) == 0 {
+		return totals{}, err
 	}
-	return int64(v[0]), int64(v[1])
+	return rows[0], nil
 }

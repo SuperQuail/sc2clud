@@ -99,10 +99,12 @@ type RegisterInput struct {
 // RegisterResult 是注册响应。**不发会话、不自动登录**（设计 §7.1）：
 // 邮箱未必是真的，先给会话等于一个假邮箱换一个可写会话。
 type RegisterResult struct {
-	ID                string `json:"id"`
-	Handle            string `json:"handle"`
-	EmailVerified     bool   `json:"email_verified"`
-	ActivationPending string `json:"activation_pending"`
+	ID            string `json:"id"`
+	Handle        string `json:"handle"`
+	EmailVerified bool   `json:"email_verified"`
+	// AutoActivate 告诉前端注册后该显示哪一页（拍板 §12.2）：
+	// true → 「验证码已发到邮箱」+ 重发按钮；false → 「等待管理员激活」+ **不显示**重发按钮。
+	AutoActivate bool `json:"auto_activate"`
 }
 
 // LoginInput 的 Login 同时接受登录名与邮箱（不新增端点）。
@@ -123,26 +125,26 @@ type LoginResult struct {
 
 // MeResult 是 GET /me 的响应。
 type MeResult struct {
-	ID                string          `json:"id"`
-	Handle            string          `json:"handle"`
-	Nickname          string          `json:"nickname"`
-	Email             string          `json:"email"`
-	Avatar            string          `json:"avatar"`
-	AvatarSmall       string          `json:"avatar_small"`
-	Bio               string          `json:"bio"`
-	Status            string          `json:"status"`
-	EmailVerified     bool            `json:"email_verified"`
-	Activated         bool            `json:"activated"`
-	ActivationPending string          `json:"activation_pending"`
-	Trusted           bool            `json:"trusted"`
-	Level             int             `json:"level"`
-	Exp               int             `json:"exp"`
-	ExpMax            int             `json:"exp_max"`
-	Role              RoleItem        `json:"role"`
-	Perms             []string        `json:"perms"`
-	Extra             []ExtraPermItem `json:"extra"`
-	BoardIDs          []int64         `json:"board_ids"`
-	CreatedAt         time.Time       `json:"created_at"`
+	ID            string          `json:"id"`
+	Handle        string          `json:"handle"`
+	Nickname      string          `json:"nickname"`
+	Email         string          `json:"email"`
+	Avatar        string          `json:"avatar"`
+	AvatarSmall   string          `json:"avatar_small"`
+	Bio           string          `json:"bio"`
+	Status        string          `json:"status"`
+	EmailVerified bool            `json:"email_verified"`
+	Activated     bool            `json:"activated"`
+	AutoActivate  bool            `json:"auto_activate"`
+	Trusted       bool            `json:"trusted"`
+	Level         int             `json:"level"`
+	Exp           int             `json:"exp"`
+	ExpMax        int             `json:"exp_max"`
+	Role          RoleItem        `json:"role"`
+	Perms         []string        `json:"perms"`
+	Extra         []ExtraPermItem `json:"extra"`
+	BoardIDs      []int64         `json:"board_ids"`
+	CreatedAt     time.Time       `json:"created_at"`
 }
 
 // ExtraPermItem 是一条点对点追加的权限（/me 的展示字段）。
@@ -195,12 +197,6 @@ const (
 	StatusActive  = "active"
 	StatusBanned  = "banned"
 	StatusDeleted = "deleted"
-)
-
-// 激活待办的两个互斥取值（users.activation_pending，拍板 §9.3）。
-const (
-	PendingEmail  = "email"
-	PendingManual = "manual"
 )
 
 // 邮箱验证码 / 重置票据的用途（email_tokens.purpose，迁移里有 CHECK）。

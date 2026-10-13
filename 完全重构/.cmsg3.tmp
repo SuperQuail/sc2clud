@@ -1,0 +1,15 @@
+修 payment_channels 缺 public_id + 探针加永久检查
+
+缺陷（P2e 报的）：0010_media 的 payment_channels 没有 public_id 列，而 ent schema 带 mixin.PublicID →
+ent 查询会 SELECT public_id → 生产库报 42703 字段不存在，收款码端点整条不通。
+
+根因：我上一轮只按「跑一遍迁移看哪张表没 id」修，**没有对称地检查 public_id** ——
+同一个 entity-mixin 与迁移对不上的问题，我只堵了一半（id 那一半）。
+
+堵法（不只是修现象）：
+1. 0010_media 补 public_id uuid NOT NULL UNIQUE；
+2. .tools/migcheck 探针新增 PUBLIC_ID_MISSING 检查：从 ent schema 抽出所有带 mixin.PublicID 的实体，
+   断言真库里对应表都有 public_id 列。现在输出 PUBLIC_ID_MISSING(0)。
+   —— 这条检查就是这次缺陷的堵法：不靠人记，靠断言。
+
+验证：=== up: 17/17 ok === / NO_ID_COLUMN(1) 只剩 topic_search（派生表，有意）/ UNINDEXED_FK_COUNT=0 / PUBLIC_ID_MISSING(0)。

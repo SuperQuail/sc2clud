@@ -27,6 +27,7 @@ const (
 	ActionUserCreateAdmin  = "user.create_admin"
 	ActionUserRoleAssign   = "user.role.assign"
 	ActionUserBan          = "user.ban"
+	ActionUserActivate     = "user.activate"
 	ActionSessionsRevoke   = "user.sessions.revoke"
 	ActionRolePermsEdit    = "role.permissions.edit"
 	ActionPermissionGrant  = "permission.grant"
