@@ -1,9 +1,9 @@
 import Button from '@jetbrains/ring-ui-built/components/button/button';
 import { ControlsHeight } from '@jetbrains/ring-ui-built/components/global/controls-height';
 import { MessageSquare, Star, UserPlus } from 'lucide-react';
-import { appPath } from '@/lib/url';
 import { icon16 } from '@/ui/icons';
 import type { Board } from './types';
+import { appPath } from '@/lib/url';
 
 // 右栏第一格：分区简介。顺序照「先是什么、再有多大、最后能做什么」——
 // 名称 + 一句话简介 + 四个统计 + 关注按钮；分区封面缩在左上角当视觉锚点，不占一整屏。
@@ -34,7 +34,9 @@ export function BoardSummary({ board }: { board: Board }) {
         <Button primary inline={false} height={ControlsHeight.S} icon={icon16(board.joined ? Star : UserPlus)}>
           {board.joined ? '已关注' : '关注分区'}
         </Button>
-        <Button href={appPath('new')}>发帖</Button>
+        {/* 「写帖页」原来是 protoTitle（不可导航，因为房间里没有那一页）。18-compose 建好之后
+            它必须变成真链接：房间内一律 ?page=（旧站域名下 /new、/settings 这类路径会 404）。 */}
+        <Button href={appPath('?page=18-compose&board=' + board.slug)}>发帖</Button>
       </div>
 
       {/* 只留一行权限说明：成员数上面统计格里已经有了，写第三遍没有信息量，窄栏里还会折行 */}

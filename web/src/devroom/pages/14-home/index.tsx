@@ -3,7 +3,6 @@ import ButtonSet from '@jetbrains/ring-ui-built/components/button-set/button-set
 import { ControlsHeight } from '@jetbrains/ring-ui-built/components/global/controls-height';
 import { useState } from 'react';
 import { Eraser, LayoutGrid, List, Plus } from 'lucide-react';
-import { appPath } from '@/lib/url';
 import { cn } from '@/lib/utils';
 import { icon16 } from '@/ui/icons';
 import { UserAvatar } from '@/ui/user/avatar';
@@ -12,6 +11,8 @@ import { CompactTopicRow } from './topic-compact-row';
 import { SquareTopicCard } from './topic-square-card';
 import { CompactRowSkeleton, EmptyState, ListEnd, SquareCardSkeleton } from './states';
 import { BOARDS, SORTS, TOPICS, filterByBoard, type SortKey, type Topic } from './mock';
+import { appPath } from '@/lib/url';
+import { roomHref } from '@/devroom/room-links';
 
 // DevRoom 14 · 主页面（信息流）
 // 交付：① 新增的**方卡片**（16:9 封面，grid ≥4 列）；② 第一版的**横板缩略卡片**留在同页做对照；
@@ -82,7 +83,15 @@ export default function HomePage() {
           <h1 className='m-0 text-[20px] font-semibold text-foreground'>战役社区 · {boardLabel}</h1>
           <p className='m-0 text-[13px] text-muted-foreground'>{matched.length} 个帖子 · 今日新增 12 · 关注 3,204</p>
         </div>
-        <Button primary inline={false} height={ControlsHeight.M} icon={icon16(Plus)}>
+        {/* 发帖 → 18-compose。**房间内链接只能走 ?page=**（旧站域名下的 /p/xxx、/settings 会 404，
+            盲审一号报的就是这个）。当前分区一并带过去（?board=）：从哪来就在哪发，不用再选一次。 */}
+        <Button
+          primary
+          inline={false}
+          height={ControlsHeight.M}
+          icon={icon16(Plus)}
+          href={appPath('?page=18-compose' + (board === 'all' ? '' : '&board=' + board))}
+        >
           发帖
         </Button>
       </section>
@@ -202,7 +211,7 @@ export default function HomePage() {
           </span>
           <div className='flex min-w-0 flex-1 flex-col gap-1'>
             <a
-              href={appPath('t/' + first.id)}
+              href={roomHref('12-topic')}
               className='min-w-0 truncate rounded-[3px] text-[15px] font-medium text-foreground outline-none hover:text-primary focus-visible:ring-[3px] focus-visible:ring-ring/50'
             >
               {first.title}

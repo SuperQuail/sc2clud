@@ -32,7 +32,7 @@ import type { MentionCandidate } from '@/ui/comment/mention-types';
 import { assetUrl } from '@/lib/url';
 import { MaxLengthPlugin } from './lexical/max-length-plugin';
 import { ImageUploader, type UploadedImage } from './image-uploader';
-import { planImages, processImage } from './image-pipeline';
+import { planImages, POST_IMAGE_MAX_BYTES, processImage } from './image-pipeline';
 import { theme } from './lexical/theme';
 import { $createMentionNode, MentionNode } from './lexical/mention-node';
 import { $createImageNode, ImageNode, countImageNodes } from './lexical/image-node';
@@ -254,12 +254,13 @@ export function MarkdownEditor({
     async (files: File[]) => {
       const pics = files.filter((f) => f.type.startsWith('image/'));
       if (pics.length === 0) return;
-      const opts = { existing: docImages, max: maxImages, compress };
-      const { room } = planImages(pics.length, opts);
-      if (room === 0) return;
+      // 拖拽与点选共用同一个判定：过大的**当场丢掉且不占名额**（image-pipeline 里，2026-10-13 补体积上限）
+      const { room, tooBig } = planImages({ existing: docImages, max: maxImages, compress, files: pics });
+      const usable = tooBig ? pics.filter((f) => f.size <= POST_IMAGE_MAX_BYTES) : pics;
+      if (room === 0 || usable.length === 0) return;
       const accepted: UploadedImage[] = [];
-      for (const f of pics.slice(0, room)) {
-        const blob = await processImage(f, opts);
+      for (const f of usable.slice(0, room)) {
+        const blob = await processImage(f, { existing: docImages, max: maxImages, compress });
         accepted.push({
           id: Math.random().toString(36).slice(2),
           name: f.name,

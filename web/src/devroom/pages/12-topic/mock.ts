@@ -2,6 +2,7 @@ import { assetUrl } from '@/lib/url';
 import type { CommentData } from '@/ui/comment/types';
 import type { MentionCandidate } from '@/ui/comment/mention-types';
 import type { Board, BoardNav, TopicPageData } from './types';
+import { roomHref } from '@/devroom/room-links';
 
 // 12-topic 的假数据。**只在本目录里**（业务页接的是 lib/api，不是这份）。
 // 版块顺序与图标照产品导航：公告 / 原版战役 mod / 自制战役 / 工具（玩家）/ 工具（开发者）。
@@ -92,12 +93,13 @@ const ADMIN = {
   title: { name: '执政官', color: '#2563eb' },
 };
 
-/** 当前登录者（GET /api/v1/me 的最小一份）：评论框与「我的」标记用 */
-export const MY_ACCOUNT = { nickname: '陆战队员', avatar: A('miyin-chibi-160.webp') };
+/** 当前登录者（GET /api/v1/me 的最小一份）：评论框与「我的」标记用。
+ *  handle 是**必须的**——「这条回复是不是我写的」只能靠它判（决定渲染不渲染删除入口）。 */
+export const MY_ACCOUNT = { handle: 'demo-marine', nickname: '陆战队员', avatar: A('miyin-chibi-160.webp') };
 
 export const CANDIDATES: MentionCandidate[] = [
   { id: '12', nickname: '示范管理员', handle: 'demo-admin', avatar: ADMIN.avatar, role: { key: 'admin', name: '管理员' } },
-  { id: '37', nickname: '陆战队员', handle: 'demo-marine', avatar: MY_ACCOUNT.avatar, role: { key: 'creator', name: '认证创作者' } },
+  { id: '37', nickname: '陆战队员', handle: MY_ACCOUNT.handle, avatar: MY_ACCOUNT.avatar, role: { key: 'creator', name: '认证创作者' } },
   { id: '58', nickname: '虚空辉光舰', handle: 'demo-voidray' },
   { id: '91', nickname: '陆战队员（同名）', handle: 'demo-marine-2', duplicate: true },
 ];
@@ -114,7 +116,7 @@ export const AUTHOR = {
 };
 
 /** 正文富文本：后端 content_html 的样子（外链、@提及、列表、引用、代码、折叠长段落都有） */
-export function topicBody(appPath: (p: string) => string): string {
+export function topicBody(): string {
   return [
     '<h2>这次改了什么</h2>',
     '<p>第 11 关（菌毯推进那关）的菌毯扩散速度原来跟着游戏速度走，8 分钟之后是几何级增长，',
@@ -129,17 +131,17 @@ export function topicBody(appPath: (p: string) => string): string {
     '<h3>怎么装</h3>',
     '<p>解压后把 <code>Maps</code> 整个目录覆盖到 StarCraft II 的安装目录即可；装过第二章的直接进游戏，存档兼容。</p>',
     '<p>第 4 关的护送目标不能离你太远，超过两屏它会自己往回走——这是引擎行为，这次没改。',
-    '@<a href="' + appPath('u/12') + '" data-mention="12">示范管理员</a> 之前提过想改成 3 屏，我看影响面太大先搁置，有意见去 ',
-    '<a href="' + appPath('?page=13-issue') + '">反馈区</a> 提。</p>',
+    '@<a href="' + roomHref('11-profile') + '" data-mention="12">示范管理员</a> 之前提过想改成 3 屏，我看影响面太大先搁置，有意见去 ',
+    '<a href="' + roomHref('13-issue') + '">反馈区</a> 提。</p>',
     '<p>另外，进游戏前记得关掉别的战役 mod 的自动更新，不然中途被换掉版本会出现奇怪的寻路卡顿。</p>',
   ].join('');
 }
 
-export function topicComments(appPath: (p: string) => string): CommentData[] {
+export function topicComments(): CommentData[] {
   const REPLY_TO_ADMIN: CommentData = {
     id: 'r1',
     author: { handle: 'demo-voidray', nickname: '虚空辉光舰' },
-    body: '18 分钟才封顶是不是太晚了？我把主基地的防空全给打光了才顶住第一波。<a href="' + appPath('u/12') + '" data-mention="12">@示范管理员</a>',
+    body: '18 分钟才封顶是不是太晚了？我把主基地的防空全给打光了才顶住第一波。<a href="' + roomHref('11-profile') + '" data-mention="12">@示范管理员</a>',
     createdAt: '2 小时前',
     likes: 6,
     dislikes: 0,

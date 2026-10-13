@@ -1,6 +1,4 @@
 import { useState, type ReactNode } from 'react';
-import { appPath } from '@/lib/url';
-import { CommentList } from '@/ui/comment/comment-list';
 import { ReplyBox } from '@/ui/comment/reply-box';
 import { UserBadge } from '@/ui/user/user-badge';
 import type { CommentData } from '@/ui/comment/types';
@@ -11,7 +9,9 @@ import { ResourceSources, UpkeepNote } from './resource-sources';
 import { ReviewStateBanner, type ReviewState } from './review-state';
 import { TopicActions } from './topic-actions';
 import { TopicBody } from './topic-body';
+import { TopicComments } from './topic-comments';
 import type { TopicDetail } from './types';
+import { roomHref } from '@/devroom/room-links';
 
 // 中栏 = 一个帖子的全文：标题与标记 → 作者行 → 正文 → 资源来源 → 动作条 → 评论区。
 // 顺序不是随便排的：**读者要的东西按「这是什么 / 谁写的 / 写了什么 / 怎么拿到 / 我怎么反应 / 别人怎么说」降序**，
@@ -26,13 +26,28 @@ export function MainColumn({
   reviewState = 'approved',
   reviewNote,
   reviewAppeal,
+  reviewResubmit,
   reviewPendingHuman = false,
+  reported = false,
+  reportDialog,
+  editDialog,
+  receipt,
+  canEdit = false,
+  onCopyLink,
+  onReport,
+  onEdit,
+  onVote,
+  onDeleteComment,
+  onSubmitComment,
+  reportedIds,
+  onReportComment,
+  newSeqs,
 }: {
   topic: TopicDetail;
   comments: CommentData[];
   commentTotal: number;
   candidates: MentionCandidate[];
-  me: { nickname: string; avatar?: string | null };
+  me: { nickname: string; avatar?: string | null; handle: string };
   issueCount: number;
   /** 审核态：作者视角的三个值（d7 §1）。approved 是默认——正常帖什么都不显示 */
   reviewState?: ReviewState;
@@ -40,8 +55,30 @@ export function MainColumn({
   reviewNote?: string | null;
   /** 「申请人工复核」按钮（rejected 时才给）：横幅只摆位置，动作由页面接 */
   reviewAppeal?: ReactNode;
+  /** 「重新提交审核」按钮（rejected 时才给）：与「改完可以重新提交」那句话成对出现 */
+  reviewResubmit?: ReactNode;
   /** 后端 review_pending_human：pending 是否已转人工（决定两档文案） */
   reviewPendingHuman?: boolean;
+  /** 举报过这篇帖子：动作条上的按钮变「已举报」 */
+  reported?: boolean;
+  /** 举报 / 编辑弹层（受控），由页面给 */
+  reportDialog?: ReactNode;
+  editDialog?: ReactNode;
+  /** 动作回执（分享已复制 / 举报已提交 / 已发布…）：紧跟动作条 */
+  receipt?: ReactNode;
+  /** 权限点 post.update_own（作者本人）——决定渲染不渲染「编辑」 */
+  canEdit?: boolean;
+  onCopyLink?: () => void;
+  onReport?: () => void;
+  onEdit?: () => void;
+  onVote: (id: string, value: 1 | -1) => void;
+  /** 删回复（不是删帖）：parentId 非空表示它长在哪个主楼下 */
+  onDeleteComment: (parentId: string | null, id: string) => void;
+  onSubmitComment: (parentId: string | null, body: { json: string; html: string }) => void;
+  reportedIds: string[];
+  onReportComment: (target: { id: string; label: string }) => void;
+  /** 新发的评论序号（id → seq）：新回复置顶与「最新」排序要用 */
+  newSeqs?: Record<string, number>;
 }) {
   const [liked, setLiked] = useState(topic.viewer.liked);
   const [bookmarked, setBookmarked] = useState(topic.viewer.bookmarked);
@@ -66,6 +103,7 @@ export function MainColumn({
           state={reviewState}
           note={reviewNote}
           appeal={reviewAppeal}
+          resubmit={reviewResubmit}
           pendingHuman={reviewPendingHuman}
         />
         <div className='border-b border-border pb-3'>
@@ -97,23 +135,44 @@ export function MainColumn({
         bookmarkCount={bookmarkCount}
         replyCount={topic.reply_count}
         viewCount={topic.view_count}
+        reported={reported}
         onToggleLike={() => setLiked((v) => !v)}
         onToggleBookmark={() => setBookmarked((v) => !v)}
+        onCopyLink={onCopyLink}
+        onReport={onReport}
+        onEdit={canEdit ? onEdit : undefined}
+        designNote={receipt}
       />
 
       {/* 空态：没有回复时**输入框仍然在**（人来了就能写），只是列表位置给一句解释。
-          CommentList 自带表头与输入框，所以空态是包在它外面的一层，不是换掉它。 */}
+          这一层包在评论区外面（表头 + 输入框都在 TopicComments 里，不另写一套）。 */}
       {comments.length === 0 ? (
         <section className='flex flex-col gap-5'>
           <h2 className='text-lg font-semibold text-foreground'>评论 0</h2>
-          <ReplyBox me={me} candidates={candidates} />
+          <ReplyBox me={me} candidates={candidates} onSubmit={(body) => onSubmitComment(null, body)} />
           <p className='rounded-lg border border-dashed border-border px-3 py-6 text-center text-[13px] text-muted-foreground'>
             还没有人回复。玩法与设计的问题直接在这下面问；卡住、崩溃、难度不合适请走上面的反馈入口。
           </p>
+          {receipt}
         </section>
       ) : (
-        <CommentList comments={comments} total={commentTotal} me={me} candidates={candidates} />
+        <TopicComments
+          comments={comments}
+          total={commentTotal}
+          me={me}
+          candidates={candidates}
+          onSubmit={onSubmitComment}
+          onVote={onVote}
+          onDelete={onDeleteComment}
+          reportedIds={reportedIds}
+          onReport={onReportComment}
+          newSeqs={newSeqs}
+          receipt={receipt}
+        />
       )}
+
+      {reportDialog}
+      {editDialog}
     </div>
   );
 }
@@ -125,7 +184,7 @@ export function TopicMeta({ topic }: { topic: TopicDetail }) {
       <span>发布于 {topic.created_at}</span>
       {topic.updated_at !== topic.created_at ? <span>· 最后编辑 {topic.updated_at}</span> : null}
       <a
-        href={appPath('b/' + topic.board.slug)}
+        href={roomHref('12-topic')}
         className='rounded-[3px] outline-none hover:text-primary focus-visible:ring-[3px] focus-visible:ring-ring/50'
       >
         {topic.board.name}

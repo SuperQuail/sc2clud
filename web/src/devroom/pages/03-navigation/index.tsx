@@ -6,8 +6,8 @@ import { AppPager } from '@/ui/pager';
 import Panel from '@jetbrains/ring-ui-built/components/panel/panel';
 // 注意：Tabs 是**命名导出**（没有 default），Tab 也一样
 import { Tab, Tabs } from '@jetbrains/ring-ui-built/components/tabs/tabs';
-import { appPath } from '@/lib/url';
 import { Card, Row } from '@/devroom/kit';
+import { roomHref } from '@/devroom/room-links';
 
 // DevRoom 03 · 导航与结构（README 规划的第三页）
 // 这一类控件共享「位置感」：我在哪、能去哪、内容装在什么容器里。
@@ -38,12 +38,12 @@ export default function NavigationPage() {
       <Card name='面包屑 Breadcrumbs' note='表达层级位置。子项是链接，URL 必须走 appPath（gate:urls 会挡硬编码路径）。'>
         <Row label='三段 / 两段'>
           <Breadcrumbs>
-            <a href={appPath('')}>首页</a>
-            <a href={appPath('b/campaign')}>自制战役</a>
+            <a href={roomHref('14-home')}>首页</a>
+            <a href={roomHref('12-topic')}>自制战役</a>
             <span>第三章讨论</span>
           </Breadcrumbs>
           <Breadcrumbs>
-            <a href={appPath('')}>首页</a>
+            <a href={roomHref('14-home')}>首页</a>
             <span>搜索</span>
           </Breadcrumbs>
         </Row>

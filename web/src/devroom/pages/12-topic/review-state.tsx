@@ -5,6 +5,7 @@ import { ControlsHeight } from '@jetbrains/ring-ui-built/components/global/contr
 import ButtonSet from '@jetbrains/ring-ui-built/components/button-set/button-set';
 import { AlertTriangle, Clock3, Send, ShieldAlert } from 'lucide-react';
 import { icon16 } from '@/ui/icons';
+import { DesignActionNote } from './design-action';
 
 // 帖子的审核态体现（作者视角）。来源：完全重构/后端设计/d7-ai-review.md §1 状态机 + 拍板 §10.4。
 //
@@ -31,12 +32,15 @@ export function ReviewStateBanner({
   state,
   note,
   appeal,
+  resubmit,
   pendingHuman = false,
 }: {
   state: ReviewState;
   note?: string | null;
   /** rejected 时的「申请人工复核」按钮：由调用方给，横幅只负责摆位置 */
   appeal?: ReactNode;
+  /** rejected 时的「重新提交审核」按钮：与下面那句「改完可以重新提交」成对出现 */
+  resubmit?: ReactNode;
   /** 后端 review_pending_human：pending 是否已转人工。**只说「在不在等人」，不暴露谁判的** */
   pendingHuman?: boolean;
 }) {
@@ -81,8 +85,13 @@ export function ReviewStateBanner({
             </p>
           ) : null}
           <span className='flex flex-wrap items-center gap-x-3 gap-y-2'>
-            <span className='text-[12px] text-muted-foreground'>你可以修改后重新提交。</span>
-            {appeal ? <span className='ml-auto'>{appeal}</span> : null}
+            {/* 这句话原本是个**空头承诺**（盲审二号 13）：说「可以修改后重新提交」，界面上却没有修改入口。
+                现在两件事都落地：动作条上的「编辑」（post.update_own）负责改，这里的按钮负责重新提交。 */}
+            <span className='text-[12px] text-muted-foreground'>
+              改完可以重新提交：点动作条上的「编辑」改标题与正文，存完回来点右边的「重新提交审核」。
+            </span>
+            {resubmit ? <span className='ml-auto'>{resubmit}</span> : null}
+            {appeal ? <span className={resubmit ? '' : 'ml-auto'}>{appeal}</span> : null}
           </span>
         </>
       )}
@@ -108,6 +117,26 @@ export function ReviewAppealButton({ onAppeal }: { onAppeal?: () => void }) {
   );
 }
 
+// 「重新提交审核」：改完（或选择不改）把帖子送回审核队列，横幅自己从「未通过」换成「审核中」。
+// 与「申请人工复核」是**两条路**：这一条是改完重走自动检查，那一条是叫人来判。
+export function ReviewResubmitButton({ onResubmit }: { onResubmit?: () => void }) {
+  return (
+    <span className='w-fit'>
+      <Button
+        inline={false}
+        height={ControlsHeight.S}
+        primary
+        icon={icon16(Send)}
+        title='重新提交后回到「审核中」，通过后其他人才能看到'
+        data-testid='topic-resubmit'
+        onClick={onResubmit}
+      >
+        重新提交审核
+      </Button>
+    </span>
+  );
+}
+
 /** 审核态下「这篇只有你能看到」的提示：进度条里也有一个，两处同一种读法 */
 export function AuthorOnlyHint() {
   return (
@@ -127,6 +156,7 @@ export function ReviewStateDemoBar({
   onPendingHumanChange,
   onAppeal,
   appealNote,
+  onDesignAction,
 }: {
   value: ReviewState;
   onChange: (v: ReviewState) => void;
@@ -135,8 +165,11 @@ export function ReviewStateDemoBar({
   onPendingHumanChange: (v: boolean) => void;
   onAppeal?: () => void;
   appealNote?: string | null;
+  /** 设计稿按钮被点时通知页面（页面把它记进同一个回执行，免得两处各说一套） */
+  onDesignAction?: () => void;
 }) {
   const [appealed, setAppealed] = useState(false);
+  const [revealed, setRevealed] = useState(false);
   const LABEL: Record<ReviewState, string> = {
     pending: '审核中',
     approved: '正常',
@@ -187,6 +220,21 @@ export function ReviewStateDemoBar({
           {appealNote}
         </span>
       ) : null}
+      {/* 这一条就是「设计稿按钮」的统一说法（其它页也照这个形式做）：
+          点了原地出现一行 role=status 的文案，不做 toast、不做弹层。 */}
+      <Button
+        inline={false}
+        height={ControlsHeight.S}
+        icon={icon16(Send)}
+        data-testid='design-action'
+        onClick={() => {
+          setRevealed(true);
+          onDesignAction?.();
+        }}
+      >
+        一个还没接线的按钮（设计稿）
+      </Button>
+      {revealed ? <DesignActionNote /> : null}
       <span className='ml-auto text-[11px] text-muted-foreground'>
         真实页面由后端 review_state 决定，没有这个控件
       </span>

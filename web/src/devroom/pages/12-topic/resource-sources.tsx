@@ -1,6 +1,7 @@
 import { Archive, CheckCircle2, CloudDownload, HardDrive, Box, FileArchive, Cloud, Mountain, Globe, GitBranch, KeyRound, Link2, ShieldCheck } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import type { TopicSource } from './types';
+import { protoTitle } from '@/devroom/room-links';
 
 // 资源帖的下载来源：mcmod.cn 那种**一排网站 logo**，不是一个来源一行横条。
 // 为什么改：原来每行左边一个「网盘/GitHub」方块标签 + 右边一个「转链下载」按钮，
@@ -64,14 +65,16 @@ function SourceTile({ source }: { source: TopicSource }) {
   const { Icon } = site;
   return (
     <li className='flex w-[116px] flex-col items-center gap-1.5 text-center'>
-      <a
-        href={source.go_path}
-        title={site.label + ' · ' + source.label}
-        className='grid size-11 shrink-0 place-items-center rounded-full bg-card text-foreground outline-none ring-1 ring-border transition-colors hover:bg-muted hover:text-primary focus-visible:ring-[3px] focus-visible:ring-ring/50'
+      {/* go_path 是服务端转链端点（§21.2 的 assets/go 同款）：房间里没有这个端点，
+          点 <a href> 会走到房间外（/dev/api/...）→ 改成不可导航，并把原因写在 title 里。 */}
+      <span
+        aria-disabled='true'
+        title={protoTitle('下载转链端点') + ' · ' + site.label + ' · ' + source.label}
+        className='grid size-11 shrink-0 cursor-not-allowed place-items-center rounded-full bg-card text-muted-foreground outline-none ring-1 ring-border'
       >
         <Icon aria-hidden className='size-6' />
-        <span className='sr-only'>{'打开 ' + site.label + '：' + source.label}</span>
-      </a>
+        <span className='sr-only'>{'未做：打开 ' + site.label + '：' + source.label}</span>
+      </span>
       <span className='w-full truncate text-[12px] font-medium text-foreground' title={source.label}>
         {site.label}
       </span>

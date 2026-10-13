@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { appPath, assetUrl } from '@/lib/url';
+import { assetUrl } from '@/lib/url';
 import { CommentActions } from '@/ui/comment/comment-actions';
 import { CommentItem } from '@/ui/comment/comment-item';
 import { CommentList } from '@/ui/comment/comment-list';
@@ -8,6 +8,7 @@ import type { MentionCandidate } from '@/ui/comment/mention-types';
 import { ReplyBox } from '@/ui/comment/reply-box';
 import type { CommentData } from '@/ui/comment/types';
 import { Card, Row } from '@/devroom/kit';
+import { roomHref } from '@/devroom/room-links';
 
 // DevRoom 08 · 评论区（参考 B 站评论区结构）
 // 拆成小控件：CommentList（区块）/ CommentItem（一条）/ CommentActions（动作行）/
@@ -29,7 +30,7 @@ const REPLIES: CommentData[] = [
   {
     id: 'r1',
     author: LIN,
-    body: '这个思路对，但要注意前置依赖；<a href="' + appPath('u/58') + '" data-mention="58">@陆战队员</a> 上次直接覆盖 Maps 目录，结果旧存档读不出来。',
+    body: '这个思路对，但要注意前置依赖；<a href="' + roomHref('11-profile') + '" data-mention="58">@陆战队员</a> 上次直接覆盖 Maps 目录，结果旧存档读不出来。',
     createdAt: '2026-09-28 12:25',
     likes: 3,
     dislikes: 0,
@@ -80,7 +81,7 @@ const COMMENTS: CommentData[] = [
   {
     id: 'c1',
     author: XIAO,
-    body: '？为什么不叫我，<a href="' + appPath('u/12') + '" data-mention="12">@示范管理员</a> 你说说看',
+    body: '？为什么不叫我，<a href="' + roomHref('11-profile') + '" data-mention="12">@示范管理员</a> 你说说看',
     createdAt: '2026-09-28 12:25',
     likes: 12,
     dislikes: 0,

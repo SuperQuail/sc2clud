@@ -1,12 +1,13 @@
 import { useState } from 'react';
 import { MessageSquare, Settings, ThumbsUp, AtSign, Bell, Send } from 'lucide-react';
-import { appPath, assetUrl } from '@/lib/url';
+import { assetUrl } from '@/lib/url';
 import { NoticeNav, type NoticeNavItem } from '@/ui/message/notice-nav';
 import { NoticeLayout } from '@/ui/message/notice-layout';
 import { NoticeList } from '@/ui/message/notice-list';
 import { NoticeRow } from '@/ui/message/notice-row';
 import { NoticeSettings, type SettingRow } from '@/ui/message/notice-settings';
 import { MessagesPanel } from './messages-panel';
+import { ProtoLink } from '@/devroom/room-links';
 
 // DevRoom 10 · 信息中心（参考 B 站消息中心的结构）
 // **这一页只做组合**：控件在 src/ui/message/ 里，全是数据驱动的通用件（不认识「消息中心」这个业务）。
@@ -155,7 +156,7 @@ export default function MessagesPage() {
             </span>
             <p className='text-[15px] leading-[1.6] text-foreground'>
               您好，您在帖子 0192f0a1（自定义地图的触发器写法）下的评论被举报涉嫌违规，经核实已被移除。请自觉遵守社区公约，良好的社区氛围需要大家一起维护。
-              <a href={appPath('rules')} className='ml-1 rounded-[3px] text-primary outline-none hover:underline focus-visible:ring-[3px] focus-visible:ring-ring/50'>查看详情</a>
+              <ProtoLink what='版规页' className='ml-1 rounded-[3px] outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50'>查看详情</ProtoLink>
             </p>
           </div>
         </NoticeList>

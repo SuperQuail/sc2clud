@@ -5,13 +5,14 @@ import Tag, { TagType } from '@jetbrains/ring-ui-built/components/tag/tag';
 import Toggle from '@jetbrains/ring-ui-built/components/toggle/toggle';
 import AvatarStack from '@jetbrains/ring-ui-built/components/avatar-stack/avatar-stack';
 import { Compass, PenLine, ShieldCheck, Sparkles, Users } from 'lucide-react';
-import { appPath, assetUrl } from '@/lib/url';
+import { assetUrl } from '@/lib/url';
 import { icon16 } from '@/ui/icons';
 import { Username } from '@/ui/user/username';
 import { RoleBadge } from '@/ui/user/role-badge';
 import { TitleBadge } from '@/ui/user/title-badge';
 import { UserAvatar } from '@/ui/user/avatar';
 import { AppPager } from '@/ui/pager';
+import { roomHref, ProtoLink } from '@/devroom/room-links';
 
 // DevRoom 00 · 样板间：**宣传页**（landing page），不是站内功能页。
 // 它是**美术风格基准**：配色、字号音阶、层次与光影，看这一页定调。
@@ -67,8 +68,8 @@ export default function ShowroomPage() {
           发布你的战役、找人来测试、把踩过的坑写下来。这里没有水贴，只有一张张地图和一群正在做东西的人。
         </p>
         <span className='relative flex flex-wrap items-center justify-center gap-3'>
-          <Button primary href={appPath('b/campaign')}>浏览分区</Button>
-          <Button href={appPath('b/campaign/new')}>发布战役</Button>
+          <Button primary href={roomHref('14-home')}>浏览分区</Button>
+          <Button primary href={roomHref('18-compose')}>发布战役</Button>
         </span>
         <span className='relative flex items-center gap-3 text-[13px] text-muted-foreground'>
           <AvatarStack size={24}>
@@ -228,15 +229,15 @@ export default function ShowroomPage() {
         <p className='relative max-w-[65ch] text-[16px] leading-[1.6] text-muted-foreground'>
           注册只要一个昵称，发帖不用等审核。先把地图传上来，剩下的交给评论区。
         </p>
-        <span className='relative'><Button primary href={appPath('signup')}>开始使用</Button></span>
+        <span className='relative'><Button primary href={roomHref('16-auth')}>开始使用</Button></span>
       </section>
 
       <footer className='flex flex-wrap items-center justify-between gap-3 border-t border-border pt-6 text-[13px] text-muted-foreground'>
         <span>明明咕咕 · 星际争霸战役社区</span>
         <span className='flex flex-wrap items-center gap-4'>
-          <a href={appPath('about')} className='rounded-[3px] outline-none hover:text-foreground focus-visible:ring-[3px] focus-visible:ring-ring/50'>关于</a>
-          <a href={appPath('rules')} className='rounded-[3px] outline-none hover:text-foreground focus-visible:ring-[3px] focus-visible:ring-ring/50'>版规</a>
-          <a href={appPath('contact')} className='rounded-[3px] outline-none hover:text-foreground focus-visible:ring-[3px] focus-visible:ring-ring/50'>联系</a>
+          <ProtoLink what='关于页' className='rounded-[3px] outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50'>关于</ProtoLink>
+          <ProtoLink what='版规页' className='rounded-[3px] outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50'>版规</ProtoLink>
+          <ProtoLink what='联系页' className='rounded-[3px] outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50'>联系</ProtoLink>
         </span>
       </footer>
     </div>

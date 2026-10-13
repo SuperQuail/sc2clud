@@ -2,7 +2,6 @@ import { useState } from 'react';
 import Button from '@jetbrains/ring-ui-built/components/button/button';
 import { ControlsHeight } from '@jetbrains/ring-ui-built/components/global/controls-height';
 import { ArrowLeft, Image, MessageSquarePlus, Settings, Smile, UserPlus } from 'lucide-react';
-import { appPath } from '@/lib/url';
 import { cn } from '@/lib/utils';
 import { icon16 } from '@/ui/icons';
 import { NoticeChat } from '@/ui/message/notice-chat';
@@ -12,6 +11,7 @@ import { ConversationList } from './conversation-list';
 import { PeerPicker } from './peer-picker';
 import { CONVERSATIONS, DIRECTORY, ME } from './mock';
 import type { Conversation, Peer } from './types';
+import { roomHref } from '@/devroom/room-links';
 
 // 私信面板：左栏会话列表 + 右栏聊天区（≥lg 并排，<lg 单栏：列表 → 聊天，可返回）。
 // 全部由已有件组合：NoticeRow（会话行）/ NoticeChat（气泡）/ NoticeComposer（输入区）/ CountBadge / UserAvatar。
@@ -126,7 +126,7 @@ export function MessagesPanel({ initialPeer }: { initialPeer: string | null }) {
                   headerActions={
                     <span className='flex items-center gap-3'>
                       <a
-                        href={appPath('u/' + current.peer.handle)}
+                        href={roomHref('11-profile')}
                         className='flex items-center gap-2 rounded-[3px] px-1 py-0.5 outline-none hover:bg-muted focus-visible:ring-[3px] focus-visible:ring-ring/50'
                         title={'查看 ' + current.peer.nickname + ' 的主页'}
                       >

@@ -1,9 +1,9 @@
 import type { ReactNode } from 'react';
 import { BadgeCheck, CalendarDays, Heart, Star, UserRound } from 'lucide-react';
-import { appPath } from '@/lib/url';
 import { UserBadge } from '@/ui/user/user-badge';
 import { TitleBadge } from '@/ui/user/title-badge';
 import type { TopicAuthor } from './types';
+import { roomHref } from '@/devroom/room-links';
 
 // 右栏第二格：发帖者卡片。**大头像 + 昵称 + 头衔 + 等级/经验 + 三个统计**。
 // 身份部分全部复用 src/ui/user/*（头像用 UserAvatar，徽标用 RoleBadge/TitleBadge，
@@ -71,7 +71,7 @@ export function AuthorCard({ author }: { author: TopicAuthor }) {
           {author.joined_at}加入
         </span>
         <a
-          href={appPath('u/' + author.handle)}
+          href={roomHref('11-profile')}
           className='ml-auto inline-flex items-center gap-1 rounded-[3px] outline-none hover:text-primary focus-visible:ring-[3px] focus-visible:ring-ring/50'
         >
           <UserRound aria-hidden className='size-3.5' />

@@ -93,6 +93,9 @@ export type PaymentChannel = {
   notice: string;
 };
 
+/** 本页自己记账用的两条（DevRoom 演示，不在后端契约里）：
+ *  newCommentSeqs 是「发布」后新插进来的那几条的序号，用来把「最新」排序与新回复置顶做出来
+ *  （mock 的 createdAt 是「3 小时前」这种展示串，排不了序）。删掉那条评论时序号也一并清掉。 */
 export type TopicPageData = {
   me: { nickname: string; avatar: string };
   board_nav: BoardNav[];
@@ -103,4 +106,6 @@ export type TopicPageData = {
   channels: PaymentChannel[];
   /** 未关闭的 Issue 数 —— 顶栏 Issue 按钮上的计数 */
   issue_open_count: number;
+  /** 新发的评论：id → 序号（越大越新）。渲染时读它决定排序与置顶 */
+  newCommentSeqs?: Record<string, number>;
 };

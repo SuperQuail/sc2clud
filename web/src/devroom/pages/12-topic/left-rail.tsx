@@ -1,6 +1,6 @@
 import Button from '@jetbrains/ring-ui-built/components/button/button';
-import { appPath } from '@/lib/url';
 import type { Board, BoardNav, BoardSlug } from './types';
+import { roomHref } from '@/devroom/room-links';
 
 // 左栏 = 分区列表 + 分区内导航。**只在 ≥1200px 出现**（贴吧式常驻栏），
 // 所以宽度必须站得住：板名 + 计数 + 今日数三行内放下，字号不缩到 11px 以下。
@@ -28,7 +28,7 @@ export function LeftRail({
           return (
             <a
               key={b.slug}
-              href={appPath('b/' + b.slug)}
+              href={roomHref('12-topic')}
               aria-current={current ? 'page' : undefined}
               title={b.hint}
               className={

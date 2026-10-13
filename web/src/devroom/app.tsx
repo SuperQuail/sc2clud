@@ -26,6 +26,7 @@ const IssuePage = lazy(() => import('./pages/13-issue'));
 const HomePage = lazy(() => import('./pages/14-home'));
 const AdminPage = lazy(() => import('./pages/15-admin'));
 const AuthPage = lazy(() => import('./pages/16-auth'));
+const AppealPage = lazy(() => import('./pages/17-appeal'));
 const ComposePage = lazy(() => import('./pages/18-compose'));
 import { ThemeSwitcher } from '@/ui/theme-switcher';
 
@@ -96,8 +97,8 @@ const GROUPS: NavGroup[] = [
       { key: '14-home', title: '14 · 首页信息流', el: () => <HomePage /> },
       { key: '15-admin', title: '15 · 管理后台', el: () => <AdminPage /> },
       { key: '16-auth', title: '16 · 登录与注册', el: () => <AuthPage /> },
-      // 18-compose（发帖页）的导航条目本来归 Lead 加：app.tsx 是共享文件。
-      // 这一条是施工者为「页面能被 ?page=18-compose 打开、能出图」加的，Lead 可原样保留或改文案。
+      // 17-appeal / 18-compose 的导航条目由 Lead 加（app.tsx 是共享文件，避免施工者抢同一个文件）。
+      { key: '17-appeal', title: '17 · 申诉与反馈', el: () => <AppealPage /> },
       { key: '18-compose', title: '18 · 发帖', el: () => <ComposePage /> },
     ],
   },

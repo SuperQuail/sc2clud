@@ -4,8 +4,8 @@ import Island from '@jetbrains/ring-ui-built/components/island/island';
 // ButtonSet 是**默认导出**（命名导出在这个包里不存在，typecheck 直接报 TS2614）
 import ButtonSet from '@jetbrains/ring-ui-built/components/button-set/button-set';
 import Tag, { TagType } from '@jetbrains/ring-ui-built/components/tag/tag';
-import { useState } from 'react';
-import { Check, ChevronDown, ChevronUp, Coffee, FolderOpen, Heart, Image as ImageIcon, MapPin, MessageSquare, MoreHorizontal, QrCode, Star, UserPlus, UserRound } from 'lucide-react';
+import { useRef, useState } from 'react';
+import { FolderOpen, Heart, Image as ImageIcon, ImagePlus, MapPin, MessageSquare, MoreHorizontal, Star, UserPlus, UserRound } from 'lucide-react';
 import { assetUrl } from '@/lib/url';
 import { icon16 } from '@/ui/icons';
 import { UserAvatar } from '@/ui/user/avatar';
@@ -15,6 +15,7 @@ import { TitleBadge } from '@/ui/user/title-badge';
 import { TopicRow, type TopicRowData } from '@/ui/topic/topic-row';
 import { NoticeSettings, type SettingRow } from '@/ui/message/notice-settings';
 import { IconTabs, type IconTabItem } from '@/ui/nav/icon-tabs';
+import { AccountPanel, type AvatarHandle } from './account-panel';
 
 // DevRoom 11 · 个人主页（带设置）
 // 布局照主流站点（GitHub / B 站空间 / Discourse 用户页）的**共同结构**：
@@ -65,128 +66,23 @@ const FOLLOWING = ['陆战队员', '狂热者', '刺蛇', '虫后'];
 // 赞助入口（对照 12.4–12.7 的展示侧 + 用户反馈「主页没有赞助按钮」）。
 // 与帖子页的 reward-panel **同款**：一大颗 --vivid-accent 按钮（白字、≥44px、15px）+ 一行 11px 说明，
 // 点开后**在这个格子里就地展开**（渠道 → 收款码 → 文案 → 登记），不跳转、也不是常驻红块。
-const SPONSOR_CHANNELS = [
-  { id: 'wechat', label: '微信', notice: '扫码后请在备注里写上你的昵称，作者好对上号。' },
-  { id: 'alipay', label: '支付宝', notice: '支付宝扫码，备注可以留空。' },
-  { id: 'afdian', label: '爱发电', notice: '爱发电支持一次性与按月两种，随你方便。' },
-];
 
-// 看别人主页 / 看自己主页是两种情形（isSelf 由页面内的 mock 开关给）：
-//   别人 → 「赞助 TA」大按钮；自己 → 「设置我的收款码」（自己给自己打赏是荒谬的）。
-// **没有收款码时整块不渲染**（用户 2026-10-13 定案，推翻了上一版「保留按钮 + 禁用」的判断）：
-//   看别人主页时那一格是打赏入口，对方没挂收款码就没得打赏，留着禁用按钮只是噪声；
-//   看自己主页时那一格是「设置我的收款码」入口，没有收款码才更需要它，所以照旧渲染。
-type SponsorView = { heading: string; button: string; hint: string };
-const SPONSOR_VIEW: Record<'other' | 'self', SponsorView> = {
-  other: {
-    heading: '赞助 TA',
-    button: '赞助 TA',
-    hint: '打赏是纯自愿的，不解锁任何东西。',
-  },
-  self: {
-    heading: '我的赞助',
-    button: '设置我的收款码',
-    hint: '收款码在个人设置里挂；打赏渠道随时可关，关掉后别人主页上不显示这个入口。',
-  },
-};
-
-function SponsorCard({ isSelf, channels }: SponsorDemo) {
-  const view = SPONSOR_VIEW[isSelf ? 'self' : 'other'];
-  const [open, setOpen] = useState(false);
-  const [activeId, setActiveId] = useState(channels[0]?.id ?? '');
-  const [confirmed, setConfirmed] = useState(false);
-  const [settingsHit, setSettingsHit] = useState(false);
-  const active = channels.find((c) => c.id === activeId) ?? channels[0];
-  // 别人的主页且没有收款码 → 整块不渲染（不是禁用按钮）。自己主页永远渲染。
-  // 提前 return 必须在所有 hook 之后，否则 hook 调用顺序会变（react-hooks/rules-of-hooks）。
-  if (!isSelf && channels.length === 0) return null;
-
-  return (
-    <Island withoutPaddings>
-      <div className='flex flex-col gap-2 p-4'>
-        <span className='text-[12px] font-medium tracking-wide text-muted-foreground'>{view.heading}</span>
-        {/* 大按钮（≥44px、橙底白字）：图标走 children 里的 span——icon16 会把它压成 16px；
-            高度与字号用 ! 覆盖 Ring 的默认值；inline={false} 才能拿到整块宽度。 */}
-        <Button
-          inline={false}
-          primary
-          aria-expanded={isSelf ? undefined : open}
-          iconRight={!isSelf ? icon16(open ? ChevronUp : ChevronDown) : undefined}
-          onClick={() => (isSelf ? setSettingsHit(true) : setOpen((v) => !v))}
-          className='!h-11 w-full !border-[var(--vivid-accent)] !bg-[var(--vivid-accent)] !text-[15px] !text-white'
-        >
-          <span className='inline-flex items-center gap-2'>
-            <Coffee aria-hidden className='size-5' />
-            {view.button}
-          </span>
-        </Button>
-        <p className='text-[11px] leading-relaxed text-muted-foreground'>{view.hint}</p>
-
-        {isSelf ? (
-          settingsHit ? (
-            <p className='rounded-md bg-muted/50 px-2 py-2 text-[11px] leading-relaxed text-muted-foreground'>
-              已进入「个人设置 · 收款码」（mock）。真实页面跳到 /settings 的收款码分区。
-            </p>
-          ) : null
-        ) : open ? (
-          <div className='flex flex-col gap-3 border-t border-border pt-3'>
-            <span className='flex flex-wrap items-center gap-1.5'>
-              {channels.map((c) => (
-                <Button key={c.id} ghost active={c.id === active?.id} onClick={() => setActiveId(c.id)}>
-                  {c.label}
-                </Button>
-              ))}
-            </span>
-
-            <span className='flex flex-col items-center gap-2'>
-              <span aria-hidden className='grid h-[132px] w-[132px] place-items-center rounded-md bg-muted ring-1 ring-border'>
-                <QrCode aria-hidden className='size-16 text-muted-foreground' />
-              </span>
-              <span className='inline-flex items-center gap-1 text-[11px] text-muted-foreground'>
-                <QrCode aria-hidden className='size-3' />
-                {active?.label}收款码 · 扫码或长按识别
-              </span>
-            </span>
-
-            <p className='rounded-md bg-muted/50 px-2 py-2 text-[11px] leading-relaxed text-muted-foreground'>{active?.notice}</p>
-
-            <Button
-              inline={false}
-              icon={confirmed ? icon16(Check) : undefined}
-              disabled={confirmed}
-              onClick={() => setConfirmed(true)}
-              className='w-full'
-            >
-              {confirmed ? '已登记，等作者核对' : '我已完成打赏'}
-            </Button>
-            {confirmed ? (
-              <p className='text-[11px] leading-relaxed text-muted-foreground'>
-                已生成一条 pending 申报（POST /api/v1/rewards），作者确认收款、管理员核验后才会出现在 TA 的主页收入里。
-              </p>
-            ) : null}
-          </div>
-        ) : null}
-      </div>
-    </Island>
-  );
-}
-
-// ?sponsor=other|none|self|self-none —— 只影响 DevRoom 的演示态：看别人/看自己 × 有/无收款码。
-// 真实页面里 isSelf 由「当前登录者 handle 是否等于 /u/{handle}」决定，channels 来自
-// GET /api/v1/users/{handle}/channels（作者关掉展示开关时后端返回空数组）。
-type SponsorDemo = { isSelf: boolean; channels: Array<(typeof SPONSOR_CHANNELS)[number]> };
-
-function readSponsorDemo(): SponsorDemo {
-  const v = new URLSearchParams(location.search).get('sponsor');
-  if (v === 'none') return { isSelf: false, channels: [] };
-  if (v === 'self-none') return { isSelf: true, channels: [] };
-  if (v === 'self') return { isSelf: true, channels: SPONSOR_CHANNELS };
-  return { isSelf: false, channels: SPONSOR_CHANNELS };
-}
+// 赞助入口拆到 sponsor-card.tsx（该文件超体量门禁），这里只 import 用它
+import { SPONSOR_CHANNELS, SponsorCard, readSelfView, type SponsorDemo } from './sponsor-card';
 
 export default function ProfilePage() {
   const [tab, setTab] = useState('posts');
-  const [sponsorDemo, setSponsorDemo] = useState<SponsorDemo>(readSponsorDemo);
+  // 「本人 / 别人」是**一个**开关：赞助入口与账号入口（头像/改密码/退出）都看它。
+  // 默认本人 —— 页面初始态就该是本人主页（账号那几条入口在本人态才存在，见 readSelfView 的注释）。
+  const [selfView, setSelfView] = useState(readSelfView);
+  const [loggedOut, setLoggedOut] = useState(false);
+  // 新头像的预览地址（object URL）。真实页面在上传成功后换成服务端 /img/<hash>。
+  const [avatar, setAvatar] = useState<string | null>(null);
+  // 头像上传器挂在「设置」标签里；hero 上的「更换头像」通过这个句柄代点，不必把上传器挪出设置面板。
+  // 用 ref 不用 state：它不参与渲染，而且按钮的 onClick 拿 ref.current 比读一次 state 更直接。
+  const avatarApi = useRef<AvatarHandle | null>(null);
+  // 从「别人主页」切回来时，若停在设置标签上会被下面的推导踢回帖子页
+  const activeTab = !selfView && tab === 'settings' ? 'posts' : tab;
   // 封面可自定义：默认给一张，之后接入用户上传（与头像同一个上传控件）
   // 封面素材必须是**横构图**：原来用 starcraft/zerg.webp（64x64）拉到 1440x160 只能放大裁剪 → 一块糊色。
   // 现在默认 sc2-battle.webp（1200x953 插画），「更换封面」在它和 sc2-logo.webp（240x101 横幅）之间切。
@@ -222,12 +118,21 @@ export default function ProfilePage() {
     },
   ];
 
-  const sponsorStates: Array<{ key: string; label: string; demo: SponsorDemo }> = [
-    { key: 'other', label: '看别人主页（有收款码）', demo: { isSelf: false, channels: [...SPONSOR_CHANNELS] } },
-    { key: 'none', label: '别人没挂收款码（整块不渲染）', demo: { isSelf: false, channels: [] } },
+  const demoStates: Array<{ key: string; label: string; demo: SponsorDemo }> = [
     { key: 'self', label: '看自己主页（有收款码）', demo: { isSelf: true, channels: [...SPONSOR_CHANNELS] } },
     { key: 'self-none', label: '自己没挂收款码（仍渲染设置入口）', demo: { isSelf: true, channels: [] } },
+    { key: 'other', label: '看别人主页（有收款码）', demo: { isSelf: false, channels: [...SPONSOR_CHANNELS] } },
+    { key: 'none', label: '别人没挂收款码（赞助整块不渲染）', demo: { isSelf: false, channels: [] } },
   ];
+  // 看别人主页时没有「设置」标签：那一栏里的账号动作（改密码/退登/换头像）一行都不该出现
+  const tabs = selfView ? TABS : TABS.filter((t) => t.key !== 'settings');
+  // 头像入口：切到设置标签并**就地打开文件框**（上传器挂载在那边，句柄由它回传）。
+  // 读当前值走函数式写法，避免把 avatarApi 塞进依赖数组、每次挂载都重渲染一遍。
+  const pickAvatar = () => {
+    setTab('settings');
+    // 上传器此刻已经挂载（设置面板一直在渲染），ref 里就是它的句柄；open() 打开文件选择框
+    avatarApi.current?.open();
+  };
 
   return (
     <div className='flex flex-col gap-3 sm:gap-4'>
@@ -236,22 +141,43 @@ export default function ProfilePage() {
         aria-label='赞助入口演示'
         className='flex flex-wrap items-center gap-x-3 gap-y-2 rounded-lg border border-dashed border-border px-3 py-2'
       >
-        <span className='text-[11px] font-medium tracking-wide text-muted-foreground'>DevRoom 演示 · 赞助入口</span>
+        <span className='text-[11px] font-medium tracking-wide text-muted-foreground'>DevRoom 演示 · 本人主页 / 别人主页</span>
         <ButtonSet>
-          {sponsorStates.map((s) => (
+          {demoStates.map((s) => (
             <Button
               key={s.key}
-              active={s.demo.isSelf === sponsorDemo.isSelf && s.demo.channels.length === sponsorDemo.channels.length}
-              onClick={() => setSponsorDemo(s.demo)}
+              active={s.demo.isSelf === selfView.isSelf && s.demo.channels.length === selfView.channels.length}
+              onClick={() => setSelfView(s.demo)}
             >
               {s.label}
             </Button>
           ))}
         </ButtonSet>
+        {/* 退出登录是**有结果的动作**（回未登录态），所以退出后得有一条能回到演示态的路，否则这一页没法继续走查 */}
+        {loggedOut ? (
+          <Button data-testid='demo-relogin' onClick={() => setLoggedOut(false)}>
+            演示：撤销退出，回到登录态
+          </Button>
+        ) : null}
         <span className='ml-auto text-[11px] text-muted-foreground'>
           真实页面：isSelf 看登录者与主页 handle 是否同一个人；channels 由接口给
         </span>
       </section>
+
+      {/* 未登录态：真实站点里这时整页都在登录页上，不会看到个人主页。
+          房间里只把「你说不清楚到底退没退」这件事说清楚（盲审二号：动作不能静默）。 */}
+      {loggedOut ? (
+        <section
+          role='status'
+          data-testid='logged-out-banner'
+          className='flex flex-wrap items-center gap-x-3 gap-y-2 rounded-lg border border-dashed border-border px-3 py-2'
+        >
+          <span className='text-[13px] text-foreground'>你已退出登录（演示）。</span>
+          <span className='text-[12px] text-muted-foreground'>
+            真实页面：清掉这台设备的会话 cookie，跳到登录页；再发帖、回复、上传都会被拦下。
+          </span>
+        </section>
+      ) : null}
 
       {/* ⚠️ 首屏预算：这一页的 hero 高度决定右栏第一格（赞助入口）能不能落在 1440x900 内。
           来历：hero 每长高一点，赞助入口就往下走；它曾掉出过首屏（用户报「主页没有赞助按钮」）。
@@ -284,16 +210,34 @@ export default function ProfilePage() {
         {/* 「更换封面」直接绝对定位在 hero 右上角（z-20）：放进内层 relative 时它会被上移的身份卡压住，
             只露出一角、点不到。按钮浮在壁纸上，原来没给底 —— 浅色下是深蓝字、深色下是浅蓝字，
             壁纸一浅（sc2-battle 的天空）就看不清，所以补一层卡片色 + 轻微模糊把它托起来。 */}
-        <span className='absolute right-3 top-3 z-20 rounded-md bg-background/85 backdrop-blur-sm'>
-          <Button
-            inline={false}
-            height={ControlsHeight.S}
-            data-testid='change-cover'
-            icon={icon16(ImageIcon)}
-            onClick={() => setCover((c) => (c.includes('sc2-battle') ? assetUrl('starcraft/sc2-logo.webp') : assetUrl('starcraft/sc2-battle.webp')))}
-          >
-            更换封面
-          </Button>
+        <span className='absolute right-3 top-3 z-20 flex items-center gap-2'>
+          {/* 「更换头像」的落点：上传器在「设置」标签里（那里有预览、移除与体积提示），
+              这里只负责把人送过去。落在同一个位置、同一档高度，读起来是「封面 / 头像」一对动作。
+              只在本人主页出现 —— 看别人主页时换别人的头像既无意义也无权限。 */}
+          {selfView.isSelf ? (
+            <span className='rounded-md bg-background/85 backdrop-blur-sm'>
+              <Button
+                inline={false}
+                height={ControlsHeight.S}
+                data-testid='change-avatar'
+                icon={icon16(ImagePlus)}
+                onClick={pickAvatar}
+              >
+                更换头像
+              </Button>
+            </span>
+          ) : null}
+          <span className='rounded-md bg-background/85 backdrop-blur-sm'>
+            <Button
+              inline={false}
+              height={ControlsHeight.S}
+              data-testid='change-cover'
+              icon={icon16(ImageIcon)}
+              onClick={() => setCover((c) => (c.includes('sc2-battle') ? assetUrl('starcraft/sc2-logo.webp') : assetUrl('starcraft/sc2-battle.webp')))}
+            >
+              更换封面
+            </Button>
+          </span>
         </span>
 
         {/* 身份卡：**从上到下的透明渐变**（用户 2026-10-13 定稿口径：
@@ -321,8 +265,29 @@ export default function ProfilePage() {
             {/* 头像外圈原来用实色 ring-background：在渐变里它是一枚不透明的白/黑环，
                 和身后 50% 的渐变一比就像贴上去的圆片。改成 /60 让环与身后的底同一档透明度，
                 仍然能分出头像与壁纸，但不突兀。 */}
+            {/* 头像 = 上传入口（本人态）：点了进设置标签的头像项，那里有上传/更换/移除与体积提示。
+                为什么不做成「点头像直接开文件框」：那需要把上传器提到 hero 里或再造一个隐藏输入框，
+                和「更换封面」那颗按钮的位置关系也说不清；设计稿里跳一步比多一套控件划算。 */}
             <span className='rounded-full ring-4 ring-background/60'>
-              <UserAvatar name='示范管理员' src={assetUrl('miyin/smile-160.webp')} size='xl' />
+              {selfView.isSelf ? (
+                <span className='relative block'>
+                  <UserAvatar name='示范管理员' src={avatar ?? assetUrl('miyin/smile-160.webp')} size='xl' />
+                  {/* 头像角上的小按钮才是上传入口（本人态才画）：点了切到「设置」标签并就地打开文件框。
+                      看别人主页时这颗按钮不渲染，也没有「设置」标签 —— 一行都不出现。 */}
+                  <span className='absolute -right-1 -bottom-1 rounded-full bg-background'>
+                    <Button
+                      inline={false}
+                      height={ControlsHeight.S}
+                      icon={icon16(ImagePlus)}
+                      aria-label='更换头像'
+                      data-testid='avatar-upload-entry'
+                      onClick={pickAvatar}
+                    />
+                  </span>
+                </span>
+              ) : (
+                <UserAvatar name='示范管理员' src={assetUrl('miyin/smile-160.webp')} size='xl' />
+              )}
             </span>
           </div>
           <div className='flex flex-col gap-2'>
@@ -381,19 +346,41 @@ export default function ProfilePage() {
         </div>
       </section>
 
-      <IconTabs items={TABS} value={tab} onChange={setTab} ariaLabel='个人主页分区' />
+      <IconTabs items={tabs} value={activeTab} onChange={setTab} ariaLabel='个人主页分区' />
 
       <div className='grid gap-5 lg:grid-cols-[minmax(0,1fr)_16rem]'>
         <div className='flex flex-col gap-4'>
-          {tab === 'posts' ? (
+          {activeTab === 'posts' ? (
             <Island withoutPaddings>
               {TOPICS.map((t) => (
                 <TopicRow key={t.id} topic={t} />
               ))}
             </Island>
           ) : null}
-          {tab === 'settings' ? <NoticeSettings rows={settings} /> : null}
-          {tab === 'replies' || tab === 'starred' || tab === 'liked' ? (
+          {/* 设置标签页 = 原三块个人设置 + 账号面板（头像/改密码/退出登录）。
+              账号面板只在本人态渲染，看别人主页时连「设置」标签都不存在。 */}
+          {activeTab === 'settings' ? (
+            selfView.isSelf ? (
+              <div className='flex flex-col gap-4'>
+                <NoticeSettings rows={settings} />
+                <AccountPanel
+                  avatar={avatar}
+                  onAvatar={setAvatar}
+                  onAvatarReady={(api) => { avatarApi.current = api; }}
+                  onLogout={() => {
+                    // 真实页面：POST /api/v1/auth/logout → 清 cookie → 跳登录页。
+                    // 这里留两个可观察结果：顶部出现「你已退出登录」，账号动作收起只剩「去登录」。
+                    setLoggedOut(true);
+                    avatarApi.current = null;
+                  }}
+                  loggedOut={loggedOut}
+                />
+              </div>
+            ) : (
+              <NoticeSettings rows={settings} />
+            )
+          ) : null}
+          {activeTab === 'replies' || activeTab === 'starred' || activeTab === 'liked' ? (
             <Island withoutPaddings>
               <div className='flex flex-col items-center gap-2 px-4 py-12 text-center'>
                 <span className='text-[15px] text-foreground'>这里还没有内容</span>
@@ -407,7 +394,7 @@ export default function ProfilePage() {
             赞助放第一格：它是这个页面唯一的转化点（读完之后「想支持一下」的那一秒），
             徽章与关注的人是补充信息，晚一步看到不影响什么。 */}
         <aside className='flex flex-col gap-3'>
-          <SponsorCard isSelf={sponsorDemo.isSelf} channels={sponsorDemo.channels} />
+          <SponsorCard isSelf={selfView.isSelf} channels={selfView.channels} />
           <Island withoutPaddings>
             <div className='flex flex-col gap-3 p-4'>
               <span className='text-[12px] font-medium tracking-wide text-muted-foreground'>徽章</span>

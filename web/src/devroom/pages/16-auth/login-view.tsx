@@ -8,6 +8,7 @@ import { PasswordField } from '@/ui/password-field';
 import { CaptchaField } from './captcha-field';
 import { ResendButton } from './resend-button';
 import { useCountdown } from './use-countdown';
+import { BanEntry } from '@/devroom/pages/17-appeal/ban-entry';
 import { CAPTCHA_SAMPLES, COPY, MOCK_ACCOUNT, nextCaptcha, type AuthView, type LoginScene } from './data';
 
 // 登录视图：一张表单，**七种情形只是它的七个状态**（拍板 §9.6 那张表）。
@@ -110,7 +111,19 @@ export function LoginView({ scene, onScene, onView }: LoginViewProps) {
   }
 
   return (
-    <AuthShell title='登录 SC2clud' subtitle='用社区账号继续，或先注册一个。' footer={COPY.loginFooter}>
+    <AuthShell
+      title='登录 SC2clud'
+      subtitle='用社区账号继续，或先注册一个。'
+      // 页脚原话是「登录遇到问题？在社区里私信管理员」—— 被封的人恰恰发不了私信，
+      // 所以申诉入口就挂在同一处（17-appeal），而不是只留一句他做不到的建议。
+      footer={
+        <>
+          {COPY.loginFooter}
+          <br />
+          <BanEntry where='footer' />
+        </>
+      }
+    >
       {scene === 'badCredentials' ? (
         <FormAlert
           tone='error'
@@ -122,8 +135,14 @@ export function LoginView({ scene, onScene, onView }: LoginViewProps) {
         <FormAlert
           tone='error'
           title='账号已被封禁'
-          description='被封禁的账号不能登录。如需申诉，请在社区里联系管理员（可先用其它账号发帖求助）。'
-        />
+          // 原话是「请在社区里联系管理员（可先用其它账号发帖求助）」—— 被封的人登不进来也发不了帖，
+          // 这条建议对他等于没有（盲审合并结论 §7）。改成一条他现在就能走的路：不登录的申诉入口。
+          description='被封禁的账号不能登录，浏览、收藏也不受影响。对封禁有异议可以直接提交申诉：不用登录，填用户名 + 注册邮箱 + 图形验证码即可，我们按这三样核对身份。'
+        >
+          <div className='mt-2'>
+            <BanEntry where='banned' />
+          </div>
+        </FormAlert>
       ) : null}
       {scene === 'rateLimited' ? (
         <FormAlert

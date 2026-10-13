@@ -1,11 +1,11 @@
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import Button from '@jetbrains/ring-ui-built/components/button/button';
 import { ControlsHeight } from '@jetbrains/ring-ui-built/components/global/controls-height';
 import Toggle from '@jetbrains/ring-ui-built/components/toggle/toggle';
 import { ImagePlus, X } from 'lucide-react';
 import { icon16 } from '@/ui/icons';
 import { UserAvatar } from '@/ui/user/avatar';
-import { COMPRESS_LABEL, IMAGE_ACCEPT, planImages, processImage } from './image-pipeline';
+import { AVATAR_EDGE, AVATAR_MAX_BYTES, AVATAR_TARGET, COMPRESS_LABEL, formatBytes, IMAGE_ACCEPT, planImages, POST_IMAGE_MAX_BYTES, processImage } from './image-pipeline';
 
 // 图片上传控件（可复用）。**点选与拖拽共用同一条管线**（image-pipeline），所以限额与压缩只有一份规则。
 // 两种形态：
@@ -34,11 +34,15 @@ export function ImageUploader({
   showThumbnails = true,
   existingCount,
   onError,
+  maxSize,
+  onReady,
 }: {
   images: UploadedImage[];
   onChange: (next: UploadedImage[]) => void;
   variant?: 'list' | 'avatar';
   max?: number;
+  /** 单个体积上限（默认按形态取：头像 10MB / 配图 20MB，见 image-pipeline） */
+  maxSize?: number;
   compress?: boolean;
   allowOriginal?: boolean;
   label?: string;
@@ -48,29 +52,47 @@ export function ImageUploader({
   existingCount?: number;
   /** 限额丢弃等提示交给使用方（表单要显示错误行） */
   onError?: (message: string) => void;
+  /** 挂载后回传「打开文件选择」的句柄：页面别处的按钮可以代点（例：hero 上的「更换头像」） */
+  onReady?: (api: { open: () => void } | null) => void;
 }) {
   const limit = variant === 'avatar' ? 1 : max;
+  const sizeLimit = maxSize ?? (variant === 'avatar' ? AVATAR_MAX_BYTES : POST_IMAGE_MAX_BYTES);
   const input = useRef<HTMLInputElement>(null);
   const [useOriginal, setUseOriginal] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const used = existingCount ?? images.length;
-  const { room } = planImages(0, { existing: used, max: limit });
+  const { room } = planImages({ existing: used, max: limit });
+
+  // 句柄只在挂载期有效（input 是同一个 DOM 节点）；卸载时收回，避免页面拿着已失效的引用去点
+  useEffect(() => {
+    onReady?.({ open: () => input.current?.click() });
+    return () => onReady?.(null);
+  }, [onReady]);
 
   async function accept(files: FileList | File[] | null) {
     const list = files ? Array.from(files) : [];
     if (list.length === 0) return;
-    const opts = { existing: used, max: limit, compress, useOriginal };
-    const { room: free, dropped: over } = planImages(list.length, opts);
-    const msg = over > 0 ? '最多 ' + limit + ' 张，已忽略多出的 ' + over + ' 张' : null;
+    // 提示一次只给一句，**体积优先**（过大是硬错，张数只是没位置了）
+    const opts = { existing: used, max: limit, compress, useOriginal, maxBytes: sizeLimit, files: list };
+    const { room: free, dropped: over, tooBig } = planImages(opts);
+    // 张数文案**不能盖掉体积文案**：12MB 的图塞进「只收 1 张」的头像位曾经报「最多 1 张，已忽略多出的 1 张」（盲审二号）
+    const msg =
+      tooBig !== null
+        ? '「' + tooBig.name + '」' + formatBytes(tooBig.size) + '，单个文件不能超过 ' + formatBytes(sizeLimit) + '，这一张没有加进来'
+        : over > 0
+          ? '最多 ' + limit + ' 张，已忽略多出的 ' + over + ' 张'
+          : null;
     setError(msg);
     onError?.(msg ?? '');
-    if (free === 0) return;
+    // 过大的先剔掉，再按余额截断：否则一张超大图会把名额占掉，后面正常的图反而进不来
+    const usable = list.filter((f) => f.size <= sizeLimit);
+    if (free === 0 || usable.length === 0) return;
     setBusy(true);
     const out: UploadedImage[] = [];
-    for (const f of list.slice(0, free)) {
-      const blob = await processImage(f, opts);
+    for (const f of usable.slice(0, free)) {
+      const blob = await processImage(f, { ...opts, maxEdge: variant === 'avatar' ? AVATAR_EDGE : undefined, targetBytes: variant === 'avatar' ? AVATAR_TARGET : undefined });
       out.push({
         id: Math.random().toString(36).slice(2),
         name: f.name,
@@ -129,7 +151,7 @@ export function ImageUploader({
             {current ? <Button onClick={() => onChange([])}>移除</Button> : null}
           </div>
           <span className='text-[11px] text-muted-foreground'>
-            建议正方形；{compress ? '自动压缩' : '保留原图'}，上限 1 张
+            建议正方形；{compress ? '自动压缩' : '保留原图'}，上限 1 张、{'≤' + formatBytes(sizeLimit)}
           </span>
           {error ? <span className='text-[12px] text-destructive'>{error}</span> : null}
         </div>

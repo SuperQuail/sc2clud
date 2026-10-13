@@ -8,7 +8,7 @@ export type AuthShellProps = {
   subtitle?: string;
   children: ReactNode;
   /** 页脚小字：安全提示、申诉入口这类 */
-  footer?: string;
+  footer?: ReactNode;
 };
 
 export function AuthShell({ title, subtitle, children, footer }: AuthShellProps) {

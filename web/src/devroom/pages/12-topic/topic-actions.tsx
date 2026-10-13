@@ -1,12 +1,16 @@
+import type { ReactNode } from 'react';
 import Button from '@jetbrains/ring-ui-built/components/button/button';
 import { ControlsHeight } from '@jetbrains/ring-ui-built/components/global/controls-height';
-import { Bookmark, Eye, Flag, Heart, Link2, MessageSquare } from 'lucide-react';
+import { Bookmark, Eye, Flag, Heart, Link2, MessageSquare, Pencil } from 'lucide-react';
 import { icon16 } from '@/ui/icons';
 
-// 正文下的动作条。4 个动作都是 icon+文字，**必须显式 inline={false}**：
-// 不然 Ring UI 按 inline 排（padding 0，实测点击区只有 48x24），改成 block + height S 后 32px 高。
-// 填充仍是透明（ghost），所以观感还是一排文字动作。点赞/收藏是**唯一的两个可切换状态**（幂等 PUT/DELETE，后端 §21.2），
-// 所以只有这两个用 active；分享/举报是一次性动作，用 ghost。
+// 正文下的动作条。**每个动作都必须有可观察的结果**（缺陷处理总纲 §7）：
+//   点赞/收藏 = 唯一的两个可切换状态（幂等 PUT/DELETE，后端 §21.2）；
+//   分享     = 复制链接 + 一行回执（原来点了没反应）；
+//   举报     = 打开举报弹层；提交后本按钮变「已举报」；
+//   编辑     = 打开编辑弹层（权限点 post.update_own，后端 v2 §21.2 的 PATCH /api/v1/topics/{id}）。
+// 每个动作都是 icon+文字，**必须显式 inline={false}**：不然 Ring UI 按 inline 排（padding 0，
+// 实测点击区只有 48x24），改成 block + height S 后 32px 高。填充仍是透明（ghost），观感还是一排文字动作。
 // 计数单独一个 span 包起来（tabular-nums），不要塞进按钮文本里——那样数字一变按钮宽度就跳。
 export function TopicActions({
   liked,
@@ -15,9 +19,14 @@ export function TopicActions({
   bookmarkCount,
   replyCount,
   viewCount,
+  reported,
   onToggleLike,
   onToggleBookmark,
   onCopyLink,
+  onReport,
+  onEdit,
+  /** 设计稿反馈那一行：由页面插在动作条下面 */
+  designNote,
 }: {
   liked: boolean;
   bookmarked: boolean;
@@ -25,52 +34,83 @@ export function TopicActions({
   bookmarkCount: number;
   replyCount: number;
   viewCount: number;
+  reported: boolean;
   onToggleLike: () => void;
   onToggleBookmark: () => void;
   onCopyLink?: () => void;
+  onReport?: () => void;
+  /** 不给就不渲染「编辑」（不是作者、或没有 post.update_own） */
+  onEdit?: () => void;
+  /** 设计稿反馈那一行：由页面插在动作条下面 */
+  designNote?: ReactNode;
 }) {
   return (
-    <div className='flex flex-wrap items-center gap-1 border-t border-border pt-2 text-muted-foreground'>
-      <Button
-        ghost
-        inline={false}
-        height={ControlsHeight.S}
-        active={liked}
-        icon={icon16(Heart)}
-        onClick={onToggleLike}
-        aria-label={(liked ? '取消点赞' : '点赞') + '，当前 ' + likeCount + ' 个赞'}
-      >
-        点赞
-      </Button>
-      <span className='tabular-nums text-[13px]'>{likeCount}</span>
-      <Button
-        ghost
-        inline={false}
-        height={ControlsHeight.S}
-        active={bookmarked}
-        icon={icon16(Bookmark)}
-        onClick={onToggleBookmark}
-        aria-label={(bookmarked ? '取消收藏' : '收藏') + '，当前 ' + bookmarkCount + ' 人收藏'}
-      >
-        收藏
-      </Button>
-      <span className='tabular-nums text-[13px]'>{bookmarkCount}</span>
-      <Button ghost inline={false} height={ControlsHeight.S} icon={icon16(Link2)} onClick={onCopyLink}>
-        分享
-      </Button>
-      <Button ghost inline={false} height={ControlsHeight.S} icon={icon16(Flag)}>
-        举报
-      </Button>
-      <span className='ml-auto flex items-center gap-4 text-[12px] text-muted-foreground'>
-        <span className='inline-flex items-center gap-1'>
-          <MessageSquare aria-hidden className='size-3.5' />
-          <span className='tabular-nums'>{replyCount}</span> 回复
+    <div className='flex flex-col gap-1.5'>
+      <div className='flex flex-wrap items-center gap-1 border-t border-border pt-2 text-muted-foreground'>
+        <Button
+          ghost
+          inline={false}
+          height={ControlsHeight.S}
+          active={liked}
+          icon={icon16(Heart)}
+          onClick={onToggleLike}
+          aria-label={(liked ? '取消点赞' : '点赞') + '，当前 ' + likeCount + ' 个赞'}
+        >
+          点赞
+        </Button>
+        <span className='tabular-nums text-[13px]'>{likeCount}</span>
+        <Button
+          ghost
+          inline={false}
+          height={ControlsHeight.S}
+          active={bookmarked}
+          icon={icon16(Bookmark)}
+          onClick={onToggleBookmark}
+          aria-label={(bookmarked ? '取消收藏' : '收藏') + '，当前 ' + bookmarkCount + ' 人收藏'}
+        >
+          收藏
+        </Button>
+        <span className='tabular-nums text-[13px]'>{bookmarkCount}</span>
+        <Button ghost inline={false} height={ControlsHeight.S} icon={icon16(Link2)} onClick={onCopyLink}>
+          分享
+        </Button>
+        <Button
+          ghost
+          inline={false}
+          height={ControlsHeight.S}
+          icon={icon16(Flag)}
+          active={reported}
+          aria-label={reported ? '已举报这篇帖子' : '举报这篇帖子'}
+          data-testid='topic-report'
+          onClick={onReport}
+        >
+          {reported ? '已举报' : '举报'}
+        </Button>
+        {onEdit ? (
+          <Button
+            ghost
+            inline={false}
+            height={ControlsHeight.S}
+            icon={icon16(Pencil)}
+            aria-label='编辑这篇帖子'
+            data-testid='topic-edit'
+            onClick={onEdit}
+          >
+            编辑
+          </Button>
+        ) : null}
+        <span className='ml-auto flex items-center gap-4 text-[12px] text-muted-foreground'>
+          <span className='inline-flex items-center gap-1'>
+            <MessageSquare aria-hidden className='size-3.5' />
+            <span className='tabular-nums'>{replyCount}</span> 回复
+          </span>
+          <span className='inline-flex items-center gap-1'>
+            <Eye aria-hidden className='size-3.5' />
+            <span className='tabular-nums'>{viewCount}</span> 浏览
+          </span>
         </span>
-        <span className='inline-flex items-center gap-1'>
-          <Eye aria-hidden className='size-3.5' />
-          <span className='tabular-nums'>{viewCount}</span> 浏览
-        </span>
-      </span>
+      </div>
+      {designNote}
     </div>
   );
 }

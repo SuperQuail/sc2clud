@@ -1,11 +1,11 @@
 import { Clock, Eye, Heart, MessageSquare } from 'lucide-react';
 import { formatTime } from '@/lib/format';
-import { appPath } from '@/lib/url';
 import { cn } from '@/lib/utils';
 import { UserAvatar } from '@/ui/user/avatar';
 import { Username } from '@/ui/user/username';
 import type { Topic } from './mock';
 import { TopicCover, TopicKindTag, TopicMark } from './topic-parts';
+import { roomHref } from '@/devroom/room-links';
 
 // 待提升为 src/ui：**方卡片**（设计需求-分区页 §B1）。一行 ≥4 张的硬指标靠调用方的 grid 保证，
 // 卡片自身只用 w-full + aspect-video：宽度由栅格给，卡片不写死尺寸。
@@ -32,7 +32,7 @@ export function SquareTopicCard({ topic, className }: { topic: Topic; className?
 
         <h3 className='m-0 text-[14px] leading-[1.4] font-medium text-foreground'>
           <a
-            href={appPath('t/' + topic.id)}
+            href={roomHref('12-topic')}
             className='line-clamp-2 rounded-[3px] outline-none after:absolute after:inset-0 group-hover:text-primary focus-visible:ring-[3px] focus-visible:ring-ring/50'
           >
             {topic.title}
@@ -41,7 +41,7 @@ export function SquareTopicCard({ topic, className }: { topic: Topic; className?
 
         {/* 作者行单独抬到拉伸命中区之上，点得到（z-10） */}
         <a
-          href={appPath('u/' + topic.author.handle)}
+          href={roomHref('11-profile')}
           className='relative z-10 flex min-w-0 items-center gap-1.5 rounded-[3px] outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50'
         >
           <UserAvatar name={topic.author.nickname} src={topic.author.avatar} size='sm' />
