@@ -61,13 +61,27 @@ func Static(root string, assets bool, shell func(c *gin.Context)) (gin.HandlerFu
 			return
 		}
 		clean := filepath.Join(root, filepath.Clean("/"+strings.TrimPrefix(c.Request.URL.Path, "/")))
+		// 根路径的 index.html 必须走**壳**（壳负责注入运行期前缀 / 或 /dev/）。
+		// 2026-10-13：这里原来把根目录也当成「目录里有 index.html」直接发文件，于是 dist 里那份
+		// 硬编码 <base href="/" /> 被原样发给浏览器 —— 配置生效了也没用，浏览器认的是文档里那个 base。
+		// 子应用目录（/devroom/）保持原样：它自带自己的相对路径。
+		atRoot := clean == root
 		if info, err := os.Stat(clean); err == nil {
 			if !info.IsDir() {
+				// /index.html 也要走壳：它就是那份带占位 base 的文档
+				if clean == indexPath {
+					shell(c)
+					return
+				}
 				c.Header("Cache-Control", cacheFor(c.Request.URL.Path))
 				fileServer.ServeHTTP(c.Writer, c.Request)
 				return
 			}
 			if idx, ierr := os.Stat(filepath.Join(clean, "index.html")); ierr == nil && !idx.IsDir() {
+				if atRoot {
+					shell(c)
+					return
+				}
 				c.Header("Cache-Control", "no-store")
 				fileServer.ServeHTTP(c.Writer, c.Request)
 				return

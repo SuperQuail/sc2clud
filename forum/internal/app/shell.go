@@ -34,7 +34,11 @@ func NewShell(distDir, base string) (*Shell, error) {
 }
 
 // baseTagRe 匹配 index.html 里那个占位 <base href="/" />。
-var baseTagRe = regexp.MustCompile(`(?i)<bases+href="[^"]*"s*/?>`)
+var baseTagRe = regexp.MustCompile(`(?i)<base\s+href="[^"]*"\s*/?>`)
+
+// 注意上面那两个 \s 的反斜杠。写成 s+ / s* 时正则永远匹配不到，Render 会走「插入」分支，
+// 页面上就留下**两个** <base>：先插的那个在前（浏览器恰好用对的），原来那个仍在文中。
+// 2026-10-13：把 dev 切到 /dev/ 时发现的 —— 症状是「配置明明生效了，页面却仍加载根路径的资源」。
 
 // Render 返回注入前缀后的 HTML。
 // 找不到 <base> 标签时插入一个——静默返回错的资源前缀，在 dev 上表现为加载了生产的产物。
