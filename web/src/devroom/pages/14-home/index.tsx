@@ -99,9 +99,11 @@ export default function HomePage() {
       <div className='flex flex-wrap items-center justify-between gap-2 border-y border-border py-2'>
         <span className='flex items-center gap-2'>
           <span className='text-[12px] text-muted-foreground'>排序</span>
+          {/* 分段控件统一形态：**无框 + 选中态浅底**（用户明确要求去掉边框）。
+              排序组与右边的视图组必须同一套写法，否则并排看就是「两组拼在一起」。 */}
           <ButtonSet>
             {SORTS.map((s) => (
-              <Button key={s.key} active={s.key === sort} height={ControlsHeight.S} onClick={() => setSort(s.key)}>
+              <Button key={s.key} ghost active={s.key === sort} height={ControlsHeight.S} onClick={() => setSort(s.key)}>
                 {s.label}
               </Button>
             ))}
@@ -110,6 +112,7 @@ export default function HomePage() {
 
         <span className='flex items-center gap-2'>
           <span className='text-[12px] text-muted-foreground'>视图</span>
+          {/* 与左边的排序组同一套写法（ghost + 选中态浅底）：两组并排，必须像一组控件 */}
           <ButtonSet>
             {VIEWS.map((v) => (
               <Button

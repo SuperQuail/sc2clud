@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import Button from '@jetbrains/ring-ui-built/components/button/button';
+import { ControlsHeight } from '@jetbrains/ring-ui-built/components/global/controls-height';
 import { LexicalComposer } from '@lexical/react/LexicalComposer';
 import { RichTextPlugin } from '@lexical/react/LexicalRichTextPlugin';
 import { ContentEditable } from '@lexical/react/LexicalContentEditable';
@@ -56,13 +57,17 @@ function Toolbar({ onMention }: { onMention: () => void }) {
     editor.update(fn);
   };
 
+  // 纯图标按钮在 Ring 里默认走 inline（isInline = inline ?? text ?? !!icon）：display:inline + padding:0，
+  // 于是 7 个图标的热区只有 16×16。这里显式 inline={false} + S 档 → 24×24 的透明底图标（ghost 保持无框观感）。
   return (
     <div className='flex flex-wrap items-center gap-1 rounded-md border border-border bg-muted/40 p-1'>
-      <Button data-testid='toolbar-bold' ghost icon={icon16(Bold)} aria-label='粗体' title='粗体' onClick={() => editor.dispatchCommand(FORMAT_TEXT_COMMAND, 'bold')} />
-      <Button data-testid='toolbar-italic' ghost icon={icon16(Italic)} aria-label='斜体' title='斜体' onClick={() => editor.dispatchCommand(FORMAT_TEXT_COMMAND, 'italic')} />
-      <Button data-testid='toolbar-code' ghost icon={icon16(Code)} aria-label='行内代码' title='行内代码' onClick={() => editor.dispatchCommand(FORMAT_TEXT_COMMAND, 'code')} />
+      <Button inline={false} height={ControlsHeight.S} data-testid='toolbar-bold' ghost icon={icon16(Bold)} aria-label='粗体' title='粗体' onClick={() => editor.dispatchCommand(FORMAT_TEXT_COMMAND, 'bold')} />
+      <Button inline={false} height={ControlsHeight.S} data-testid='toolbar-italic' ghost icon={icon16(Italic)} aria-label='斜体' title='斜体' onClick={() => editor.dispatchCommand(FORMAT_TEXT_COMMAND, 'italic')} />
+      <Button inline={false} height={ControlsHeight.S} data-testid='toolbar-code' ghost icon={icon16(Code)} aria-label='行内代码' title='行内代码' onClick={() => editor.dispatchCommand(FORMAT_TEXT_COMMAND, 'code')} />
       <Button
         data-testid='toolbar-quote'
+        inline={false}
+        height={ControlsHeight.S}
         ghost
         icon={icon16(Quote)}
         aria-label='引用'
@@ -74,14 +79,16 @@ function Toolbar({ onMention }: { onMention: () => void }) {
       />
       <Button
         data-testid='toolbar-list'
+        inline={false}
+        height={ControlsHeight.S}
         ghost
         icon={icon16(List)}
         aria-label='无序列表'
         title='无序列表'
         onClick={() => editor.dispatchCommand(INSERT_UNORDERED_LIST_COMMAND, undefined)}
       />
-      <Button data-testid='toolbar-link' ghost icon={icon16(Link2)} aria-label='链接' title='链接' onClick={() => editor.dispatchCommand(TOGGLE_LINK_COMMAND, 'https://')} />
-      <Button ghost icon={icon16(AtSign)} aria-label='提及某人' title='提及某人' onClick={onMention} />
+      <Button inline={false} height={ControlsHeight.S} data-testid='toolbar-link' ghost icon={icon16(Link2)} aria-label='链接' title='链接' onClick={() => editor.dispatchCommand(TOGGLE_LINK_COMMAND, 'https://')} />
+      <Button inline={false} height={ControlsHeight.S} ghost icon={icon16(AtSign)} aria-label='提及某人' title='提及某人' onClick={onMention} />
     </div>
   );
 }

@@ -172,8 +172,17 @@ export function ImageUploader({
               <span className='absolute left-1 top-1 rounded-[3px] bg-foreground/70 px-1 text-[10px] text-background'>
                 {im.original ? '原图' : '压缩'} {Math.round(im.size / 1024)}KB
               </span>
-              <span className='absolute -right-2 -top-2'>
-                <Button icon={icon16(X)} aria-label={'移除 ' + im.name} onClick={() => onChange(images.filter((x) => x.id !== im.id))} />
+              {/* 角上的移除：原来是 16×16 的 inline（热区只有图标那么大）。
+                  改 24×24 后如果仍用 -right-2 -top-2 会往容器外多探出去，所以定位收进缩略图内部
+                  （right-1 top-1 = 距角 4px），实测：不超出 88×88 的 li，也不进相邻缩略图的 8px 间隙。 */}
+              <span className='absolute top-1 right-1'>
+                <Button
+                  inline={false}
+                  height={ControlsHeight.S}
+                  icon={icon16(X)}
+                  aria-label={'移除 ' + im.name}
+                  onClick={() => onChange(images.filter((x) => x.id !== im.id))}
+                />
               </span>
             </li>
           ))}
