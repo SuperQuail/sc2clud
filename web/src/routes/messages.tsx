@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router';
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import Input from '@jetbrains/ring-ui-built/components/input/input';
 import Button from '@jetbrains/ring-ui-built/components/button/button';
 import { ControlsHeight } from '@jetbrains/ring-ui-built/components/global/controls-height';
@@ -43,9 +43,12 @@ export function MessagesPage() {
   const [peerInput, setPeerInput] = useState('');
 
   const loggedIn = session.isLoggedIn;
-  const conversations = useQuery({
+  // 会话列表是**游标分页**的：只画第一页会让老会话永远打不开。
+  const conversations = useInfiniteQuery({
     queryKey: qk.conversations(),
-    queryFn: ({ signal }) => fetchConversations({}, signal),
+    queryFn: ({ pageParam, signal }) => fetchConversations({ cursor: pageParam }, signal),
+    initialPageParam: null as string | null,
+    getNextPageParam: (last) => last.next,
     enabled: loggedIn,
   });
   const unread = useQuery({ queryKey: qk.unreadMessages(), queryFn: ({ signal }) => fetchUnreadMessages(signal), enabled: loggedIn });
@@ -130,13 +133,13 @@ export function MessagesPage() {
               <Loading what='会话' className='py-10' />
             ) : conversations.isError ? (
               <ErrorState what='会话' error={conversations.error} onRetry={() => void conversations.refetch()} />
-            ) : (conversations.data?.items.length ?? 0) === 0 ? (
+            ) : (conversations.data?.pages.flatMap((p) => p.items).length ?? 0) === 0 ? (
               <div className='flex flex-col items-center gap-2 px-4 py-10 text-center'>
                 <span className='text-[15px] text-foreground'>还没有会话</span>
                 <span className='text-[12px] text-muted-foreground'>在下面按对方的 @handle 发起第一条私信</span>
               </div>
             ) : (
-              conversations.data?.items.map((c) => {
+              conversations.data?.pages.flatMap((p) => p.items).map((c) => {
                 const selected = c.peer.handle === handle;
                 return (
                   <Link
@@ -162,6 +165,19 @@ export function MessagesPage() {
                 );
               })
             )}
+
+            {conversations.hasNextPage ? (
+              <div className='flex justify-center p-2'>
+                <Button
+                  loader={conversations.isFetchingNextPage}
+                  inline={false}
+                  height={ControlsHeight.S}
+                  onClick={() => void conversations.fetchNextPage()}
+                >
+                  {conversations.isFetchingNextPage ? '加载中…' : '更早的会话'}
+                </Button>
+              </div>
+            ) : null}
           </div>
 
           {/* 开新会话：会话列表里没有的人只能靠 handle 找到 —— 后端 GET /messages/{handle}

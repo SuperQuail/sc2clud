@@ -1,4 +1,4 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import Button from '@jetbrains/ring-ui-built/components/button/button';
 import { ControlsHeight } from '@jetbrains/ring-ui-built/components/global/controls-height';
 import { Check, Inbox, Trash2 } from 'lucide-react';
@@ -71,7 +71,13 @@ function linkOf(n: Notification): string | null {
 
 export function NotificationsPage() {
   const qc = useQueryClient();
-  const list = useQuery({ queryKey: qk.notifications(), queryFn: ({ signal }) => fetchNotifications({}, signal) });
+  // 通知是**游标分页**的（后端多取一行判有没有下一页）：只画第一页会让老通知永远看不到。
+  const list = useInfiniteQuery({
+    queryKey: qk.notifications(),
+    queryFn: ({ pageParam, signal }) => fetchNotifications({ cursor: pageParam }, signal),
+    initialPageParam: null as string | null,
+    getNextPageParam: (last) => last.next,
+  });
   const unread = useQuery({ queryKey: qk.unread(), queryFn: ({ signal }) => fetchUnreadCount(signal) });
 
   function refresh() {
@@ -83,7 +89,7 @@ export function NotificationsPage() {
   const markOne = useMutation({ mutationFn: (id: string) => markNotificationsRead({ ids: [id] }), onSuccess: refresh });
   const removeOne = useMutation({ mutationFn: (id: string) => deleteNotification(id), onSuccess: refresh });
 
-  const items = list.data?.items ?? [];
+  const items = list.data?.pages.flatMap((p) => p.items) ?? [];
   const unreadCount = unread.data?.count ?? 0;
 
   return (
@@ -177,6 +183,15 @@ export function NotificationsPage() {
           })}
         </ul>
       )}
+
+      {list.hasNextPage ? (
+        <div className='flex flex-col items-center gap-1.5'>
+          <Button loader={list.isFetchingNextPage} onClick={() => void list.fetchNextPage()}>
+            {list.isFetchingNextPage ? '加载中…' : '加载更多'}
+          </Button>
+          <span className='text-[11px] text-muted-foreground'>每页 20 条 · 按游标翻页（不是页码）</span>
+        </div>
+      ) : null}
     </div>
   );
 }
