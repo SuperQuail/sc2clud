@@ -288,8 +288,26 @@ function Step-Health([string]$Ver, [string]$EnvB64) {
   }
 
   # Public path through nginx. Informational: DNS and TLS are not this script's job.
+  #
+  # 2026-10-13: this used to print '<code> (through nginx)' and nothing else. First dev deploy printed
+  # 'public http://.../dev-go/ -> 200 (through nginx)' while that URL was serving the MAINTENANCE
+  # PLACEHOLDER -- there is no /dev-go/ location in nginx, so it fell through to location / -> 8080.
+  # A 200 from the wrong server is the exact false-green this project keeps finding, so assert
+  # IDENTITY: the body must be our app shell (it must carry the first-screen asset name we just
+  # deployed). If it does not, say plainly that nothing of ours answers there.
   $pub = Invoke-Curl $PublicUrl
-  Info ('public ' + $PublicUrl + ' -> ' + $pub.Code + ' (through nginx)')
+  $pubBody = [string]$pub.Body
+  $assetName = [string]$facts['asset']
+  $isOurs = $assetName -and $assetName -ne '(none)' -and $pubBody.Contains($assetName)
+  if ($pub.Code -eq '200' -and $isOurs) {
+    Info ('public ' + $PublicUrl + ' -> 200 and it IS this build (carries ' + $assetName + ')')
+  } elseif ($pub.Code -eq '200') {
+    Warn ('public ' + $PublicUrl + ' -> 200 but it is NOT this build (no ' + $assetName + ' in the body).')
+    Warn '      Something else answers on that path (placeholder or a location without a route to this instance).'
+    Warn '      The instance itself is healthy on ' + $Addr + '; add/fix the nginx location to expose it.'
+  } else {
+    Info ('public ' + $PublicUrl + ' -> ' + $pub.Code + ' (no route to this instance; it is healthy on ' + $Addr + ')')
+  }
   return $facts
 }
 
