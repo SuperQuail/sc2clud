@@ -70,6 +70,23 @@ function Invoke-Curl([string]$Url) {
   return @{ Code = $code; Body = $body }
 }
 
+# 健康探测必须**等**。实例启动要注册几百条路由、连库、跑启动自检 —— 实测超过 10 秒。
+# 2026-10-13：dev 部署因此误判过两次（一次报 000、一次触发了不必要的回滚），而 journal 里
+# 服务其实已经 'http 监听 addr=127.0.0.1:8082' 起来了。一次性探测把「还没起来」当成「起不来」，
+# 而且症状随实例冷热而变 —— 正是那种偶发错误。所以等待写进探测本身，不散在各调用点。
+function Wait-Health([string]$Url, [int]$TimeoutSec = 60) {
+  $deadline = (Get-Date).AddSeconds($TimeoutSec)
+  $last = '000'
+  while ((Get-Date) -lt $deadline) {
+    $r = Invoke-Curl $Url
+    if ($r.Code -eq '200') { return $r }
+    $last = $r.Code
+    Start-Sleep -Milliseconds 500
+  }
+  Warn ('health probe never answered 200 within ' + $TimeoutSec + 's (last code ' + $last + ')')
+  return @{ Code = $last; Body = '' }
+}
+
 # ---------------------------------------------------------------- steps
 function Step-Build([string]$Ver) {
   Stage '1/9 build'
@@ -261,6 +278,8 @@ function Step-MigrateAndStart([string]$Ver, [string]$EnvB64) {
 
 function Step-Health([string]$Ver, [string]$EnvB64) {
   Stage '8/9 health'
+  # 先等实例肯应答，再去收事实：否则事实里的 health_code 会是 000，而那是「还没起来」不是「起不来」。
+  [void](Wait-Health ('http://' + $LocalAddr + $HealthPath))
   $facts = @{}
   $res = Invoke-Remote 'health' @{ SC2CLUD_DIR = $InstanceDir; SC2CLUD_INSTANCE = $Instance; SC2CLUD_VERSION = $Ver; SC2CLUD_HEALTH_PATH = $HealthPath; SC2CLUD_ENV_B64 = $EnvB64 } -AllowFail
   foreach ($line in ($res.Out -split "`n")) {
@@ -304,7 +323,7 @@ function Step-Health([string]$Ver, [string]$EnvB64) {
   } elseif ($pub.Code -eq '200') {
     Warn ('public ' + $PublicUrl + ' -> 200 but it is NOT this build (no ' + $assetName + ' in the body).')
     Warn '      Something else answers on that path (placeholder or a location without a route to this instance).'
-    Warn '      The instance itself is healthy on ' + $Addr + '; add/fix the nginx location to expose it.'
+    Warn '      The instance itself is healthy on ' + $facts['addr'] + '; add/fix the nginx location to expose it.'
   } else {
     Info ('public ' + $PublicUrl + ' -> ' + $pub.Code + ' (no route to this instance; it is healthy on ' + $Addr + ')')
   }
@@ -323,14 +342,19 @@ function Invoke-Rollback([string]$Prev, [string]$FailedVer, [string]$EnvB64) {
   $out = (Invoke-Remote 'rollback' @{ SC2CLUD_DIR = $InstanceDir; SC2CLUD_INSTANCE = $Instance; SC2CLUD_TARGET = $Prev; SC2CLUD_ENV_B64 = $EnvB64 }).Out
   foreach ($line in ($out -split "`n")) { if ($line.Trim()) { Info $line } }
 
-  $r = @{ Code = '000'; Body = '' }
-  for ($i = 1; $i -le 20; $i++) {
-    Start-Sleep -Milliseconds 500
-    $r = Invoke-Curl ('http://' + $LocalAddr + '/healthz')
-    if ($r.Code -eq '200') { break }
+  # 探测必须在**服务器上**跑。Invoke-Curl 是本机（Windows）的 curl，而实例只监听服务器的
+  # 127.0.0.1:<port> —— 本机探测永远是 000。回滚校验因此从第一天起每次都在报「站点挂了」
+  # （假警报，且它离真相只差一个 ssh）。复用第 8 步用的远端 health，读它的 health_code。
+  $code = '000'
+  $deadline = (Get-Date).AddSeconds(60)
+  while ((Get-Date) -lt $deadline) {
+    $res2 = Invoke-Remote 'health' @{ SC2CLUD_DIR = $InstanceDir; SC2CLUD_INSTANCE = $Instance; SC2CLUD_VERSION = $FailedVer; SC2CLUD_HEALTH_PATH = $HealthPath; SC2CLUD_ENV_B64 = $EnvB64 } -AllowFail
+    foreach ($line in ($res2.Out -split "`n")) { if ($line.Trim() -match '^health_code=(\S+)$') { $code = $Matches[1] } }
+    if ($code -eq '200') { break }
+    Start-Sleep -Milliseconds 1000
   }
-  Info ('after rollback: GET /healthz -> ' + $r.Code + ' ' + $r.Body)
-  if ($r.Code -ne '200') { Fail ('rollback did not come up either -- the site is down, fix it by hand (systemctl status ' + $UnitName + ')') }
+  Info ('after rollback: health_code=' + $code)
+  if ($code -ne '200') { Fail ('rollback did not come up either -- the site is down, fix it by hand (systemctl status ' + $UnitName + ')') }
 
   Write-Host ''
   Write-Host ('  ROLLED BACK: ' + $FailedVer + ' -> ' + $Prev) -ForegroundColor Yellow
