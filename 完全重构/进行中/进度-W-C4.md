@@ -70,6 +70,13 @@
     设计稿四态 `pending|replied|rejected|closed` ↔ 服务端 `status` 三值 + `decision='upheld'`（rejected）。
   - 阻塞：见下（`router.tsx` 那一行 + `routes/appeal.tsx` 少发 `captcha_id`）。
 
+- [x] 第 5 步：迁移回滚用例（`forum/internal/appeal/migration_test.go`）
+  - 证据：`go test ./internal/appeal/... -count=1 -v` → `--- PASS: TestAppealsMigrationRoundTrip (0.83s)` / `--- PASS: TestCreateGuards` / `ok forum/internal/appeal 12.3s`。
+    三件事：全量 up 之后表与三条关键索引都在、生成列第一条单号 **AP-2001**；跑 0022 down 之后表与索引都没了（回滚干净）；**再 up 一次成功**（回滚不干净的话这一步会撞名字）。
+    `TestMain` 在没库的机器上跳过库用例（按 `-test.run TestCreateGuards` 过滤），单测不受影响。
+  - 下一步：无（本工作包到此完成）。接手人若继续：见下面两条阻塞。
+  - 阻塞：无
+
 ## 阻塞（要 Lead 动的）
 
 1. **`web/src/app/router.tsx:55` 的 `appeal` 路由被注释掉**（`{ path: 'appeal', element: <AppealPage /> }`）—— 整页不可达。
