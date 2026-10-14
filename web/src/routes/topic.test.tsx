@@ -83,6 +83,60 @@ const BOARD = {
   today_count: 1,
 };
 
+// **上行正文**（缺陷清单 D6 的同一条根因）：编辑器给宿主的是 EditorState JSON，而后端 content_md 收的是
+// **Markdown**（forum 的 render 过 goldmark → bluemonday 渲染成 content_html）。把 JSON 当 Markdown 发上去，
+// 库里存的就是那串 JSON，别人打开看到的就是它。
+//
+// 这一份把编辑器换成假的：Lexical 在 jsdom 里收不到真实输入（实测 fireEvent.input 不产生 onChange），
+// 测它等于测库。假件照真编辑器的契约报数：onChange 的两份是 **EditorState JSON + HTML**，
+// 且**初值非空时装载完报一次**（真编辑器由 OnChangePlugin 报 —— 编辑弹层的「正文不能为空」就靠那一下）。
+const EDITOR_JSON = JSON.stringify({
+  root: {
+    children: [
+      {
+        children: [{ detail: 0, format: 0, mode: 'normal', style: '', text: '走到第二波就卡关。', type: 'text', version: 1 }],
+        direction: 'ltr',
+        format: '',
+        indent: 0,
+        type: 'paragraph',
+        version: 1,
+      },
+    ],
+    direction: 'ltr',
+    format: '',
+    indent: 0,
+    type: 'root',
+    version: 1,
+  },
+});
+vi.mock('@/ui/rich/markdown-editor', async () => {
+  const [{ default: Input }, { useEffect, useRef, useState }] = await Promise.all([
+    import('@jetbrains/ring-ui-built/components/input/input'),
+    import('react'),
+  ]);
+  return {
+    MarkdownEditor: ({ value, onChange }: { value: string; onChange: (json: string, html: string) => void }) => {
+      const done = useRef(false);
+      const [typed, setTyped] = useState('');
+      useEffect(() => {
+        if (done.current || value === '') return;
+        done.current = true;
+        onChange(value, '<p>已装载</p>');
+      }, [value, onChange]);
+      return (
+        <Input
+          label='假编辑器（测试注入）'
+          value={typed}
+          onChange={(e) => {
+            setTyped(e.target.value);
+            onChange(e.target.value, '<p>不管</p>');
+          }}
+        />
+      );
+    },
+  };
+});
+
 // vi.mock 的工厂会被提升到文件顶部，所以假函数要用 vi.hoisted 一起提上去
 const mocks = vi.hoisted(() => ({
   createReport: vi.fn(),
@@ -237,16 +291,17 @@ it('B6：编辑保存发的 PATCH 带 content_md（后端凭它把 review_state 
   mocks.topic.current = { review_state: 'pending', review_note: null };
   fireEvent.click(dialog.querySelector('[data-testid=edit-save]')!);
   // 不带 content_md 的 PATCH 不会重置审核态 —— 所以正文必须在体内。
-  // 正文是**编辑器真源**（content_md 那一列就是 Lexical EditorState 的 JSON，与发帖页同一个字段），
-  // 不再是「从 content_html 剥标签得到的纯文本」——那条路会把提及与图片节点弄丢。
+  // 上行的那一份是 **Markdown**（后端 content_md 那一列过 goldmark → bluemonday 渲染成 content_html，
+  // 由 editor-json-to-markdown 换出来）；不再是「从 content_html 剥标签得到的纯文本」——
+  // 那条路会把提及与图片节点弄丢，而直接发编辑器 JSON 就是缺陷清单 D6 那个形态。
   await waitFor(() => expect(mocks.updateTopic).toHaveBeenCalledTimes(1));
   const [patchedId, patchedBody] = mocks.updateTopic.mock.calls[0]! as [string, { title: string; content_md: string }];
   expect(patchedId).toBe(WIRE.id);
   expect(patchedBody.title).toBe('改过的标题');
-  expect(JSON.parse(patchedBody.content_md)).toHaveProperty('root');
-  // WIRE.content_md 是「正文」（历史值，不是 JSON）：它必须**被保住**（toEditorState 包成最小文档），
-  // 而不是抛在用户脸上、也不是被清空
-  expect(patchedBody.content_md).toContain('正文');
+  expect(patchedBody.content_md).toBe('正文');
+  expect(JSON.stringify(patchedBody)).not.toContain('"root"');
+  // WIRE.content_md 是「正文」（历史值，不是 JSON）：它必须**被保住**（toEditorState 包成最小文档再进编辑器，
+  // 出来还是同一段 Markdown），而不是抛在用户脸上、也不是被清空 —— 这一条同时钉住回填方向。
   // B6 的那句实话：保存 = 重新提交审核，回执必须说出来（旧回执只会说「更新了」，作者不知道自己在重审）
   await waitFor(() => expect(screen.getAllByTestId('design-action-note')[0]!.textContent).toContain('已重新提交审核'));
   // L7：页头横幅也要说同一件事 —— 「正在审核中」这一档原先与**首次投稿**完全同形，
@@ -256,6 +311,51 @@ it('B6：编辑保存发的 PATCH 带 content_md（后端凭它把 review_state 
   expect(banner.getAttribute('data-resubmitted')).toBe('1');
   expect(banner.textContent).toContain('已重新提交复审');
   mocks.topic.current = null;
+});
+
+// D6 的同一条根因（帖子页的回复）：编辑器给的是 EditorState JSON，后端 posts.content_md 收的是 Markdown。
+// 替身**照后端行为写**：POST 存下 content_md，回复列表接口回的就是它的渲染结果 ——
+// 旧测试拿手写 HTML 当 content_html，所以「发上去的是不是 JSON」它根本看不见。
+it('上行（回复）：POST /topics/{id}/posts 的 content_md 是 Markdown，不是 EditorState JSON', async () => {
+  mocks.createPost.mockImplementation((_id: string, body: { content_md: string }) => {
+    mocks.posts.current = {
+      items: [
+        {
+          id: 'p-9',
+          parent_id: null,
+          floor: 2,
+          author: { handle: 'Alenger', nickname: '爱兰琪尔', avatar_hash: null },
+          content_md: body.content_md,
+          content_html: '<p>' + body.content_md + '</p>',
+          created_at: '2026-10-14T00:00:00Z',
+          updated_at: '2026-10-14T00:00:00Z',
+          like_count: 0,
+          my_vote: 0,
+        },
+      ],
+      next: null,
+    };
+    return Promise.resolve({});
+  });
+  // WIRE 的 can_reply 是 false（那是作者视角的审核态那条）：回复框要能画出来才谈得上提交
+  mocks.topic.current = { can_reply: true };
+  renderPage();
+  await screen.findByTestId('topic-main');
+  fireEvent.change(await screen.findByLabelText('假编辑器（测试注入）'), { target: { value: EDITOR_JSON } });
+  fireEvent.click(screen.getByTestId('reply-publish'));
+
+  await waitFor(() => expect(mocks.createPost).toHaveBeenCalledTimes(1));
+  const [topicId, body] = mocks.createPost.mock.calls[0]! as [string, { content_md: string }];
+  expect(topicId).toBe(WIRE.id);
+  expect(body.content_md).toBe('走到第二波就卡关。');
+  expect(JSON.stringify(body)).not.toContain('"root"');
+  // 后端下一次取列表时，页面上看到的是正文本身（渲染的就是存下来的那一份），整页里没有 JSON 的形状
+  await waitFor(() => expect(screen.getByText('走到第二波就卡关。')).toBeTruthy());
+  expect(document.body.textContent ?? '').not.toContain('"root"');
+
+  mocks.createPost.mockReset();
+  mocks.topic.current = null;
+  mocks.posts.current = null;
 });
 
 // L6（拍板）：「打回修改」是**独立状态**（不是 rejected）—— 作者侧文案与操作都要与「拒绝」不同，

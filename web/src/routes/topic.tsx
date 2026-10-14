@@ -5,6 +5,7 @@ import Button from '@jetbrains/ring-ui-built/components/button/button';
 import { appPath, routePath } from '@/lib/url';
 import { qk } from '@/lib/query/keys';
 import { can, useSession } from '@/lib/perms';
+import { editorJsonToMarkdown } from '@/ui/rich/editor-json-to-markdown';
 import { isApiError } from '@/lib/api/errors';
 import {
   createPost,
@@ -155,8 +156,10 @@ export function TopicPage() {
     onSettled: () => queryClient.invalidateQueries({ queryKey: qk.posts(topicId) }),
   });
   const reply = useMutation({
+    // 上行的是 **Markdown**（后端 posts.content_md 那一列过 goldmark → bluemonday 渲染成 content_html）：
+    // 编辑器给的是 EditorState JSON，直接发上去库里存的就是那串 JSON（缺陷清单 D6 的同一条根因）。
     mutationFn: (v: { parentId: string | null; body: { json: string; html: string } }) =>
-      createPost(topicId, { content_md: v.body.json, parent_id: v.parentId ?? undefined }),
+      createPost(topicId, { content_md: editorJsonToMarkdown(v.body.json), parent_id: v.parentId ?? undefined }),
     onSuccess: () => {
       // 回复成功后失效「回复列表 + 主题」（主题的 reply_count 会变）——按影响面失效，不全量 invalidate
       void queryClient.invalidateQueries({ queryKey: qk.posts(topicId) });
@@ -185,11 +188,13 @@ export function TopicPage() {
   // 两件事是同一次请求。saved 只用来在回执里说实话，不参与渲染判断。
   const [saved, setSaved] = useState<'idle' | 'draft' | 'resubmitted'>('idle');
   const save = useMutation({
-    // next.json 就是 PATCH 的 content_md —— **与发帖页同一个字段**（后端存的就是这份 EditorState JSON）。
+    // PATCH 的 content_md **与发帖页同一个字段、同一条换算**：编辑器给的是 EditorState JSON，
+    // 上行必须是 Markdown（上面 reply 的同一句）。next.json 非 JSON 时（onResubmit 把详情里的
+    // content_md 原样递回来，它本来就是 Markdown）换算原样放行，不会把老正文吃掉。
     // 正文不再从 content_html 剥标签：那条路会把提及与图片节点弄丢，而 PATCH 只要带 content_md
     // 就会把 review_state 打回待审（forum 的 ResetTopicReview），所以发出去的内容必须是真的那一份。
     mutationFn: (next: { title: string; json: string }) =>
-      updateTopic(topicId, { title: next.title, content_md: next.json }),
+      updateTopic(topicId, { title: next.title, content_md: editorJsonToMarkdown(next.json) }),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: qk.topic(topicId) });
       void queryClient.invalidateQueries({ queryKey: qk.posts(topicId) });

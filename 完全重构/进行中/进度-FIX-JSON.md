@@ -25,3 +25,15 @@
   - 下一步：`routes/topic.tsx` 的 `reply`（createPost）与 `save`（updateTopic）过同一个函数；
     `topic.test.tsx` 的 B6 那条现在断言 `JSON.parse(content_md)).toHaveProperty('root')`（正是缺陷本身），要翻过来。
   - 阻塞：无
+
+- [x] 回复与编辑正文（`routes/topic.tsx`）：`reply`（createPost）与 `save`（updateTopic）各过一行同一函数
+  - 证据：先红 `npx vitest run src/routes/topic.test.tsx` → `Tests 2 failed | 10 passed`：
+    ① B6 那条原来断言 `JSON.parse(content_md)).toHaveProperty('root')` —— **它钉的就是缺陷本身**，
+    翻成 `toBe('正文')` + 整个 body 不含 `"root"`（这条同时钉住回填：老正文「正文」原样保住）；
+    ② 新增「上行（回复）」：替身照后端行为写（POST 存 content_md、列表接口回它的渲染结果），
+    报红 `expected '{"root":…' to be '走到第二波就卡关。'`；改完 `12 passed`。
+    · 页面里另有一条 `onResubmit` 把详情的 `content_md`（本来就是 Markdown）递给 `save` ——
+    换算对非 JSON 原样放行，不会把老正文吃掉。
+  - 下一步：`routes/issues.tsx` 的评论提交（`onComment` → `createIssueComment` 的 `body_md`）
+    是同一根因的最后一处；断言写在网络替身上（fetch 桩 + 假编辑器）。
+  - 阻塞：无
