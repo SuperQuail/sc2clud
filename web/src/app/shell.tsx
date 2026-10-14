@@ -5,6 +5,7 @@ import { ControlsHeight } from '@jetbrains/ring-ui-built/components/global/contr
 import { useQuery } from '@tanstack/react-query';
 import { Bell, MessageSquare, Search, Star } from 'lucide-react';
 import { icon16 } from '@/ui/icons';
+import { HeaderSearch } from '@/ui/nav/header-search';
 import { ThemeSwitcher } from '@/ui/theme-switcher';
 import { UserAvatar } from '@/ui/user/avatar';
 import { appPath, routePath } from '@/lib/url';
@@ -35,10 +36,11 @@ export function Shell() {
             <Button ghost inline={false} height={ControlsHeight.S} href={appPath('')}>
               首页
             </Button>
-            {/* 搜索内嵌在首页（用户要求不单独开页面），所以这个按钮只是把人带到首页的搜索框旁 */}
-            <Button ghost inline={false} height={ControlsHeight.S} href={appPath('')} icon={icon16(Search)}>
-              搜索
-            </Button>
+            {/* 搜索：**就地展开**，不换页（2026-10-14 用户实测 D11：原来这颗只是把人带回首页，
+                而用户要的是「在最上面显示搜索栏，而不是单独有一个页面」）。
+                件在 @/ui/nav/header-search（已登记），结果区复用首页那块 SearchPanel —— 同一个件，不复制第二份。
+                首页内嵌搜索保持现状（用户明确要求不动它）。 */}
+            <HeaderSearch />
             {/* 「下载」顶栏入口**已撤**：与现在的设计冲突（用户拍板 2026-10-13），
                 而且启动器发布数据本来就没有（老站备份 releases 0 行、归档无产物）—— 留着是个空门面。 */}
           </nav>
