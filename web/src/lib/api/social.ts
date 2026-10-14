@@ -79,6 +79,101 @@ export function updateNoticeSettings(body: NoticeSettings): Promise<NoticeSettin
   return api<NoticeSettings>('notifications/settings', { method: 'PUT', body });
 }
 
+// ── C4 申诉闭环（2026-10-14 落地；端点见 forum/internal/appeal/handler.go）────────────────
+//
+// **字段名照抄后端 DTO**（forum/internal/appeal/dto.go 的 Appeal / SubmitResult）。
+// 免登录那两条路（提交 / 查进展）是 C4 存在的理由：被封的人登不进来。
+// 设计稿 17-appeal 的四态在服务端是三值 + decision —— 「已驳回」= decision='upheld'。
+
+/** 事由值域与 0022_appeals 的 ck_appeals_type 逐字一致（也等于 17-appeal/data.ts 的四个 key）。 */
+export type AppealKind = 'ban' | 'review_reject' | 'report_result' | 'other';
+
+/** 状态三值。**没有第四态「已驳回」**：那由 decision 表达（见上）。 */
+export type AppealState = 'pending' | 'replied' | 'closed';
+
+export type AppealDecision = 'upheld' | 'overturned';
+
+export type Appeal = {
+  /** 对外单号（AP-2001）。它同时是免登录查进展的凭据之一。 */
+  no: string;
+  type: AppealKind;
+  username: string;
+  email: string;
+  /** 自证通过后绑上的账号（公开 id）；null = 没对上，要人眼核。 */
+  user_id: string | null;
+  identity_verified: boolean;
+  /** 只有 review_reject 有（那篇被驳回的帖子）。 */
+  topic_id: string | null;
+  /** 那篇帖子**此刻**的审核态（pending / approved / rejected）。 */
+  topic_review_state: string | null;
+  ref: string;
+  title: string;
+  details: string;
+  contact: string;
+  status: AppealState;
+  decision: AppealDecision | null;
+  /** 给提交人看的答复（离开 pending 时一定非空）。 */
+  response: string;
+  handle_note: string;
+  handler: { handle: string; nickname: string } | null;
+  handled_at: string | null;
+  /** 答复时限（后端给的文案，如「3 个工作日内」）—— 别在前端再写一份。 */
+  eta: string;
+  created_at: string;
+  updated_at: string;
+};
+
+export type AppealReceipt = { no: string; eta: string; status: AppealState; created: boolean };
+
+/** POST /appeals —— **免登录**。登录了也能发（会话是更强的证据）。 */
+export function createAppeal(body: {
+  type: AppealKind;
+  username?: string;
+  email: string;
+  ref?: string;
+  title: string;
+  details: string;
+  contact?: string;
+  /** 这一张题的 id（ProductCaptcha 的 onChallenge 给）。缺了后端判 auth.captcha_wrong。 */
+  captcha_id?: string;
+  captcha?: string;
+}): Promise<AppealReceipt> {
+  return api<AppealReceipt>('appeals', { method: 'POST', body });
+}
+
+/** POST /appeals/lookup —— 免登录查进展：**单号 + 注册邮箱**，两条都对上才给看。 */
+export function lookupAppeal(body: { no: string; email: string }): Promise<Appeal> {
+  return api<Appeal>('appeals/lookup', { method: 'POST', body });
+}
+
+/** GET /me/appeals —— 登录用户看自己全部（含已处理）。 */
+export function fetchMyAppeals(q: { limit?: number; cursor?: string } = {}, signal?: AbortSignal) {
+  return apiPage<Appeal>('me/appeals', { query: pageQuery(q), signal });
+}
+
+/** 管理端队列的筛选（字段名照 handler.go 的 QueueInput）。 */
+export type AppealQueueQuery = PageQuery & { status?: AppealState; type?: AppealKind; q?: string };
+
+export function fetchAppealQueue(q: AppealQueueQuery = {}, signal?: AbortSignal): Promise<{ items: Appeal[]; next: string | null }> {
+  const { status, type, q: keyword, ...page } = q;
+  return apiPage<Appeal>('admin/appeals', { query: { status, type, q: keyword, ...pageQuery(page) }, signal });
+}
+
+/**
+ * PATCH /admin/appeals —— 处理一条（体里带单号）。
+ * response **必填**：处理了却不给答复正是这条链路要消灭的形态。
+ * decision='overturned' 额外要 post.review 权限（它会真的放行那篇帖子）。
+ */
+export function decideAppeal(body: {
+  no: string;
+  decision: AppealDecision;
+  response: string;
+  note?: string;
+  close?: boolean;
+}): Promise<Appeal> {
+  return api<Appeal>('admin/appeals', { method: 'PATCH', body });
+}
+
 export function fetchUnreadCount(signal?: AbortSignal): Promise<{ count: number }> {
   return api<{ count: number }>('notifications/unread-count', { signal });
 }

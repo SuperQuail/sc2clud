@@ -59,6 +59,17 @@
   - 下一步：前端 `lib/api/social.ts` 加函数。
   - 阻塞：无
 
+- [x] 第 4 步：前端客户端函数（`web/src/lib/api/social.ts`，**只加函数**）
+  - 证据：`cd web && pnpm typecheck` → 无输出（0 error）；`pnpm lint` → `✖ 18 problems (0 errors, 18 warnings)`（全是既有文件的历史 warning）；
+    `npx vitest run` → `Test Files 28 passed (28) / Tests 145 passed (145)`。
+    新增：类型 `Appeal` / `AppealKind` / `AppealState` / `AppealDecision` / `AppealReceipt`，
+    函数 `createAppeal` / `lookupAppeal` / `fetchMyAppeals` / `fetchAppealQueue` / `decideAppeal`
+    —— 字段名逐条照 `forum/internal/appeal/dto.go` 抄（陷阱第 1 条那族事故的防线）。
+  - 下一步：**没有**（本工作包范围里的代码都落地了）。接手人若要接 UI：设计稿 `17-appeal/data.ts` 的 APPEAL_TYPES
+    与 `Appeal` 的字段对应关系是：`ban|review_reject|report_result|other` ↔ `AppealKind`；
+    设计稿四态 `pending|replied|rejected|closed` ↔ 服务端 `status` 三值 + `decision='upheld'`（rejected）。
+  - 阻塞：见下（`router.tsx` 那一行 + `routes/appeal.tsx` 少发 `captcha_id`）。
+
 ## 阻塞（要 Lead 动的）
 
 1. **`web/src/app/router.tsx:55` 的 `appeal` 路由被注释掉**（`{ path: 'appeal', element: <AppealPage /> }`）—— 整页不可达。
