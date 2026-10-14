@@ -1,4 +1,4 @@
-import type { AdminUser, ReviewQueueItem, Role, Title } from '@/lib/api/admin';
+import type { AdminUser, Report, ReviewQueueItem, Role, Title } from '@/lib/api/admin';
 
 // DevRoom 15-admin 的演示数据（**只给房间用**；产品路由由 ./admin-screens.tsx 的容器喂真端点）。
 //
@@ -197,5 +197,30 @@ export const DEMO_REVIEW: ReviewQueueItem[] = [
     review_state: 'rejected', review_note: '未标注原作者与出处链接，补齐后可重新提交', review_source: 'manual',
     reviewer: RBrief('demo-admin', '示范管理员'), reviewed_at: '2026-10-11T03:00:00Z', review_verdict: 'reject',
     created_at: '2026-10-10T21:00:00Z', updated_at: '2026-10-11T03:00:00Z',
+  },
+];
+
+/** 举报队列的演示数据：字段名照 report/dto.go 的 Report（**target_label**，不是 target_title）。 */
+export const DEMO_REPORTS: Report[] = [
+  {
+    id: 'r-1', target_type: 'topic', target_id: 't-1',
+    target_label: '第三章「余烬」发布：隐藏结局与平衡性改动',
+    board: RB('custom-campaign', '自制战役'), reason: 'spam', detail: '正文里有外站下载链接，怀疑是导流。',
+    reporter: RBrief('demo-marine', '陆战队员'), state: 'open', handler: null, handled_at: null,
+    handle_note: '', created_at: '2026-10-12T07:00:00Z', open_reports: 2, created: true,
+  },
+  {
+    id: 'r-2', target_type: 'post', target_id: 'p-9',
+    target_label: '回复 #12（在「触发器里 Wait 之后变量被清空」下）',
+    board: RB('tool-dev', '工具与开发'), reason: 'abuse', detail: '人身攻击。',
+    reporter: RBrief('demo-voidray', '虚空辉光舰'), state: 'open', handler: null, handled_at: null,
+    handle_note: '', created_at: '2026-10-11T18:00:00Z', open_reports: 1, created: true,
+  },
+  {
+    id: 'r-3', target_type: 'user', target_id: 'u-9', target_label: '@demo-roach（蟑螂）',
+    board: null, reason: 'illegal', detail: '发布违规内容。',
+    reporter: RBrief('demo-admin', '示范管理员'), state: 'handled',
+    handler: RBrief('demo-admin', '示范管理员'), handled_at: '2026-10-11T02:00:00Z',
+    handle_note: '已封号', created_at: '2026-10-10T20:00:00Z', open_reports: 0, created: true,
   },
 ];

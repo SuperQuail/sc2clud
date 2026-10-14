@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { CURRENT_ADMIN } from './mock/perms';
-import { DEMO_REVIEW, DEMO_ROLES, DEMO_TITLES, DEMO_USERS } from './mock/fixtures';
+import { DEMO_REPORTS, DEMO_REVIEW, DEMO_ROLES, DEMO_TITLES, DEMO_USERS } from './mock/fixtures';
 import { AdminShell } from './shell';
 import { SCREEN_KEYS, type ScreenKey } from './nav';
 import { AiReviewScreen } from './screens/ai-review';
@@ -8,7 +8,7 @@ import { AuditScreen } from './screens/audit';
 import { BoardsScreen } from './screens/boards';
 import { DiagnosticsScreen } from './screens/diagnostics';
 import { MailScreen } from './screens/mail';
-import { ReportsScreen } from './screens/reports';
+import { ReportsScreen, type ReportFilter } from './screens/reports';
 import { ReviewScreen, type ReviewFilter } from './screens/review';
 import { RewardsScreen } from './screens/rewards';
 import { RolesScreen } from './screens/roles';
@@ -29,7 +29,7 @@ const SCREENS: Record<ScreenKey, () => React.ReactNode> = {
   roles: () => <RolesScreen />,
   boards: () => <BoardsScreen />,
   review: () => <ReviewRoom />,
-  reports: () => <ReportsScreen />,
+  reports: () => <ReportsRoom />,
   rewards: () => <RewardsScreen />,
   titles: () => <TitlesScreen />,
   mail: () => <MailScreen />,
@@ -38,6 +38,25 @@ const SCREENS: Record<ScreenKey, () => React.ReactNode> = {
   audit: () => <AuditScreen />,
   diagnostics: () => <DiagnosticsScreen />,
 };
+
+/** 举报屏的房间版。 */
+function ReportsRoom() {
+  const [filter, setFilter] = useState<ReportFilter>({ state: 'open', target_type: 'all' });
+  const [receipt, setReceipt] = useState<string | null>(null);
+  const items = DEMO_REPORTS.filter((r) => r.state === filter.state)
+    .filter((r) => filter.target_type === 'all' || r.target_type === filter.target_type);
+  return (
+    <ReportsScreen
+      items={items}
+      hasMore={false}
+      filter={filter}
+      onFilterChange={setFilter}
+      canHandle
+      onHandle={(ids, state, note) => setReceipt('（房间演示：这里不发请求）' + ids.length + ' 条 → ' + state + '：' + note)}
+      receipt={receipt ? <p className='text-[12px] text-muted-foreground'>{receipt}</p> : null}
+    />
+  );
+}
 
 /** 审核屏的房间版：数据来自 ./mock/fixtures，动作只留一条回执（房间不发请求）。 */
 function ReviewRoom() {
