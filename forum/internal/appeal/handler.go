@@ -36,8 +36,10 @@ func RegisterRoutes(rg *gin.RouterGroup, f HandlerFactory, requireLogin func() g
 	rg.POST("/appeals", f(func(h *Handler) gin.HandlerFunc { return limitIP("appeal:create", h.create) }))
 	rg.POST("/appeals/lookup", f(func(h *Handler) gin.HandlerFunc { return limitIP("appeal:lookup", h.lookup) }))
 	rg.GET("/me/appeals", f(func(h *Handler) gin.HandlerFunc { return chain(requireLogin(), h.mine) }))
+	// 路径闸排在 requireLogin 之后（拍板 08 · C9-3：先验身份再验路径 ID）：
+	// 未登录的非 uuid 请求拿 401，登录之后才是 400（C9-1 的语义统一）。
 	rg.POST("/topics/:id/review/appeal", f(func(h *Handler) gin.HandlerFunc {
-		return chain(requireLogin(), perm(authz.PermTopicCreate), h.appealReview)
+		return chain(requireLogin(), perm(authz.PermTopicCreate), httpx.ValidPathIDs("id"), h.appealReview)
 	}))
 	admin := rg.Group("/admin")
 	admin.GET("/appeals", f(func(h *Handler) gin.HandlerFunc {

@@ -29,7 +29,10 @@ func NewHandler(svc *Service, actorOf ActorFromGin) *Handler {
 // Register 挂 /api/v1/notifications/*（d4 §3.4）。
 // 静态段 /mutes 必须先于通配 /:id 注册，否则 gin 的路由树会把 mutes 当成一个 id。
 func (h *Handler) Register(rg *gin.RouterGroup, requireLogin gin.HandlerFunc) {
-	g := rg.Group("/notifications", requireLogin)
+	// 路径闸挂在**组内部**（requireLogin 之后）：本域全部路由都要登录，
+	// 顺序天然是「先验身份再验路径 ID」（拍板 08 · C9-3）。
+	// DELETE /notifications/{id} 的 id 是对外 uuid，非 uuid 放过去就是 22P02 → 500（C9-2）。
+	g := rg.Group("/notifications", requireLogin, httpx.ValidPathIDs("id"))
 	g.GET("", h.list)
 	// 实时推送（L11）。静态段 /stream 与 /unread-count 都排在通配 /:id 之前（gin 的路由树）。
 	g.GET("/stream", h.stream)

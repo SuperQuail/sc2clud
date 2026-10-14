@@ -50,11 +50,15 @@ func (h *Handler) Register(rg *gin.RouterGroup) {
 	rg.PATCH("/me", login, h.updateProfile)
 	rg.POST("/me/password", login, h.changePassword)
 	rg.GET("/me/sessions", login, h.listSessions)
-	rg.DELETE("/me/sessions/:id", login, h.revokeSession)
+	// 路径闸排在 login 之后（拍板 08 · C9-3：先验身份再验路径 ID）。
+	// 会话 id 是对外 uuid，非 uuid 放过去会进 SQL 的 uuid 比较 → 22P02 → 500（C9-2）。
+	rg.DELETE("/me/sessions/:id", login, httpx.ValidPathIDs("id"), h.revokeSession)
 
 	// 管理：角色与权限（提权类）。管理端是写操作，必须同时挂 RequireActivated
 	//（拍板 §9.12：未激活的 admin 不该能提权），顺序 login → activated → Perm（设计 §9.2）。
-	a := rg.Group("/admin", login, activated)
+	// 路径闸在组上（login / activated 之后、每个 Perm 之前）：这些 {id} 全是对外 uuid，
+	// 未登录的请求先吃 login 的 401，登录后才轮到格式判定 → 400（拍板 08 · C9-1/C9-3）。
+	a := rg.Group("/admin", login, activated, httpx.ValidPathIDs("id"))
 	// 用户管理（C1）：读路径同样挂 user.ban —— 它返回邮箱、三根状态轴、处罚与追加权限，
 	// 与 /admin/roles 一族不是同一档信息（§5.8 归在「用户与权限」那一组）。
 	a.GET("/users", svc.Perm(authz.PermUserBan), h.adminListUsers)
