@@ -128,3 +128,43 @@
     在 `forum/internal/forum/review_queue.go` 的 `ReviewTopic` 事务里（`InsertReviewAudit` 之后）
     调一次：trigger='manual'、source='manual'、verdict=action、reason=note、actor_id=审核员。
   - 阻塞：无
+
+---
+
+## 收尾（W-C7，2026-10-14）
+
+**六条任务全部完成**：C8 / D3 / D4 / M4 / M5 / M7（M7 有一处修正，见那一条的「修正」）。
+额外顺手修了一条同域的线上级缺陷：`notify` 不带 `?kind=` 时通知列表恒空。
+
+**提交（只 add 我改的文件，每一步同一个 commit 更新本文件）**：
+
+| commit | 内容 |
+|---|---|
+| `4aca167` | C8 盲测探针按新契约重写 |
+| `c40d187` | D3 路径参数闸：非 uuid → 400 |
+| `50b2d94` | D4 改别人的主题 → 404 |
+| `ec2f59b` | M7 队列 DTO 补 reviewer/reviewed_at/review_verdict |
+| `688f24e` | M4 人工判定落 review_events |
+| `65f4818` | notify 不带 kind 列表恒空（额外） |
+| `1cfc5eb` | M5 审核通知带判定时快照 |
+| `14859f5` | M7 修正：verdict 取最近一条 review_events |
+
+**验证（每条都跑过，且每条新断言都先确认会红）**：
+
+- `go test ./internal/forum/ ./internal/notify/ ./internal/platform/httpx/ ./internal/aireview/ -count=1` → 四个包全 `ok`；
+- `gofmt -l internal/forum/ internal/notify/ internal/platform/httpx/` → 无输出；`go vet` 同样三个包 → 退出 0；
+- `go test ./internal/forum/ -run TestBlind -v` → 14 条全 PASS（C8 的验收命令）；
+- 我没有跑 `pnpm check`，也没有碰 `web/**`（我的改动只动后端三个包 + 本文件）。
+
+**交接给下一个人的两件事**：
+
+1. `httpx.ValidPathIDs("id","sid")` 挂在 `forum` 的 Register 上（`forum/internal/forum/handler.go` 第一行）。
+   别的域（media / release / message / mail / title / report / site / reward）的 `{id}` 路径还没挂 ——
+   它们同样会把非 uuid 送进 SQL。挂法一样是一行 `rg = rg.Group("", httpx.ValidPathIDs("id", ...))`，
+   但**必须由各域自己做**（我的作用域只在 forum/notify/httpx）。
+2. `review_verdict` / `reviewer` / `reviewed_at` 现在从 `review_events` 最新一条取。
+   如果后台审核屏还要「最近一次 review_events 的理由」，`review_note` 只有当前生效那一条 ——
+   完整历史要靠 `GET /admin/topics/{id}/review-events` 之类的新端点（**本任务没有这个需求，没做**）。
+
+**收尾动作**：清掉了 `%TEMP%` 里 112 个超过 60 分钟的 `forum-pg-*` 目录（剩 4 个是别的 agent 正在用的，没碰）；
+我自己没起任何常驻进程（没跑 vite、没起 chrome），没有需要按 PID 关的东西。
