@@ -17,6 +17,9 @@ const PENDING: Record<string, string> = {
   // 表单搬进 13-issue/new-issue-panel.tsx、列表/详情留在页面里）——登记按门禁的规矩撤掉。
   // 2026-10-14：K-ADMIN 给后台分区屏补了封面预览/更换/清空与 ACL/版主，涨到 510 行。
   'devroom/pages/15-admin/screens/boards.tsx': '拆出 ACL 矩阵与版主任免面板',
+  // 2026-10-14：Lead 补 D19（作者关注）那条宿主断言后越过 500 行。**门禁也扫测试文件**（`src/**` 里所有 .ts/.tsx），
+  // 所以测试长了同样要登记 —— 重构目标：把「作者关注 / 审核横幅 / 提及候选」三组各自拆成独立文件。
+  'routes/topic.test.tsx': '拆出作者关注、审核横幅、提及候选三组用例',
 };
 
 function walk(dir: string): string[] {
