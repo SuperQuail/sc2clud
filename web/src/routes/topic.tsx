@@ -23,8 +23,9 @@ import {
   type TopicDetail as ApiTopicDetail,
   type TopicSource as ApiSource,
 } from '@/lib/api/forum';
-import { fetchUserProfile, type UserProfile } from '@/lib/api/user';
+import { fetchUserProfile, searchUsers, type UserProfile } from '@/lib/api/user';
 import { createDonation, fetchUserChannels } from '@/lib/api/rewards';
+import { fetchBoardFollow, followBoard, unfollowBoard } from '@/lib/api/follow';
 import { formatCents, formatTime } from '@/lib/format';
 import { DesignActionNote } from '@/devroom/pages/12-topic/design-action';
 import { TopicView, type TopicReview } from '@/devroom/pages/12-topic/topic-view';
@@ -102,8 +103,29 @@ export function TopicPage() {
     staleTime: 10 * 60_000,
   });
 
+  // 作者与分区要先取出来：下面两条依赖它们的查询（作者资料 / 关注状态）都在 hooks 层，
+  // 而 hooks 的顺序不能有分支 —— 这两个值从主题详情里读，没到就是空串（查询自己 enabled 挡着）。
   const authorHandle = topic.data?.author.handle ?? '';
   const boardSlug = topic.data?.board.slug ?? '';
+
+  // 左栏那一格「成员」与「关注分区」（拍板 08 · L5 收尾；端点是 K-REL 做的关注域）。
+  // **两次一取**：GET /boards/{slug}/follow 同时给出「我关没关注」与「被关注数」，
+  // 而 BoardDTO 里没有这一列（member_count 从来就不是后端的字段）—— 所以这一格的真数来自这里，
+  // 不是从 boards 列表推的。与分区页 routes/board.tsx 用同一个 qk.followBoard()：
+  // 同一分区在两页之间来回走不会各拉一次、也不会一页已关注另一页还没跟上。
+  // 未登录也能读（following 恒 false、关注数照给）——「关注数」不是登录者专属信息。
+  const boardFollow = useQuery({
+    queryKey: qk.followBoard(boardSlug),
+    queryFn: ({ signal }) => fetchBoardFollow(boardSlug, signal),
+    enabled: boardSlug !== '',
+    staleTime: 60_000,
+  });
+  const toggleFollow = useMutation({
+    mutationFn: (on: boolean) => (on ? followBoard(boardSlug) : unfollowBoard(boardSlug)),
+    // 幂等且回执就是同一份 State，所以直接写进缓存，不回读一次（与 routes/board.tsx 同款）
+    onSuccess: (state) => queryClient.setQueryData(qk.followBoard(boardSlug), state),
+  });
+
   // 作者卡片的等级 / 经验 / 头衔只有 /users/{handle} 有（主题详情的 author 只有 handle/nickname/bio/level/joined_at）
   const authorProfile = useQuery({
     queryKey: qk.profile(authorHandle),
@@ -208,8 +230,10 @@ export function TopicPage() {
   // ---- 接口形状 → 设计件的形状 ----
   const allBoards = (boards.data ?? []).map(toDesignBoard);
   const current = allBoards.find((b) => b.slug === boardSlug);
-  // 分区列表没回来也要能画这一页：用主题自带的两字段兜一个最小 Board，统计先空着（不假装有数）
-  const designBoard: Board = current ?? {
+  // 分区列表没回来也要能画这一页：用主题自带的两字段兜一个最小 Board，统计先空着（不假装有数）。
+  // 「成员」与「已关注」**一律取关注状态那一份**（列表项里没有这两列，boardFollow 才是真源）：
+  // 它没回来时是 0 / false —— 那是「还没问到」，不是「这里没人关注」。
+  const base: Board = current ?? {
     slug: boardSlug as BoardSlug,
     name: t.board.name,
     cover: '',
@@ -220,6 +244,11 @@ export function TopicPage() {
     today_count: 0,
     joined: false,
     hint: '',
+  };
+  const designBoard: Board = {
+    ...base,
+    member_count: boardFollow.data?.follower_count ?? 0,
+    joined: boardFollow.data?.following ?? false,
   };
   const designAuthor = toDesignAuthor(t, ap);
   // 回执要说实话：改过正文之后，帖子是「已重新提交、正在重审」，还是只是被保存了？
@@ -273,8 +302,15 @@ export function TopicPage() {
         void navigate(to);
       }}
       composeHref={appPath('new?board=' + encodeURIComponent(boardSlug))}
-      // shortcut: 「关注分区」后端没有端点，点一次给回执，不假装已关注
-      onJoin={() => setReceipt('「关注分区」后端还没有端点，所以这一次没有真的关注。')}
+      // 关注分区那条注释已过时（K-REL 的关注域早就把端点做完了）——现在点它是真请求。
+      // 未登录时后端会 401，所以先拦一次并说清下一步（比一个静默失败的按钮诚实）。
+      onJoin={() => {
+        if (!loggedIn) {
+          setReceipt('关注分区要先登录。');
+          return;
+        }
+        toggleFollow.mutate(!(boardFollow.data?.following ?? false));
+      }}
       authorHref={appPath('u/' + encodeURIComponent(t.author.handle))}
       author={designAuthor}
       topic={designTopic}
@@ -437,6 +473,10 @@ export function toDesignSource(s: ApiSource): TopicSource {
   };
 }
 
+/** GET /boards 的一行 → 设计件的 Board。
+ *  member_count 与 joined **不在这里填**（BoardDTO 没有这两列：成员数就是关注数，
+ *  它来自 GET /boards/{slug}/follow，由宿主只对当前这一个分区取一次再覆盖上去）——
+ *  所以这里给的是「没有关注信息时」的中性值，不是假数。 */
 export function toDesignBoard(b: ApiBoard): Board {
   return {
     slug: b.slug as BoardSlug,
@@ -445,10 +485,9 @@ export function toDesignBoard(b: ApiBoard): Board {
     description: b.description,
     topic_count: b.topic_count,
     post_count: b.post_count ?? 0,
-    // shortcut: 后端 BoardDTO（forum/dto.go）没有 member_count —— 成员数这一格只能是 0，要真数得给后端加统计
     member_count: b.member_count ?? 0,
     today_count: b.today_count ?? 0,
-    // shortcut: 「关注分区」后端没有端点；hint 那句话后端也没有
+    // shortcut: hint 那句话后端没有（左栏悬停提示），要真话得后端给
     joined: false,
     hint: '',
   };

@@ -84,6 +84,12 @@ const mocks = vi.hoisted(() => ({
   topic: { current: null as Record<string, unknown> | null },
   /** 回复列表响应的覆盖（默认 null = 空列表）。J3 那条要喂一条「后端没下发 dislike_count」的评论。 */
   posts: { current: null as Record<string, unknown> | null },
+  followBoard: vi.fn(),
+  unfollowBoard: vi.fn(),
+  /** GET /boards/{slug}/follow 的回执（follow.State 逐字形状） */
+  followState: { current: { target: 'board', slug: 'custom-campaign', following: false, follower_count: 0 } as Record<string, unknown> },
+  /** @ 提及候选（GET /search?type=users）：空数组 = 没敲 @ 时不取，敲了才有 */
+  searchUsers: vi.fn(() => Promise.resolve([])),
 }));
 
 vi.mock('@/lib/api/forum', async (orig) => {
@@ -105,8 +111,16 @@ vi.mock('@/lib/api/forum', async (orig) => {
 });
 vi.mock('@/lib/api/user', async (orig) => {
   const actual = await orig<typeof import('@/lib/api/user')>();
-  return { ...actual, fetchUserProfile: () => Promise.resolve(PROFILE) };
+  return { ...actual, fetchUserProfile: () => Promise.resolve(PROFILE), searchUsers: mocks.searchUsers };
 });
+// 关注状态（L5 / 任务 1+2）：这一页那格「成员」与那颗「关注分区」按钮的真源就是这三条。
+// 默认 follower_count=0 / following=false 是**故意的**：下面那条用例把它设成 128，
+// 于是「恒 0」的旧行为一定会红 —— 而不是「两个 0 恰好相等」。
+vi.mock('@/lib/api/follow', () => ({
+  fetchBoardFollow: () => Promise.resolve(mocks.followState.current),
+  followBoard: mocks.followBoard,
+  unfollowBoard: mocks.unfollowBoard,
+}));
 vi.mock('@/lib/perms', () => ({
   useSession: () => ({ session: { handle: 'Alenger', nickname: '爱兰琪尔', avatar: null, perms: [] }, isLoggedIn: true, isLoading: false }),
   can: () => true,
@@ -142,6 +156,29 @@ it('整页画得出来：正文、四件右栏、审核横幅与理由、来源�
   expect(document.querySelector('img[src*="/img/a1b2c3"]')).toBeTruthy();
   // 反馈入口计数来自详情里的 issue_open_count
   expect(screen.getByTestId('issue-nudge-rail').textContent).toContain('7');
+});
+
+// 任务 1+2（拍板 08 第三轮）：「关注分区」接真端点 + 那一格「成员」显真数。
+// 旧行为下这两条都会红：member_count 写死 0、onJoin 只回一句「后端没有端点」——
+// 判据就是**真数 128 与真请求**，而不是「有个数字」。
+it('关注分区：成员数来自 GET /boards/{slug}/follow 的真数，点按钮打到同一对端点', async () => {
+  mocks.followState.current = { target: 'board', slug: BOARD.slug, following: false, follower_count: 128 };
+  renderPage();
+  await screen.findByTestId('topic-main');
+  // 「成员」那一格的数字（旧行为恒 0，这条必红）
+  await waitFor(() => expect(screen.getByTestId('topic-rail').textContent).toContain('128'));
+  fireEvent.click(screen.getByRole('button', { name: /关注分区/ }));
+  await waitFor(() => expect(mocks.followBoard).toHaveBeenCalledWith(BOARD.slug));
+
+  // 已关注那一档：按钮换成「已关注」，再点打到 DELETE（幂等取关用的是另一个动词）
+  mocks.followState.current = { target: 'board', slug: BOARD.slug, following: true, follower_count: 128 };
+  mocks.unfollowBoard.mockResolvedValue({ target: 'board', slug: BOARD.slug, following: false, follower_count: 127 });
+  renderPage();
+  await screen.findAllByTestId('topic-main');
+  const unfollow = await screen.findByRole('button', { name: /已关注/ });
+  fireEvent.click(unfollow);
+  await waitFor(() => expect(mocks.unfollowBoard).toHaveBeenCalledWith(BOARD.slug));
+  mocks.followState.current = { target: 'board', slug: BOARD.slug, following: false, follower_count: 0 };
 });
 
 it('can_reply=false：输入框换成引导登录那一块，评论区仍然可见', async () => {
