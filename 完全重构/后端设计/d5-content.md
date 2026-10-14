@@ -275,30 +275,45 @@
 **POST /me/payment-channels**
 1. `label varchar(32)` 必填（空则用「收款码」），去控制字符；
 2. 数量 ≤5，同样用 `SELECT id FROM users WHERE id=$1 FOR UPDATE` 串行化（比锁表简单，且用户行本来就要写别的列）；
-3. visibility 固定 `private`，**不接受请求里传 visibility**；
+3. visibility 写 `login`（老站那一档），**不接受请求里传 visibility**；真正管「能不能对外看到」的是作者侧的展示开关，判定在读路径上（§3.3）；
 4. 事务：upsert +1 → insert 行；返回 201。
 
 **DELETE /me/payment-channels/{id}**：`DELETE ... WHERE id=$1 AND user_id=$2 RETURNING image_hash`（**归属判定在 WHERE 里**，0 行 = 404）+ 同事务 −1。
 
-### 3.3 为什么收款码是 `private`（对老站 404 缺陷的定案）
+### 3.3 收款码：档位是登录可见，闸是「按渠道显示」的展示开关（2026-10-14 第三轮拍板，本条已改）
 
 老站的真缺陷（**功能清单** 12.9）：`add_payment_channel` 只写 `payment_channels`，`/img/{hash}` 只认 `post_images` 登记过的 hash → **收款码上传成功但一律 404，设置页与打赏弹窗都是裂图**。根因是「图片的读取路径」有第二份实现。
 
-新设计里这个缺陷在结构上不可能发生：**只有一条读路径 `/img/{hash}`，它查的是 `images` 这一张表**；`payment_channels` 与 `topic_images` 一样只是引用行。收款码能不能被某个人看见，由 `images.visibility` 一列回答，不由「谁上传的」回答。
+新设计里这个缺陷在结构上不可能发生：**只有一条读路径 `/img/{hash}`，它查的是 `images` 这一张表**；`payment_channels` 与 `topic_images` 一样只是引用行。收款码能不能被某个人看见，由 `images.visibility` 一列 + 一条**读路径上的调档规则**回答，不由「谁上传的」回答。
 
-定 `private`（而不是 §12 老文档写的「level=1 登录可见」）的三条理由：
+**本条已被 2026-10-14 第三轮拍板改写**（用户原话「必须显示，按渠道显示，参考老网站」/「L1 按照之前要求的方式做，不准偏移」，执行口径见 `进行中/08-拍板记录.md`）：
 
-1. **登录可见仍然太宽**：任何注册用户都能把别人的收款码拉走（含二维码里的收款人信息），而收款码的合法读者只有「想给这个人打钱的人」+「核验的管理员」。老站把它当公开图（AGENTS §9 那句「收款码本就是给人扫的公开图，可放心直出」）是当年的权宜之计。
-2. **核验队列必须看得到**：管理员要看收款码来核对申报，所以放行条件里带 `reward.verify`（§3.4 的两个管理员入口之一），而不是把可见性放宽。
-3. **对外展示怎么办**：`GET /users/{handle}/channels` 返回的是**图片 URL**，而路径上的授权与那份响应无关 —— 打开 `show_channels` 的作者，其收款码对该访客仍会渲染成占位图。这是已知取舍，见 §12.3 未决 1（三个选项与代价）。
+    // AddPaymentChannel：引用行写 VisibilityLogin（= 老站那一档），
+    // canView（唯一一份判定）在**读路径上**调档：
+    //   作者本人 / 超管      → 放行（设置页要预览自己的码）
+    //   其余人（含**游客**）  → 看作者侧 user_donation_settings.show_channels：
+    //                          开着放行、关着给占位图
+
+三条理由，逐条对上老站实现：
+
+1. **档位不是上传那一刻定死的**：老站（`site/crates/sc2clud-web/src/pages_profile.rs:93-94`）上传时写的是 `set_blob_visibility(..., 1)` = **登录可见**，而「要不要对外展示」由设置页的展示开关管（`pages_settings.rs:253-275`）。判定要在**读**这一侧做，否则「先上传码、之后再打开开关」这个常规顺序后面，访客拿到的仍然是占位图 —— 那正是打赏面板扫不出码的现象。
+2. **扫码付款不需要账号**：打赏者与**游客**都必须真取到图（用户两次强调的验收线）。所以 `show_channels` 开着时不给 login 档留后门：读路径直接放行。
+3. **关掉展示是真的关掉**：把档位写死成 `public`（2026-10-14 一次实现的做法）会让档位与开关脱钩 —— 作者关掉展示之后图仍然对全站可读，而渠道列表同时回空数组。档位与开关必须同生共死（`forum/internal/media/repo.go` 的 `channelImageWithDisplayOn`）。
+
+**核验队列**照旧要能看到码：放行条件里带 `reward.verify`（§3.4 的两个管理员入口之一），不靠放宽可见性。
 
 ### 3.4 可见性判定（唯一一份；§2.2 是计数的时机表，别混）
 
     func canView(actor *authz.Actor, img ImageMeta) bool {
         switch img.Visibility {
         case VisibilityPublic:  return true
-        case VisibilityLogin:   return actor != nil
-        case VisibilityPrivate: return actor != nil && (actor.UserID == img.OwnerID || actor.IsSuper || actor.Perms.Has(authz.PermRewardVerify))
+        // login：收款码那一档。**不是**「登录就可见」—— 作者本人 / 超管放行，其余人（含游客）
+        // 由作者侧的 show_channels 展示开关决定（§3.3，2026-10-14 第三轮拍板）。
+        case VisibilityLogin:   return img.OwnerID == actor.UserID || actor.IsSuper || channelDisplayed(img)
+        // private：作者与管理员，外加**帖子配图那一条** —— 所属主题公开
+        // （visibility='normal' AND review_state='approved'）之后对所有人放行。
+        // 「未过审不外泄、过审后可见」靠这一条成立，帖子过审不需要重传图片，也没有谁去翻档。
+        case VisibilityPrivate: return actor != nil && (actor.UserID == img.OwnerID || actor.IsSuper || actor.Perms.Has(authz.PermRewardVerify) || topicImageLive(img))
         }
         return false
     }
@@ -1134,7 +1149,7 @@ Go 的隐式接口让 app 层直接传 *captcha.Verifier / *pgsql.Searcher 即�
 | 1 | 数据库 §4.4「无头像用户按 users.id % 池大小 取一张」 | users.default_avatar_hash 一列，**注册时选一次并落库，永不重算** | 数据库 §10.2 与旧站实现（repo.rs:4112）都是「分一次固定」，且旧表本来就有一列；照 §4.4 写会让池子大小变化时全体换头像（盲审-建模 214） |
 | 2 | 数据库 §4.4「images.visibility smallint ck in (0,1,2)」 | text + CHECK ('public','login','private') | 全局约定 6（枚举一律 text + CHECK）；smallint 会让「枚举值域自检」永远看不到这一列（盲审-建模 181） |
 | 3 | 数据库 §4.4「hash char(64)」及各引用列 | text + CHECK (hash ~ '^[0-9a-f]{64}$') | bpchar 有补空格比较与 length() 语义，与「摘要就是 64 个字符」不等价（盲审-建模 185） |
-| 4 | 数据库 §4.4「payment_channels 可见性 = 1（登录可见）」 | private（仅所有者 + reward.verify） | §3.3 三条理由；这是老站 404 缺陷在可见性一层的根治 |
+| 4 | 数据库 §4.4「payment_channels 可见性 = 1（登录可见）」 | **login**（= 老站那一档），闸在作者侧的 show_channels：开则登录用户与游客都取得到、关则占位图 | 2026-10-14 第三轮拍板「必须显示，按渠道显示，参考老网站」推翻了本文原先的 private 定案（§3.3 已改写）；写死 public 会让档位与开关脱钩，也是被否掉的方案 |
 | 5 | 后端方案 §21.2「POST /api/v1/posts/{id}/images（每帖 ≤9）」 | POST /api/v1/topics/{id}/images | topic_images 的键是 topic_id，「每帖 ≤9」与「按楼层解引用」在数据模型上不成立（盲审-建模 17）；配图属于主题不属于楼层 |
 | 6 | 后端方案 §21.2「GET /launcher/assets/{id}/go」（{id} 未指明） | {id} = asset 的 public_id | 对外 ID 只出现 public_id（拍板 §5.6）；表里本来就有 public_id 列 |
 | 7 | 施工计划 S7「topic_search + **gse 预分词** + search:index」 | bigram（search.Tokenize），gse 不再出现 | 性能与容量 §2.1/§5 已删 gse；S7 那句是残留 |
@@ -1147,7 +1162,7 @@ Go 的隐式接口让 app 层直接传 *captcha.Verifier / *pgsql.Searcher 即�
 
 ### 12.2 需要回写旧文档的清单（本轮不改旧文档）
 
-- [ ] 数据库 §4.4：images 列类型（text+CHECK）、visibility 文本三值、补 idx_images_owner；topic_images 补 `(topic_id, sort)` 唯一索引与 sort 范围；payment_channels 可见性改 private；**加 `users.default_avatar_hash` 一列 + 索引**
+- [ ] 数据库 §4.4：images 列类型（text+CHECK）、visibility 文本三值、补 idx_images_owner；topic_images 补 `(topic_id, sort)` 唯一索引与 sort 范围；~~payment_channels 可见性改 private~~ **可见性 = login + 作者侧 show_channels 闸（第三轮拍板，§3.3）**；**加 `users.default_avatar_hash` 一列 + 索引**
 - [ ] 数据库 §3 表清单：本域四张表的外键索引列出来
 - [ ] 数据库 §5：topic_search 只留 `gin(tsv)` 一个索引（去掉标题 trgm）；补「词素 = 单字 + bigram」「写入与查询共用同一个 Go Tokenize」两句
 - [ ] 数据库 §12：第 8 条「图片引用一致」换成 §11.4-33 的可红 SQL（含默认头像豁免，否则永远红）
@@ -1161,7 +1176,7 @@ Go 的隐式接口让 app 层直接传 *captcha.Verifier / *pgsql.Searcher 即�
 
 | # | 问题 | 选项与代价 | 需要谁拍 |
 |---|---|---|---|
-| 1 | **收款码对访客不可见**（§3.3 的取舍） | A 保持 private，另加「打赏弹窗里的一次性直出」端点（多一条读路径，破坏「只有一条读路径」的本意）；B 改回 login 可见（任何注册用户可批量抓全站收款码，二维码里通常含收款人姓名/头像）；C 加一列让作者自选公开（多一列 + 一个 UI 开关，默认值仍要定） | 产品 |
+| 1 | ~~**收款码对访客不可见**（§3.3 的取舍）~~ **已拍板（2026-10-14 第三轮）** | 用户选「必须显示，按渠道显示，参考老网站」：档位 = login（老站那一档），读路径上看作者侧的 `show_channels`（开着 → 登录用户与游客都取得到；关着 → 占位图）。A/B/C 三选项作废，§3.3 已按此改写 | 已定 |
 | 2 | **内置兜底头像**（池子为空时） | A 一张固定 URL 的静态图（头像 URL 出现第三种形状，前端要分支）；B 启动时把 embed 的图 Put 进 images 并入池（URL 形状统一，代价是「启动要写库」）。倾向 B | Lead（涉及启动是否允许写库） |
 | 3 | **releases.version 全局唯一** | A 全局唯一（现状，一个版本一行，平台差异在 assets）；B 改成 UNIQUE (channel, version)（stable/beta 可有同名版本，代价是定位唯一版本必须带 channel） | Lead |
 | 4 | **硬删用户导致的 refcount 泄漏** | A 接受，靠 §11.4-33 的对账发现并人工修；B 给 users 加 BEFORE DELETE 触发器减引用（引入本设计全程避免的触发器，全局约定 12 明确不建） | Lead |

@@ -14,8 +14,11 @@ import (
 
 // PaymentChannel 作者挂的收款码（d5-content.md §2.1、§3.3；表 payment_channels；建表在 0010_media）。
 //
-// 图**固定私有**（images.visibility = 2 语义）——拍板 §8.7：老站「收款码 404」的根治做法。
-// 可见性判定只发生在渠道读端点一处（GET /users/{handle}/channels），不在 images 上加第四档。
+// 图的档位是**登录可见**（images.visibility = 1，老站那一档），而「能不能对外看到」由作者侧的
+// user_donation_settings.show_channels 决定 —— 判定在**读路径**上（media 的 canView），
+// 所以档位在上传之后仍可调整。2026-10-14 第三轮拍板「必须显示，按渠道显示，参考老网站」：
+// 写死 public 会让档位与开关脱钩（关掉展示后图仍对全站可读），写死 private 则打赏面板永远扫不出码。
+// 依据：d5-content.md §3.3 / §3.4（已按该拍板改写）。
 //
 // **只有 created_at，没有 updated_at**：与 0010_media.up.sql 的实际列一致
 // （d5 §2.1 也没列 updated_at；渠道是「删了重建」，不原地改）。

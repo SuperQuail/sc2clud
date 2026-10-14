@@ -82,3 +82,39 @@
   - 阻塞二：配图在**主题详情页的展示与删除**落点在 `web/src/routes/topic.tsx`（K2-C 拿着）与
     `devroom/pages/12-topic/types.ts`（`images: string[]` 目前**零渲染**）。我没碰这两个文件，
     在下面「留给 Lead / K2-C 的两行」里写清落点。
+- [x] **拍板 §3.8：`VisibilityLogin` 死档 —— 选择「有人写」而不是「从值域删掉」**
+  - 理由（二选一里必须写清的那一条）：它现在**有写入方**了 —— `AddPaymentChannel` 的引用行写的就是它
+    （老站那一档，见上面第 1 步）。删掉它等于把收款码压回 private 或抬成 public，两者都被用户否掉：
+    private 让打赏面板永远扫不出码（K2-A 报的缺口），public 让「关掉展示」关不住图（K2-A 被否的方案）。
+    值域三档因此都是有主的：0 = 头像 / 封面 / 配图（过审后）/ 发帖前上传的图，
+    1 = 收款码（读路径上看展示开关），2 = 帖子草稿配图（过审前）。
+    机器证明：`TestPaymentChannelImageTierIsNotPublic` 断言收款码那一行 `images.visibility = 1`。
+  - 证据：同上第 1 步的 `go test ./internal/media/`（ok 25.388s）与用例名。
+  - 下一步：文档（d5 §3.3 / §12.3）。
+  - 阻塞：无。
+
+- [x] **文档：d5-content.md 与新拍板冲突的那几处改掉**
+  - §3.3 整节重写：标题从「为什么收款码是 private」改成「档位是登录可见，闸是按渠道显示的展示开关」，
+    写清「档位不在上传那一刻定死」、为什么要读老站、以及写死 public 为什么会让档位与开关脱钩。
+  - §3.2 第 3 条：`visibility 固定 private` → `visibility 写 login` + 闸在作者侧开关（判定在读路径上）。
+  - §3.4 的 canView 片段：补上 login 那一档的真实语义（不是「登录就可见」）与 private 那一档的
+    帖子配图规则（所属主题公开后放行）；这正是本轮两处改动的落点。
+  - §12.1 第 4 行（裁决表）与 §12.2 的清单项：从「改 private」改成「login + show_channels 闸」。
+  - §12.3 未决 1：标记**已拍板**（用户选「必须显示，按渠道显示，参考老网站」），A/B/C 三个选项作废。
+  - 顺带订正 `forum/internal/ent/schema/payment_channel.go` 的文件头（它还写着「图固定私有」，
+    而 schema 注释就是下一个人查「这个档位是什么」的第一落点）。
+  - 证据：`git diff` 只动这五处 + 一个 schema 注释；`git grep` 复核 d5 里不再有
+    「收款码固定 private」的说法。
+  - 下一步：收尾核对（两端全量）。
+  - 阻塞：无。
+
+## 留给 Lead / K2-C 的两行（我没碰他们的文件）
+
+1. **配图在主题详情页的展示与删除**：落点是 `web/src/routes/topic.tsx`（K2-C 在途）与
+   `web/src/devroom/pages/12-topic/types.ts` 的 `images: string[]`（**至今零渲染**，K2-A 也记过）。
+   后端已经就绪：详情 DTO 给 `cover_hash`/`cover_width`/`cover_height`（sort=0 那张自动成为封面），
+   删除走 `DELETE /topics/{id}/images/{hash}`（客户端已在 `lib/api/media.ts` 里写好）。
+   还缺**一条读口**：没有任何端点能列出某帖的 `topic_images`（`GET /topics/{id}/images` 不存在），
+   所以详情页要有图集就得先补这条读端点 —— 这是后端缺口，不是前端的懒。
+2. **首屏预算只剩 1.2 KB**（收尾对照表 §7.6）：本轮前端改动全部落在 `/new` 与 `/t/*`（都已 lazy），
+   没往首屏加东西；`lib/api/media.ts` 只被 `compose.tsx` import。
