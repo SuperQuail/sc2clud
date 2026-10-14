@@ -87,6 +87,6 @@ marker.dataset.testid = 'product-preview-marker';
 marker.textContent = 'MARKER-PRODUCT-' + (loggedIn ? 'LOGIN' : 'GUEST') + ' ' + route;
 marker.setAttribute(
   'style',
-  'position:fixed;left:8px;bottom:8px;z-index:99999;background:#111;color:#0f0;font:12px monospace;padding:2px 6px;border-radius:4px',
+  'position:fixed;left:8px;bottom:8px;z-index:99999;background:var(--foreground);color:var(--background);font:12px monospace;padding:2px 6px;border-radius:4px',
 );
 document.body.appendChild(marker);
