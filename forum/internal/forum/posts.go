@@ -90,6 +90,9 @@ func (s *Service) CreatePost(ctx context.Context, actor *authz.Actor, topicPubli
 	if strings.TrimSpace(in.ContentMD) == "" {
 		return nil, invalid("content_md", "回复不能为空")
 	}
+	if err := checkContentLen(in.ContentMD, MaxPostContent, "content_md"); err != nil {
+		return nil, err
+	}
 	if len(in.ClientToken) > 64 {
 		return nil, invalid("client_token", "长度不能超过 64")
 	}
@@ -217,6 +220,9 @@ func (s *Service) UpdatePost(ctx context.Context, actor *authz.Actor, publicID, 
 	}
 	if strings.TrimSpace(contentMD) == "" {
 		return invalid("content_md", "正文不能为空")
+	}
+	if err := checkContentLen(contentMD, MaxPostContent, "content_md"); err != nil {
+		return err
 	}
 	ref, err := s.postRef(ctx, actor, publicID)
 	if err != nil {

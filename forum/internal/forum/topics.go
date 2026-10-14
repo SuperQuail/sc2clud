@@ -246,6 +246,9 @@ func (s *Service) CreateTopic(ctx context.Context, actor *authz.Actor, in Create
 	if strings.TrimSpace(in.ContentMD) == "" {
 		return nil, invalid("content_md", "正文不能为空")
 	}
+	if err := checkContentLen(in.ContentMD, MaxTopicContent, "content_md"); err != nil {
+		return nil, err
+	}
 	boardID, status, err := s.repo.BoardIDBySlug(ctx, in.BoardSlug)
 	if err != nil {
 		if err == pgsql.ErrNoRows {
@@ -400,6 +403,9 @@ func (s *Service) UpdateTopic(ctx context.Context, actor *authz.Actor, publicID 
 		if strings.TrimSpace(*in.ContentMD) == "" {
 			return invalid("content_md", "正文不能为空")
 		}
+		if err := checkContentLen(*in.ContentMD, MaxTopicContent, "content_md"); err != nil {
+			return err
+		}
 		h, plain, err := s.render(*in.ContentMD)
 		if err != nil {
 			return err
@@ -425,6 +431,12 @@ func (s *Service) UpdateTopic(ctx context.Context, actor *authz.Actor, publicID 
 				return err
 			}
 			if err := pgsql.SetTopicExcerpt(ctx, tx, ref.ID, excerpt, now); err != nil {
+				return err
+			}
+			// **改过正文就回待审**（老站的流程）：作者改完要重新过一遍审核，AI 也重新看一次。
+			// 只改标题/分区不算内容变更 —— 那是分类问题，不该让一篇正常帖子掉出可见状态。
+			// 谁改都重置：管理端改正文同样是「内容变了」。
+			if err := pgsql.ResetTopicReview(ctx, tx, ref.ID, now); err != nil {
 				return err
 			}
 		}

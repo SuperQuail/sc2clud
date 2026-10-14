@@ -420,6 +420,18 @@ UPDATE topics
 }
 
 // SetTopicExcerpt 只在编辑 1 楼正文时用（§4.5）：摘要与正文同源。
+// ResetTopicReview 把主题送回待审，并让 AI 重新看一次（ai_reviewed = false）。
+//
+// **复审由「内容变了」触发，不由时间触发**（老站的流程）：作者改完正文要重新过审，
+// 而 ai_review_note 一并清掉 —— 留着上一版内容的判定理由，会让人以为那是新内容的结论。
+func ResetTopicReview(ctx context.Context, tx Querier, topicID int64, now time.Time) error {
+	_, err := tx.ExecContext(ctx, `
+		UPDATE topics
+		   SET review_state = 'pending', ai_reviewed = false, ai_review_note = NULL, updated_at = $2
+		 WHERE id = $1`, topicID, now)
+	return err
+}
+
 func SetTopicExcerpt(ctx context.Context, tx Querier, topicID int64, excerpt string, now time.Time) error {
 	return exec(ctx, tx, "UPDATE topics SET excerpt = $2, updated_at = $3 WHERE id = $1", topicID, excerpt, now.UTC())
 }

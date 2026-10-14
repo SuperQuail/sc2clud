@@ -73,12 +73,20 @@ func Default() *Config {
 		Web:      Web{DistDir: "web/dist", BasePath: "/", ServeShell: true, ServeAssets: true},
 		Capacity: Capacity{Profile: "auto"},
 		// 审核默认**关着**：key 得由运维从 env 给（FORUM_AI__KEY），空 key 时一个外呼都不发。
+		// 审核默认**关着**：key 由运维从 env 给（FORUM_AI__KEY），空 key 时一个外呼都不发。
+		// 模型名与端点**照 DeepSeek 官方文档与老站设置**：base_url 是 https://api.deepseek.com（**不带 /v1**），
+		// 现行模型名是 deepseek-flash（老站 site_texts.ai_model 也是它）。
 		AI: AI{
 			Endpoint: "https://api.deepseek.com",
-			Model:    "deepseek-chat",
-			Prompt:   "你是中型星际争霸 II 社区的内容审核员。判断下面这条帖子是否合规：广告与引流、来源不明的可执行文件、侵权转载、人身攻击与政治敏感都算不合规。只回一个 JSON：{\"ok\":true|false,\"reason\":\"一句话中文理由\"}。拿不准就给 ok=true。",
-			Interval: 2 * time.Minute,
-			Timeout:  30 * time.Second,
+			Model:    "deepseek-flash",
+			// 提示词照老站 migrations/0029_ai_review.sql 的默认值（两套：新帖 / 举报复核）。
+			// 判据不写在提示词里 —— 它写在**三个工具的描述**上（老站的设计）。
+			PromptNewPost: "你是中型星际争霸 II 社区的内容审核员。判断下面这条帖子是否合规：广告与引流、来源不明的可执行文件、侵权转载、人身攻击等属于明确违规；信息不足、边界情况一律给待定，交人工复核。",
+			PromptReport:  "你是社区内容审核员。下面这条内容被用户举报，请重新判定它是否违规：明确违规才给不通过，拿不准就给待定。",
+			// 输出长度上限：文档要求「合理设置，防止被中途截断」。审核只要一句判词，2048 足够（含思考）。
+			MaxTokens: 2048,
+			Interval:  2 * time.Minute,
+			Timeout:   30 * time.Second,
 		},
 	}
 }

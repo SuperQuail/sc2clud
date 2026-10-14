@@ -28,13 +28,17 @@ type Config struct {
 // **留空 = 不启用**：此时一个外呼都不发（enabled=false 或 key 为空都算不启用）。
 // endpoint 走 OpenAI 兼容的 POST {endpoint}/chat/completions（老站指向 api.deepseek.com）。
 type AI struct {
-	Enabled  bool          `yaml:"enabled" koanf:"enabled"`
-	Key      string        `yaml:"key" koanf:"key"` // 从 env 给：FORUM_AI__KEY（不进仓库）
-	Endpoint string        `yaml:"endpoint" koanf:"endpoint"`
-	Model    string        `yaml:"model" koanf:"model"`
-	Prompt   string        `yaml:"prompt" koanf:"prompt"`
-	Interval time.Duration `yaml:"interval" koanf:"interval"` // 扫待审队列的间隔
-	Timeout  time.Duration `yaml:"timeout" koanf:"timeout"`
+	Enabled bool   `yaml:"enabled" koanf:"enabled"`
+	Key     string `yaml:"key" koanf:"key"` // 从 env 给：FORUM_AI__KEY（不进仓库）
+	// Endpoint 是 **OpenAI 格式的 base_url**，照 DeepSeek 文档：https://api.deepseek.com（SDK 自己拼 /chat/completions）。
+	Endpoint string `yaml:"endpoint" koanf:"endpoint"`
+	Model    string `yaml:"model" koanf:"model"`
+	// 两套提示词（老站的设计）：新帖审核 / 举报复核。
+	PromptNewPost string        `yaml:"prompt_new_post" koanf:"prompt_new_post"`
+	PromptReport  string        `yaml:"prompt_report" koanf:"prompt_report"`
+	MaxTokens     int           `yaml:"max_tokens" koanf:"max_tokens"`
+	Interval      time.Duration `yaml:"interval" koanf:"interval"`
+	Timeout       time.Duration `yaml:"timeout" koanf:"timeout"`
 }
 
 // HTTP：监听、可信代理、跨站与请求体上限。

@@ -1,48 +1,41 @@
 package app
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
-	"net/http"
-	"strings"
+
+	openai "github.com/sashabaranov/go-openai"
 
 	"forum/internal/config"
+	"forum/internal/forum"
 )
 
-// AI 发帖审核（2026-10-13 上线刚需；2026-10-14 自查后修了队列堵死与「不确定=通过」两条）。
+// AI 发帖审核的编排层。
 //
-// 为什么挂在 cron 上而不是 CreateTopic 的钩子里：**不动领域层**，而且它顺带能审
-// 「迁移进来时就是待审」的历史主题。
+// **设计逐条照老站**（site/crates/sc2clud-core/src/review.rs + sc2clud-web/src/admin_ai.rs）：
 //
-// 判定口径（安全优先）：
+//	· 判定三态由**三个工具**表达（tool calls，不是让模型回一段 JSON 再猜）；
+//	· approve -> approved（直接放行）；pending -> 留在人工队列；reject -> rejected；
+//	· 每次审核**留痕**（ai_reviews：source/verdict/reason/raw_response/model/ok）；
+//	· **失败自动重试一次**，两次都不成才记 ok=false；
+//	· 审核文本按 post_review_text 的形状（标题/分区/作者/正文）发过去，后台可预览。
 //
-//	· ok      -> 自动 approved；
-//	· 其余    -> **只写批注与模型原话，状态仍是 pending**，由人工按「不通过」。
-//
-// 也就是说：**只有明确说合规才放行**。模型判错一次的代价是「多发了一条待审的」，「关掉正常帖子」不会发生。
-//
-// shortcut: 目前只审主题。举报复核要复用这套时，把「取队列的那条 SQL + 落库动作」抽成 job，别复制一份。
+// 「审过没」是 topics.ai_reviewed 一个 bool：处理过就置 true，队列因此必然前进。
+// **复审由业务触发**（作者改正文 → ResetTopicReview 置回 false），不由时间触发。
 const (
-	// aiBatch 一轮审几条。它是**成本开关**（每条一次外呼）；要按小时/天限流时把它挪进 config 并加计数。
+	// aiBatch 一轮审几条。它是**成本开关**（每条一次外呼）。
 	aiBatch = 5
-	// aiMaxBody 发给模型的正文上限（字符数）。
-	aiMaxBody = 4000
-	// aiNotePrefix 是「这条批注是 AI 写的」的标记 —— 人一眼能认出来，也便于以后按前缀筛。
-	aiNotePrefix = "AI 审核建议不通过："
-	// aiMaxRespBytes 是响应体上限：坏掉或恶意的端点不该能把我们读爆（json.Decoder 不封顶）。
-	aiMaxRespBytes = 1 << 20
 )
 
-// errAINotConfigured 是「没配好」这个**可预期**的错误：调用方按「跳过本轮」处理。
 var errAINotConfigured = errors.New("ai review: 未配置（缺 key/endpoint/model 或 enabled=false）")
 
-type aiVerdict struct {
-	OK     bool   `json:"ok"`
-	Reason string `json:"reason"`
+// aiReview 是一次审核的结果（与 ai_reviews 一行对应）。
+type aiReview struct {
+	Verdict forum.AiVerdict
+	Reason  string
+	Raw     string // 模型原话（留痕用，截断到 2000）
 }
 
 // reviewPending 扫一批待审主题交给模型判定。**没配 key 就直接返回**（一个外呼都不发）。
@@ -50,16 +43,14 @@ func reviewPending(ctx context.Context, in *Infra) error {
 	if !aiConfigured(in.AI) {
 		return nil
 	}
-
-	// **队列必须会前进**：只挑「没审过」或「一天前审过」的。
-	// 原来只按 id 排、判违规又不改状态 —— 那 5 条会永远占住窗口，后面的帖子永远轮不到（P0）。
 	rows, err := in.DB.QueryContext(ctx, `
-		SELECT t.id, t.public_id, t.title, COALESCE(p.content_md, '')
+		SELECT t.id, t.public_id, t.title, COALESCE(b.name, ''), COALESCE(NULLIF(a.nickname, ''), a.username), COALESCE(p.content_md, '')
 		  FROM topics t
+		  LEFT JOIN boards b ON b.id = t.board_id
+		  JOIN users a ON a.id = t.author_id
 		  LEFT JOIN posts p ON p.topic_id = t.id AND p.floor = 1
-		 WHERE t.review_state = 'pending' AND t.visibility = 'normal'
-		   AND (t.ai_reviewed_at IS NULL OR t.ai_reviewed_at < now() - interval '1 day')
-		 ORDER BY t.ai_reviewed_at NULLS FIRST, t.id
+		 WHERE t.review_state = 'pending' AND t.visibility = 'normal' AND NOT t.ai_reviewed
+		 ORDER BY t.id
 		 LIMIT $1`, aiBatch)
 	if err != nil {
 		return fmt.Errorf("ai review: 取待审队列: %w", err)
@@ -68,12 +59,14 @@ func reviewPending(ctx context.Context, in *Infra) error {
 		id       int64
 		publicID string
 		title    string
+		section  string
+		author   string
 		body     string
 	}
 	var queue []item
 	for rows.Next() {
 		var it item
-		if err := rows.Scan(&it.id, &it.publicID, &it.title, &it.body); err != nil {
+		if err := rows.Scan(&it.id, &it.publicID, &it.title, &it.section, &it.author, &it.body); err != nil {
 			rows.Close()
 			return err
 		}
@@ -85,111 +78,137 @@ func reviewPending(ctx context.Context, in *Infra) error {
 	}
 
 	for _, it := range queue {
-		v, err := aiJudge(ctx, in, it.title, it.body)
+		// shortcut: 下载来源暂不拼进审核文本（老站同样是 shortcut）；要加时把 topic_sources 取出来传给 PostReviewText。
+		text := forum.PostReviewText(it.title, it.section, it.body, it.author, nil)
+		review, err := aiReviewWithRetry(ctx, in, text)
 		if err != nil {
-			// 单条失败不影响这一批的其余条：外呼不可靠是常态。失败的那条**不写 ai_reviewed_at**，下一轮还会被挑中。
+			// 两次都没成：留痕 ok=false，**不置 ai_reviewed**（下一轮还会被挑中）。
+			aiLog(ctx, in, it.id, "new_post", "error", err.Error(), "", false)
 			in.Log.Warn("ai review: 判定失败", "topic", it.publicID, "err", err.Error())
-			continue
-		}
-		if v.OK {
-			if _, err := in.DB.ExecContext(ctx, `
-				UPDATE topics SET review_state = 'approved', ai_reviewed_at = now(), ai_review_note = $2
-				 WHERE id = $1`, it.id, v.Reason); err != nil {
-				return fmt.Errorf("ai review: 通过 %s: %w", it.publicID, err)
+			if isFatalAIError(err) {
+				// 401/402 这类**不是可重试**错误：再试剩下几条只是把同一个错刷五遍。
+				return fmt.Errorf("ai review: 配置/账户问题，本轮中止: %w", err)
 			}
-			in.Log.Info("ai review: 通过", "topic", it.publicID)
 			continue
 		}
-		// 不合规（含「拿不准」）：留批注 + 模型原话，状态不动 —— 人工按「不通过」时才真的关。
-		note := aiNotePrefix + v.Reason
-		if r := []rune(note); len(r) > 500 {
-			note = string(r[:500])
+		if err := applyAiVerdict(ctx, in, it.id, review); err != nil {
+			return err
 		}
-		if _, err := in.DB.ExecContext(ctx, `
-			UPDATE topics SET review_note = $2, ai_review_note = $3, ai_reviewed_at = now()
-			 WHERE id = $1`, it.id, note, v.Reason); err != nil {
-			return fmt.Errorf("ai review: 写批注 %s: %w", it.publicID, err)
-		}
-		in.Log.Info("ai review: 建议不通过（留待人工）", "topic", it.publicID, "reason", v.Reason)
+		aiLog(ctx, in, it.id, "new_post", string(review.Verdict), review.Reason, review.Raw, true)
+		in.Log.Info("ai review: 判定", "topic", it.publicID, "verdict", string(review.Verdict))
 	}
 	return nil
+}
+
+// applyAiVerdict 把判定落到帖子状态，并置 ai_reviewed。
+// 三态到 review_state 的映射在论坛域里（forum.AiVerdict.ReviewState），这里只负责写。
+func applyAiVerdict(ctx context.Context, in *Infra, topicID int64, r aiReview) error {
+	_, err := in.DB.ExecContext(ctx, `
+		UPDATE topics SET review_state = $2, ai_reviewed = true, review_note = $3
+		 WHERE id = $1`, topicID, r.Verdict.ReviewState(), "AI 审核："+r.Reason)
+	if err != nil {
+		return fmt.Errorf("ai review: 落状态 %d: %w", topicID, err)
+	}
+	return nil
+}
+
+func aiLog(ctx context.Context, in *Infra, topicID int64, source, verdict, reason, raw string, ok bool) {
+	if r := []rune(raw); len(r) > 2000 {
+		raw = string(r[:2000])
+	}
+	if _, err := in.DB.ExecContext(ctx, `
+		INSERT INTO ai_reviews (target_kind, target_id, source, verdict, reason, raw_response, model, ok)
+		VALUES ('post', $1, $2, $3, $4, $5, $6, $7)`,
+		topicID, source, verdict, reason, raw, in.AI.Model, ok); err != nil {
+		// 留痕失败不该让审核结果丢失：日志里能看见。
+		in.Log.Warn("ai review: 留痕失败", "topic", topicID, "err", err.Error())
+	}
 }
 
 func aiConfigured(c config.AI) bool {
 	return c.Enabled && c.Key != "" && c.Endpoint != "" && c.Model != ""
 }
 
-// aiJudge 调一次 OpenAI 兼容的 chat/completions，只取那个 JSON。
-func aiJudge(ctx context.Context, in *Infra, title, body string) (aiVerdict, error) {
-	cfg := in.AI
-	// 第二道守卫（第一道在 reviewPending）：**没有 key 就绝不外呼**。
-	// 上线期间最容易出的事故就是没配好时猛打别人的 API —— 这条也有用例钉着。
-	if !aiConfigured(cfg) {
-		return aiVerdict{}, errAINotConfigured
+// isFatalAIError：认证失败/余额不足这类重试也没用的错误。
+func isFatalAIError(err error) bool {
+	var apiErr *openai.APIError
+	if errors.As(err, &apiErr) {
+		return apiErr.HTTPStatusCode == 401 || apiErr.HTTPStatusCode == 402
 	}
-	content := "标题：" + title + "\n\n正文：\n" + body
-	if r := []rune(content); len(r) > aiMaxBody {
-		// 截断要**说出来**：不说的话模型会把「只看到前半段」当成「整体合规」。
-		content = string(r[:aiMaxBody]) + "\n\n[正文过长，以下内容未提供]"
-	}
-	raw, err := json.Marshal(map[string]any{
-		"model": cfg.Model,
-		"messages": []map[string]string{
-			{"role": "system", "content": cfg.Prompt},
-			{"role": "user", "content": content},
-		},
-		"response_format": map[string]string{"type": "json_object"},
-		"temperature":     0,
-	})
-	if err != nil {
-		return aiVerdict{}, err
-	}
-	reqCtx, cancel := context.WithTimeout(ctx, cfg.Timeout)
-	defer cancel()
-	req, err := http.NewRequestWithContext(reqCtx, http.MethodPost,
-		strings.TrimRight(cfg.Endpoint, "/")+"/v1/chat/completions", bytes.NewReader(raw))
-	if err != nil {
-		return aiVerdict{}, err
-	}
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Authorization", "Bearer "+cfg.Key)
-	resp, err := http.DefaultClient.Do(req)
-	if err != nil {
-		return aiVerdict{}, err
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode != http.StatusOK {
-		// 错误体也读一点回来：429/401 的原因只有响应里有（对排查「为什么全部失败」是决定性的）。
-		head, _ := io.ReadAll(io.LimitReader(resp.Body, 512))
-		return aiVerdict{}, fmt.Errorf("ai review: HTTP %d: %s", resp.StatusCode, truncateRunes(string(head), 200))
-	}
-	var out struct {
-		Choices []struct {
-			Message struct {
-				Content string `json:"content"`
-			} `json:"message"`
-		} `json:"choices"`
-	}
-	if err := json.NewDecoder(io.LimitReader(resp.Body, aiMaxRespBytes)).Decode(&out); err != nil {
-		return aiVerdict{}, fmt.Errorf("ai review: 响应不是 JSON: %w", err)
-	}
-	if len(out.Choices) == 0 {
-		return aiVerdict{}, errors.New("ai review: 响应里没有 choices")
-	}
-	content = strings.TrimSpace(out.Choices[0].Message.Content)
-	content = strings.Trim(content, "`")
-	content = strings.TrimPrefix(content, "json")
-	var v aiVerdict
-	if err := json.Unmarshal([]byte(strings.TrimSpace(content)), &v); err != nil {
-		return aiVerdict{}, fmt.Errorf("ai review: 回的内容不是约定 JSON: %s", truncateRunes(content, 120))
-	}
-	return v, nil
+	return false
 }
 
-func truncateRunes(s string, n int) string {
-	r := []rune(s)
-	if len(r) <= n {
-		return s
+// aiReviewWithRetry 照老站：第一次失败自动重试一次（偶发不调工具/网络抖动靠这一次救回来）。
+func aiReviewWithRetry(ctx context.Context, in *Infra, text string) (aiReview, error) {
+	r, err := aiReviewOnce(ctx, in, text)
+	if err == nil {
+		return r, nil
 	}
-	return string(r[:n])
+	in.Log.Warn("ai review: 第一次失败，自动重试一次", "err", err.Error())
+	return aiReviewOnce(ctx, in, text)
+}
+
+// aiReviewOnce 发一次请求。
+//
+// 用 **tool calls**：模型不「回一段 JSON 让我们猜」，而是**调用三个工具之一**；
+// 工具名认不出来就是错误（不能默认成通过）。参数里的 reason 拿来回写批注。
+func aiReviewOnce(ctx context.Context, in *Infra, text string) (aiReview, error) {
+	cfg := in.AI
+	if !aiConfigured(cfg) {
+		return aiReview{}, errAINotConfigured
+	}
+	// base_url 照文档就是 https://api.deepseek.com（SDK 自己拼 /chat/completions，不要再加 /v1）。
+	sdkCfg := openai.DefaultConfig(cfg.Key)
+	sdkCfg.BaseURL = cfg.Endpoint
+	client := openai.NewClientWithConfig(sdkCfg)
+
+	tools := make([]openai.Tool, 0, 3)
+	for _, t := range forum.AiTools("post") {
+		tools = append(tools, openai.Tool{
+			Type: openai.ToolTypeFunction,
+			Function: &openai.FunctionDefinition{
+				Name:        t.Function.Name,
+				Description: t.Function.Description,
+				Parameters:  t.Function.Parameters,
+			},
+		})
+	}
+
+	reqCtx, cancel := context.WithTimeout(ctx, cfg.Timeout)
+	defer cancel()
+	resp, err := client.CreateChatCompletion(reqCtx, openai.ChatCompletionRequest{
+		Model:     cfg.Model,
+		MaxTokens: cfg.MaxTokens,
+		Messages: []openai.ChatCompletionMessage{
+			{Role: openai.ChatMessageRoleSystem, Content: cfg.PromptNewPost},
+			{Role: openai.ChatMessageRoleUser, Content: text},
+		},
+		Tools: tools,
+	})
+	if err != nil {
+		return aiReview{}, fmt.Errorf("调用失败: %w", err)
+	}
+	if len(resp.Choices) == 0 {
+		return aiReview{}, errors.New("响应里没有 choices")
+	}
+	choice := resp.Choices[0]
+	// 文档的警告：max_tokens 太小会把输出截断。截断的 tool call 不能当判定用。
+	if choice.FinishReason == openai.FinishReasonLength {
+		return aiReview{}, errors.New("输出被 max_tokens 截断（调大 max_tokens）")
+	}
+	if len(choice.Message.ToolCalls) == 0 {
+		return aiReview{}, errors.New("模型没有调用任何工具")
+	}
+	call := choice.Message.ToolCalls[0]
+	verdict, ok := forum.AiVerdictFromToolName(call.Function.Name, "post")
+	if !ok {
+		return aiReview{}, fmt.Errorf("认不出的工具名 %q", call.Function.Name)
+	}
+	var args struct {
+		Reason string `json:"reason"`
+	}
+	if err := json.Unmarshal([]byte(call.Function.Arguments), &args); err != nil {
+		return aiReview{}, fmt.Errorf("工具参数不是 JSON: %w", err)
+	}
+	return aiReview{Verdict: verdict, Reason: args.Reason, Raw: call.Function.Arguments}, nil
 }
