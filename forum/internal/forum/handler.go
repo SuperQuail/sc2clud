@@ -166,6 +166,9 @@ func (h *Handler) listReviewQueue(c *gin.Context) {
 type reviewTopicBody struct {
 	Action string `json:"action" binding:"required"`
 	Note   string `json:"note"`
+	// 审核员看队列时那一版的 updated_at（队列项里就有）。**必填**：
+	// 它是这一层的信任边界 —— 不带版本就没有办法证明「批的是你看过的那一份内容」。
+	ExpectedUpdatedAt time.Time `json:"expected_updated_at" binding:"required"`
 }
 
 func (h *Handler) reviewTopic(c *gin.Context) {
@@ -174,7 +177,7 @@ func (h *Handler) reviewTopic(c *gin.Context) {
 		httpx.Fail(c, err)
 		return
 	}
-	out, err := h.svc.ReviewTopic(c.Request.Context(), h.actor(c), c.Param("id"), b.Action, b.Note)
+	out, err := h.svc.ReviewTopic(c.Request.Context(), h.actor(c), c.Param("id"), b.Action, b.Note, b.ExpectedUpdatedAt)
 	if err != nil {
 		httpx.Fail(c, err)
 		return

@@ -18,7 +18,7 @@ const reviewQueueColumns = `t.id, t.public_id::text, t.title, t.kind, COALESCE(t
        a.id, a.public_id, a.username, COALESCE(NULLIF(a.nickname, ''), a.username),
        COALESCE(NULLIF(a.avatar_hash, ''), a.default_avatar_hash, ''),
        COALESCE(NULLIF(a.avatar_small_hash, ''), NULLIF(a.avatar_hash, ''), a.default_avatar_hash, ''), a.status,
-       t.created_at`
+       t.created_at, t.updated_at`
 
 const reviewQueueFrom = `
   FROM topics t
@@ -41,6 +41,9 @@ type ReviewQueueRow struct {
 	BoardName    string
 	Author       UserRow
 	CreatedAt    time.Time
+	// UpdatedAt 是**内容的版本**：作者改正文会经 ResetTopicReview 把它推新。
+	// 判定时必须把它带回来（$8），否则「审核员看到的」与「他批的」可以是两份不同的正文。
+	UpdatedAt time.Time
 }
 
 // scanReviewQueueRow 是那一列清单的唯一扫描器。
@@ -52,7 +55,7 @@ func scanReviewQueueRow(rows *sql.Rows, r *ReviewQueueRow) error {
 		&r.BoardSlug, &r.BoardName,
 		&r.Author.ID, &r.Author.PublicID, &r.Author.Handle, &r.Author.Nickname,
 		&avatar, &avatarSmall, &r.Author.Status,
-		&r.CreatedAt,
+		&r.CreatedAt, &r.UpdatedAt,
 	); err != nil {
 		return err
 	}
@@ -110,7 +113,7 @@ func (s *Store) ReviewQueueItem(ctx context.Context, topicID int64) (*ReviewQueu
 //   - $3 传 nil 表示「通过且不写理由」——review_note 被清空，上一版的拒绝理由不该留着；
 //   - reviewed_by/reviewed_at 是 notify:review 取「审核人是谁」的唯一来源（notify/tasks.go:126）。
 func SetTopicReview(ctx context.Context, tx Querier, topicID int64, state string, note *string,
-	reviewerID int64, unhide bool, expectState string, now time.Time) (int, error) {
+	reviewerID int64, unhide bool, expectState string, expectUpdatedAt *time.Time, now time.Time) (int, error) {
 	n, err := rowsAffected(ctx, tx, sqlJoin(
 		"UPDATE topics",
 		"   SET review_state  = $2,",
@@ -127,8 +130,12 @@ func SetTopicReview(ctx context.Context, tx Querier, topicID int64, state string
 		"       updated_at    = $5",
 		// $7 只判「我读到的那一版」：作者在管理员点通过之前改了正文（PATCH 带 content_md 会回
 		// pending 并换内容），这次判定就不该落到新内容上 —— 影响 0 行，service 换冲突错。
+		// $8 是**内容的版本**。只比 review_state 不够：作者在审核员看队列之后改了正文时，
+		// 主题是 pending → pending，状态一个字没变，而正文换了一份 —— 这时批准等于放出一份
+		// 没人看过的内容。版本不符 → 0 行 → service 换冲突错，让审核员刷新重判。
 		" WHERE id = $1 AND visibility <> 'deleted' AND review_state = $7",
-	), topicID, state, note, reviewerID, now.UTC(), unhide, expectState)
+		"   AND ($8::timestamptz IS NULL OR updated_at = $8)",
+	), topicID, state, note, reviewerID, now.UTC(), unhide, expectState, expectUpdatedAt)
 	return int(n), err
 }
 

@@ -81,6 +81,9 @@ type ReviewQueueItemDTO struct {
 	ReviewNote   *string   `json:"review_note"`
 	ReviewSource *string   `json:"review_source"`
 	CreatedAt    time.Time `json:"created_at"`
+	// UpdatedAt 是内容的版本号：**判定时必须原样回传**（expected_updated_at）。
+	// 不回传就退化成「只比 review_state」，而作者在你读队列之后改正文时状态不变、内容变了。
+	UpdatedAt time.Time `json:"updated_at"`
 }
 
 // ReviewQueuePage 是队列一页（{ data, next_cursor }）。
@@ -130,7 +133,14 @@ func (s *Service) ListReviewQueue(ctx context.Context, actor *authz.Actor, in Re
 // ReviewTopic 是人工判定：approve | reject。三条副作用**与判定同事务**：
 // 改 topics 的三列 + 一行审计 + 一条给作者的通知任务（队列是至少一次投递，
 // 判定本身是幂等的 —— 再判一次就是又写一次同样的值）。
-func (s *Service) ReviewTopic(ctx context.Context, actor *authz.Actor, publicID, action, note string) (*ReviewQueueItemDTO, error) {
+// expectedUpdatedAt 是**审核员看队列时那一版的版本号**（队列项的 updated_at）。
+//
+// 为什么必须有它：只比 review_state 抓不到「作者在审核员看队列之后改了正文」——
+// 那时主题是 pending → pending，状态一个字没变、正文换了一份，批准等于放出一份没人看过的内容
+// （盲测 X4 实测：回执里 excerpt 已经是作者改后的新正文，仍然 200）。
+// HTTP 层把它设为**必填**（信任边界在 handler）；内部调用方可以不给（nil = 不校验版本）。
+func (s *Service) ReviewTopic(ctx context.Context, actor *authz.Actor, publicID, action, note string,
+	expectedUpdatedAt ...time.Time) (*ReviewQueueItemDTO, error) {
 	if _, err := requireActor(actor); err != nil {
 		return nil, err
 	}
@@ -187,15 +197,24 @@ func (s *Service) ReviewTopic(ctx context.Context, actor *authz.Actor, publicID,
 			}
 			return err
 		}
+		// 状态或内容版本任一对不上，都说明审核员看的那一版已经不是现在这一版
 		if locked.ReviewState != ref.ReviewState {
-			return invalid("state", "这条主题的审核状态刚刚变了（可能作者改了正文），请刷新队列后再判")
+			return reviewStale()
+		}
+		var expect *time.Time
+		if len(expectedUpdatedAt) > 0 && !expectedUpdatedAt[0].IsZero() {
+			expect = &expectedUpdatedAt[0]
 		}
 		n, err := pgsql.SetTopicReview(ctx, tx, ref.ID, state, notePtr, actor.UserID,
-			action == ReviewApprove, locked.ReviewState, now)
+			action == ReviewApprove, locked.ReviewState, expect, now)
 		if err != nil {
 			return err
 		}
 		if n == 0 {
+			// 版本/状态在事务里对不上（0 行）—— 不是「不存在」，是「你该刷新重判」
+			if expect != nil {
+				return reviewStale()
+			}
 			return ErrTopicNotFound
 		}
 		if err := pgsql.InsertReviewAudit(ctx, tx, actor.UserID, AuditReviewAction, publicID, detail, now); err != nil {
@@ -229,6 +248,12 @@ func (s *Service) ReviewTopic(ctx context.Context, actor *authz.Actor, publicID,
 	return &item, nil
 }
 
+// reviewStale 是「你手上的那一版不是现在这一版」：让审核员刷新队列重判，而不是把
+// 一份没人看过的内容写成 approved、或者覆盖掉别人刚做的判定。
+func reviewStale() error {
+	return invalid("state", "这条主题在你判定之前变过（作者改了正文或别人判过），请刷新队列后再判")
+}
+
 func reviewQueueItemDTO(r pgsql.ReviewQueueRow) ReviewQueueItemDTO {
 	return ReviewQueueItemDTO{
 		ID:           r.PublicID,
@@ -241,5 +266,7 @@ func reviewQueueItemDTO(r pgsql.ReviewQueueRow) ReviewQueueItemDTO {
 		ReviewNote:   r.ReviewNote,
 		ReviewSource: r.ReviewSource,
 		CreatedAt:    r.CreatedAt.UTC(),
+		// UpdatedAt 就是「我看到的是哪一版」，判定时原样回传（HTTP 层必填）
+		UpdatedAt: r.UpdatedAt.UTC(),
 	}
 }

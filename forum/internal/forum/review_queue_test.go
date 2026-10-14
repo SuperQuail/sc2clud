@@ -2,6 +2,7 @@ package forum
 
 import (
 	"testing"
+	"time"
 
 	"forum/internal/authz"
 	ent "forum/internal/ent"
@@ -218,7 +219,8 @@ func TestSetTopicReviewRejectsStaleState(t *testing.T) {
 		t.Fatal(err)
 	}
 	err := h.dbTx(func(tx *ent.Tx) error {
-		n, err := pgsql.SetTopicReview(h.ctx, tx, id, "approved", nil, authorID, true, "rejected", h.clk.Now())
+		// 版本传 nil = 只校验状态（本条钉的是状态守卫；版本守卫见 TestReviewConflictOnEditedVersion）
+		n, err := pgsql.SetTopicReview(h.ctx, tx, id, "approved", nil, authorID, true, "rejected", nil, h.clk.Now())
 		if err != nil {
 			return err
 		}
@@ -236,6 +238,46 @@ func TestSetTopicReviewRejectsStaleState(t *testing.T) {
 	}
 	if state != "pending" {
 		t.Fatalf("过期判定不该改状态，实际 %q", state)
+	}
+}
+
+// D1（盲测 X4）：作者在审核员看队列之后改了正文时，**状态是 pending → pending，一个字没变**，
+// 只比 review_state 的守卫抓不到。判定必须带上「我看到的那一版」（expected_updated_at）。
+func TestReviewConflictOnEditedVersion(t *testing.T) {
+	h := newHarness(t)
+	roleID := h.seedRole("user", false)
+	h.seedBoard("campaign", 0, false)
+	authorID := h.seedUser("author", roleID, 1, false)
+	author := h.actor(authorID, roleID, authz.PermTopicCreate, authz.PermTopicEditOwn)
+	mod := h.actor(h.seedUser("mod", roleID, 1, true), roleID, authz.PermPostReview)
+
+	d := h.mustTopic(author, CreateTopicInput{BoardSlug: "campaign", Title: "t", ContentMD: "第一版"})
+	// 审核员在队列里看到的那一版
+	queue, err := h.svc.ListReviewQueue(h.ctx, mod, ReviewQueueInput{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	seen := queue.Items[0].UpdatedAt
+
+	// 作者改了正文（回 pending、内容换了）。
+	// 必须先把假时钟往前推：updated_at 就是版本号，冻结的时钟会让两次写入拿到同一个时间戳，
+	// 那样这条用例测的就不是守卫而是时钟（生产用真时钟，微秒精度）。
+	h.clk.T = h.clk.T.Add(2 * time.Minute)
+	body := "第三版正文"
+	if err := h.svc.UpdateTopic(h.ctx, author, d.ID, UpdateTopicInput{ContentMD: &body}); err != nil {
+		t.Fatal(err)
+	}
+
+	// 拿旧版本号去批准：必须被拒（否则放出的是一份没人看过的内容）
+	if _, err := h.svc.ReviewTopic(h.ctx, mod, d.ID, ReviewApprove, "", seen); err == nil {
+		t.Fatal("内容在判定前变过时必须冲突，不能被批准")
+	}
+	var state string
+	if err := h.pool.QueryRow(h.ctx, "SELECT review_state FROM topics WHERE public_id = $1", d.ID).Scan(&state); err != nil {
+		t.Fatal(err)
+	}
+	if state != "pending" {
+		t.Fatalf("被拒的判定不该改状态，实际 %q", state)
 	}
 }
 

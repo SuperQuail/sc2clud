@@ -180,6 +180,9 @@ func (s *Store) ListTopicsByBookmark(ctx context.Context, userID int64, cursorT 
 		" WHERE bk.user_id = $1" +
 		" AND (bk.created_at, bk.topic_id) < ($2::timestamptz, $3::bigint)" +
 		" AND (t.visibility = 'normal' OR t.author_id = $1)" +
+		// 与另外四条公开流同一条审核谓词（列表 / 详情 / 搜索 / 个人主页都有）。
+		// 少了它，作者把自己的待审帖收藏之后，**待审内容会从收藏页漏出去**（盲测 D2 实测）。
+		" AND t.review_state = 'approved'" +
 		" ORDER BY bk.created_at DESC, bk.topic_id DESC LIMIT $4"
 	var out []TopicRow
 	err := s.query(ctx, sqlText, []any{userID, cursorT.UTC(), cursorID, limit}, func(rows *sql.Rows) error {
