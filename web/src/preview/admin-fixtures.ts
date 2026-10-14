@@ -20,7 +20,7 @@ const ROLE = (id: number, key: string, name: string, color: string, isSuper = fa
 export const ME_ADMIN = {
   id: 'u-1', handle: 'demo-admin', nickname: '示范管理员', avatar: null,
   email_verified: true, activated: true, is_super: false,
-  perms: ['post.review', 'report.handle', 'reward.verify', 'role.edit', 'role.assign', 'title.grant', 'title.manage', 'board.manage', 'mail.manage', 'site.setting', 'audit.view', 'user.ban', 'permission.grant'],
+  perms: ['post.review', 'report.handle', 'reward.verify', 'role.edit', 'role.assign', 'title.grant', 'title.manage', 'board.manage', 'mail.manage', 'site.setting', 'audit.view', 'audit.export', 'user.ban', 'permission.grant'],
   role: { key: 'admin', name: '管理员' },
   extra: [{ key: 'audit.view', expires_at: '2026-12-31T15:59:59Z' }],
   board_ids: [1],
@@ -54,7 +54,7 @@ const REVIEW = [
 ];
 
 const AUDIT = [
-  { id: 412, created_at: '2026-10-12T13:40:00Z', action: 'role.edit', target_type: 'role', target_id: 'admin', ip: '10.0.0.4', actor: { id: 'u-1', handle: 'demo-admin', nickname: '示范管理员' }, detail: { before: { perms: ['post.review'] }, after: { perms: ['post.review', 'user.ban'] } } },
+  { id: 412, created_at: '2026-10-12T13:40:00Z', action: 'role.permissions.edit', target_type: 'role', target_id: 'admin', ip: '10.0.0.4', actor: { id: 'u-1', handle: 'demo-admin', nickname: '示范管理员' }, detail: { before: { perms: ['post.review'] }, after: { perms: ['post.review', 'user.ban'] } } },
   { id: 411, created_at: '2026-10-12T11:02:00Z', action: 'user.ban', target_type: 'user', target_id: 'u-9', ip: '10.0.0.4', actor: { id: 'u-1', handle: 'demo-admin', nickname: '示范管理员' }, detail: { after: { reason: '广告机器人' } } },
   { id: 410, created_at: '2026-10-12T09:00:00Z', action: 'permission.expire', target_type: 'user', target_id: 'u-6', ip: '', actor: null, detail: { before: { perm: 'post.review', expires_at: null } } },
 ];

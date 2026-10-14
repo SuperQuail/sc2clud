@@ -1,4 +1,4 @@
-import type { AdminUser, Announcement, Banner, Donation, DonationStats, Domain, MailAccount, NoticeDefault, Report, ReviewQueueItem, Role, SettingItem, Title } from '@/lib/api/admin';
+import type { AdminUser, Announcement, AuditItem, Banner, Donation, DonationStats, Domain, MailAccount, NoticeDefault, Report, ReviewQueueItem, Role, SettingItem, Title } from '@/lib/api/admin';
 
 // DevRoom 15-admin 的演示数据（**只给房间用**；产品路由由 ./admin-screens.tsx 的容器喂真端点）。
 //
@@ -305,4 +305,14 @@ export const DEMO_ANNOUNCEMENTS: Announcement[] = [
 export const DEMO_BANNERS: Banner[] = [
   { id: 'b-1', kind: 'info', text: '编辑器 5.0.14 兼容性说明已更新', url: '/t/t-2', starts_at: '2026-10-10T00:00:00Z', ends_at: null, enabled: true, roles: [], created_at: '2026-10-10T00:00:00Z', updated_at: '2026-10-10T00:00:00Z' },
   { id: 'b-2', kind: 'warning', text: '资源区下载链接失效请点「反馈」', url: '', starts_at: '2026-10-01T00:00:00Z', ends_at: '2026-11-01T00:00:00Z', enabled: true, roles: ['creator'], created_at: '2026-10-01T00:00:00Z', updated_at: '2026-10-01T00:00:00Z' },
+];
+
+/** 审计日志的演示数据：**动作名照后端常量**（auth/audit.go 等），`id` 是数字、`detail` 是 jsonb、
+ *  `actor` 可为 null（CLI / 系统任务）。 */
+export const DEMO_AUDIT: AuditItem[] = [
+  { id: 412, created_at: '2026-10-12T13:40:00Z', action: 'role.permissions.edit', target_type: 'role', target_id: 'moderator', ip: '203.0.113.24', actor: { id: 'u-1', handle: 'demo-admin', nickname: '示范管理员' }, detail: { before: { perms: ['topic.create'] }, after: { perms: ['topic.create', 'topic.lock'] } } },
+  { id: 411, created_at: '2026-10-12T11:02:00Z', action: 'user.ban', target_type: 'user', target_id: 'u-9', ip: '203.0.113.24', actor: { id: 'u-1', handle: 'demo-admin', nickname: '示范管理员' }, detail: { after: { reason: '广告机器人' } } },
+  { id: 410, created_at: '2026-10-12T09:00:00Z', action: 'permission.expire', target_type: 'user', target_id: 'u-6', ip: '', actor: null, detail: { before: { perm: 'post.review', expires_at: null } } },
+  { id: 409, created_at: '2026-10-11T03:20:00Z', action: 'topic.review', target_type: 'topic', target_id: 't-3', ip: '203.0.113.24', actor: { id: 'u-1', handle: 'demo-admin', nickname: '示范管理员' }, detail: { action: 'reject', state: 'rejected', note: '未标注原作者与出处链接', from: 'pending' } },
+  { id: 408, created_at: '2026-10-10T00:05:00Z', action: 'permission.revoke', target_type: 'user', target_id: 'u-7', ip: '127.0.0.1', actor: null, detail: { before: { perm: 'post.review' } } },
 ];

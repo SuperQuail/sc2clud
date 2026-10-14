@@ -6,7 +6,7 @@ import { SCREEN_KEYS, type ScreenKey } from '@/devroom/pages/15-admin/nav';
 import { AdminShell } from '@/devroom/pages/15-admin/shell';
 import { appPath, routePath } from '@/lib/url';
 import { can, useSession } from '@/lib/perms';
-import { MailScreenContainer, PendingScreen, ReportsScreenContainer, ReviewScreenContainer, RewardsScreenContainer, SettingsScreenContainer, TitlesScreenContainer, UsersScreenContainer } from './admin-screens';
+import { AuditScreenContainer, MailScreenContainer, PendingScreen, ReportsScreenContainer, ReviewScreenContainer, RewardsScreenContainer, SettingsScreenContainer, TitlesScreenContainer, UsersScreenContainer } from './admin-screens';
 import { Empty, ErrorState, Loading } from './_parts/state';
 
 // 管理后台（契约 /admin/*，前端方案 §6「在路由层声明所需权限点，缺权限直接渲染 403，不发无谓请求」）。
@@ -50,7 +50,7 @@ const SCREEN_COMPONENT: Record<ScreenKey, AnyScreen> = {
   mail: MailScreenContainer,
   settings: SettingsScreenContainer,
   ai: lazy(() => import('@/devroom/pages/15-admin/screens/ai-review').then((m) => ({ default: m.AiReviewScreen }))),
-  audit: lazy(() => import('@/devroom/pages/15-admin/screens/audit').then((m) => ({ default: m.AuditScreen }))),
+  audit: AuditScreenContainer,
   diagnostics: PendingScreen('diagnostics'),
 };
 

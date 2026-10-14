@@ -1,10 +1,10 @@
 import { useState } from 'react';
 import { CURRENT_ADMIN } from './mock/perms';
-import { DEMO_ANNOUNCEMENTS, DEMO_BANNERS, DEMO_DOMAINS, DEMO_DONATIONS, DEMO_DONATION_STATS, DEMO_MAIL, DEMO_NOTICE_DEFAULTS, DEMO_REPORTS, DEMO_REVIEW, DEMO_ROLES, DEMO_SETTINGS, DEMO_TITLES, DEMO_USERS } from './mock/fixtures';
+import { DEMO_ANNOUNCEMENTS, DEMO_AUDIT, DEMO_BANNERS, DEMO_DOMAINS, DEMO_DONATIONS, DEMO_DONATION_STATS, DEMO_MAIL, DEMO_NOTICE_DEFAULTS, DEMO_REPORTS, DEMO_REVIEW, DEMO_ROLES, DEMO_SETTINGS, DEMO_TITLES, DEMO_USERS } from './mock/fixtures';
 import { AdminShell } from './shell';
 import { SCREEN_KEYS, type ScreenKey } from './nav';
 import { AiReviewScreen } from './screens/ai-review';
-import { AuditScreen } from './screens/audit';
+import { AuditScreen, type AuditFilter } from './screens/audit';
 import { BoardsScreen } from './screens/boards';
 import { DiagnosticsScreen } from './screens/diagnostics';
 import { MailScreen } from './screens/mail';
@@ -35,9 +35,24 @@ const SCREENS: Record<ScreenKey, () => React.ReactNode> = {
   mail: () => <MailRoom />,
   settings: () => <SettingsRoom />,
   ai: () => <AiReviewScreen />,
-  audit: () => <AuditScreen />,
+  audit: () => <AuditRoom />,
   diagnostics: () => <DiagnosticsScreen />,
 };
+
+/** 审计屏的房间版。 */
+function AuditRoom() {
+  const [filter, setFilter] = useState<AuditFilter>({ collector: 'all', target_type: 'all', action: 'all', keyword: '', from: '', to: '' });
+  return (
+    <AuditScreen
+      items={DEMO_AUDIT}
+      hasMore={false}
+      filter={filter}
+      onFilterChange={setFilter}
+      canView
+      canExport
+    />
+  );
+}
 
 /** 站点设置屏的房间版。 */
 function SettingsRoom() {
