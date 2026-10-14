@@ -81,4 +81,7 @@ type Deps struct {
 	Queue   Queue
 	Counter Counter
 	Limit   Limiter
+	// TZ 是站点时区（D7）：分区列表的「今日」按它算零点。nil = 兜底 Asia/Shanghai。
+	// 由 app 层从 config 解析好传进来 —— 本域不 import config（域与配置解耦，测试好造）。
+	TZ *time.Location
 }

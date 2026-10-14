@@ -60,8 +60,13 @@ func Seed(ctx context.Context, cfg *config.Config) error {
 	// 时钟换成可拨动的：论坛的真实感有一半在时间上（「3 小时前」与「刚刚」看起来是两个站）。
 	// 除时钟以外，依赖与 newModules 装出来的那一份逐字相同（同一个构造函数、同一个事务入口）。
 	clk := &clock.Fake{}
+	// 站点时区与请求路径同一份来源（D7）：种子的「今日」统计不能是另一套算法。
+	siteTZ, err := cfg.Site.Location()
+	if err != nil {
+		return err
+	}
 	fs := forum.NewService(in.DB, clk, in.Counter, entQueue{in.Queue}, forum.Deps{
-		Render: mdRenderer{}, Queue: entQueue{in.Queue}, Counter: in.Counter, Limit: in.Limiter,
+		Render: mdRenderer{}, Queue: entQueue{in.Queue}, Counter: in.Counter, Limit: in.Limiter, TZ: siteTZ,
 	})
 
 	base := time.Now().UTC().Truncate(time.Second)

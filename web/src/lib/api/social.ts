@@ -186,3 +186,30 @@ export function markNotificationsRead(body: { ids: string[] } | { all: true }) {
 export function deleteNotification(id: string): Promise<null> {
   return api<null>('notifications/' + encodeURIComponent(id), { method: 'DELETE' });
 }
+
+/**
+ * 「不再通知」——按**类别**静音（PUT /notifications/mutes）。
+ * 字段名照 notify/handler.go:126-130 的 muteBody；按类别时**只能带 type**
+ * （muteKey 对「整类静音带 ref_type/ref_id」直接 400），ref_type / ref_id 是给 type='link' 用的。
+ *
+ * 为什么界面上只做类别静音、不做「这条内容不再通知」（2026-10-14 实测契约）：
+ * 按内容静音要 target_key = "<ref_type>:<内部 id>"，而通知 DTO 的 payload.ref_id 是**内部 id**
+ * （notify/types.go 的 RefID 注释），前端拿不到 public id 与它的换算 —— 送进去就是永久静音一条
+ * 别人永远碰不到的通知（看起来成功、实际什么都没发生）。类别静音是唯一端到端可用的那一档；
+ * 代价：点「回复我的」上的这颗按钮会静音**全部**回复通知，所以界面上的文案必须写清是「此类」。
+ *
+ * 幂等：重复 PUT 是 204。后端**没有** GET /mutes，所以列表里无法显示「已静音」——
+ * 那是要补的端点（记在 完全重构/进行中/进度-W-GE.md 的阻塞里）。
+ */
+export function muteNotificationKind(type: string): Promise<null> {
+  return api<null>('notifications/mutes', { method: 'PUT', body: { type } });
+}
+
+/**
+ * 取消按内容静音（DELETE /notifications/mutes）。**产品里目前没有落点**：
+ * 能取消的是「按内容静音」，而界面只做类别静音（理由见上）。
+ * 留着它是因为契约两侧各写一份是本仓库最高频的事故，而这一对函数与 muteBody 同源、一并被单测钉住。
+ */
+export function clearNotificationMute(body: { type: string; ref_type?: string; ref_id?: number }): Promise<null> {
+  return api<null>('notifications/mutes', { method: 'DELETE', body });
+}

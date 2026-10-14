@@ -51,6 +51,10 @@ func (c *Config) Validate() error {
 	if c.Site.CookieName == "" {
 		errs = append(errs, errors.New("site.cookie_name is required"))
 	}
+	// 时区写错的代价是「今日」这个统计永远错，而且不会报任何错 —— 属于必须在启动时挡住的配置。
+	if _, err := c.Site.Location(); err != nil {
+		errs = append(errs, fmt.Errorf("site.timezone 不是合法的 IANA 名字（%q）：%w", c.Site.Timezone, err))
+	}
 	switch c.Captcha.Mode {
 	case "off", "on_failure", "always":
 	default:

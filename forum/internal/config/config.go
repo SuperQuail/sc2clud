@@ -149,11 +149,22 @@ type Captcha struct {
 	Mode string `yaml:"mode" koanf:"mode"`
 }
 
-// Site 是站点身份：域名、Cookie 名、Origin 白名单。
+// Site 是站点身份：域名、Cookie 名、Origin 白名单、站点时区。
 type Site struct {
 	BaseURL        string   `yaml:"base_url" koanf:"base_url"`
 	CookieName     string   `yaml:"cookie_name" koanf:"cookie_name"`
 	AllowedOrigins []string `yaml:"allowed_origins" koanf:"allowed_origins"` // 空则由 BaseURL 推导（D2 的 CSRF 中间件用）
+	// Timezone 是站点时区（IANA 名字，D7）：分区列表的「今日」按它算零点。
+	// 老实现把这一个数字硬编码在 forum/topics.go 的 todayStart 里 —— 换时区只能改代码。
+	Timezone string `yaml:"timezone" koanf:"timezone"`
+}
+
+// Location 解析 Site.Timezone。空串按默认值（与旧行为一致）。
+func (s Site) Location() (*time.Location, error) {
+	if s.Timezone == "" {
+		return time.LoadLocation(DefaultTimezone)
+	}
+	return time.LoadLocation(s.Timezone)
 }
 
 // Web 是前端产物与运行期前缀。

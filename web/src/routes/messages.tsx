@@ -3,7 +3,7 @@ import { useNavigate, useParams, useSearchParams } from 'react-router';
 import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import Button from '@jetbrains/ring-ui-built/components/button/button';
 import { ControlsHeight } from '@jetbrains/ring-ui-built/components/global/controls-height';
-import { AtSign, Bell, Check, Inbox, MessageSquare, Send, Settings, ThumbsUp, Trash2, UserRound, type LucideIcon } from 'lucide-react';
+import { AtSign, Bell, BellOff, Check, Inbox, MessageSquare, Send, Settings, ThumbsUp, Trash2, UserRound, type LucideIcon } from 'lucide-react';
 import { icon16 } from '@/ui/icons';
 import { appPath, routePath } from '@/lib/url';
 import { qk } from '@/lib/query/keys';
@@ -22,6 +22,7 @@ import {
   fetchNotifications,
   fetchUnreadCount,
   markNotificationsRead,
+  muteNotificationKind,
   updateNoticeSettings,
   type Notification,
   type NoticeSettings as NoticeSettingsDTO,
@@ -348,6 +349,9 @@ function linkOf(n: Notification): string | null {
 
 function NoticesPane({ kind }: { kind: string }) {
   const qc = useQueryClient();
+  // 后端**没有** GET /mutes，所以「这一类已经静音了吗」查不到：本屏里点过的记在本地，
+  // 免得同一屏对同一个类别反复给入口（刷新后又会显示——那是缺的端点，记在进度文件的阻塞里）。
+  const [muted, setMuted] = useState<Set<string>>(() => new Set());
   const list = useInfiniteQuery({
     queryKey: [...qk.notifications(), kind],
     queryFn: ({ pageParam, signal }) => fetchNotifications({ kind, cursor: pageParam }, signal),
@@ -361,6 +365,10 @@ function NoticesPane({ kind }: { kind: string }) {
 
   const markOne = useMutation({ mutationFn: (id: string) => markNotificationsRead({ ids: [id] }), onSuccess: refresh });
   const removeOne = useMutation({ mutationFn: (id: string) => deleteNotification(id), onSuccess: refresh });
+  // G1「不再通知」：**按类别**静音（PUT /notifications/mutes { type }）。
+  // 不做「这一条内容不再通知」的理由见 lib/api/social.ts 的 muteNotificationKind 注释：
+  // 按内容静音要的内部 id 前端拿不到（payload.ref_id 是内部 id），送进去是永久静音一条死记录。
+  const muteKind = useMutation({ mutationFn: (kind: string) => muteNotificationKind(kind) });
 
   const items = list.data?.pages.flatMap((p) => p.items) ?? [];
   // 选中档由调用方归一过（resolveNoticeKind），所以这里按值域精确找，找不到就是第一档
@@ -403,6 +411,20 @@ function NoticesPane({ kind }: { kind: string }) {
                       label: '标为已读',
                       icon: Check,
                       onClick: () => markOne.mutate(n.id),
+                    },
+                  ]),
+              // 已点过的不再重复给入口（静音是类别级的，同一屏里点第二行等于又发一次同一请求）
+              ...(muted.has(n.kind)
+                ? []
+                : [
+                    {
+                      key: 'mute-' + n.id,
+                      label: '不再通知此类',
+                      icon: BellOff,
+                      onClick: () => {
+                        setMuted((prev) => new Set(prev).add(n.kind));
+                        muteKind.mutate(n.kind);
+                      },
                     },
                   ]),
               { key: 'delete-' + n.id, label: '删除', icon: Trash2, danger: true, onClick: () => removeOne.mutate(n.id) },

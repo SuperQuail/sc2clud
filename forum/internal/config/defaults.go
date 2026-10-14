@@ -5,6 +5,11 @@ import "time"
 // autoActivate 取布尔地址：默认值必须能与「管理员显式设成 false」区分开（nil = 用默认）。
 func autoActivate(v bool) *bool { return &v }
 
+// DefaultTimezone 是站点时区的默认值（D7）。forum 域的 DefaultSiteTZ 是同一份值：
+// 业务域不 import config（见 forum/deps.go），两边只能靠评审看住 —— 而配置层永远显式传值，
+// forum 的兜底只在没接线时生效，漂移的实际影响面为零。
+const DefaultTimezone = "Asia/Shanghai"
+
 // Default 返回全部默认值。加载顺序的第一段就是它（不是 yaml、不是 env）。
 func Default() *Config {
 	return &Config{
@@ -69,7 +74,7 @@ func Default() *Config {
 		},
 		Captcha: Captcha{Mode: "off"},
 		// dev/prod 同域部署时必须用不同的名字，否则两边会话互相顶掉（部署文档 §3.2）
-		Site:     Site{CookieName: "forum_session"},
+		Site:     Site{CookieName: "forum_session", Timezone: DefaultTimezone},
 		Web:      Web{DistDir: "web/dist", BasePath: "/", ServeShell: true, ServeAssets: true},
 		Capacity: Capacity{Profile: "auto"},
 		// 审核默认**关着**：key 得由运维从 env 给（FORUM_AI__KEY），空 key 时一个外呼都不发。

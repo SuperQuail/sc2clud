@@ -13,6 +13,7 @@ import (
 	"errors"
 	"log/slog"
 	"strconv"
+	"time"
 
 	"github.com/jackc/pgx/v5/pgconn"
 
@@ -34,6 +35,8 @@ type Service struct {
 	q     Queue
 	deps  Deps
 	log   *slog.Logger
+	// tz 是站点时区（D7）：只给「今日零点」用。构造时解析一次，请求路径上不再解析。
+	tz *time.Location
 }
 
 // NewService 的签名就是接线契约：db / 时钟 / 计数器 / 队列 / 别人的能力。
@@ -50,6 +53,7 @@ func NewService(db *ent.Client, clk clock.Clock, counters Counter, q Queue, deps
 		q:     q,
 		deps:  deps,
 		log:   slog.Default(),
+		tz:    siteTZ(deps.TZ),
 	}
 }
 

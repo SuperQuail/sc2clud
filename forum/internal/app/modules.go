@@ -109,10 +109,14 @@ func newModules(ctx context.Context, cfg *config.Config, in *Infra) (*Modules, e
 		return nil, err
 	}
 
+	siteTZ, err := cfg.Site.Location()
+	if err != nil {
+		return nil, fmt.Errorf("装配: site.timezone: %w", err)
+	}
 	m.Forum = forum.NewService(in.DB, in.Clock, in.Counter, entQueue{in.Queue}, forum.Deps{
 		// Render 是唯一的 Markdown 出口。Users 在本域没有调用点（SQL 里 JOIN 了 users），留 nil。
 		Render: mdRenderer{}, Queue: entQueue{in.Queue},
-		Counter: in.Counter, Limit: in.Limiter,
+		Counter: in.Counter, Limit: in.Limiter, TZ: siteTZ,
 	})
 	// release 的下载计数与 forum 的浏览量共用一个缓冲：pgcounter 一条语句写两张表。
 	m.Release = release.NewService(in.DB, in.Counter, in.Clock, in.Log)

@@ -40,6 +40,9 @@ func TestLoadDefaultsThenEnvOverride(t *testing.T) {
 	if cfg.Site.CookieName != "forum_session" {
 		t.Fatalf("默认 cookie_name 丢了: %q", cfg.Site.CookieName)
 	}
+	if cfg.Site.Timezone != DefaultTimezone {
+		t.Fatalf("默认 timezone 丢了: %q", cfg.Site.Timezone)
+	}
 	if cfg.Queue.WorkersFor("small") != 4 || cfg.Queue.WorkersFor("standard") != 8 {
 		t.Fatalf("队列档位不对: small=%d standard=%d", cfg.Queue.WorkersFor("small"), cfg.Queue.WorkersFor("standard"))
 	}
@@ -110,6 +113,8 @@ func TestValidateRejects(t *testing.T) {
 			t.Setenv("FORUM_ENV", "prod")
 			t.Setenv("FORUM_KV__DRIVER", "memory")
 		}, "kv.driver"},
+		// 时区写错的代价是「今日」统计永远错且不报任何错 —— 属于必须在启动时挡住的那类配置。
+		{"时区不是 IANA 名字", func(t *testing.T) { t.Setenv("FORUM_SITE__TIMEZONE", "UTC+8") }, "site.timezone"},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {

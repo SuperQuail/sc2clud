@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { MemoryRouter, Route, Routes } from 'react-router';
 import { afterEach, expect, it, vi } from 'vitest';
 import { Providers } from '@/app/providers';
@@ -26,14 +26,22 @@ const N = (id: string, kind: string, payload: Record<string, unknown>) => ({
 const REPLY = N('n-1', 'reply', { text: '回复了你的主题' });
 const SYSTEM = N('n-2', 'sanction', { text: '你被禁言 3 天' });
 
+/** 一次写请求（POST / PUT / DELETE）的方法与请求体，用来断言「到底发了什么」。 */
+type WriteCall = { method: string; url: string; body: unknown };
+
 /** 网络边界：记下每个列表请求的 URL，答什么由 byKind 决定（后端按 kind 过滤，桩也按 kind 过滤）。 */
-function mockApi() {
+function mockApi(writes: WriteCall[] = []) {
   const calls: string[] = [];
   vi.stubGlobal(
     'fetch',
-    vi.fn(async (url: string | URL | Request) => {
+    vi.fn(async (url: string | URL | Request, init?: RequestInit) => {
       const u = String(url);
       calls.push(u);
+      if (init?.method && init.method !== 'GET') {
+        writes.push({ method: init.method, url: u, body: init.body ? JSON.parse(String(init.body)) : null });
+        // httpx.NoContent：PUT/DELETE /notifications/mutes 的响应体是空的（不是 {data:...}）
+        return new Response(null, { status: 204 });
+      }
       const body = (data: unknown) => new Response(JSON.stringify({ data }), { status: 200, headers: { 'content-type': 'application/json' } });
       if (u.includes('/api/v1/me')) return body(ME);
       if (u.includes('/api/v1/site')) return body({ name: 'SC2clud', announcements: [], banner: null });
@@ -81,6 +89,26 @@ it('「系统通知」一档一次带四类 kind，并把 review / sanction / re
     'sanction',
     'reward',
   ]);
+});
+
+// G1：通知行的「不再通知」必须打到 PUT /notifications/mutes，且**体里只有 type**。
+// 这一条盯的是契约形状：muteKey 对「整类静音却带了 ref_type/ref_id」直接 400
+// （notify/service.go:278-282）——接口返回 400、界面看着像点过了，是这类缺陷的典型形态。
+it('点「不再通知此类」发 PUT /notifications/mutes 且只带 type（不误发 ref_type/ref_id）', async () => {
+  const writes: WriteCall[] = [];
+  mockApi(writes);
+  renderCenter();
+  // 切到「系统通知」档，拿一条 kind=sanction 的行
+  fireEvent.click(screen.getByTestId('notice-nav-kind:system,review,sanction,reward'));
+  const action = await screen.findByTestId('notice-action-mute-n-2');
+  fireEvent.click(action);
+
+  // 点过的行不再给同一个入口（本地记账；后端没有 GET /mutes，见进度文件）
+  await waitFor(() => expect(screen.queryByTestId('notice-action-mute-n-2')).toBeNull());
+  expect(writes).toHaveLength(1);
+  expect(writes[0]!.method).toBe('PUT');
+  expect(writes[0]!.url).toContain('/api/v1/notifications/mutes');
+  expect(writes[0]!.body).toEqual({ type: 'sanction' });
 });
 
 it('旧书签的单值 ?kind=review 落到「系统通知」这一档（不显示成「回复我的」）', async () => {

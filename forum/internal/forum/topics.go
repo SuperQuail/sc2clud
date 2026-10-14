@@ -51,12 +51,33 @@ func boardDTO(b pgsql.BoardRow) BoardDTO {
 	}
 }
 
-// todayStart 是「今日零点」：服务端算好再传进 SQL。
+// DefaultSiteTZ 是站点时区的兜底（D7）：没配置时按老行为走。
+// 老实现把 UTC+8 硬编码在 todayStart 里，于是「换时区」只能改代码。
+//
+// 导出只是为了测试能按名字解析它。**同一份默认值在 config 包也有一份**
+// （config.DefaultTimezone）：业务域不 import config，两边同值只能靠评审看住 ——
+// 配置层永远会显式传值，兜底只在没接线时生效，所以漂移的实际影响面为零。
+const DefaultSiteTZ = "Asia/Shanghai"
+
+// siteTZ 解析配置里的 IANA 名字。解析不了就兜底默认值，**不让进程起不来**：
+// 时区只影响「今日」这一个统计，而配置层（config.Validate）已经在启动时挡过非法值。
+func siteTZ(loc *time.Location) *time.Location {
+	if loc != nil {
+		return loc
+	}
+	fallback, err := time.LoadLocation(DefaultSiteTZ)
+	if err != nil {
+		return time.UTC
+	}
+	return fallback
+}
+
+// todayStart 是「今日零点」：服务端按**站点时区**算好再传进 SQL。
 // 在 SQL 里用 now() + date_trunc 就是第二处时区实现（§3.3 Q2e 的注）。
-// 站点时区固定 UTC+8（与站点的目标用户一致）；改时区是配置项，不在这里发明。
+// 返回 UTC 瞬间 —— pgsql 那边统一 .UTC() 之后再进 timestamptz 比较（D7）。
 func (s *Service) todayStart() time.Time {
-	now := s.clk.Now().UTC().Add(8 * time.Hour)
-	return time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, time.UTC).Add(-8 * time.Hour)
+	n := s.clk.Now().In(s.tz)
+	return time.Date(n.Year(), n.Month(), n.Day(), 0, 0, 0, 0, s.tz)
 }
 
 // ---- 读：主题列表 ----
