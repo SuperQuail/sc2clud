@@ -4,6 +4,7 @@ import Island from '@jetbrains/ring-ui-built/components/island/island';
 import { LogOut, ShieldCheck, UserRound } from 'lucide-react';
 import { icon16 } from '@/ui/icons';
 import { PasswordField } from '@/ui/password-field';
+import type { UploadedImage } from '@/ui/rich/image-uploader';
 import { roomHref } from '@/devroom/room-links';
 import { AvatarSetting } from './avatar-setting';
 
@@ -25,13 +26,33 @@ export type AvatarHandle = { open: () => void };
 export type AccountPanelProps = {
   /** 当前头像（object URL 或服务端 /img/<hash>）。非空时上传器显示真图 */
   avatar?: string | null;
-  onAvatar: (url: string | null) => void;
+  /** 选中之后的预览 URL。**不传 = 面板自己存预览**（真站就属于这种：它只要下面那个文件回调） */
+  onAvatar?: (url: string | null) => void;
   /** 上传器挂载后回调：open() 等于用户点了「更换头像」 */
   onAvatarReady?: (api: AvatarHandle | null) => void;
+  /**
+   * 头像**选中之后的真动作**。不传 = 房间口径（面板自己 setAvatar，选中即结果）；
+   * 传了 = 交给调用方（真站要发 POST /me/avatar，所以它要的是文件而不是预览 URL）。
+   * 与 onSubmitPassword 同一条理由：真站上不能把「本地选中 = 换好了」留在页面上。
+   */
+  onAvatarPick?: (next: UploadedImage[]) => void;
   /** 退出登录。真实页面：清会话 → 回登录页；这里是 mock 开关 */
   onLogout: () => void;
   /** 已退出登录后账号动作收起，只留「去登录」 */
   loggedOut?: boolean;
+  /**
+   * 改密码的**真提交**。不传 = 房间里那套本地演示校验（演示口令 sc2clud）；
+   * 传了 = 交给调用方发请求（真站 POST /api/v1/me/password），本组件只负责先做两次一致性的本地拦截。
+   * 为什么要有这个分支：真站复用同一个面板时，绝不能把「本地假口令通过 = 密码改了」留在页面上 ——
+   * 用户会以为自己换了密码，而服务端那边压根没收到请求。
+   */
+  onSubmitPassword?: (body: { old_password: string; new_password: string }) => void;
+  /** 提交中（真站用它禁按钮 + 转圈）；不传按房间口径处理 */
+  passwordPending?: boolean;
+  /** 成功态交给调用方（真站要等 200 才说「已修改」）；不传按房间口径处理 */
+  passwordDone?: boolean;
+  /** 「去登录」的落点。房间给 roomHref('16-auth')，真站给 appPath('login') */
+  loginHref?: string;
 };
 
 // 设计稿里的「当前密码」。为什么要有它：真实校验在服务端，房间里没有服务端，
@@ -39,17 +60,34 @@ export type AccountPanelProps = {
 // 所以给一个演示口令，让两个分支都能真的走到。
 const DEMO_PASSWORD = 'sc2clud';
 
-export function AccountPanel({ avatar, onAvatar, onAvatarReady, onLogout, loggedOut = false }: AccountPanelProps) {
+export function AccountPanel({
+  avatar,
+  onAvatar,
+  onAvatarReady,
+  onAvatarPick,
+  onLogout,
+  loggedOut = false,
+  onSubmitPassword,
+  passwordPending = false,
+  passwordDone,
+  loginHref,
+}: AccountPanelProps) {
   const [current, setCurrent] = useState('');
   const [next, setNext] = useState('');
   const [repeat, setRepeat] = useState('');
   const [errors, setErrors] = useState<{ current?: string; next?: string; repeat?: string }>({});
   const [done, setDone] = useState(false);
+  // 没给 onAvatar 时自己存预览（真站只关心 onAvatarPick 拿到的文件）
+  const [ownAvatar, setOwnAvatar] = useState<string | null>(null);
+  const shownAvatar = avatar ?? ownAvatar;
+  // 真站（给了 onSubmitPassword）：成功态由调用方决定 ——「改完了」只在服务端回了 200 之后才准显示
+  const succeeded = passwordDone ?? done;
 
   function submit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
-    // 分支顺序不是随意的：**先看「两次不一致」**（用户当场能自己改），再看「当前密码错」（得去回想或找回）。
-    // 两条同时错时，先提示能自己解决的那条。
+    // 分支顺序不是随意的：**先看「两次不一致」**（用户当场能自己改），再看「新密码太短」，
+    // 最后才轮到「当前密码错」（得去回想或找回）。几条同时错时，先提示能自己解决的那条。
+    // 前两条是本地就能判的，所以真站也照做 —— 省一次必然 400 的往返。
     if (next !== repeat) {
       setErrors({ repeat: '两次输入的新密码不一样，请再输一遍确认' });
       setDone(false);
@@ -58,6 +96,16 @@ export function AccountPanel({ avatar, onAvatar, onAvatarReady, onLogout, logged
     if (next.length < 8) {
       setErrors({ next: '新密码至少 8 位（设计稿里的本地即时校验）' });
       setDone(false);
+      return;
+    }
+    if (onSubmitPassword) {
+      // 真站：当前密码对不对只有服务端知道（它回 fields.old_password）；成功态也在调用方那边
+      setErrors({});
+      setDone(false);
+      onSubmitPassword({ old_password: current, new_password: next });
+      setCurrent('');
+      setNext('');
+      setRepeat('');
       return;
     }
     if (current !== DEMO_PASSWORD) {
@@ -84,7 +132,16 @@ export function AccountPanel({ avatar, onAvatar, onAvatarReady, onLogout, logged
           </span>
           {/* 与真站 /settings 的「头像」是**同一份实现**（avatar-setting.tsx）：房间选中即预览，
               真站选中后还要点「保存头像」才发 POST /me/avatar —— 差别只在调用方给的那一半。 */}
-          <AvatarSetting avatar={avatar} onChange={(list) => onAvatar(list[0]?.url ?? null)} onReady={onAvatarReady} />
+          <AvatarSetting
+            avatar={shownAvatar}
+            onChange={(list) => {
+              const url = list[0]?.url ?? null;
+              if (onAvatarPick) onAvatarPick(list);
+              else setOwnAvatar(url);
+              onAvatar?.(url);
+            }}
+            onReady={onAvatarReady}
+          />
         </div>
       </Island>
       )}
@@ -109,20 +166,27 @@ export function AccountPanel({ avatar, onAvatar, onAvatarReady, onLogout, logged
             />
             <PasswordField label='确认新密码' value={repeat} onChange={setRepeat} error={errors.repeat} />
           </div>
-          {done ? (
+          {succeeded ? (
             <p role='status' data-testid='password-done' className='rounded-md bg-muted/60 px-3 py-2 text-[13px] leading-relaxed text-foreground'>
-              密码已修改。所有设备（包括这一台）上的登录都已失效，请用新密码重新登录。真实页面在这里清 cookie 并跳到
-              <a className='underline' href={roomHref('16-auth')}>
-                登录页
-              </a>
-              。
+              密码已修改。所有设备（包括这一台）上的登录都已失效，请用新密码重新登录。
+              {onSubmitPassword ? null : (
+                <>
+                  真实页面在这里清 cookie 并跳到
+                  <a className='underline' href={loginHref ?? roomHref('16-auth')}>
+                    登录页
+                  </a>
+                  。
+                </>
+              )}
             </p>
           ) : null}
           <span className='flex flex-wrap items-center gap-2'>
-            <Button primary inline={false} type='submit' data-testid='password-save'>
+            <Button primary inline={false} type='submit' data-testid='password-save' loader={passwordPending} disabled={passwordPending}>
               保存新密码
             </Button>
-            <span className='text-[11px] text-muted-foreground'>设计稿口令是 {DEMO_PASSWORD}（真实校验在服务端）</span>
+            {onSubmitPassword ? null : (
+              <span className='text-[11px] text-muted-foreground'>设计稿口令是 {DEMO_PASSWORD}（真实校验在服务端）</span>
+            )}
           </span>
         </form>
       </Island>
@@ -141,7 +205,7 @@ export function AccountPanel({ avatar, onAvatar, onAvatarReady, onLogout, logged
           </p>
           <span className='flex items-center gap-2'>
             {loggedOut ? (
-              <Button primary inline={false} href={roomHref('16-auth')} icon={icon16(LogOut)}>
+              <Button primary inline={false} href={loginHref ?? roomHref('16-auth')} icon={icon16(LogOut)}>
                 去登录
               </Button>
             ) : (

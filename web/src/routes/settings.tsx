@@ -1,13 +1,13 @@
 import { useState, type FormEvent } from 'react';
-import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import Button from '@jetbrains/ring-ui-built/components/button/button';
 import Input, { Size } from '@jetbrains/ring-ui-built/components/input/input';
 import { ControlsHeight } from '@jetbrains/ring-ui-built/components/global/controls-height';
 import { Lock } from 'lucide-react';
 import { UserBadge } from '@/ui/user/user-badge';
-import { PasswordField } from '@/ui/password-field';
 import { type UploadedImage } from '@/ui/rich/image-uploader';
-import { AvatarSetting } from '@/devroom/pages/11-profile/avatar-setting';
+import { NoticeSettings, type SettingRow } from '@/ui/message/notice-settings';
+import { AccountPanel } from '@/devroom/pages/11-profile/account-panel';
 import { FormAlert } from '@/devroom/pages/16-auth/form-alert';
 import { appPath, routePath } from '@/lib/url';
 import { qk } from '@/lib/query/keys';
@@ -16,12 +16,23 @@ import { api } from '@/lib/api/client';
 import { isApiError } from '@/lib/api/errors';
 import { logout } from '@/lib/api/auth';
 import { clearAvatar, uploadAvatar } from '@/lib/api/user';
+// 类型与组件同名，所以按全站口径起别名（messages.tsx 也是这么写的）
+import {
+  fetchNoticeSettings,
+  updateNoticeSettings,
+  type NoticeSettings as NoticeSettingsDTO,
+} from '@/lib/api/social';
 import { PageHeader } from './_parts/layout';
 import { Empty, ErrorState, Loading } from './_parts/state';
 
-// 个人设置（契约：PATCH /me、POST /me/password、POST /auth/logout）。
-// 只做**有三个态、有真实端点**的几块：头像、资料、密码、会话退出。
-// 头像（POST/DELETE /me/avatar）2026-10-14 接上：压缩走 image-pipeline、上传走 client 的 multipart 出口。
+// 个人设置（契约：PATCH /me、POST /me/password、POST /auth/logout、GET/PUT /notifications/settings）。
+//
+// 两项**照 DevRoom 11-profile 用房子件**（同一份实现，不是抄一份）：
+//   · 头像 / 改密码 / 退出登录 → \`AccountPanel\`（原先这里是手写的三段，改密码那块还只是密码框 + 按钮）；
+//   · 消息提醒 → \`NoticeSettings\`（通知设置四行，后端 2026-10-14 补的 GET/PUT /notifications/settings）。
+// 只有「资料」（昵称 / 简介）还是本页自己的表单：那两个框是文字 Input，\`NoticeSettings\` 的三种行
+// （radio / toggle / tags）都不是文本框，塞不进去 —— 硬塞就是把一个表单拆成三块假控件。
+//
 // 封面**没接**：库里没有 users 封面列、也没有对应端点，所以这一屏上没有那颗按钮（不做点了没反应的入口）。
 // 收款码（/me/payment-channels）、登录设备列表（GET /me/sessions 有契约但本轮不排）同样没做，记进回报。
 // 20 = users.nickname varchar(20) / auth.nicknameMaxLen（写死 32 会让 21-32 字的昵称在服务端被拒）
@@ -33,8 +44,6 @@ export function SettingsPage() {
   const queryClient = useQueryClient();
   const [nickname, setNickname] = useState<string | null>(null);
   const [bio, setBio] = useState<string | null>(null);
-  const [oldPassword, setOldPassword] = useState('');
-  const [newPassword, setNewPassword] = useState('');
   // 选好但还没上传的那张（ImageUploader 给的是压过的 blob + 本地预览 URL）
   const [picked, setPicked] = useState<UploadedImage[]>([]);
 
@@ -42,12 +51,12 @@ export function SettingsPage() {
     mutationFn: (body: { nickname?: string; bio?: string }) => api<void>('me', { method: 'PATCH', body }),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: qk.me() }),
   });
+  // 请求体字段名照后端：old_password / new_password（auth 的 changePasswordBody）。
+  // 两次一致性与长度在 AccountPanel 里本地拦掉，这里只管发请求。
   const changePassword = useMutation({
     mutationFn: (body: { old_password: string; new_password: string }) =>
       api<void>('me/password', { method: 'POST', body }),
     onSuccess: () => {
-      setOldPassword('');
-      setNewPassword('');
       // 改密码会删掉该用户的全部会话（§21.2）：清干净缓存，别让界面停在「还登录着」的假象上
       queryClient.clear();
     },
@@ -71,6 +80,22 @@ export function SettingsPage() {
     mutationFn: () => logout(),
     onSuccess: () => queryClient.clear(),
   });
+  // 消息提醒四行：**字段名与值域照后端 noticeSettingDTO**（alert / reply_scope / mention_scope / like_alert）。
+  // 值域只有 all | none —— 设计稿里那个「仅关注的人」选不中，因为本产品没有关注关系（拍板 §8.3）。
+  // 表格没有 userId 之外的东西，所以 PUT 是全量四字段，不是「只改一个」的半更新。
+  const [notice, setNotice] = useState<NoticeSettingsDTO | null>(null);
+  const noticeQuery = useQuery({
+    queryKey: ['notifications', 'settings'],
+    queryFn: ({ signal }) => fetchNoticeSettings(signal),
+    enabled: session.isLoggedIn,
+  });
+  const noticeSave = useMutation({
+    mutationFn: (next: NoticeSettingsDTO) => updateNoticeSettings(next),
+    // 用后端回执作为新的本地真值（不再 invalidate：缓存里那份是旧值，重拉要等一个往返，
+    // 中间那一瞬界面会闪回旧选项 —— PUT 是幂等全量写，回执就是权威结果）
+    onSuccess: (saved) => setNotice(saved),
+  });
+  const current = notice ?? noticeQuery.data ?? null;
 
   if (session.isLoading) return <Loading what='账号信息' />;
   if (session.error) {
@@ -105,14 +130,61 @@ export function SettingsPage() {
     save.mutate(body);
   }
 
-  function submitPassword(e: FormEvent<HTMLFormElement>) {
-    e.preventDefault();
-    changePassword.mutate({ old_password: oldPassword, new_password: newPassword });
+  /** 通知设置的一行改了就整份保存（后端是 PUT 全量；没有「只改一个」的语义）。 */
+  function saveNotice(patch: Partial<NoticeSettingsDTO>) {
+    if (!current) return;
+    noticeSave.mutate({ ...current, ...patch });
   }
+
+  const noticeRows: SettingRow[] = current
+    ? [
+        {
+          key: 'alert',
+          kind: 'toggle',
+          title: '总开关',
+          hint: '关掉之后下面三项都不再产生通知',
+          value: current.alert,
+          onChange: (v) => saveNotice({ alert: v }),
+        },
+        {
+          key: 'reply_scope',
+          kind: 'radio',
+          title: '回复我的消息提醒',
+          hint: '谁回复你时给通知',
+          // 只有 all / none 两档：设计稿的第三档「仅关注的人」在库里就被 CHECK 拒掉（本产品没有关注）
+          options: [
+            { key: 'all', label: '所有人' },
+            { key: 'none', label: '不提醒' },
+          ],
+          value: current.reply_scope,
+          onChange: (v) => saveNotice({ reply_scope: v as NoticeSettingsDTO['reply_scope'] }),
+        },
+        {
+          key: 'mention_scope',
+          kind: 'radio',
+          title: '@ 我的消息提醒',
+          hint: '谁在帖子里 @ 你时给通知',
+          options: [
+            { key: 'all', label: '所有人' },
+            { key: 'none', label: '不提醒' },
+          ],
+          value: current.mention_scope,
+          onChange: (v) => saveNotice({ mention_scope: v as NoticeSettingsDTO['mention_scope'] }),
+        },
+        {
+          key: 'like_alert',
+          kind: 'toggle',
+          title: '点赞提醒',
+          hint: '别人赞你的帖子时给通知',
+          value: current.like_alert,
+          onChange: (v) => saveNotice({ like_alert: v }),
+        },
+      ]
+    : [];
 
   return (
     <div className='flex flex-col gap-4'>
-      <PageHeader title='个人设置' description='资料、密码与会话。改完即时生效，不需要重新登录（改密码除外）。' />
+      <PageHeader title='个人设置' description='资料、头像、密码、消息提醒与会话。改完即时生效，不需要重新登录（改密码除外）。' />
 
       <section className='flex flex-wrap items-center justify-between gap-3 rounded-lg border border-border bg-card p-4'>
         <UserBadge
@@ -128,50 +200,40 @@ export function SettingsPage() {
         </span>
       </section>
 
-      <section className='flex flex-col gap-3 rounded-lg border border-border bg-card p-4'>
-        <h2 className='m-0 text-[15px] font-semibold text-foreground'>头像</h2>
-        {saveAvatar.isSuccess ? (
-          <FormAlert tone='success' title='头像已更新' description='列表、帖子页与评论区的作者头像现在都是新的了。' />
-        ) : null}
-        {saveAvatar.isError ? <FormAlert tone='error' title='没能上传' description={errorText(saveAvatar.error)} /> : null}
-        {removeAvatar.isError ? <FormAlert tone='error' title='没能移除' description={errorText(removeAvatar.error)} /> : null}
-        {/* 与 DevRoom 11-profile 的「头像」是**同一份实现**（avatar-setting.tsx）；差别只在这里多两颗
-            真站才有的按钮：选中之后要点「保存头像」才发 POST /me/avatar。 */}
-        <AvatarSetting
-          avatar={picked[0]?.url ?? me.avatar ?? null}
-          onChange={setPicked}
-          actions={
-            <>
-              <Button
-                data-testid='avatar-save'
-                primary
-                inline={false}
-                height={ControlsHeight.S}
-                loader={saveAvatar.isPending}
-                disabled={saveAvatar.isPending || picked.length === 0}
-                onClick={() => {
-                  const f = picked[0];
-                  if (f) saveAvatar.mutate(f.file);
-                }}
-              >
-                保存头像
-              </Button>
-              {me.avatar ? (
-                <Button
-                  data-testid='avatar-remove'
-                  inline={false}
-                  height={ControlsHeight.S}
-                  loader={removeAvatar.isPending}
-                  disabled={removeAvatar.isPending}
-                  onClick={() => removeAvatar.mutate()}
-                >
-                  移除头像
-                </Button>
-              ) : null}
-            </>
+      {/* 头像 + 改密码 + 退出登录 = DevRoom 11-profile 的 AccountPanel（同一个件，不是抄一份）。
+          三处与房间不同的地方都由 props 给：改密码发真请求（onSubmitPassword）、成功态等 200
+          （passwordDone）、「去登录」指真站的 /login（loginHref）。 */}
+      <AccountPanel
+        avatar={picked[0]?.url ?? me.avatar ?? null}
+        onAvatarPick={(list) => {
+          // 真站要的是那份**文件**（POST /me/avatar 是 multipart，字段名 file），不是预览 URL
+          setPicked(list);
+          const f = list[0];
+          if (f) saveAvatar.mutate(f.file);
+        }}
+        onSubmitPassword={(body) => changePassword.mutate(body)}
+        passwordPending={changePassword.isPending}
+        passwordDone={changePassword.isSuccess}
+        onLogout={() => signOut.mutate()}
+        loginHref={appPath('login')}
+      />
+
+      {/* AccountPanel 的密码表单不知道后端回了什么（它只做本地两条拦截），所以服务端的 fields 在这里说清：
+          「当前密码不对」是服务端才判得了的那一条（fields.old_password）。 */}
+      {changePassword.isError ? (
+        <FormAlert
+          tone='error'
+          title='没能修改密码'
+          description={
+            fieldError(changePassword.error, 'old_password') ??
+            fieldError(changePassword.error, 'new_password') ??
+            errorText(changePassword.error)
           }
         />
-      </section>
+      ) : null}
+      {signOut.isError ? <FormAlert tone='error' title='退出失败' description={errorText(signOut.error)} /> : null}
+      {saveAvatar.isError ? <FormAlert tone='error' title='没能上传头像' description={errorText(saveAvatar.error)} /> : null}
+      {removeAvatar.isError ? <FormAlert tone='error' title='没能移除头像' description={errorText(removeAvatar.error)} /> : null}
 
       <section className='flex flex-col gap-3 rounded-lg border border-border bg-card p-4'>
         <h2 className='m-0 text-[15px] font-semibold text-foreground'>资料</h2>
@@ -215,59 +277,20 @@ export function SettingsPage() {
       </section>
 
       <section className='flex flex-col gap-3 rounded-lg border border-border bg-card p-4'>
-        <h2 className='m-0 text-[15px] font-semibold text-foreground'>密码</h2>
-        {changePassword.isSuccess ? (
-          <FormAlert
-            tone='success'
-            title='密码已改，全部会话已失效'
-            description='这台设备也退出了，重新登录一次即可（后端规定：改密码删掉该账号的全部会话）。'
-          />
-        ) : null}
-        {changePassword.isError ? (
-          <FormAlert tone='error' title='没能修改' description={errorText(changePassword.error)} />
-        ) : null}
-        <form onSubmit={submitPassword} className='flex flex-col gap-3' noValidate>
-          <PasswordField
-            label='当前密码'
-            name='old_password'
-            autoComplete='current-password'
-            value={oldPassword}
-            onChange={setOldPassword}
-            error={fieldError(changePassword.error, 'old_password')}
-          />
-          <PasswordField
-            label='新密码'
-            name='new_password'
-            autoComplete='new-password'
-            value={newPassword}
-            onChange={setNewPassword}
-            error={fieldError(changePassword.error, 'new_password')}
-            help='改完这台设备也会退出登录（后端会删掉该账号的全部会话）。'
-          />
-          <span>
-            <Button
-              type='submit'
-              inline={false}
-              loader={changePassword.isPending}
-              disabled={changePassword.isPending || oldPassword === '' || newPassword === ''}
-            >
-              修改密码
-            </Button>
-          </span>
-        </form>
-      </section>
-
-      <section className='flex flex-col gap-3 rounded-lg border border-border bg-card p-4'>
-        <h2 className='m-0 text-[15px] font-semibold text-foreground'>会话</h2>
-        {signOut.isError ? <FormAlert tone='error' title='退出失败' description={errorText(signOut.error)} /> : null}
-        <p className='m-0 text-[12px] leading-relaxed text-muted-foreground'>
-          退出只影响这台设备。别的设备列表（GET /me/sessions）有契约但这一版还没排，见回报的端点清单。
-        </p>
-        <span>
-          <Button data-testid='logout' inline={false} loader={signOut.isPending} onClick={() => signOut.mutate()}>
-            退出登录
-          </Button>
-        </span>
+        <h2 className='m-0 text-[15px] font-semibold text-foreground'>消息提醒</h2>
+        {noticeQuery.isPending ? (
+          <Loading what='消息设置' className='py-4' />
+        ) : noticeQuery.isError ? (
+          <ErrorState what='消息设置' error={noticeQuery.error} onRetry={() => void noticeQuery.refetch()} />
+        ) : (
+          <>
+            {noticeSave.isError ? (
+              <FormAlert tone='error' title='没能保存提醒设置' description={errorText(noticeSave.error)} />
+            ) : null}
+            {noticeSave.isSuccess ? <FormAlert tone='success' title='提醒设置已保存' /> : null}
+            <NoticeSettings rows={noticeRows} />
+          </>
+        )}
       </section>
     </div>
   );

@@ -59,6 +59,10 @@ export function fetchNotifications(q: NotificationQuery = {}, signal?: AbortSign
 // 四项与表里的列一一对应（notify/deps.go 的 NoticeSetting）：alert / reply_scope /
 // mention_scope / like_alert。值域只有 all | none —— **没有 followed**：
 // 拍板 §8.3 说本产品没有「关注用户」，0018 的 CHECK 就把它从值域里删了。
+/**
+ * 类型名与 `@/ui/message/notice-settings` 导出的**组件**同名，所以同一屏里两样都要时按全站口径起别名
+ * （messages.tsx 的 `type NoticeSettings as NoticeSettingsDTO`）—— 直接改类型名会踩到别人的在途文件。
+ */
 export type NoticeSettings = {
   alert: boolean;
   reply_scope: 'all' | 'none';

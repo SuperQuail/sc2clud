@@ -31,7 +31,11 @@ const SPONSOR_VIEW: Record<'other' | 'self', SponsorView> = {
   },
 };
 
-function SponsorCard({ isSelf, channels }: SponsorDemo) {
+// disableReason：**真站专用的逃生口**。房间里的数据是演示的，按钮总有点得动的结果；
+// 而真站若后端还没承载（users 没有收款码列、没有 GET /users/{handle}/channels、没有 POST /rewards），
+// 正确的做法不是画一颗点了没反应的按钮，也不是偷偷留一颗能点但什么都不会发生的按钮 ——
+// 传这个 prop 就把大按钮置灰 + 顶一行说明，页面上看不出「其实没接」。
+function SponsorCard({ isSelf, channels, disableReason }: SponsorDemo & { disableReason?: string }) {
   const view = SPONSOR_VIEW[isSelf ? 'self' : 'other'];
   const [open, setOpen] = useState(false);
   const [activeId, setActiveId] = useState(channels[0]?.id ?? '');
@@ -51,17 +55,20 @@ function SponsorCard({ isSelf, channels }: SponsorDemo) {
         <Button
           inline={false}
           primary
-          aria-expanded={isSelf ? undefined : open}
-          iconRight={!isSelf ? icon16(open ? ChevronUp : ChevronDown) : undefined}
-          onClick={() => (isSelf ? setSettingsHit(true) : setOpen((v) => !v))}
+          disabled={disableReason !== undefined}
+          title={disableReason}
+          aria-expanded={isSelf || disableReason ? undefined : open}
+          iconRight={!isSelf && !disableReason ? icon16(open ? ChevronUp : ChevronDown) : undefined}
+          onClick={() => (disableReason ? undefined : isSelf ? setSettingsHit(true) : setOpen((v) => !v))}
           className='!h-11 w-full !border-[var(--vivid-accent)] !bg-[var(--vivid-accent)] !text-[15px] !text-white'
         >
           <span className='inline-flex items-center gap-2'>
             <Coffee aria-hidden className='size-5' />
             {view.button}
+            {disableReason ? <span className='text-[12px]'>(未实现)</span> : null}
           </span>
         </Button>
-        <p className='text-[11px] leading-relaxed text-muted-foreground'>{view.hint}</p>
+        <p className='text-[11px] leading-relaxed text-muted-foreground'>{disableReason ?? view.hint}</p>
 
         {isSelf ? (
           settingsHit ? (
