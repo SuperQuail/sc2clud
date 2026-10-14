@@ -6,6 +6,7 @@ import {
   reviewTopic,
 } from '@/lib/api/admin';
 import type {
+ReviewAction,
 ReviewQueueItem,
 } from '@/lib/api/admin';
 import { isApiError } from '@/lib/api/errors';
@@ -39,11 +40,14 @@ export function ReviewScreenContainer() {
     queryFn: ({ signal }) => fetchReviewQueue(apiFilter, signal),
   });
 
+  // 三个动作（拍板 08 · L6 的第四态）：approve 放行 / request_revision 打回修改 / reject 拒绝。
+  // 回执用动作名说人话 —— 「打回」与「拒绝」在作者那一侧是两件事，回执也必须分开。
+  const ACTION_DONE: Record<ReviewAction, string> = { approve: '通过', reject: '拒绝', request_revision: '打回修改' };
   const decide = useMutation({
-    mutationFn: (v: { item: ReviewQueueItem; action: 'approve' | 'reject'; note: string }) =>
+    mutationFn: (v: { item: ReviewQueueItem; action: ReviewAction; note: string }) =>
       reviewTopic(v.item.id, v.action, v.note, v.item.updated_at),
     onSuccess: (updated, v) => {
-      setReceipt('已' + (v.action === 'approve' ? '通过' : '拒绝') + '「' + updated.title + '」');
+      setReceipt('已' + ACTION_DONE[v.action] + '「' + updated.title + '」');
       void qc.invalidateQueries({ queryKey: ['admin', 'review'] });
     },
     // 版本冲突（作者改了正文 / 别人判过）是**预期内的 400**，不是崩溃：如实说出来让人刷新。

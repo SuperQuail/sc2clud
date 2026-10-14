@@ -262,6 +262,10 @@ func (s *Service) ReviewTopic(ctx context.Context, actor *authz.Actor, publicID,
 		var alsoUpdatedAt *time.Time
 		if action == ReviewApprove && pendingMD != "" {
 			alsoUpdatedAt = &now
+			// 放行一份草稿 = 帖子重新上线：状态必须回到 approved。
+			// 打回态（revision_requested）的帖也有草稿，若把修订态原样留在库里，
+			// 读者仍然是 404 —— 「通过再替换」就只替换了一半。
+			state = "approved"
 		}
 		n, err := pgsql.SetTopicReview(ctx, tx, ref.ID, state, notePtr, actor.UserID,
 			action == ReviewApprove, locked.ReviewState, expect, alsoUpdatedAt, now)
