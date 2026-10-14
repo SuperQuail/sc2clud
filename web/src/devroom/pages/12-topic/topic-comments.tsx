@@ -35,6 +35,7 @@ export function TopicComments({
   onReport,
   newSeqs = {},
   receipt,
+  replyPrompt,
 }: {
   comments: CommentData[];
   total: number;
@@ -52,6 +53,8 @@ export function TopicComments({
   newSeqs?: Record<string, number>;
   /** 页面给的回执行（「已发布」「已删除」…）：评论区只负责把动作发出去 */
   receipt?: ReactNode;
+  /** 登录 / 发帖权限不够时替换掉**所有**回复输入框的那一块（未登录也要能看见评论区，别把功能藏起来） */
+  replyPrompt?: ReactNode;
 }) {
   const [sort, setSort] = useState<'最热' | '最新'>('最热');
   const [replyingTo, setReplyingTo] = useState<string | null>(null);
@@ -61,6 +64,23 @@ export function TopicComments({
 
   const seqOf = (c: CommentData) => newSeqs[c.id] ?? -1;
   const list = sort === '最热' ? comments : [...comments].sort((a, b) => seqOf(b) - seqOf(a));
+
+  // 空态：没有回复时**输入框仍然在**（人来了就能写），只是列表位置给一句解释。
+  // 它与列表态都长在这个文件里：MainColumn 只挂一个懒加载的评论区，两个分支不能各占一个模块。
+  if (comments.length === 0) {
+    return (
+      <section className='flex flex-col gap-5'>
+        <h2 className='text-lg font-semibold text-foreground'>
+          评论 <span data-testid='comment-total' className='tabular-nums'>{total}</span>
+        </h2>
+        {replyPrompt ?? <ReplyBox me={me} candidates={candidates} onSubmit={(body) => onSubmit(null, body)} />}
+        <p className='rounded-lg border border-dashed border-border px-3 py-6 text-center text-[13px] text-muted-foreground'>
+          还没有人回复。玩法与设计的问题直接在这下面问；卡住、崩溃、难度不合适请走上面的反馈入口。
+        </p>
+        {receipt}
+      </section>
+    );
+  }
 
   return (
     <section className='flex flex-col gap-5'>
@@ -80,7 +100,7 @@ export function TopicComments({
         </span>
       </header>
 
-      <ReplyBox me={me} candidates={candidates} onSubmit={(body) => onSubmit(null, body)} />
+      {replyPrompt ?? <ReplyBox me={me} candidates={candidates} onSubmit={(body) => onSubmit(null, body)} />}
       {receipt}
 
       <div className='flex flex-col gap-6'>
@@ -117,6 +137,7 @@ export function TopicComments({
               reportedIds={reportedIds}
               onReport={onReport}
               onSubmit={onSubmit}
+              replyPrompt={replyPrompt}
             />
           </div>
         ))}
@@ -142,6 +163,7 @@ function Replies({
   reportedIds,
   onReport,
   onSubmit,
+  replyPrompt,
 }: {
   parent: CommentData;
   me: { nickname: string; avatar?: string | null; handle: string };
@@ -159,24 +181,26 @@ function Replies({
   reportedIds: string[];
   onReport: (target: { id: string; label: string }) => void;
   onSubmit: (parentId: string | null, body: { json: string; html: string }) => void;
+  replyPrompt?: ReactNode;
 }) {
   const replies = parent.replies;
   // 楼中楼缩进 = 头像宽 40 + 间距 12（与 CommentItem 的 gap-3 同源），改一处就能对上
   const INDENT = 'ml-[52px]';
+  // 三处内联输入框共用这一个落点：登录 / 发帖权限不够时，它们一起换成宿主给的那一块
+  const box = (name: string, done: () => void) =>
+    replyPrompt ?? (
+      <ReplyBox
+        me={me}
+        candidates={candidates}
+        replyingTo={name}
+        onSubmit={(body) => {
+          onSubmit(parent.id, body);
+          done();
+        }}
+      />
+    );
   if (!replies || replies.total === 0) {
-    return replyingTo === parent.id ? (
-      <div className='mt-3'>
-        <ReplyBox
-          me={me}
-          candidates={candidates}
-          replyingTo={parent.author.nickname}
-          onSubmit={(body) => {
-            onSubmit(parent.id, body);
-            setReplyingTo(null);
-          }}
-        />
-      </div>
-    ) : null;
+    return replyingTo === parent.id ? <div className='mt-3'>{box(parent.author.nickname, () => setReplyingTo(null))}</div> : null;
   }
   const preview = replies.previewCount ?? 2;
   // 新发的回复永远在可见那一段里：不然「发布」之后它落在预览条数之外，看起来还是没反应
@@ -203,17 +227,7 @@ function Replies({
             }
           />
           {replyBoxFor === r.id ? (
-            <div className='mt-3'>
-              <ReplyBox
-                me={me}
-                candidates={candidates}
-                replyingTo={r.author.nickname}
-                onSubmit={(body) => {
-                  onSubmit(parent.id, body);
-                  setReplyBoxFor(null);
-                }}
-              />
-            </div>
+            <div className='mt-3'>{box(r.author.nickname, () => setReplyBoxFor(null))}</div>
           ) : null}
         </div>
       ))}
@@ -224,19 +238,7 @@ function Replies({
           </Button>
         </div>
       ) : null}
-      {replyingTo === parent.id ? (
-        <div>
-          <ReplyBox
-            me={me}
-            candidates={candidates}
-            replyingTo={parent.author.nickname}
-            onSubmit={(body) => {
-              onSubmit(parent.id, body);
-              setReplyingTo(null);
-            }}
-          />
-        </div>
-      ) : null}
+      {replyingTo === parent.id ? <div>{box(parent.author.nickname, () => setReplyingTo(null))}</div> : null}
     </div>
   );
 }

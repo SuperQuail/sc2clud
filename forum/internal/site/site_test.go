@@ -255,16 +255,18 @@ func TestSettingsPermissionDenied(t *testing.T) {
 // TestSettingSpecsMatchFrontendMock：代码里的键值表与前端 mock 的键必须一致（d6 §10 第 53 条），
 // 唯一一处例外写在下面（拍板 §12.2 用一个开关取代了 registration.require_activation）。
 func TestSettingSpecsMatchFrontendMock(t *testing.T) {
-	path := filepath.Join("..", "..", "..", "web", "src", "devroom", "pages", "15-admin", "mock", "system.ts")
-	raw, err := os.ReadFile(path)
-	if err != nil {
-		t.Fatalf("读前端 mock: %v", err)
-	}
-	src := string(raw)
-
+	// 设置清单有两份 mock：站点设置（system.ts）与 AI 审核的阈值（mock/ai.ts，2026-10-14 从 system.ts 搬出）。
+	// 两个文件都要读 —— 只读一个会得到「mock 里找不到 AI_THRESHOLDS」这种与事实无关的红。
 	mockKeys := map[string]bool{}
-	for _, block := range []string{"SITE_SETTINGS", "AI_THRESHOLDS"} {
-		body := tsArrayBody(t, src, block)
+	for _, f := range [][2]string{
+		{filepath.Join("..", "..", "..", "web", "src", "devroom", "pages", "15-admin", "mock", "system.ts"), "SITE_SETTINGS"},
+		{filepath.Join("..", "..", "..", "web", "src", "devroom", "pages", "15-admin", "mock", "ai.ts"), "AI_THRESHOLDS"},
+	} {
+		raw, err := os.ReadFile(f[0])
+		if err != nil {
+			t.Fatalf("读前端 mock %s: %v", f[0], err)
+		}
+		body := tsArrayBody(t, string(raw), f[1])
 		for _, m := range regexp.MustCompile(`key: '([^']+)'`).FindAllStringSubmatch(body, -1) {
 			mockKeys[m[1]] = true
 		}

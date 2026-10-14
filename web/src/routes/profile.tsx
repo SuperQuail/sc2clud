@@ -1,29 +1,39 @@
-import { Link, useParams, useSearchParams } from 'react-router';
-import { useQuery } from '@tanstack/react-query';
+import { useState } from 'react';
+import { Link, useParams } from 'react-router';
+import { useInfiniteQuery, useQuery } from '@tanstack/react-query';
 import Button from '@jetbrains/ring-ui-built/components/button/button';
-import ButtonSet from '@jetbrains/ring-ui-built/components/button-set/button-set';
+import Island from '@jetbrains/ring-ui-built/components/island/island';
 import { ControlsHeight } from '@jetbrains/ring-ui-built/components/global/controls-height';
-import { CalendarDays, Heart, MessageSquare, Star } from 'lucide-react';
+import { Flag, MessageSquare } from 'lucide-react';
 import { icon16 } from '@/ui/icons';
-import { UserBadge } from '@/ui/user/user-badge';
 import { TopicRow } from '@/ui/topic/topic-row';
-import { appPath, routePath } from '@/lib/url';
+import { ProfileHero, type ProfileStat } from '@/devroom/pages/11-profile/profile-hero';
+import { assetUrl, appPath, routePath } from '@/lib/url';
 import { qk } from '@/lib/query/keys';
 import { can, useSession } from '@/lib/perms';
 import { fetchUserProfile, fetchUserTopics } from '@/lib/api/user';
 import { formatTime } from '@/lib/format';
-import { PageHeader } from './_parts/layout';
+import { toCardTopic } from './_parts/mappers';
 import { Empty, ErrorState, Loading } from './_parts/state';
+import { ReportPanel } from './_parts/report-panel';
+import { PAGE_LIMIT } from '@/lib/api/paging';
+import { ListEnd } from '@/devroom/pages/14-home/states';
 
 // 个人主页（契约：GET /users/{handle} 聚合 + GET /users/{handle}/topics 游标分页）。
-// 「本人 / 别人」由**接口的 is_self** 决定，不由前端猜（11-profile 那次缺陷的根因就是判对象真值）。
-// 只有接口真的给了的能力才画出来：头衔目录、回复列表、收藏、赞过、打赏统计都还没有端点，
-// 所以这一版只有「帖子」一个标签页，其余记进回报的端点清单 —— 不做点了没反应的入口。
+//
+// **字段名照抄后端 user.Profile（forum/internal/user/service.go:52-68）：它是平铺的** ——
+// topic_count / like_received / level 都在顶层，没有 stats 子对象（2026-10-14 之前这里读 u.stats，
+// 于是线上三个统计全渲染成「—」）。**接口也没有 is_self**：「是不是本人」由这里比会话 handle 得出。
+//
+// 版式走 DevRoom 11-profile 的房子件 ProfileHero（**同一份实现**，房间与产品共用，不是抄一份）。
+// 设计稿里的标签页（回复 / 收藏 / 赞过 / 设置）与右栏（赞助卡 / 关注的人）这一版**没做**：
+//   回复、收藏、赞过对**别人**没有端点（/me/bookmarks 只给自己）；设置已经有独立路由 /settings；
+//   赞助卡是演示件（二维码画的是图标、申报要 POST /rewards 的金额与单号）—— 见回报的缺口清单，
+//   不画点了没反应的入口，也不在真站点上放假 UI。
 export function ProfilePage() {
   const { handle = '' } = useParams();
   const session = useSession();
-  const [params, setParams] = useSearchParams();
-  const tab = params.get('tab') === 'topics' ? 'topics' : 'overview';
+  const [reporting, setReporting] = useState(false);
 
   const profile = useQuery({
     queryKey: qk.profile(handle),
@@ -33,10 +43,12 @@ export function ProfilePage() {
   });
   // **不要按页签禁用它**：react-query v5 里被禁用的查询 `isPending` 恒为 true，
   // 而「概览」页签也画「最近发布」—— 于是那个加载态会一直转（用户实测「无限加载帖子」）。
-  const topics = useQuery({
+  const topics = useInfiniteQuery({
     queryKey: qk.userTopics(handle),
-    queryFn: ({ signal }) => fetchUserTopics(handle, {}, signal),
+    queryFn: ({ pageParam, signal }) => fetchUserTopics(handle, { cursor: pageParam }, signal),
+    initialPageParam: null as string | null,
     enabled: handle !== '',
+    getNextPageParam: (last) => last.next,
   });
 
   if (profile.isPending) return <Loading what='个人主页' />;
@@ -45,147 +57,125 @@ export function ProfilePage() {
   }
 
   const u = profile.data;
-  const isSelf = u.is_self === true || (session.session?.handle != null && session.session.handle === u.handle);
-  const stats = u.stats;
+  const isSelf = session.session?.handle != null && session.session.handle === u.handle;
+  const items = topics.data?.pages.flatMap((p) => p.items) ?? [];
+  // 设计稿的四个统计里只有两个后端有：帖子 / 获赞；另加一个真实存在的等级。
+  // **不画「回复」「关注者」** —— 后端没有这两个数，写上去只能显示「—」。
+  const stats: ProfileStat[] = [
+    { value: String(u.topic_count), label: '帖子' },
+    { value: String(u.like_received), label: '获赞' },
+    { value: String(u.level), label: '等级' },
+  ];
 
   return (
     <div className='flex flex-col gap-4'>
-      <PageHeader
-        title={u.nickname}
-        description={
-          <span className='flex flex-wrap items-center gap-x-3 gap-y-1'>
-            <span>@{u.handle}</span>
-            {u.joined_at ? (
-              <span className='flex items-center gap-1'>
-                <CalendarDays aria-hidden className='size-3.5' />
-                {u.joined_at} 加入
-              </span>
-            ) : null}
-          </span>
-        }
+      <ProfileHero
+        // 用户封面后端还没有端点（没有 users.cover 列），用站内素材；换成真封面要等 media 那条链路。
+        cover={assetUrl('starcraft/sc2-battle.webp')}
+        nickname={u.nickname}
+        handle={u.handle}
+        joined={u.joined_at ? joinedText(u.joined_at) : undefined}
+        bio={u.bio || undefined}
+        avatar={u.avatar || null}
+        title={u.title}
+        stats={stats}
         actions={
-          <span className='flex flex-wrap items-center gap-2'>
-            {u.handle === session.session?.handle ? null : (
-              <Button inline={false} height={ControlsHeight.M} disabled title='关注功能还没有端点（见回报的端点清单）'>
-                关注
+          <>
+            {isSelf ? (
+              <Button inline={false} height={ControlsHeight.S} href={appPath('settings')}>
+                账号设置
               </Button>
+            ) : (
+              <>
+                {/* 关注**没有端点**（PUT /users/{handle}/block 是拉黑，不是关注），所以不画「关注」——
+                    一颗点了没反应的按钮比没有这颗按钮更糟。 */}
+                <Button
+                  inline={false}
+                  height={ControlsHeight.S}
+                  icon={icon16(MessageSquare)}
+                  href={appPath('messages/' + encodeURIComponent(u.handle))}
+                >
+                  发私信
+                </Button>
+                {session.isLoggedIn ? (
+                  <Button
+                    data-testid='profile-report'
+                    inline={false}
+                    height={ControlsHeight.S}
+                    icon={icon16(Flag)}
+                    active={reporting}
+                    onClick={() => setReporting((v) => !v)}
+                  >
+                    举报
+                  </Button>
+                ) : null}
+              </>
             )}
-            <Button inline={false} height={ControlsHeight.M} icon={icon16(MessageSquare)} href={appPath('messages/' + encodeURIComponent(u.handle))}>
-              发私信
-            </Button>
-          </span>
+          </>
         }
       />
 
-      <section className='flex flex-wrap items-start justify-between gap-4 rounded-lg border border-border bg-card p-4'>
-        <UserBadge user={u} layout='stacked' size='xl' showHandle badges='below' />
-        <div className='flex flex-col gap-2'>
-          {u.bio ? <p className='m-0 max-w-[60ch] text-[13px] leading-relaxed text-muted-foreground'>{u.bio}</p> : null}
-          <dl className='m-0 flex flex-wrap items-center gap-6'>
-            <Stat icon={<Star aria-hidden className='size-3' />} label='帖子' value={stats?.topic_count} />
-            <Stat icon={<MessageSquare aria-hidden className='size-3' />} label='回复' value={stats?.reply_count} />
-            <Stat icon={<Heart aria-hidden className='size-3' />} label='获赞' value={stats?.like_received} />
-          </dl>
-        </div>
-        {isSelf ? (
-          <Button inline={false} height={ControlsHeight.S} href={appPath('settings')}>
-            账号设置
-          </Button>
-        ) : null}
+      {reporting ? (
+        <ReportPanel
+          targetType='user'
+          targetId={u.id}
+          targetLabel={'用户「' + u.nickname + '」'}
+          onClose={() => setReporting(false)}
+        />
+      ) : null}
+
+      <section className='flex flex-col gap-2'>
+        <h2 className='m-0 text-[15px] font-semibold text-foreground'>{isSelf ? '我的帖子' : 'TA 的帖子'}</h2>
+        {topics.isPending ? (
+          <Loading what='帖子' className='py-8' />
+        ) : topics.isError ? (
+          <ErrorState what='帖子' error={topics.error} onRetry={() => void topics.refetch()} />
+        ) : items.length === 0 ? (
+          <Empty
+            title={isSelf ? '你还没有发布过帖子' : 'TA 还没有发布过帖子'}
+            hint='帖子按发布时间倒序；游标分页，不是页码。'
+            action={isSelf ? <Button href={appPath('new')}>去发第一帖</Button> : undefined}
+          />
+        ) : (
+          <>
+            <Island withoutPaddings>
+              {items.map((t) => {
+                const c = toCardTopic(t);
+                return (
+                  <TopicRow
+                    key={c.id}
+                    topic={{
+                      id: c.id,
+                      title: c.title,
+                      tags: [{ text: c.board.name }],
+                      author: c.author,
+                      replies: c.reply_count,
+                      views: c.view_count,
+                      lastReplyAt: formatTime(c.last_reply_at),
+                      href: appPath('t/' + encodeURIComponent(c.id)),
+                    }}
+                  />
+                );
+              })}
+            </Island>
+            {topics.hasNextPage ? (
+              <div className='flex flex-col items-center gap-1.5'>
+                <Button loader={topics.isFetchingNextPage} onClick={() => void topics.fetchNextPage()}>
+                  {topics.isFetchingNextPage ? '加载中…' : '加载更多'}
+                </Button>
+                <span className='text-[11px] text-muted-foreground'>
+                  每页 {PAGE_LIMIT} 条 · 按游标翻页（不是页码）
+                </span>
+              </div>
+            ) : (
+              <ListEnd total={items.length} />
+            )}
+          </>
+        )}
       </section>
 
-      <ButtonSet className='border-b border-border pb-2'>
-        {[
-          { key: 'overview', label: '概览' },
-          { key: 'topics', label: '帖子' },
-        ].map((t) => (
-          <Button
-            key={t.key}
-            primary={t.key === tab}
-            ghost={t.key !== tab}
-            active={t.key === tab}
-            height={ControlsHeight.S}
-            onClick={() =>
-              setParams(
-                (prev) => {
-                  const next = new URLSearchParams(prev);
-                  if (t.key === 'overview') next.delete('tab');
-                  else next.set('tab', t.key);
-                  return next;
-                },
-                { replace: true },
-              )
-            }
-          >
-            {t.label}
-          </Button>
-        ))}
-      </ButtonSet>
-
-      {tab === 'overview' ? (
-        <section className='flex flex-col gap-2'>
-          <h2 className='m-0 text-[15px] font-semibold text-foreground'>最近发布</h2>
-          {topics.isPending ? (
-            <Loading what='帖子' className='py-8' />
-          ) : topics.isError ? (
-            <ErrorState what='帖子' error={topics.error} onRetry={() => void topics.refetch()} />
-          ) : (topics.data?.items.length ?? 0) === 0 ? (
-            <Empty title='还没有发布过帖子' hint='发过的帖子会按时间倒序列在这里。' />
-          ) : (
-            <div className='rounded-lg border border-border bg-card'>
-              {topics.data?.items.slice(0, 5).map((t) => (
-                <TopicRow
-                  key={t.id}
-                  topic={{
-                    id: t.id,
-                    title: t.title,
-                    tags: [{ text: t.board.name }],
-                    author: t.author,
-                    replies: t.reply_count,
-                    views: t.view_count,
-                    lastReplyAt: formatTime(t.last_reply_at ?? t.created_at),
-                    href: appPath('t/' + encodeURIComponent(t.id)),
-                  }}
-                />
-              ))}
-            </div>
-          )}
-        </section>
-      ) : null}
-
-      {tab === 'topics' ? (
-        <section className='flex flex-col gap-2'>
-          {topics.isPending ? (
-            <Loading what='帖子' className='py-8' />
-          ) : topics.isError ? (
-            <ErrorState what='帖子' error={topics.error} onRetry={() => void topics.refetch()} />
-          ) : (topics.data?.items.length ?? 0) === 0 ? (
-            <Empty
-              title={isSelf ? '你还没有发布过帖子' : 'TA 还没有发布过帖子'}
-              hint='帖子按发布时间倒序；游标分页，不是页码。'
-            />
-          ) : (
-            <div className='rounded-lg border border-border bg-card'>
-              {topics.data?.items.map((t) => (
-                <TopicRow
-                  key={t.id}
-                  topic={{
-                    id: t.id,
-                    title: t.title,
-                    tags: [{ text: t.board.name }],
-                    author: t.author,
-                    replies: t.reply_count,
-                    views: t.view_count,
-                    lastReplyAt: formatTime(t.last_reply_at ?? t.created_at),
-                    href: appPath('t/' + encodeURIComponent(t.id)),
-                  }}
-                />
-              ))}
-            </div>
-          )}
-        </section>
-      ) : null}
-
+      {/* 自己的账号现在不能发帖（未激活 / 没有 topic.create）时要说清原因：
+          否则用户看到的是「什么都没有」，而真正的原因在账号状态里。 */}
       {isSelf && !can(session.session, 'topic.create') ? (
         <p className='m-0 rounded-lg border border-dashed border-border px-3 py-2 text-[12px] text-muted-foreground'>
           你的账号现在不能发帖（未激活或没有 topic.create 权限）。账号状态在{' '}
@@ -199,14 +189,9 @@ export function ProfilePage() {
   );
 }
 
-function Stat({ icon, label, value }: { icon: React.ReactNode; label: string; value?: number }) {
-  return (
-    <div className='flex flex-col'>
-      <dt className='order-2 flex items-center gap-1 text-[11px] text-muted-foreground'>
-        {icon}
-        {label}
-      </dt>
-      <dd className='order-1 text-[16px] font-semibold tabular-nums text-foreground'>{value ?? '—'}</dd>
-    </div>
-  );
+/** 「2024 年 3 月加入」：接口给的是 RFC3339，页面上要的是年月。 */
+function joinedText(iso: string): string {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return '';
+  return new Intl.DateTimeFormat('zh-CN', { year: 'numeric', month: 'long' }).format(d) + ' 加入';
 }

@@ -71,6 +71,8 @@ export const SITE_SETTINGS: SiteSetting[] = [
   { key: 'donation.enabled', label: '开放打赏', grp: '赞赏', value: 'on', kind: 'toggle', hint: '关闭后收款码与申报入口全站隐藏' },
   { key: 'mail.enabled', label: '发信总开关', grp: '邮件', value: 'on', kind: 'toggle', hint: '关闭后注册验证与找回密码都不可用（危险）' },
   { key: 'mail.from_name', label: '默认发信人名称', grp: '邮件', value: 'SC2clud', kind: 'text', hint: '账号级配置优先' },
+  // d7 §2.2：AI 审核的开关在站点设置里（模型/提示词在 ai_config 表，密钥只从 env 来）。
+  { key: 'ai.review.enabled', label: '启用 AI 审核', grp: '注册与审核', value: 'off', kind: 'toggle', hint: '与 ai_config.enabled 是「且」；关闭时一个外呼都不发' },
 ];
 
 // 域名（DB §4.9 site_domains；is_primary 部分唯一索引保证只有一个主域名）。§21.2 无端点 → 只读展示。

@@ -1,29 +1,21 @@
 import { useState } from 'react';
 import { appPath } from '@/lib/url';
-import { TopicTaskTabs, type TopicTaskTab } from './_task/task-tabs';
-import { AuthorCard } from './author-card';
-import { BoardSummary } from './board-summary';
-import { DESIGN_ACTION_NOTE, DesignActionNote } from './design-action';
-import { EditTopicDialog } from './edit-dialog';
-import { IssueNudge } from './issue-nudge';
-import { LeftRail } from './left-rail';
-import { MainColumn, TopicMeta } from './main-column';
-import { AUTHOR, BOARDS, BOARD_NAV, CANDIDATES, CHANNELS, MY_ACCOUNT, topicBody, topicComments } from './mock';
-import { REPORT_REASON_LABEL, ReportDialog } from './report-dialog';
-import { AuthorOnlyHint, ReviewAppealButton, ReviewResubmitButton, ReviewStateDemoBar, type ReviewState } from './review-state';
-import { RewardPanel } from './reward-panel';
-import { TopicTaskShowcase } from './_task/showcase';
-import type { CommentData } from '@/ui/comment/types';
-import type { ReportItem } from '../15-admin/mock';
-import type { TopicDetail, TopicSource } from './types';
 import { roomHref } from '@/devroom/room-links';
+import type { CommentData } from '@/ui/comment/types';
+import { DESIGN_ACTION_NOTE, DesignActionNote } from './design-action';
+import { REPORT_REASON_LABEL } from './report-dialog';
+import { AUTHOR, BOARDS, BOARD_NAV, CANDIDATES, CHANNELS, MY_ACCOUNT, topicBody, topicComments } from './mock';
+import { ReviewStateDemoBar, type ReviewState } from './review-state';
+import { TopicView, type TopicReview } from './topic-view';
+import { TopicTaskShowcase } from './_task/showcase';
+import type { TopicDetail, TopicSource } from './types';
+import type { ReportReason } from '@/lib/api/forum';
 
 // DevRoom 12 · 帖子内容页（贴吧式三栏）
 //
-// 结构：顶部两个大按钮（帖子内容 / 问题反馈，来自 _task/task-tabs）→ 三栏
-//   左栏 分区列表 + 分区内导航（**只在 ≥1200px 出现**，贴吧式常驻栏）
-//   中栏 帖子全文 + 下载来源 + 动作条 + 评论区（评论区复用 @/ui/comment，不另写一套）
-//   右栏 分区简介 → 发帖者卡片 → 赞助入口 → 问题反馈入口
+// 这一份只做**房间宿主**：拿 mock 造数据、把动作接成本地状态、上面挂一排「审核态演示」控件。
+// 版面本身在 topic-view.tsx（prop 驱动），真站 src/routes/topic.tsx 渲染的是同一个组件 ——
+// 房间与真站不会再各长一份版式。
 //
 // 三档响应式：<768 单列／768–1279 两栏（左栏仍不出现）／≥1280 三栏。
 // 页宽不再由本页自己挣：DevRoom 与真实壳（src/app/shell.tsx）**都是 max-w-[1280px]**，
@@ -32,11 +24,10 @@ import { roomHref } from '@/devroom/room-links';
 // 本页是这一轮修的**三条断链**的落点（盲审二号 ③ / 13 与真缺陷 4/5/6）：
 //   举报 → 弹层（事由单选，值域照 reports.reason）→ 提交后按钮变「已举报」+ 回执，
 //          回执里的说法与管理队列（15-admin 举报处理）同一套：事由文案 / 待处理；
-//   编辑 → 动作条上的「编辑」（post.update_own）→ 存完标题、正文、「最后编辑」就地变；
+//   编辑 → 动作条上的「编辑」（topic.edit.own）→ 存完标题、正文、「最后编辑」就地变；
 //          未通过审核时横幅上的「重新提交审核」把状态送回 pending
 //          （原来那句「你可以修改后重新提交」没有任何落点）；
-//   发布 / 删除回复 → 评论数真的 +1 / -1，列表里真的多一条 / 留下「该回复已删除」
-//          （原来点「发布」文本原地不动、评论数仍是 54 那种状态）。
+//   发布 / 删除回复 → 评论数真的 +1 / -1，列表里真的多一条 / 留下「该回复已删除」。
 
 const BOARD = BOARDS.find((b) => b.slug === 'custom-campaign') ?? BOARDS[0]!;
 
@@ -100,7 +91,7 @@ const ISSUE_OPEN_COUNT = 7;
 
 /** 当前登录者持有的权限点（真实来源是 GET /api/v1/me 的 perms；本页只用到这一条）。
  *  没有它就不渲染「编辑」——前端权限只管「显不显示」，判定仍在后端（authz.Require）。 */
-const ME_PERMS = ['post.update_own'];
+const ME_PERMS = ['topic.edit.own'];
 
 /** 新发评论的序号：置顶与「最新」排序都靠它（mock 的 createdAt 是「3 小时前」这种展示串，排不了） */
 let seq = 0;
@@ -117,7 +108,7 @@ const APPEAL_SENT = '已提交人工复核，队列里有记录（mock）。';
 
 /** ?review=… —— 只影响 DevRoom 的初始态，非法值一律按 pending（= 最需要看的那一态）。
  *  pending-human = 审核中且已转人工（同一态的第二档文案）。
- *  另外三个只给截图用的初值：report / edit / receipt=design —— 省掉一次点击，出图脚本能直接拍到交互态。 */
+ *  另外几个只给截图用的初值：report / edit / receipt=design —— 省掉一次点击，出图脚本能直接拍到交互态。 */
 function readReviewFromUrl(): { state: ReviewState; pendingHuman: boolean } {
   const v = new URLSearchParams(location.search).get('review');
   if (v === 'approved' || v === 'rejected' || v === 'pending') return { state: v, pendingHuman: false };
@@ -126,27 +117,27 @@ function readReviewFromUrl(): { state: ReviewState; pendingHuman: boolean } {
 }
 
 export default function TopicPage() {
-  const [tab, setTab] = useState<TopicTaskTab>('content');
-  const [nav, setNav] = useState('all');
   const params = new URLSearchParams(location.search);
 
   // 帖子的可变部分：标题 / 正文 / 最后编辑时间（编辑入口真的改它，不是只弹个框）
   const [title, setTitle] = useState(TOPIC.title);
   const [bodyHtml, setBodyHtml] = useState(TOPIC.content_html);
   const [updatedAt, setUpdatedAt] = useState(TOPIC.updated_at);
+  // 点赞 / 收藏：两个可切换状态（真站是幂等 PUT/DELETE，这里是本地演示）
+  const [liked, setLiked] = useState(TOPIC.viewer.liked);
+  const [bookmarked, setBookmarked] = useState(TOPIC.viewer.bookmarked);
   // 评论：列表与总数都是这一页的状态。「发布」真的插一条、计数真的 +1
   const [comments, setComments] = useState<CommentData[]>(() => topicComments());
   const [commentTotal, setCommentTotal] = useState(TOPIC.reply_count);
   const [newCommentSeqs, setNewCommentSeqs] = useState<Record<string, number>>({});
   // 举报：帖子级一条状态 + 每条评论各自一条。提交后按钮变「已举报」，再点打开同一张弹层
   // （后端是幂等的：同一人对同一对象重复举报返回 200 + 既有那条，接口需求 §U5）
-  const [reported, setReported] = useState<string | null>(() => (params.get('reported') === '1' ? 'spam' : null));
+  const [reported, setReported] = useState(() => params.get('reported') === '1');
   const [reportedIds, setReportedIds] = useState<string[]>([]);
-  const [reportTarget, setReportTarget] = useState<{ id: string; label: string } | null>(null);
-
-  // 弹层与回执（?report=1 / ?edit=1 / ?receipt=design 是给截图用的初值）
-  const [reportOpen, setReportOpen] = useState(() => params.get('report') === '1');
-  const [editOpen, setEditOpen] = useState(() => params.get('edit') === '1');
+  // 分区内导航的选中项：房间里不真的筛（房间只有这一页），但**选中态要能动**，
+  // 否则这一栏在房间里是个死控件，评审看不到它的选中样式。
+  const [nav, setNav] = useState('all');
+  // 回执（?receipt=design 是给截图用的初值）
   const [receipt, setReceipt] = useState<string | null>(() => (params.get('receipt') === 'design' ? DESIGN_ACTION_NOTE : null));
 
   // DevRoom 演示用：真实页面读后端返回的 review_state，没有这个开关（见 review-state.tsx 的注释）。
@@ -159,33 +150,33 @@ export default function TopicPage() {
   // 独立入口（一个只挂着 showroom 的 index）被删掉了——同一页两个身份，出图时会看不出谁是主页面。
   const showcase = params.get('view') === 'showcase';
 
-  // 权限点 post.update_own 只覆盖「自己的帖子」；作者本人 = 当前登录者与帖子的 author 是同一人。
-  // mock 里当前登录者就是作者（AUTHOR 与 MY_ACCOUNT 同名同 handle），与 15-admin 的权限表一致。
-  const isAuthor = MY_ACCOUNT.handle === AUTHOR.handle;
-  const canEdit = ME_PERMS.includes('post.update_own') && isAuthor;
+  // 这一屏演示的是**作者视角**（真的帖子页里由后端 can_edit 决定：作者 + topic.edit.own + 没锁定）。
+  // 别按 handle 相等去判：假名单隐私清理后 MY_ACCOUNT(demo-marine) 与 AUTHOR(demo-admin) 已经不是同一个人，
+  // 于是「编辑」整颗按钮在房间里消失，编辑链路连同审核横幅的落点一起看不到（房间因此漏掉过一次验收）。
+  const canEdit = ME_PERMS.includes('topic.edit.own');
 
   const topic: TopicDetail = { ...TOPIC, title, content_html: bodyHtml, updated_at: updatedAt, reply_count: commentTotal };
+  const review: TopicReview = {
+    state: reviewState,
+    pendingHuman,
+    note: reviewState === 'rejected' ? REVIEW_NOTE_REJECTED : null,
+  };
+  const likeCount = TOPIC.like_count + (liked === TOPIC.viewer.liked ? 0 : liked ? 1 : -1);
+  const bookmarkCount = TOPIC.bookmark_count + (bookmarked === TOPIC.viewer.bookmarked ? 0 : bookmarked ? 1 : -1);
 
   /** 举报提交：**必须给出可观察的结果**——按钮变「已举报」+ 一行回执。
    *  回执里的说法与 15-admin「举报处理」队列逐字对得上（事由文案 = REPORT_REASON 那五个、状态 = 待处理）。 */
-  function submitReport(reason: ReportItem['reason'], detail: string) {
+  function submitReport(reason: ReportReason, detail: string, target: { id: string; label: string } | null) {
     const label = REPORT_REASON_LABEL[reason];
-    if (reportTarget) {
-      // 回复级举报（target_type=post）
-      setReportedIds((ids) => (ids.includes(reportTarget.id) ? ids : [...ids, reportTarget.id]));
-      setReceipt('已举报「' + reportTarget.label + '」 · 事由：' + label + ' · 已进「举报处理」队列的待处理' + (detail ? '（含补充说明）' : ''));
+    if (target) {
+      // 回复级举报（后端 target_type=post）
+      setReportedIds((ids) => (ids.includes(target.id) ? ids : [...ids, target.id]));
+      setReceipt('已举报「' + target.label + '」 · 事由：' + label + ' · 已进「举报处理」队列的待处理' + (detail ? '（含补充说明）' : ''));
     } else {
-      // 帖子级举报（target_type=topic）
-      setReported(reason);
+      // 帖子级举报（后端 target_type=topic）
+      setReported(true);
       setReceipt('已举报这篇帖子 · 事由：' + label + ' · 已进「举报处理」队列的待处理' + (detail ? '（含补充说明）' : ''));
     }
-    setReportTarget(null);
-    setReportOpen(false);
-  }
-
-  function openReport(target: { id: string; label: string } | null) {
-    setReportTarget(target);
-    setReportOpen(true);
   }
 
   /** 发布：主楼插到最前，楼中楼插到它那条主楼下面。计数 +1。 */
@@ -213,7 +204,7 @@ export default function TopicPage() {
   }
 
   /** 删除回复：**只删自己的**（非作者根本看不到那个按钮）。
-   *  删帖与删回复是两个动作：这里只做「删回复」，帖子级的删除不在本页（管理侧另有入口）。 */
+   *  删帖与删回复是两个动作：这里只做「删回复」，帖子级的删除在动作条上另有入口。 */
   function deleteComment(parentId: string | null, id: string) {
     setComments((list) => {
       if (!parentId) return list.filter((c) => c.id !== id);
@@ -253,7 +244,6 @@ export default function TopicPage() {
     setTitle(next.title);
     setBodyHtml(toHtml(next.text));
     setUpdatedAt('刚刚');
-    setEditOpen(false);
     if (reviewState === 'rejected') {
       setReviewState('pending');
       setPendingHuman(false);
@@ -291,104 +281,56 @@ export default function TopicPage() {
         appealNote={appealed ? APPEAL_SENT : null}
       />
 
-      <TopicTaskTabs
-        value={tab}
-        onChange={setTab}
-        issueCount={ISSUE_OPEN_COUNT}
-        onOpenIssue={() => {
-          // devroom 里没有路由：用一次跳转模拟「去反馈页」。（真页面走 react-router 的 navigate）
-          window.location.assign(roomHref('13-issue'));
+      <TopicView
+        boards={BOARDS}
+        board={BOARD}
+        boardNav={BOARD_NAV}
+        boardHref={() => roomHref('12-topic')}
+        navValue={nav}
+        // 分区内导航在房间里没有落点（房间只有这一页）：切换只改高亮，选中态由本页记着
+        onNavChange={setNav}
+        composeHref={appPath('?page=18-compose&board=' + BOARD.slug)}
+        authorHref={roomHref('11-profile')}
+        author={AUTHOR}
+        topic={topic}
+        review={review}
+        canEdit={canEdit}
+        liked={liked}
+        bookmarked={bookmarked}
+        likeCount={likeCount}
+        bookmarkCount={bookmarkCount}
+        onToggleLike={() => setLiked((v) => !v)}
+        onToggleBookmark={() => setBookmarked((v) => !v)}
+        onCopyLink={copyLink}
+        onEdit={saveEdit}
+        onSubmitReport={submitReport}
+        reported={reported}
+        reportedIds={reportedIds}
+        onDelete={() => setReceipt('已删除这篇帖子（本页是本地状态，刷新即还原）')}
+        onAppeal={() => {
+          setAppealed(true);
+          setReceipt(APPEAL_SENT);
         }}
+        onResubmit={() => {
+          setReviewState('pending');
+          setPendingHuman(false);
+          setReceipt('已重新提交审核 · 回到「审核中」，通过后其他人才能看到');
+        }}
+        comments={comments}
+        commentTotal={commentTotal}
+        candidates={CANDIDATES}
+        me={MY_ACCOUNT}
+        newSeqs={newCommentSeqs}
+        onSubmitComment={submitComment}
+        onDeleteComment={deleteComment}
+        onVoteComment={voteComment}
+        channels={CHANNELS}
+        issueCount={ISSUE_OPEN_COUNT}
+        feedbackHref={roomHref('13-issue')}
+        onOpenIssue={() => window.location.assign(roomHref('13-issue'))}
+        receipt={receipt ? <DesignActionNote message={receipt} /> : null}
+        initialLayer={params.get('open') === 'report' ? 'report' : params.get('open') === 'edit' ? 'edit' : undefined}
       />
-
-      <div className='grid grid-cols-1 gap-x-5 gap-y-4 md:grid-cols-[minmax(0,1fr)_248px] xl:flex xl:items-start'>
-        {/* 左栏：只在 ≥1200px 出现。用 hidden 而不是挪到底部——它是「常驻栏」，不该在窄屏抢首屏 */}
-        <aside aria-label='分区与分区内导航' className='hidden xl:block xl:w-[200px] xl:shrink-0'>
-          <LeftRail boards={BOARDS} currentSlug={BOARD.slug} nav={BOARD_NAV} navValue={nav} onNavChange={setNav} />
-        </aside>
-
-        {/* 中栏：主区。窄屏靠 row-start 抢回第一格，右栏因此落在它下面、评论之前 */}
-        <main data-testid='topic-main' className='flex min-w-0 flex-col gap-3 md:col-start-1 md:row-start-1 xl:flex-1'>
-          <TopicMeta topic={topic} />
-          <MainColumn
-            topic={topic}
-            comments={comments}
-            commentTotal={commentTotal}
-            candidates={CANDIDATES}
-            me={MY_ACCOUNT}
-            issueCount={ISSUE_OPEN_COUNT}
-            reviewState={reviewState}
-            reviewPendingHuman={pendingHuman}
-            reviewNote={reviewState === 'rejected' ? REVIEW_NOTE_REJECTED : null}
-            reviewAppeal={
-              reviewState === 'rejected' ? (
-                <ReviewAppealButton
-                  onAppeal={() => {
-                    setAppealed(true);
-                    setReceipt(APPEAL_SENT);
-                  }}
-                />
-              ) : null
-            }
-            reviewResubmit={
-              reviewState === 'rejected' ? (
-                <ReviewResubmitButton
-                  onResubmit={() => {
-                    setReviewState('pending');
-                    setPendingHuman(false);
-                    setReceipt('已重新提交审核 · 回到「审核中」，通过后其他人才能看到');
-                  }}
-                />
-              ) : null
-            }
-            reported={reported !== null}
-            canEdit={canEdit}
-            onCopyLink={copyLink}
-            onReport={() => openReport(null)}
-            onEdit={() => setEditOpen(true)}
-            onVote={voteComment}
-            onDeleteComment={deleteComment}
-            onSubmitComment={submitComment}
-            reportedIds={reportedIds}
-            onReportComment={(t) => openReport(t)}
-            newSeqs={newCommentSeqs}
-            receipt={receipt ? <DesignActionNote message={receipt} /> : null}
-            reportDialog={
-              reportOpen ? (
-                <ReportDialog
-                  targetLabel={
-                    reportTarget
-                      ? reportTarget.label
-                      : '帖子 · ' + topic.title + (reported ? '（已举报过：' + REPORT_REASON_LABEL[reported as ReportItem['reason']] + '）' : '')
-                  }
-                  onSubmit={submitReport}
-                  onClose={() => setReportOpen(false)}
-                />
-              ) : null
-            }
-            editDialog={
-              editOpen ? (
-                <EditTopicDialog title={title} text={toText(bodyHtml)} onSave={saveEdit} onClose={() => setEditOpen(false)} />
-              ) : null
-            }
-          />
-          {/* 「只有作者能看到」的说明放在卡片外、动作条与评论区之后：
-              它是这一屏的注解，不是正文的一部分；正文与评论区照常渲染（作者当然能看自己的）。
-              approved 时不渲染——正常帖没有这句话可说。 */}
-          {reviewState === 'approved' ? null : <AuthorOnlyHint />}
-        </main>
-
-        {/* 右栏：分区简介 → 发帖者卡片 → 赞助 → 问题反馈入口。长帖里跟着滚 */}
-        <aside
-          data-testid='topic-rail'
-          className='flex min-w-0 flex-col gap-4 md:col-start-2 md:row-span-2 md:row-start-1 xl:sticky xl:top-4 xl:w-[248px] xl:shrink-0'
-        >
-          <BoardSummary board={BOARD} />
-          <AuthorCard author={AUTHOR} />
-          <RewardPanel channels={CHANNELS} />
-          <IssueNudge variant='rail' issueCount={ISSUE_OPEN_COUNT} />
-        </aside>
-      </div>
 
       {showcase ? <TopicTaskShowcase /> : null}
     </div>
@@ -405,17 +347,4 @@ function toHtml(text: string): string {
 
 function escapeHtml(s: string): string {
   return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-}
-
-/** 编辑弹层的初值：从 content_html 剥标签得到纯文本（块级标签的收尾当段落分隔）。 */
-function toText(html: string): string {
-  return html
-    .replace(/<\/(p|h[1-6]|li|blockquote)>/g, '\n\n')
-    .replace(/<[^>]+>/g, '')
-    .replace(/&nbsp;/g, ' ')
-    .replace(/&amp;/g, '&')
-    .replace(/&lt;/g, '<')
-    .replace(/&gt;/g, '>')
-    .replace(/\n{3,}/g, '\n\n')
-    .trim();
 }

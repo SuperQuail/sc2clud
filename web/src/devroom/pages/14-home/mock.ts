@@ -2,10 +2,14 @@ import { assetUrl } from '@/lib/url';
 import type { UserSummary } from '@/ui/user/user-badge';
 
 // 本页是设计验证页：数据是页面内的假数据（前端方案 §10.1 禁止用假数据绕过接口——这里不出现在产品路由里）。
-// 字段名逐字照 完全重构/论坛后端技术方案-v2.md §21.3 的帖子列表响应：
-//   id / board{slug,name} / kind / title / author{handle,nickname,avatar} / reply_count / like_count /
-//   view_count / featured_at / pinned / created_at / last_reply_at / cover / viewer{liked,bookmarked}
-// **excerpt 不在 §21.3 里**（契约缺口，已写进回报）——方卡片与紧凑列表都要它。
+//
+// 字段名以**后端 DTO 为真源**（forum/internal/forum/dto.go 的 TopicCardDTO / UserBriefDTO）：
+//   id / board{slug,name} / kind / title / excerpt / author{handle,nickname,avatar_hash,avatar_small_hash} /
+//   reply_count / like_count / view_count / featured(bool) / pinned / created_at / last_reply_at /
+//   cover_hash / cover_width / cover_height / locked
+// 2026-10-14 改：原注释照 §21.3 写的 cover / featured_at / author.avatar **线上都不存在**（实测 /dev/api/v1/topics）。
+// 这里保留的两个「前端形状」是有意的、由 routes/_parts/mappers.ts 负责换算：
+//   cover / author.avatar 存**可直接用的 URL**（后端给的是 hash，前端按 /img/<hash> 拼）。
 export type TopicKind = 'discussion' | 'resource' | 'repost';
 
 export type Topic = {
@@ -24,8 +28,8 @@ export type Topic = {
   last_reply_at: string;
   cover?: string | null;
   pinned?: boolean;
-  /** 契约里是 featured_at（ISO 或 null）；这里为了排版方便存了格式化好的文案 */
-  featured_at?: string | null;
+  /** 后端给的是 bool（TopicCardDTO.Featured）。原设计稿写的 featured_at(ISO) 线上不存在 —— 见文件头的改名说明 */
+  featured?: boolean;
 };
 
 export type BoardFilter = { key: string; label: string; count: number };
@@ -95,7 +99,7 @@ export const TOPICS: Topic[] = [
     title: '《余烬》第三章完整版发布：4 关战役 + 全语音 + 中英双语',
     excerpt: '三个月打磨的第三章今天上线。四关战役、9 段过场、全语音，安装包与更新说明都在帖子里。',
     author: U.admin, reply_count: 128, like_count: 96, view_count: 4203,
-    created_at: ago(2880), last_reply_at: ago(3), cover: COVERS.battle, pinned: true, featured_at: '精华',
+    created_at: ago(2880), last_reply_at: ago(3), cover: COVERS.battle, pinned: true, featured: true,
   },
   {
     id: '0192f0a2', board: { slug: 'terrain', name: '地图与地形' }, kind: 'discussion',
@@ -109,7 +113,7 @@ export const TOPICS: Topic[] = [
     title: '自制战役常用图标包 v3（重绘 128 个技能与单位图标）',
     excerpt: '统一描边、统一视角的一套图标，含 DDS 与 PNG 两种格式，附命名规范与授权说明。',
     author: U.battlecruiser, reply_count: 42, like_count: 77, view_count: 1180,
-    created_at: ago(4320), last_reply_at: ago(95), cover: COVERS.welcome, featured_at: '精华',
+    created_at: ago(4320), last_reply_at: ago(95), cover: COVERS.welcome, featured: true,
   },
   {
     id: '0192f0a4', board: { slug: 'data', name: '数据与代码' }, kind: 'discussion',

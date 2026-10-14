@@ -12,13 +12,15 @@ export function ReplyBox({
   replyingTo,
   candidates = [],
   onSubmit,
-  maxLength = 10000,
+  // 与后端 MaxPostContent 一致（**老站的设计**：帖子 20000 / 评论 8000 字）。
+  // 后端在写入边界也会卡（forum/limits.go），这里只是提前告诉用户，不是唯一防线。
+  maxLength = 8000,
 }: {
   me: { nickname: string; avatar?: string | null };
   replyingTo?: string | null;
   candidates?: MentionCandidate[];
   onSubmit?: (payload: { json: string; html: string }) => void;
-  /** 评论字数上限，默认 10000 */
+  /** 评论字数上限，默认 8000（与后端 MaxPostContent 一致） */
   maxLength?: number;
 }) {
   const [body, setBody] = useState<{ json: string; html: string }>({ json: '', html: '' });

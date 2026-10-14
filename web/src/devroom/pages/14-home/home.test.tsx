@@ -66,7 +66,7 @@ it('方卡片：无封面时不留空壳（色块占位替代）', () => {
 });
 
 it('方卡片：置顶与精华的标记只在有对应字段时出现', () => {
-  const featured = TOPICS.filter((t) => t.pinned || t.featured_at);
+  const featured = TOPICS.filter((t) => t.pinned || t.featured);
   expect(featured.length).toBeGreaterThan(0);
   render(<SquareTopicCard topic={featured[0]!} />);
   const hasPinned = Boolean(featured[0]!.pinned);

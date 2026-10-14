@@ -5,7 +5,7 @@ import Island from '@jetbrains/ring-ui-built/components/island/island';
 import ButtonSet from '@jetbrains/ring-ui-built/components/button-set/button-set';
 import Tag, { TagType } from '@jetbrains/ring-ui-built/components/tag/tag';
 import { useRef, useState } from 'react';
-import { FolderOpen, Heart, Image as ImageIcon, ImagePlus, MapPin, MessageSquare, MoreHorizontal, Star, UserPlus, UserRound } from 'lucide-react';
+import { FolderOpen, Heart, Image as ImageIcon, ImagePlus, MessageSquare, MoreHorizontal, Star, UserPlus, UserRound } from 'lucide-react';
 import { assetUrl } from '@/lib/url';
 import { icon16 } from '@/ui/icons';
 import { UserAvatar } from '@/ui/user/avatar';
@@ -17,6 +17,7 @@ import { NoticeSettings, type SettingRow } from '@/ui/message/notice-settings';
 import { IconTabs, type IconTabItem } from '@/ui/nav/icon-tabs';
 import { roomHref } from '@/devroom/room-links';
 import { AccountPanel, type AvatarHandle } from './account-panel';
+import { ProfileHero } from './profile-hero';
 
 // DevRoom 11 · 个人主页（带设置）
 // 布局照主流站点（GitHub / B 站空间 / Discourse 用户页）的**共同结构**：
@@ -185,172 +186,64 @@ export default function ProfilePage() {
         </section>
       ) : null}
 
-      {/* ⚠️ 首屏预算：这一页的 hero 高度决定右栏第一格（赞助入口）能不能落在 1440x900 内。
-          来历：hero 每长高一点，赞助入口就往下走；它曾掉出过首屏（用户报「主页没有赞助按钮」）。
-          **现在唯一的旋钮是下面那个 h-36 占位条**（= 身份卡上方可见的壁纸条高度）——
-          改它 / 往 hero 加内容 / 换更高的封面 / 调大字号，都要重新量一次按钮 bottom 是否仍 <= 900
-          （用 CDP 量，不要目测）。
-          **注意真实壳的页头高度与 DevRoom 不同，所以「当前值」不要写进注释——写「怎么量」，不写「量到多少」。** */}
-      {/* isolate：建独立层叠上下文，壁纸两层的 -z-10 才落在「section 背景之上、内容之下」，
-          否则 -z-10 跑到 section 背景后面，壁纸直接看不见（踩过）。
-          flow-root：**壁纸改成绝对定位之后，身份卡的 -mt-20 会向上穿透 section**（没有块级内容挡着就会发生
-          margin collapse），整个 section 被顶高 80px、头像行被 overflow-hidden 裁掉（踩过）。
-          flow-root 建立 BFC 挡住这次外边距合并。 */}
-      <section className='relative isolate flow-root overflow-hidden rounded-xl border border-border bg-background'>
-        {/* 壁纸**铺满整个 hero 方框**，不是只铺那条 160px 的带子。
-            之前是「160px 的 <img> + 下面接卡片」，方框下半部分自然没有壁纸 —— 用户看到的
-            「只有一半」就是这么来的（另一半原因是原素材 zerg.webp 只有 64x64，放大即糊）。
-            现在：绝对定位的壁纸层 + 一层向下渐隐到页面底的遮罩，身份卡浮在上面。
-            **代价：hero 高了 136px（214→350）** —— 壁纸条是真实的可见高度，不可能白来。
-            赞助按钮当时从 735 掉到 871（仍在首屏内），余量因此变薄，见上面那条首屏预算注释。 */}
-        {/* 两层都用 -z-10 明确压到内容之下：只靠 DOM 顺序时，绝对定位的图会盖住后面 relative 的卡片 */}
-        <img src={cover} alt='' className='pointer-events-none absolute inset-0 -z-10 h-full w-full object-cover' />
-        <span
-          aria-hidden
-          className='pointer-events-none absolute inset-0 -z-10 bg-gradient-to-b from-background/0 from-80% to-background/95'
-        />
-        {/* 撑高用的占位条：壁纸是绝对定位、不参与布局，少了它 hero 只能由身份卡撑，
-            身份卡的 -mt-20 就会把它自己顶到 hero 之外（头像行被裁剪）。144px（h-36）= 身份卡上方的
-            可见壁纸条高度，**它就是 hero 预算**：改大就等于把赞助按钮往首屏外推，改前先量。 */}
-        <div aria-hidden className='h-36' />
-        {/* 「更换封面」直接绝对定位在 hero 右上角（z-20）：放进内层 relative 时它会被上移的身份卡压住，
-            只露出一角、点不到。按钮浮在壁纸上，原来没给底 —— 浅色下是深蓝字、深色下是浅蓝字，
-            壁纸一浅（sc2-battle 的天空）就看不清，所以补一层卡片色 + 轻微模糊把它托起来。 */}
-        <span className='absolute right-3 top-3 z-20 flex items-center gap-2'>
-          {/* 「更换头像」的落点：上传器在「设置」标签里（那里有预览、移除与体积提示），
-              这里只负责把人送过去。落在同一个位置、同一档高度，读起来是「封面 / 头像」一对动作。
-              只在本人主页出现 —— 看别人主页时换别人的头像既无意义也无权限。 */}
-          {selfView.isSelf ? (
+      {/* hero 的版式与那几段长注释都在 profile-hero.tsx：产品路由要**原样复用同一份实现**，
+          不是把这 160 行抄到 routes/profile.tsx 里再改一遍（上线设计 P2 决策 2）。 */}
+      <ProfileHero
+        cover={cover}
+        nickname='示范管理员'
+        handle='demo-admin'
+        joined='2024 年 3 月加入'
+        location='上海'
+        bio='战役作者，负责关卡设计与剧情。有问题直接回复，我每天都在。'
+        avatar={avatar ?? assetUrl('miyin/smile-160.webp')}
+        role={{ key: 'admin', name: '管理员' }}
+        title={{ name: '执政官', color: '#2563eb' }}
+        stats={[
+          { value: '42', label: '帖子' },
+          { value: '318', label: '回复' },
+          { value: '1.2k', label: '获赞' },
+          { value: '86', label: '关注者' },
+        ]}
+        onAvatarPick={selfView.isSelf ? pickAvatar : undefined}
+        topActions={
+          <>
+            {/* 「更换头像」的落点：上传器在「设置」标签里（那里有预览、移除与体积提示），
+                这里只负责把人送过去。落在同一个位置、同一档高度，读起来是「封面 / 头像」一对动作。
+                只在本人主页出现 —— 看别人主页时换别人的头像既无意义也无权限。 */}
+            {selfView.isSelf ? (
+              <span className='rounded-md bg-background/85 backdrop-blur-sm'>
+                <Button
+                  inline={false}
+                  height={ControlsHeight.S}
+                  data-testid='change-avatar'
+                  icon={icon16(ImagePlus)}
+                  onClick={pickAvatar}
+                >
+                  更换头像
+                </Button>
+              </span>
+            ) : null}
             <span className='rounded-md bg-background/85 backdrop-blur-sm'>
               <Button
                 inline={false}
                 height={ControlsHeight.S}
-                data-testid='change-avatar'
-                icon={icon16(ImagePlus)}
-                onClick={pickAvatar}
+                data-testid='change-cover'
+                icon={icon16(ImageIcon)}
+                onClick={() => setCover((c) => (c.includes('sc2-battle') ? assetUrl('starcraft/sc2-logo.webp') : assetUrl('starcraft/sc2-battle.webp')))}
               >
-                更换头像
+                更换封面
               </Button>
             </span>
-          ) : null}
-          <span className='rounded-md bg-background/85 backdrop-blur-sm'>
-            <Button
-              inline={false}
-              height={ControlsHeight.S}
-              data-testid='change-cover'
-              icon={icon16(ImageIcon)}
-              onClick={() => setCover((c) => (c.includes('sc2-battle') ? assetUrl('starcraft/sc2-logo.webp') : assetUrl('starcraft/sc2-battle.webp')))}
-            >
-              更换封面
-            </Button>
-          </span>
-        </span>
-
-        {/* 身份卡：**从上到下的透明渐变**（用户 2026-10-13 定稿口径：
-            「平均透明度 60% 透」= 卡片整高的**平均 alpha ≈ 0.4**；顶部最透、往下逐渐收紧、任何位置都不到实色；
-            深浅色**共用这一套值**，不做 dark: 变体）。
-            形状（0–35% 持平 0 → 65% 到 via → 100% 到 to）：
-              from-background/0  from-35%  → 卡片的 0–35%（含头像带 7%–31%）**完全不遮挡**，壁纸原样透出来；
-              via-background/70  via-65%  → 名字带（38%–48%）落在爬升段，中段值 0.70；
-              to-background/95            → 统计行（78%–93%）落在接近实底的带上，但**不是实色**（0.95，不到 1.0）。
-            平均 alpha 是这个形状算出来的，不是拍的：mean = 0.325·via + 0.175·to（前 35% 为 0、
-            35–65% 线性爬升、65–100% 线性收口）→ 0.325×0.70 + 0.175×0.95 = **0.394**，落在用户要的 0.35–0.45。
-            壁纸遮罩层（上面那一层）只在**底部 80%–100%** 收口（0 → 0.95），它的平均 alpha 只有 ~0.09，
-            所以合成平均 ≈ **0.403**（两层相乘，合成值也算过）；底部收口的用处是让 hero 底边不出现硬边。
-            **为什么「先持平再爬升」**：上一版是 from-background/10 → via-42%，0→42% 一直在爬，
-            头像正好卡在爬升段中间（当时不透明度已 ~0.65），壁纸被冲淡成一层灰 —— 现在是 0–35% 恒为 0。
-            **为什么整卡不再用 backdrop-blur**：原来是 backdrop-blur-lg（16px），把壁纸细节平均掉了，
-            卡内只剩中性灰 —— 用户说「看不清背景」指的就是这个。模糊只留给真正需要的两处：
-            右上「更换封面」按钮自带 backdrop-blur-sm 底、右侧「关注 / 发私信」按钮组自带 bg-background/70 底。
-            已知取舍（2026-10-13 如实记录）：浅色主题下名字/@handle/简介 这三行压在壁纸的暗部上，读起来偏弱
-            （统计行、徽标、按钮都清楚）。在「平均 0.4 + 顶部全透 + 不到实色」三条约束下中段拿不到浅底，
-            要更清楚只能抬平均、换封面素材，或给文字加局部底（用户已否决）。
-            mb-2 而不是 mb-4：hero 还要装 144px 壁纸条，这 8px 是补给首屏预算的（见上面的警告，**不要改 padding/gap**）。 */}
-        <div className='relative z-10 mx-4 -mt-20 mb-2 flex flex-col gap-5 rounded-xl border-x border-b border-border bg-gradient-to-b from-background/0 from-35% via-background/70 via-65% to-background/95 p-5'>
-          <div className='flex flex-wrap items-end gap-4'>
-            {/* 头像外圈原来用实色 ring-background：在渐变里它是一枚不透明的白/黑环，
-                和身后 50% 的渐变一比就像贴上去的圆片。改成 /60 让环与身后的底同一档透明度，
-                仍然能分出头像与壁纸，但不突兀。 */}
-            {/* 头像 = 上传入口（本人态）：点了进设置标签的头像项，那里有上传/更换/移除与体积提示。
-                为什么不做成「点头像直接开文件框」：那需要把上传器提到 hero 里或再造一个隐藏输入框，
-                和「更换封面」那颗按钮的位置关系也说不清；设计稿里跳一步比多一套控件划算。 */}
-            <span className='rounded-full ring-4 ring-background/60'>
-              {selfView.isSelf ? (
-                <span className='relative block'>
-                  <UserAvatar name='示范管理员' src={avatar ?? assetUrl('miyin/smile-160.webp')} size='xl' />
-                  {/* 头像角上的小按钮才是上传入口（本人态才画）：点了切到「设置」标签并就地打开文件框。
-                      看别人主页时这颗按钮不渲染，也没有「设置」标签 —— 一行都不出现。 */}
-                  <span className='absolute -right-1 -bottom-1 rounded-full bg-background'>
-                    <Button
-                      inline={false}
-                      height={ControlsHeight.S}
-                      icon={icon16(ImagePlus)}
-                      aria-label='更换头像'
-                      data-testid='avatar-upload-entry'
-                      onClick={pickAvatar}
-                    />
-                  </span>
-                </span>
-              ) : (
-                <UserAvatar name='示范管理员' src={assetUrl('miyin/smile-160.webp')} size='xl' />
-              )}
-            </span>
-          </div>
-          <div className='flex flex-col gap-2'>
-            <span className='flex flex-wrap items-center gap-2'>
-              <Username nickname='示范管理员' size='xl' strong />
-              <RoleBadge role={{ key: 'admin', name: '管理员' }} />
-              <TitleBadge title={{ name: '执政官', color: '#2563eb' }} />
-            </span>
-            <span className='flex flex-wrap items-center gap-x-3 gap-y-1 text-[13px] text-muted-foreground'>
-              <span>@demo-admin</span>
-              <span>· 2024 年 3 月加入</span>
-              <span className='flex items-center gap-1'>
-                <MapPin aria-hidden className='size-3.5' />
-                上海
-              </span>
-            </span>
-            <p className='max-w-[65ch] text-[15px] leading-[1.6] text-muted-foreground'>
-              战役作者，负责关卡设计与剧情。有问题直接回复，我每天都在。
-            </p>
-          </div>
-          <div className='flex flex-wrap items-center justify-between gap-x-8 gap-y-3 border-t border-border pt-4'>
-            <span className='flex flex-wrap items-center gap-8'>
-              {[
-                { n: '42', label: '帖子' },
-                { n: '318', label: '回复' },
-                { n: '1.2k', label: '获赞' },
-                { n: '86', label: '关注者' },
-              ].map((st) => (
-                <span key={st.label} className='flex items-baseline gap-1.5'>
-                  <span className='text-[20px] leading-none font-semibold tabular-nums text-foreground'>{st.n}</span>
-                  <span className='text-[13px] text-muted-foreground'>{st.label}</span>
-                </span>
-              ))}
-            </span>
-            {/* 动作组挂在**卡片右下角**（落在统计行右侧，所以卡片不会变高；窄屏时它换行到统计行下方）。
-                为什么不再要那层自保的底：上一版它压在头像右侧的壁纸上（那一带渐变 alpha=0），所以自带 bg-background/70；
-                现在它落在卡片底部 —— 那里渐变的 alpha 已经 0.95（近乎实底），底是现成的，再加一层只是多一个方块。
-                为什么用 ghost：Ring 默认态自带一圈描边，两个带框按钮并排挂在右下角，看着像两个「控件盒」；
-                ghost 去掉描边，读起来是「一对轻动作」。关注保留 primary（这一组唯一的实心动作，填充色见下），
-                height 用 S：这一行的高度由 20px 的统计数字决定，默认高度的按钮会把整行顶高几像素，
-                而 hero 高度是首屏预算（见上方警告）。 */}
-            <span className='flex flex-nowrap items-center gap-1'>
-              {/* 关注保持 primary（这一组里的主动作），发私信/更多用 ghost（去掉 Ring 默认态自带的描边）；
-                  **三颗都必须 inline={false}** —— 这是踩过第四次的那个坑：
-                    Ring 的 isInline = inline ?? text ?? !!icon，只要传了 icon 又没显式给 inline，
-                    按钮就落到 .ring-button-inline（display:inline、padding:0、color:link），
-                    于是 primary 也不填充、看起来像一行蓝字。
-                  实测（2026-10-13，同一套像素扫描）：inline 时饱和蓝像素 135 个、最长连续横向 run 12px（只有字形）；
-                  加 inline={false} 后 1626 个、最长 run 76px，bbox 76×23 = 一颗真正的填充按钮。
-                  （先前"Ring primary 没定义背景变量"的判断是错的，已撤回：填充一直是好的，是 inline 把它压掉了。） */}
-              <Button primary inline={false} height={ControlsHeight.S} icon={icon16(UserPlus)}>关注</Button>
-              <Button ghost inline={false} height={ControlsHeight.S} icon={icon16(MessageSquare)}>发私信</Button>
-              <Button ghost inline={false} height={ControlsHeight.S} icon={icon16(MoreHorizontal)} aria-label='更多操作' />
-            </span>
-          </div>
-        </div>
-      </section>
+          </>
+        }
+        actions={
+          <>
+            <Button primary inline={false} height={ControlsHeight.S} icon={icon16(UserPlus)}>关注</Button>
+            <Button ghost inline={false} height={ControlsHeight.S} icon={icon16(MessageSquare)}>发私信</Button>
+            <Button ghost inline={false} height={ControlsHeight.S} icon={icon16(MoreHorizontal)} aria-label='更多操作' />
+          </>
+        }
+      />
 
       <IconTabs items={tabs} value={activeTab} onChange={setTab} ariaLabel='个人主页分区' />
 

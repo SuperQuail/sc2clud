@@ -5,9 +5,10 @@ import Input from '@jetbrains/ring-ui-built/components/input/input';
 import Radio from '@jetbrains/ring-ui-built/components/radio/radio';
 import { Flag } from 'lucide-react';
 import { icon16 } from '@/ui/icons';
-// reason 的**值域**只从管理侧那一份类型里取（reports.reason 是 text + CHECK，
-// 管理队列 15-admin 的 ReportItem 已经把它写成联合类型）。这里**不另编一套**，免得两边对不上。
-import type { ReportItem } from '../15-admin/mock';
+// reason 的**值域**只从接口层那一份取（后端 CreateReportInput 的 binding：oneof=spam abuse illegal offtopic other，
+// report 域有契约测试盯着它）。**不从 15-admin 的 mock 类型取** —— 真站会引到这份弹层，
+// 它不该因此把房间的假数据模块拖进业务代码（哪怕只是类型）。
+import type { ReportReason } from '@/lib/api/forum';
 
 // 「举报」弹层：事由单选（值域照后端 reports.reason）+ 可选补充说明 + 提交/取消。
 // 为什么理由必须单选而不是自由文本：管理队列那一列就是按 reason 分类的，
@@ -17,7 +18,7 @@ import type { ReportItem } from '../15-admin/mock';
 //   spam 垃圾广告 / abuse 人身攻击 / illegal 侵权 · 违规内容 / offtopic 与分区内容无关（跑题）/ other 其它
 // shortcut: 这份中文映射与管理侧那份是同一张表的两处拷贝（两处都在 devroom 页目录里，
 //   提到 src/features/report 是接线时的事）；改文案时**两处一起改**。
-export const REPORT_REASON_LABEL: Record<ReportItem['reason'], string> = {
+export const REPORT_REASON_LABEL: Record<ReportReason, string> = {
   spam: '垃圾广告',
   abuse: '人身攻击',
   illegal: '侵权 / 违规内容',
@@ -25,7 +26,7 @@ export const REPORT_REASON_LABEL: Record<ReportItem['reason'], string> = {
   other: '其它',
 };
 
-const REASONS = Object.keys(REPORT_REASON_LABEL) as ReportItem['reason'][];
+const REASONS = Object.keys(REPORT_REASON_LABEL) as ReportReason[];
 
 export function ReportDialog({
   targetLabel,
@@ -34,10 +35,10 @@ export function ReportDialog({
 }: {
   /** 被举报对象的一句话（帖子标题 / 回复摘要），让人确认自己没点错行 */
   targetLabel: string;
-  onSubmit: (reason: ReportItem['reason'], detail: string) => void;
+  onSubmit: (reason: ReportReason, detail: string) => void;
   onClose: () => void;
 }) {
-  const [reason, setReason] = useState<ReportItem['reason'] | null>(null);
+  const [reason, setReason] = useState<ReportReason | null>(null);
   const [detail, setDetail] = useState('');
   const [error, setError] = useState<string | null>(null);
 
@@ -122,7 +123,7 @@ export function ReportDialog({
 
         <div className='flex items-center justify-end gap-2'>
           <Button onClick={onClose}>取消</Button>
-          <Button primary danger icon={icon16(Flag)} onClick={submit}>
+          <Button primary danger data-testid='report-submit' icon={icon16(Flag)} onClick={submit}>
             提交举报
           </Button>
         </div>

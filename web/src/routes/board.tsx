@@ -1,11 +1,16 @@
 import { Link, useParams, useSearchParams } from 'react-router';
 import { useInfiniteQuery, useQuery } from '@tanstack/react-query';
 import Button from '@jetbrains/ring-ui-built/components/button/button';
+import ButtonSet from '@jetbrains/ring-ui-built/components/button-set/button-set';
 import { ControlsHeight } from '@jetbrains/ring-ui-built/components/global/controls-height';
 import { appPath, routePath } from '@/lib/url';
 import { qk } from '@/lib/query/keys';
+import { PAGE_LIMIT } from '@/lib/api/paging';
 import { fetchBoard, fetchTopics, type Topic as ApiTopic } from '@/lib/api/forum';
-import { ArrowLeft } from 'lucide-react';
+import { ArrowLeft, LayoutGrid, List } from 'lucide-react';
+import { icon16 } from '@/ui/icons';
+import { cn } from '@/lib/utils';
+import { CompactTopicRow } from '@/devroom/pages/14-home/topic-compact-row';
 import { SquareTopicCard } from '@/devroom/pages/14-home/topic-square-card';
 import { ListEnd, SquareCardSkeleton } from '@/devroom/pages/14-home/states';
 import { BoardRail, ComposeButton, PageHeader } from './_parts/layout';
@@ -13,8 +18,11 @@ import { Empty, ErrorState } from './_parts/state';
 import { toCardTopic } from './_parts/mappers';
 
 // 分区页（契约：GET /boards/{slug} + GET /topics?board=<slug>）。
-// 分区身份（封面 / 简介 / 统计）来自 board 详情，列表来自 topics；两块各自三态，
+// 分区身份（简介 / 统计）来自 board 详情，列表来自 topics；两块各自三态，
 // 分区信息失败**不挡住列表** —— 「谁的信息没拿到」要说清楚，而不是整页白屏。
+//
+// 信息流那一套（卡片 ⇄ 紧凑列表）与首页**是同一份房子件、同一套 URL 状态**（14-home 的
+// SquareTopicCard / CompactTopicRow + ?view=）。分区页与首页看起来必须是同一个站。
 // 已知缺口：分区内导航（全部/精华/资源/讨论/公告）需要后端的 kind/featured 筛选，
 // 目前只有 §21.2 的 kind 能对上，所以这一版只保留 kind 筛选，其余记进回报的端点清单。
 const KINDS = [
@@ -24,10 +32,17 @@ const KINDS = [
   { key: 'repost', label: '转载' },
 ] as const;
 
+// 与首页同一份定义（14-home/index.tsx 的 GRID）：两页的列宽断点必须一致
+const GRID = {
+  card: 'grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4',
+  compact: 'flex flex-col gap-0.5',
+} as const;
+
 export function BoardPage() {
   const { slug = '' } = useParams();
   const [params, setParams] = useSearchParams();
   const kind = params.get('kind') ?? '';
+  const view = params.get('view') === 'compact' ? 'compact' : 'card';
   const board = useQuery({
     queryKey: qk.board(slug),
     queryFn: ({ signal }) => fetchBoard(slug, signal),
@@ -45,6 +60,19 @@ export function BoardPage() {
 
   const items: ApiTopic[] = list.data?.pages.flatMap((p) => p.items) ?? [];
 
+  /** 改 URL 里的一个键；null 表示删掉它（默认值不进 URL，链接才短）——与首页同一个套路 */
+  function setParam(key: string, value: string | null) {
+    setParams(
+      (prev) => {
+        const next = new URLSearchParams(prev);
+        if (value === null) next.delete(key);
+        else next.set(key, value);
+        return next;
+      },
+      { replace: true },
+    );
+  }
+
   return (
     // 左栏与首页**同一份** BoardRail：点进分区后它不能消失 ——
     // 「我在哪个分区、还能去哪」是同一件事，换页就把它抽掉会让人找不到北（用户实测）。
@@ -52,105 +80,135 @@ export function BoardPage() {
       <BoardRail current={slug} className='hidden xl:flex xl:w-[168px] xl:shrink-0' />
 
       <div className='flex min-w-0 flex-1 flex-col gap-4'>
-      <PageHeader
-        title={board.data?.name ?? (board.isError ? '分区' : '正在加载分区…')}
-        description={
-          board.data ? (
-            <span className='flex flex-wrap items-center gap-x-3 gap-y-1'>
-              <span>{board.data.description}</span>
-              <span className='tabular-nums'>
-                {board.data.topic_count} 帖子
-                {board.data.today_count != null ? ' · 今日 ' + board.data.today_count : ''}
-                {board.data.member_count != null ? ' · ' + board.data.member_count + ' 成员' : ''}
+        <PageHeader
+          title={board.data?.name ?? (board.isError ? '分区' : '正在加载分区…')}
+          description={
+            board.data ? (
+              <span className='flex flex-wrap items-center gap-x-3 gap-y-1'>
+                <span>{board.data.description}</span>
+                <span className='tabular-nums'>
+                  {board.data.topic_count} 帖子
+                  {board.data.today_count != null ? ' · 今日 ' + board.data.today_count : ''}
+                </span>
               </span>
-            </span>
-          ) : undefined
-        }
-        actions={<ComposeButton board={slug} />}
-      />
+            ) : undefined
+          }
+          actions={<ComposeButton board={slug} />}
+        />
 
-      {/* 分区信息拿不到：就地说明 + 重试，不把下面的列表一起拖死 */}
-      {board.isError ? (
-        <ErrorState what='分区信息' error={board.error} onRetry={() => void board.refetch()} className='py-8' />
-      ) : null}
+        {/* 分区信息拿不到：就地说明 + 重试，不把下面的列表一起拖死 */}
+        {board.isError ? (
+          <ErrorState what='分区信息' error={board.error} onRetry={() => void board.refetch()} className='py-8' />
+        ) : null}
 
-      <nav aria-label='帖子类型' className='flex flex-wrap items-center gap-2 border-y border-border py-2'>
-        {KINDS.map((k) => (
-          <Button
-            key={k.key || 'all'}
-            ghost={k.key !== kind}
-            primary={k.key === kind}
-            active={k.key === kind}
-            height={ControlsHeight.S}
-            onClick={() =>
-              setParams(
-                (prev) => {
-                  const next = new URLSearchParams(prev);
-                  if (k.key) next.set('kind', k.key);
-                  else next.delete('kind');
-                  return next;
-                },
-                { replace: true },
-              )
+        <div className='flex flex-wrap items-center justify-between gap-2 border-y border-border py-2'>
+          <nav aria-label='帖子类型' className='flex flex-wrap items-center gap-2'>
+            {KINDS.map((k) => (
+              <Button
+                key={k.key || 'all'}
+                ghost={k.key !== kind}
+                primary={k.key === kind}
+                active={k.key === kind}
+                height={ControlsHeight.S}
+                onClick={() => setParam('kind', k.key || null)}
+              >
+                {k.label}
+              </Button>
+            ))}
+          </nav>
+          <span className='flex items-center gap-2'>
+            {/* 视图与首页同一套写法（同一对图标、同一个 ?view= 键），两页之间来回切不会「换了个人做」 */}
+            <span className='text-[12px] text-muted-foreground'>视图</span>
+            <ButtonSet>
+              {(['card', 'compact'] as const).map((v) => (
+                <Button
+                  key={v}
+                  data-testid={'view-' + v}
+                  active={v === view}
+                  primary={v === view}
+                  ghost={v !== view}
+                  inline={false}
+                  height={ControlsHeight.S}
+                  icon={icon16(v === 'card' ? LayoutGrid : List)}
+                  onClick={() => setParam('view', v === 'card' ? null : v)}
+                >
+                  {v === 'card' ? '卡片' : '紧凑列表'}
+                </Button>
+              ))}
+            </ButtonSet>
+          </span>
+        </div>
+
+        {list.isPending ? (
+          <ul className={cn('m-0 list-none p-0', GRID.card)} aria-busy>
+            {[0, 1, 2, 3].map((i) => (
+              <li key={i}>
+                <SquareCardSkeleton />
+              </li>
+            ))}
+          </ul>
+        ) : list.isError ? (
+          <ErrorState what='分区帖子' error={list.error} onRetry={() => void list.refetch()} />
+        ) : items.length === 0 ? (
+          <Empty
+            title={kind ? '这个类型下还没有帖子' : '这个分区还没有帖子'}
+            hint={
+              kind
+                ? '换一个类型看看，或者用「全部」列出这个分区的所有帖子。'
+                : '成为第一个在这里发帖的人：分区决定了这篇会出现在哪个列表里。'
             }
-          >
-            {k.label}
-          </Button>
-        ))}
+            action={
+              <span className='flex flex-wrap items-center justify-center gap-2'>
+                {kind ? <Button onClick={() => setParam('kind', null)}>看全部类型</Button> : null}
+                <ComposeButton board={slug} />
+              </span>
+            }
+          />
+        ) : (
+          <>
+            {view === 'card' ? (
+              <ul className={cn('m-0 list-none p-0', GRID.card)}>
+                {items.map((t) => (
+                  <li key={t.id} className='flex'>
+                    <SquareTopicCard
+                      topic={toCardTopic(t)}
+                      className='w-full'
+                      href={appPath('t/' + encodeURIComponent(t.id))}
+                      authorHref={appPath('u/' + encodeURIComponent(t.author.handle))}
+                    />
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <div className={GRID.compact}>
+                {items.map((t) => (
+                  <CompactTopicRow key={t.id} topic={toCardTopic(t)} href={appPath('t/' + encodeURIComponent(t.id))} />
+                ))}
+              </div>
+            )}
+
+            {list.hasNextPage ? (
+              <div className='flex flex-col items-center gap-1.5'>
+                <Button loader={list.isFetchingNextPage} onClick={() => void list.fetchNextPage()}>
+                  {list.isFetchingNextPage ? '加载中…' : '加载更多'}
+                </Button>
+                <span className='text-[11px] text-muted-foreground'>
+                  每页 {PAGE_LIMIT} 条 · 按游标翻页（不是页码）
+                </span>
+              </div>
+            ) : (
+              <ListEnd total={items.length} />
+            )}
+          </>
+        )}
+
         <Link
           to={routePath('')}
-          className='ml-auto inline-flex items-center gap-1 rounded-[3px] text-[12px] text-muted-foreground outline-none hover:text-primary focus-visible:ring-[3px] focus-visible:ring-ring/50'
+          className='inline-flex w-fit items-center gap-1 rounded-[3px] text-[12px] text-muted-foreground outline-none hover:text-primary focus-visible:ring-[3px] focus-visible:ring-ring/50'
         >
           <ArrowLeft aria-hidden className='size-3.5' />
           全部帖子
         </Link>
-      </nav>
-
-      {list.isPending ? (
-        <ul className='m-0 grid list-none grid-cols-1 gap-3 p-0 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4' aria-busy>
-          {[0, 1, 2, 3].map((i) => (
-            <li key={i}>
-              <SquareCardSkeleton />
-            </li>
-          ))}
-        </ul>
-      ) : list.isError ? (
-        <ErrorState what='分区帖子' error={list.error} onRetry={() => void list.refetch()} />
-      ) : items.length === 0 ? (
-        <Empty
-          title={kind ? '这个类型下还没有帖子' : '这个分区还没有帖子'}
-          hint={
-            kind
-              ? '换一个类型看看，或者用「全部」列出这个分区的所有帖子。'
-              : '成为第一个在这里发帖的人：分区决定了这篇会出现在哪个列表里。'
-          }
-          action={<ComposeButton board={slug} />}
-        />
-      ) : (
-        <>
-          <ul className='m-0 grid list-none grid-cols-1 gap-3 p-0 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4'>
-            {items.map((t) => (
-              <li key={t.id} className='flex'>
-                <SquareTopicCard
-                  topic={toCardTopic(t)}
-                  className='w-full'
-                  href={appPath('t/' + encodeURIComponent(t.id))}
-                  authorHref={appPath('u/' + encodeURIComponent(t.author.handle))}
-                />
-              </li>
-            ))}
-          </ul>
-          {list.hasNextPage ? (
-            <div className='flex justify-center'>
-              <Button loader={list.isFetchingNextPage} onClick={() => void list.fetchNextPage()}>
-                {list.isFetchingNextPage ? '加载中…' : '加载更多'}
-              </Button>
-            </div>
-          ) : (
-            <ListEnd total={items.length} />
-          )}
-        </>
-      )}
       </div>
     </div>
   );

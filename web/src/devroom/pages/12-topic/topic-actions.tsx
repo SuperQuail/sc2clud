@@ -1,7 +1,7 @@
 import type { ReactNode } from 'react';
 import Button from '@jetbrains/ring-ui-built/components/button/button';
 import { ControlsHeight } from '@jetbrains/ring-ui-built/components/global/controls-height';
-import { Bookmark, Eye, Flag, Heart, Link2, MessageSquare, Pencil } from 'lucide-react';
+import { Bookmark, Eye, Flag, Heart, Link2, MessageSquare, Pencil, Trash2 } from 'lucide-react';
 import { icon16 } from '@/ui/icons';
 
 // 正文下的动作条。**每个动作都必须有可观察的结果**（缺陷处理总纲 §7）：
@@ -25,24 +25,32 @@ export function TopicActions({
   onCopyLink,
   onReport,
   onEdit,
+  /** 删帖：设计稿里没有这一颗，但「发错了删不掉」是盲测报过的缺陷——所以留着，由宿主决定给不给 */
+  onDelete,
   /** 设计稿反馈那一行：由页面插在动作条下面 */
   designNote,
+  /** 删除确认（受控）：贴着删除按钮出现，别让人滚到页尾去找 */
+  deleteConfirm,
 }: {
   liked: boolean;
   bookmarked: boolean;
   likeCount: number;
-  bookmarkCount: number;
+  /** 收藏数：后端详情不回这个数（dto.go 的 TopicDetailDTO 里没有），拿不到就不显示这一格数字，
+   *  不写一个会骗人的 0 */
+  bookmarkCount?: number;
   replyCount: number;
   viewCount: number;
   reported: boolean;
-  onToggleLike: () => void;
-  onToggleBookmark: () => void;
+  onToggleLike?: () => void;
+  onToggleBookmark?: () => void;
   onCopyLink?: () => void;
   onReport?: () => void;
-  /** 不给就不渲染「编辑」（不是作者、或没有 post.update_own） */
+  /** 不给就不渲染「编辑」（不是作者、或没有 topic.edit.own） */
   onEdit?: () => void;
-  /** 设计稿反馈那一行：由页面插在动作条下面 */
+  /** 不给就不渲染「删除」 */
+  onDelete?: () => void;
   designNote?: ReactNode;
+  deleteConfirm?: ReactNode;
 }) {
   return (
     <div className='flex flex-col gap-1.5'>
@@ -70,7 +78,7 @@ export function TopicActions({
         >
           收藏
         </Button>
-        <span className='tabular-nums text-[13px]'>{bookmarkCount}</span>
+        {bookmarkCount != null ? <span className='tabular-nums text-[13px]'>{bookmarkCount}</span> : null}
         <Button ghost inline={false} height={ControlsHeight.S} icon={icon16(Link2)} onClick={onCopyLink}>
           分享
         </Button>
@@ -99,6 +107,19 @@ export function TopicActions({
             编辑
           </Button>
         ) : null}
+        {onDelete ? (
+          <Button
+            ghost
+            inline={false}
+            height={ControlsHeight.S}
+            icon={icon16(Trash2)}
+            aria-label='删除这篇帖子'
+            data-testid='topic-delete'
+            onClick={onDelete}
+          >
+            删除
+          </Button>
+        ) : null}
         <span className='ml-auto flex items-center gap-4 text-[12px] text-muted-foreground'>
           <span className='inline-flex items-center gap-1'>
             <MessageSquare aria-hidden className='size-3.5' />
@@ -110,6 +131,7 @@ export function TopicActions({
           </span>
         </span>
       </div>
+      {deleteConfirm}
       {designNote}
     </div>
   );

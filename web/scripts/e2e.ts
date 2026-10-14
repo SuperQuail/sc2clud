@@ -208,6 +208,174 @@ const checks: Check[] = [
       return [{ name: '超限输入被截到 20000', ok: len === 20000, detail: '实际=' + len }];
     },
   },
+  // ---- 12 · 帖子内容页（房间与真站共用同一份版式：这些断言就是那一屏的验收）----
+  {
+    name: 'topic-12-layout',
+    url: '?page=12-topic',
+    run: async (p) => {
+      const tabs = await p.count('[data-testid=topic-tabs] button');
+      const current = await p.count('[data-testid=topic-tabs] [aria-current=page]');
+      const left = await p.box("[aria-label='分区与分区内导航']");
+      const main = await p.box('[data-testid=topic-main]');
+      const rail = await p.box('[data-testid=topic-rail]');
+      const railKids = await p.eval<number>("document.querySelector('[data-testid=topic-rail]')?.children.length ?? -1");
+      const leftHeads = await p.eval<number>(
+        "document.querySelectorAll(\"[aria-label='分区与分区内导航'] h2\").length",
+      );
+      const leftBoards = await p.eval<number>(
+        "document.querySelectorAll(\"[aria-label='分区与分区内导航'] section:first-child a\").length",
+      );
+      const leftNav = await p.eval<number>(
+        "document.querySelectorAll(\"[aria-label='分区与分区内导航'] section:last-child button\").length",
+      );
+      const h1 = await p.text('[data-testid=topic-main] h1');
+      const total = await p.text('[data-testid=comment-total]');
+      const sourceLinks = await p.count('[data-testid=topic-main] a[href*=sources]');
+      const blockedTiles = await p.eval<number>(
+        "[...document.querySelectorAll('[aria-disabled=true]')].filter((e) => e.closest('[data-testid=topic-main]')).length",
+      );
+      const railNudge = await p.count('[data-testid=issue-nudge-rail]');
+      const inlineNudge = await p.count('[data-testid=issue-nudge-inline]');
+      return [
+        { name: '两个大页签，当前态只有一个（aria-current）', ok: tabs === 2 && current === 1, detail: tabs + ' 个 / current=' + current },
+        {
+          name: '三栏并排：左栏 200 / 中栏 / 右栏 248，从左到右',
+          ok: !!left && !!main && !!rail && left.x < main.x && main.x < rail.x,
+          detail: [left?.x, main?.x, rail?.x].map((n) => Math.round(n ?? -1)).join(' → '),
+        },
+        {
+          name: '左栏 = 分区列表 + 分区内导航（原来真站只有分区列表）',
+          ok: leftHeads === 2 && leftBoards === 5 && leftNav === 5,
+          detail: '标题' + leftHeads + ' / 分区' + leftBoards + ' / 筛选' + leftNav,
+        },
+        { name: '中栏有全文标题与评论数', ok: !!h1 && h1.length > 0 && total === '128', detail: '评论=' + total },
+        {
+          name: '下载来源：房间里不可导航（3 个转链端点）',
+          ok: sourceLinks === 0 && blockedTiles === 3,
+          detail: '可点=' + sourceLinks + ' 已标不可点=' + blockedTiles,
+        },
+        {
+          name: '右栏四件齐 + 正文末尾也有反馈入口',
+          ok: railKids === 4 && railNudge === 1 && inlineNudge === 1,
+          detail: '右栏' + railKids + ' / 入口' + railNudge + '+' + inlineNudge,
+        },
+      ];
+    },
+  },
+  {
+    name: 'topic-12-report',
+    url: '?page=12-topic',
+    run: async (p) => {
+      const before = await p.attr('[data-testid=topic-report]', 'aria-label');
+      await p.clickSelector('[data-testid=topic-report]');
+      await p.wait(400);
+      const opened = await p.count('[role=dialog]');
+      const reasons = await p.count('[role=dialog] input[type=radio]');
+      // 不选事由就提交：必须被挡住（管理员按事由分类，空事由进队列没法处理）
+      await p.clickSelector('[data-testid=report-submit]');
+      await p.wait(300);
+      const alerted = await p.count('[role=dialog] [role=alert]');
+      const stillOpen = await p.count('[role=dialog]');
+      // 选一条事由（Radio 的 input 是视觉隐藏的，坐标点击不可靠）再提交
+      await p.eval("document.querySelectorAll('[role=dialog] input[type=radio]')[0].click()");
+      await p.wait(150);
+      await p.clickSelector('[data-testid=report-submit]');
+      await p.wait(500);
+      const after = await p.attr('[data-testid=topic-report]', 'aria-label');
+      const closed = await p.count('[role=dialog]');
+      const receipt = await p.eval<string | null>(
+        "document.querySelector('[data-testid=design-action-note]')?.textContent ?? null",
+      );
+      return [
+        { name: '点举报弹出弹层，事由 5 条单选', ok: opened === 1 && reasons === 5, detail: '弹层' + opened + ' / 事由' + reasons },
+        { name: '不选事由提交被挡住（有提示且弹层不关）', ok: alerted === 1 && stillOpen === 1, detail: '提示=' + alerted },
+        { name: '提交后按钮变「已举报」且弹层关闭', ok: !!before && !!after && before !== after && closed === 0, detail: before + ' → ' + after },
+        { name: '回执落在动作条下面（不是静默）', ok: !!receipt && receipt.length > 0, detail: (receipt ?? '').slice(0, 26) },
+      ];
+    },
+  },
+  {
+    name: 'topic-12-edit',
+    url: '?page=12-topic',
+    run: async (p) => {
+      await p.clickSelector('[data-testid=topic-edit]');
+      await p.wait(400);
+      const opened = await p.count('[role=dialog]');
+      const idleDisabled = await p.attr('[data-testid=edit-save]', 'disabled');
+      await p.focus('[role=dialog] input');
+      await p.selectAll();
+      await p.type('改过的标题');
+      await p.wait(300);
+      const dirtyDisabled = await p.attr('[data-testid=edit-save]', 'disabled');
+      const clicked = await p.clickSelector('[data-testid=edit-save]');
+      await p.wait(500);
+      const h1 = await p.text('[data-testid=topic-main] h1');
+      const meta = await p.text('[data-testid=topic-main] p');
+      const closed = await p.count('[role=dialog]');
+      return [
+        { name: '编辑弹层打开，没改动时「保存」是禁用的', ok: opened === 1 && idleDisabled !== null, detail: '弹层' + opened },
+        {
+          name: '改完保存：标题与「最后编辑」就地变，弹层关闭',
+          ok: clicked && dirtyDisabled === null && h1 === '改过的标题' && (meta ?? '').includes('刚刚') && closed === 0,
+          detail: 'h1=' + (h1 ?? '') + ' / meta=' + (meta ?? '').slice(0, 30),
+        },
+      ];
+    },
+  },
+  {
+    name: 'topic-12-review',
+    url: '?page=12-topic&review=rejected',
+    run: async (p) => {
+      const rejected = await p.count("[data-testid=review-banner][data-state=rejected]");
+      const resubmit = await p.count('[data-testid=topic-resubmit]');
+      const reason = await p.eval<number>("document.querySelectorAll('[data-testid=review-banner] p').length");
+      const hint = await p.count('[data-testid=author-only-hint]');
+      await p.clickSelector('[data-testid=topic-resubmit]');
+      await p.wait(300);
+      const pending = await p.count("[data-testid=review-banner][data-state=pending]");
+      const gone = await p.count('[data-testid=topic-resubmit]');
+      return [
+        {
+          name: '未通过：横幅带审核理由 + 「重新提交审核」+ 只有作者可见的说明',
+          ok: rejected === 1 && resubmit === 1 && reason >= 1 && hint === 1,
+          detail: '理由段=' + reason,
+        },
+        { name: '点「重新提交审核」真的回到审核中（按钮消失）', ok: pending === 1 && gone === 0, detail: 'pending=' + pending },
+      ];
+    },
+  },
+  {
+    name: 'topic-12-comments',
+    url: '?page=12-topic',
+    run: async (p) => {
+      const before = await p.text('[data-testid=comment-total]');
+      await p.focus('[contenteditable=true]');
+      await p.type('自动化断言发的回复');
+      await p.wait(300);
+      await p.clickSelector('[data-testid=reply-publish]');
+      await p.wait(500);
+      const after = await p.text('[data-testid=comment-total]');
+      // 只在**评论楼层**（article）里找这句话：发布后输入框里还留着刚打完的字，不能拿整页文本当证据
+      const rows = "document.querySelectorAll('article')";
+      const countRows = (s: string) =>
+        p.eval<number>("[..." + rows + "].filter((a) => a.textContent.includes('" + s + "')).length");
+      const visible = (await countRows('自动化断言发的回复')) > 0;
+      // 删掉刚发的那条（只有自己的回复才给删除入口）
+      const deletable = await p.count('[data-testid=comment-delete]');
+      await p.clickSelector('[data-testid=comment-delete]');
+      await p.wait(400);
+      const back = await p.text('[data-testid=comment-total]');
+      const goneText = (await countRows('自动化断言发的回复')) === 0;
+      return [
+        {
+          name: '发布：列表里真的多一条，评论数 +1',
+          ok: before === '128' && after === '129' && visible,
+          detail: before + ' → ' + after,
+        },
+        { name: '删除自己的回复：计数 -1 且正文消失', ok: deletable > 0 && back === '128' && goneText, detail: back ?? '无' },
+      ];
+    },
+  },
 ];
 
 const server = spawn('node', ['scripts/serve-preview.ts', 'preview-dist', String(PORT)], { stdio: 'ignore' });

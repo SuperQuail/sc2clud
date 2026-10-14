@@ -23,14 +23,17 @@ export type Board = {
   hint: string;
 };
 
-/** 分区内导航（全部/精华/资源/讨论/公告）——URL 上的 kind/featured 组合 */
-export type BoardNav = { key: string; label: string; count: number };
+/** 分区内导航（全部/精华/资源/讨论/公告）——URL 上的 kind/featured 组合。
+ *  count 可缺：后端没有「每个筛选各有多少帖」这个数，真站只能先不给（给了 0 会被当成「这里没有帖子」）。 */
+export type BoardNav = { key: string; label: string; count?: number };
 
 /** GET /api/v1/topics/{id} 里的 sources[] —— 资源帖的下载来源 */
 export type TopicSource = {
   id: string;
-  /** netdisk = 网盘；github = 代码托管 */
-  provider: 'netdisk' | 'github';
+  /** **开放集合**：词表只有两处 —— 后端 forum/internal/forum/sources.go 的 switch 与
+   *  lib/api/forum.ts 的 SOURCE_PROVIDERS（12 个）。设计件不认业务词，只按它挑图标；
+   *  认不出的（含房间里老站的 netdisk）一律回落成通用图标 + 来源自己的 label。 */
+  provider: string;
   label: string;
   /** 302 转链按钮指向的端点，形如 /api/v1/topics/{id}/sources/{sid}/go */
   go_path: string;
@@ -72,7 +75,8 @@ export type TopicAuthor = {
   nickname: string;
   avatar: string;
   role: { key: string; name: string } | null;
-  title: { name: string; color: string } | null;
+  /** 颜色可缺省：后端 title.color 允许为空，TitleBadge 自己会回落到主题色 */
+  title: { name: string; color?: string | null } | null;
   bio: string;
   level: number;
   /** 当前等级内已获得的经验 */

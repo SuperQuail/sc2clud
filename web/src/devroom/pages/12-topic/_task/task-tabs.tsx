@@ -33,7 +33,11 @@ export function TopicTaskTabs({ value, onChange, onOpenIssue, issueCount }: Topi
   }
 
   return (
-    <nav aria-label='帖子页视图' className='flex flex-wrap items-center gap-2 border-b border-border pb-2'>
+    <nav
+      data-testid='topic-tabs'
+      aria-label='帖子页视图'
+      className='flex flex-wrap items-center gap-2 border-b border-border pb-2'
+    >
       {TABS.map(({ key, label, icon }) => {
         const selected = key === value;
         const count = key === 'issue' && issueCount ? issueCount : 0;

@@ -33,6 +33,8 @@ const (
 	keyThreshold1   = "ai.review.report_threshold_1"
 	keyThreshold2   = "ai.review.report_threshold_2"
 	keyAIDailyLimit = "ai.review.daily_limit_per_topic"
+	// AI 审核的**开关**进 site_settings（d7 §2.2）；模型/提示词/密钥属于 ai_config 表，不在这里。
+	keyAIEnabled = "ai.review.enabled"
 )
 
 // 值域的写法（SettingSpec.Kind）。
@@ -97,6 +99,9 @@ func SettingSpecs() []SettingSpec {
 			Min: 2, Max: 100, Default: "5", Hint: "累计到这么多 → 直接进人工队列（防举报风暴）"},
 		{Key: keyAIDailyLimit, Label: "单帖每日 AI 调用上限", Group: "内容审核", Kind: kindInt,
 			Min: 1, Max: 20, Default: "3", Hint: "同一篇主题一天最多调几次，防刷"},
+		// d7 §2.2：AI 审核的开关在这里（模型与提示词在 ai_config 表，密钥只从 env 来）。
+		{Key: keyAIEnabled, Label: "启用 AI 审核", Group: "内容审核", Kind: kindToggle,
+			Default: valueOff, Hint: "与 ai_config.enabled 是「且」；关闭时一个外呼都不发"},
 	}
 }
 

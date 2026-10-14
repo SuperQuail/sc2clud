@@ -9,14 +9,19 @@ import { protoTitle } from '@/devroom/room-links';
 // 302 仍走 /api/v1/.../go（后端方案 §21.2 assets/go 同款形状），前端不暴露真实网盘直链。
 // 「还有没有人维护」是独立信息，原来在行右端，现在弱化到每列底部一行小字。
 
-/** 站点表：**开放映射**（key 是 provider 字符串，不是联合类型）——加新站点只加一行，不改这里的分支 */
+/** 站点表：**开放映射**（key 是 provider 字符串，不是联合类型）——加新站点只加一行，不改这里的分支。
+ *  key 就是后端与 lib/api/forum 的 SOURCE_PROVIDERS 词表（12 个）：多一个少一个都会在真站上显示成「其他」。
+ *  netdisk 是老站词，只在房间里还在用（保留一行，免得房间那张图变成「其他」）。 */
 const SOURCE_SITE: Record<string, { label: string; Icon: LucideIcon }> = {
   netdisk: { label: '网盘', Icon: CloudDownload },
   github: { label: 'GitHub', Icon: GitBranch },
+  gitee: { label: 'Gitee', Icon: GitBranch },
   baidu: { label: '百度网盘', Icon: CloudDownload },
   aliyun: { label: '阿里云盘', Icon: HardDrive },
   quark: { label: '夸克网盘', Icon: Box },
   lanzou: { label: '蓝奏云盘', Icon: FileArchive },
+  pan123: { label: '123 云盘', Icon: CloudDownload },
+  weiyun: { label: '腾讯微云', Icon: Cloud },
   onedrive: { label: 'OneDrive', Icon: Cloud },
   mega: { label: 'MEGA', Icon: Mountain },
   website: { label: '官方网站', Icon: Globe },
@@ -29,7 +34,9 @@ function siteOf(s: TopicSource): { label: string; Icon: LucideIcon } {
   return SOURCE_SITE[key] ?? { ...SOURCE_SITE.other!, label: s.label };
 }
 
-export function ResourceSources({ sources }: { sources: TopicSource[] }) {
+// linked=true 时整个 logo 是 <a href={go_path}>：点下去由服务端计数后 302 到真实地址，前端不拼外链。
+// 房间（/dev/devroom/）没有这个端点，点它会走到房间外 —— 所以房间里传 false，渲染成不可导航的圆标。
+export function ResourceSources({ sources, linked = false }: { sources: TopicSource[]; linked?: boolean }) {
   if (sources.length === 0) {
     return (
       <section className='flex flex-col gap-2 rounded-lg border border-dashed border-border p-4'>
@@ -49,7 +56,7 @@ export function ResourceSources({ sources }: { sources: TopicSource[] }) {
       </h2>
       <ul className='flex flex-wrap items-stretch gap-x-2 gap-y-3'>
         {sources.map((s) => (
-          <SourceTile key={s.id} source={s} />
+          <SourceTile key={s.id} source={s} linked={linked} />
         ))}
       </ul>
     </section>
@@ -60,21 +67,34 @@ export function ResourceSources({ sources }: { sources: TopicSource[] }) {
 // 整个 logo 就是一个 <a href={go_path}>：点下去由服务端计数后 302 到真实地址，前端不拼外链。
 // 站点名不放在圆里——中文站名比图标宽得多，塞进圆圈就只能缩到 9px。
 // 高度用上对齐（items-start + 内容贴底）：一列多一行提取码时，圆不会被顶下去。
-function SourceTile({ source }: { source: TopicSource }) {
+function SourceTile({ source, linked }: { source: TopicSource; linked: boolean }) {
   const site = siteOf(source);
   const { Icon } = site;
+  // 圆标的两种形态共用同一套 class：链接版是可聚焦的 <a>（带上 hover 与焦点环），
+  // 房间版是 aria-disabled 的 <span>，原因写在 title 里（盲审一号：不可点要说清为什么）。
+  const circle =
+    'grid size-11 shrink-0 place-items-center rounded-full bg-card text-muted-foreground outline-none ring-1 ring-border';
   return (
     <li className='flex w-[116px] flex-col items-center gap-1.5 text-center'>
-      {/* go_path 是服务端转链端点（§21.2 的 assets/go 同款）：房间里没有这个端点，
-          点 <a href> 会走到房间外（/dev/api/...）→ 改成不可导航，并把原因写在 title 里。 */}
-      <span
-        aria-disabled='true'
-        title={protoTitle('下载转链端点') + ' · ' + site.label + ' · ' + source.label}
-        className='grid size-11 shrink-0 cursor-not-allowed place-items-center rounded-full bg-card text-muted-foreground outline-none ring-1 ring-border'
-      >
-        <Icon aria-hidden className='size-6' />
-        <span className='sr-only'>{'未做：打开 ' + site.label + '：' + source.label}</span>
-      </span>
+      {linked ? (
+        <a
+          href={source.go_path}
+          title={'打开 ' + site.label + '：' + source.label}
+          className={circle + ' hover:ring-primary focus-visible:ring-[3px] focus-visible:ring-ring/50'}
+        >
+          <Icon aria-hidden className='size-6' />
+          <span className='sr-only'>{'打开 ' + site.label + '：' + source.label}</span>
+        </a>
+      ) : (
+        <span
+          aria-disabled='true'
+          title={protoTitle('下载转链端点') + ' · ' + site.label + ' · ' + source.label}
+          className={circle + ' cursor-not-allowed'}
+        >
+          <Icon aria-hidden className='size-6' />
+          <span className='sr-only'>{'未做：打开 ' + site.label + '：' + source.label}</span>
+        </span>
+      )}
       <span className='w-full truncate text-[12px] font-medium text-foreground' title={source.label}>
         {site.label}
       </span>

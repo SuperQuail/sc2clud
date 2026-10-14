@@ -36,7 +36,7 @@ export function SquareTopicCard({
       <div className='flex min-w-0 flex-1 flex-col gap-2 p-3'>
         <span className='flex items-center gap-1.5'>
           <TopicKindTag kind={topic.kind} />
-          <TopicMark pinned={topic.pinned} featured={topic.featured_at != null} />
+          <TopicMark pinned={topic.pinned} featured={topic.featured === true} />
         </span>
 
         <h3 className='m-0 text-[14px] leading-[1.4] font-medium text-foreground'>

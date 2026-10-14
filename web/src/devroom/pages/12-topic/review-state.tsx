@@ -55,6 +55,8 @@ export function ReviewStateBanner({
     : '正在自动检查，通常几十秒内完成；期间你可以继续编辑。';
   return (
     <section
+      data-testid='review-banner'
+      data-state={state}
       aria-label={state === 'pending' ? '审核中' : '未通过审核'}
       className={'flex flex-col gap-1 rounded-lg border px-3 py-2.5 ' + tone.box}
     >
@@ -140,7 +142,10 @@ export function ReviewResubmitButton({ onResubmit }: { onResubmit?: () => void }
 /** 审核态下「这篇只有你能看到」的提示：进度条里也有一个，两处同一种读法 */
 export function AuthorOnlyHint() {
   return (
-    <p className='flex flex-wrap items-center gap-1.5 text-[12px] text-muted-foreground'>
+    <p
+      data-testid='author-only-hint'
+      className='flex flex-wrap items-center gap-1.5 text-[12px] text-muted-foreground'
+    >
       <ShieldAlert aria-hidden className='size-3.5 shrink-0' />
       当前只有你自己（与管理员）能看到这篇；通过审核后才会出现在分区列表里。
     </p>

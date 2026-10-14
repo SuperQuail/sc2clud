@@ -25,7 +25,7 @@ export function CompactTopicRow({ topic, href }: { topic: Topic; href?: string }
           ) : (
             <span className='min-w-0 truncate text-[14px] font-medium text-foreground'>{topic.title}</span>
           )}
-          <TopicMark pinned={topic.pinned} featured={topic.featured_at != null} />
+          <TopicMark pinned={topic.pinned} featured={topic.featured === true} />
           <TopicKindTag kind={topic.kind} />
           <span className='ml-auto shrink-0 whitespace-nowrap text-[11px] text-muted-foreground tabular-nums'>
             <Username nickname={topic.author.nickname} size='sm' />
