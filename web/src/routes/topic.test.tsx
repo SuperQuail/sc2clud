@@ -150,6 +150,10 @@ const mocks = vi.hoisted(() => ({
   posts: { current: null as Record<string, unknown> | null },
   followBoard: vi.fn(),
   unfollowBoard: vi.fn(),
+  /** 作者关注（D19）：user 侧那三条 —— 前端此前一直没接，产品页上根本没有这颗按钮 */
+  followUser: vi.fn(() => Promise.resolve({ target: 'user', handle: 'someone-else', following: true, follower_count: 1 })),
+  unfollowUser: vi.fn(() => Promise.resolve({ target: 'user', handle: 'someone-else', following: false, follower_count: 0 })),
+  userFollowState: { current: { target: 'user', handle: 'someone-else', following: false, follower_count: 0 } as Record<string, unknown> },
   /** GET /boards/{slug}/follow 的回执（follow.State 逐字形状） */
   followState: { current: { target: 'board', slug: 'custom-campaign', following: false, follower_count: 0 } as Record<string, unknown> },
   /** @ 提及候选（GET /search?type=users）：空数组 = 没敲 @ 时不取，敲了才有 */
@@ -184,6 +188,9 @@ vi.mock('@/lib/api/follow', () => ({
   fetchBoardFollow: () => Promise.resolve(mocks.followState.current),
   followBoard: mocks.followBoard,
   unfollowBoard: mocks.unfollowBoard,
+  fetchUserFollow: () => Promise.resolve(mocks.userFollowState.current),
+  followUser: mocks.followUser,
+  unfollowUser: mocks.unfollowUser,
 }));
 vi.mock('@/lib/perms', () => ({
   useSession: () => ({ session: { handle: 'Alenger', nickname: '爱兰琪尔', avatar: null, perms: [] }, isLoggedIn: true, isLoading: false }),
@@ -515,5 +522,24 @@ it('审核横幅：后端说已转人工时，文案换成「已转人工」而�
   expect(banner.textContent).not.toContain('正在自动检查');
   // 「谁在判」那一层也要说清（作者最想知道的是「还要等多久」）
   expect(banner.textContent).toContain('1 个工作日内有结果');
+  mocks.topic.current = null;
+});
+
+// 作者关注（D19，用户实测「右侧根本没有关注按钮，怀疑根本没做」）：
+// 后端 PUT/DELETE /users/{handle}/follow 早就有了（K-REL 的 L5），**前端一直零调用** ——
+// 这条盯宿主接线本身：自己看自己不画；看别人时那颗按钮出现、点了真的打到那条端点。
+it('作者关注：自己看自己不画按钮；看别人时点了真的调 /users/{handle}/follow', async () => {
+  // ① 自己看自己：WIRE 的作者就是登录者（Alenger），按钮必须不出现
+  renderPage();
+  await screen.findByTestId('topic-main');
+  expect(screen.queryByTestId('author-follow')).toBeNull();
+
+  // ② 看别人：换掉作者 handle，按钮出现，点了调 followUser
+  cleanup();
+  mocks.topic.current = { author: { ...WIRE.author, handle: 'someone-else', nickname: '别人' } };
+  renderPage();
+  const btn = await screen.findByTestId('author-follow');
+  fireEvent.click(btn);
+  await waitFor(() => expect(mocks.followUser).toHaveBeenCalledWith('someone-else'));
   mocks.topic.current = null;
 });

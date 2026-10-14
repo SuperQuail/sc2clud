@@ -24,7 +24,7 @@ import {
 } from '@/lib/api/forum';
 import { fetchUserProfile, searchUsers } from '@/lib/api/user';
 import { createDonation, fetchUserChannels } from '@/lib/api/rewards';
-import { fetchBoardFollow, followBoard, unfollowBoard } from '@/lib/api/follow';
+import { fetchBoardFollow, fetchUserFollow, followBoard, followUser, unfollowBoard, unfollowUser } from '@/lib/api/follow';
 import { formatCents } from '@/lib/format';
 import { DesignActionNote } from '@/devroom/pages/12-topic/design-action';
 import { TopicView } from '@/devroom/pages/12-topic/topic-view';
@@ -104,6 +104,20 @@ export function TopicPage() {
     mutationFn: (on: boolean) => (on ? followBoard(boardSlug) : unfollowBoard(boardSlug)),
     // 幂等且回执就是同一份 State，所以直接写进缓存，不回读一次（与 routes/board.tsx 同款）
     onSuccess: (state) => queryClient.setQueryData(qk.followBoard(boardSlug), state),
+  });
+
+  // 作者关注（拍板 08 · L5 的 user 侧；端点 K-REL 早做完了，**前端一直没接** —— D19 实测「右侧根本没有关注按钮」）。
+  // 与上面那一格同一个形状：读一份 State、写回同一份回执，态以服务端为准。
+  // 自己看自己不画（authorFollow 传 undefined）；未登录给 loginHref，那颗是去登录的链接而不是死按钮。
+  const follow = useQuery({
+    queryKey: qk.followUser(authorHandle),
+    queryFn: ({ signal }) => fetchUserFollow(authorHandle, signal),
+    enabled: authorHandle !== '',
+    staleTime: 60_000,
+  });
+  const followToggle = useMutation({
+    mutationFn: (on: boolean) => (on ? followUser(authorHandle) : unfollowUser(authorHandle)),
+    onSuccess: (state) => queryClient.setQueryData(qk.followUser(authorHandle), state),
   });
 
   // 作者卡片的等级 / 经验 / 头衔只有 /users/{handle} 有（主题详情的 author 只有 handle/nickname/bio/level/joined_at）
@@ -371,6 +385,21 @@ export function TopicPage() {
       // 打赏（L1）：收款码来自 GET /users/{handle}/channels（作者关掉展示开关时后端回空数组）。
       // 作者本人看不到打赏位（后端拒绝自己给自己打赏）；**没有登录的人**看得到码、看得到「去登录」
       // —— 扫码付款本来就不需要账号，只有「登记申报」才要。
+      authorFollow={
+        me.handle === authorHandle
+          ? undefined
+          : loggedIn
+            ? {
+                following: follow.data?.following ?? false,
+                pending: followToggle.isPending,
+                onToggle: () => followToggle.mutate(!(follow.data?.following ?? false)),
+              }
+            : {
+                following: false,
+                onToggle: () => {},
+                loginHref: appPath('login?next=' + encodeURIComponent(routePath('u/' + authorHandle))),
+              }
+      }
       donateIsSelf={t.author.handle === me.handle}
       donateSettingsHref={appPath('settings#payment-channels')}
       onDonate={(v: { channelId: string; amountCents: number }) =>
