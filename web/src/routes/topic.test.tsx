@@ -82,6 +82,8 @@ const mocks = vi.hoisted(() => ({
   updateTopic: vi.fn(),
   /** 详情响应的覆盖（默认 null = 用 WIRE）。B6 那条要靠它演「保存后服务端把 review_state 打回 pending」。 */
   topic: { current: null as Record<string, unknown> | null },
+  /** 回复列表响应的覆盖（默认 null = 空列表）。J3 那条要喂一条「后端没下发 dislike_count」的评论。 */
+  posts: { current: null as Record<string, unknown> | null },
 }));
 
 vi.mock('@/lib/api/forum', async (orig) => {
@@ -89,7 +91,7 @@ vi.mock('@/lib/api/forum', async (orig) => {
   return {
     ...actual,
     fetchTopic: () => Promise.resolve({ ...WIRE, ...(mocks.topic.current ?? {}) }),
-    fetchPosts: () => Promise.resolve({ items: [], next: null }),
+    fetchPosts: () => Promise.resolve(mocks.posts.current ?? { items: [], next: null }),
     fetchBoards: () => Promise.resolve([BOARD]),
     createReport: mocks.createReport,
     deleteTopic: mocks.deleteTopic,
@@ -234,4 +236,44 @@ it('删帖与删回复打到各自的端点（帖子级 / 楼层级是两个动�
   fireEvent.click(screen.getByTestId('topic-delete'));
   fireEvent.click(screen.getByTestId('topic-delete-confirm'));
   await waitFor(() => expect(mocks.deleteTopic).toHaveBeenCalledWith(WIRE.id));
+});
+
+// J3（拍板第二轮）：踩数是**按身份下发**的 —— 后端给普通用户 / 游客的 PostDTO 里**根本没有**
+// `dislike_count` 这个键（dto.go 带 omitempty，只有管理员以上与内容作者拿得到）。
+// 所以那一格要回答的是「**我自己**点没点」：状态来自 my_vote（后端一直给），不是数字。
+//
+// 为什么断言写成「按可读名找那颗按钮」而不是「里面没有数字」：**没有数字是两件事共有的结果**
+// （后端没下发、或前端把 my_vote 读错成 0 都长这样），只有把「我踩过」做成按钮的可读名，
+// 「显示的是我自己点没点」才是能被证伪的一句话。
+it('J3：后端不下发 dislike_count 时，非特权用户看到的是「我自己点没点」，且不显示数字', async () => {
+  mocks.posts.current = {
+    items: [
+      {
+        id: 'p-2',
+        parent_id: null,
+        floor: 2,
+        author: { handle: 'tang', nickname: '唐', avatar_hash: null },
+        content_md: '我也踩了一脚。',
+        content_html: '<p>我也踩了一脚。</p>',
+        created_at: '2026-10-13T01:00:00Z',
+        updated_at: '2026-10-13T01:00:00Z',
+        like_count: 3,
+        // **故意没有 dislike_count 这个键**：后端对普通用户 / 游客就是这么发的（DTO 的 omitempty）
+        my_vote: -1,
+      },
+    ],
+    next: null,
+  };
+  renderPage();
+  await screen.findByTestId('topic-main');
+  await screen.findByText('我也踩了一脚。');
+
+  // 「我自己点过踩」：那颗按钮读作「取消点踩」（= 已经踩过），且带选中态
+  const down = await screen.findByRole('button', { name: '取消点踩' });
+  expect(down.className).toContain('ring-button-active');
+  // 踩数没下发，界面不许替后端补一个 0 出来 —— 这一格里一个数字都没有
+  expect(down.textContent).toBe('');
+  // 反方向：没有哪一条是「没踩过」的形态 —— 否则「我点没点」就分不出来了
+  expect(screen.queryByRole('button', { name: '点踩' })).toBeNull();
+  mocks.posts.current = null;
 });

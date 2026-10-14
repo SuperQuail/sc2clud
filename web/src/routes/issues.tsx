@@ -97,15 +97,11 @@ function toComment(c: ApiIssueComment, replies: ApiIssueComment[]): CommentData 
     body: x.body_html,
     createdAt: formatTime(x.created_at),
     likes: x.like_count,
-    // J3：踩数**按身份下发** —— 普通用户 / 游客的响应里没有这个键（DTO 带 omitempty）。
-    // 这里**故意不回落成 0**：`?? 0` 会把「接口没给」变成「0 个踩」，等于前端替后端把这个数补出来。
-    // 共享件 @/ui/comment 的 CommentData.dislikes 目前是必填 number（冻结目录），
-    // 所以类型上仍传 undefined —— 它在 CommentActions 里渲染成空串，也就是**那一格不显示数字**，
-    // 这正是 J3 在「不下发」时该有的样子；把那个字段改成可选要 Lead 授权（见进度文件的阻塞）。
-    // 共享件 @/ui/comment 的 CommentData.dislikes 是必填 number（冻结目录），所以类型上给 0；
-    // 而 `CommentActions` 对 0 的渲染就是**空串**（`dislikes || ''`）—— 也就是那一格不显示数字。
-    // 两个数不是一回事，但**用户看到的东西是一样的**：不下发 = 看不见。改类型要 Lead 授权。
-    dislikes: x.dislike_count ?? 0,
+    // J3（拍板）：踩数**按身份下发** —— 普通用户 / 游客的响应里没有这个键（DTO 带 omitempty），
+    // 所以这里**故意不回落成 0**：`?? 0` 会把「接口没给」变成「0 个踩」，等于前端替后端把这个数补出来。
+    // CommentData.dislikes 已是可选：undefined 传到 CommentActions 就是**那一格不显示数字**，
+    // 「我自己点没点」由下面的 disliked（my_vote）回答。
+    dislikes: x.dislike_count,
     // 真源是 my_vote（dto.go:198），不是 viewer.value —— 读错字段时赞踩态恒为假且不报错
     liked: x.my_vote === 1,
     disliked: x.my_vote === -1,

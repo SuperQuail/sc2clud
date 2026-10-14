@@ -52,10 +52,9 @@ export function toComments(posts: Post[]): CommentData[] {
     likes: p.like_count,
     // J3（拍板）：踩数**按身份下发** —— 后端给普通用户 / 游客的响应里根本没有 `dislike_count` 这个键
     // （DTO 上带 omitempty）。所以这里**不能回落成 0**：`?? 0` 会把「接口没下发」渲染成「0 个踩」，
-    // 等于前端把这根信任边界又补回来了（数字本来就不该到这里，前端补一个 0 只是让它看起来有值）。
-    // 共享件 @/ui/comment 的 CommentData.dislikes 仍是必填 number，所以那一层照原样收 0 ——
-    // 真正的「不显示那一格」要改 @/ui/comment/comment-actions.tsx，那是冻结目录（见进度文件的阻塞）。
-    dislikes: p.dislike_count ?? 0,
+    // 等于前端把这根信任边界又补回来了。CommentData.dislikes 已是可选，undefined 一路传到
+    // CommentActions 就是「那一格不显示数字」，而「我自己点没点」由下面的 disliked 回答。
+    dislikes: p.dislike_count,
     // 真源是 PostDTO.my_vote（forum/dto.go:131），不是 viewer.value —— 读错字段时赞踩态恒为假且不报错
     liked: p.my_vote === 1,
     disliked: p.my_vote === -1,

@@ -142,8 +142,8 @@ export default function CommentsPage() {
         // 同向再点 = 取消（与契约的幂等 PUT / DELETE 一致）
         const next: CommentData =
           value === 1
-            ? { ...target, likes: target.liked ? target.likes - 1 : target.likes + 1, liked: !target.liked, disliked: false, dislikes: target.disliked ? target.dislikes - 1 : target.dislikes }
-            : { ...target, dislikes: target.disliked ? target.dislikes - 1 : target.dislikes + 1, disliked: !target.disliked, liked: false, likes: target.liked ? target.likes - 1 : target.likes };
+            ? { ...target, likes: target.liked ? target.likes - 1 : target.likes + 1, liked: !target.liked, disliked: false, dislikes: target.disliked ? (target.dislikes ?? 0) - 1 : target.dislikes }
+            : { ...target, dislikes: target.disliked ? (target.dislikes ?? 0) - 1 : (target.dislikes ?? 0) + 1, disliked: !target.disliked, liked: false, likes: target.liked ? target.likes - 1 : target.likes };
         return c.id === id ? next : { ...c, replies: c.replies ? { ...c.replies, items: c.replies.items.map((r) => (r.id === id ? next : r)) } : c.replies };
       }),
     );

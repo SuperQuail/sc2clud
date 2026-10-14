@@ -12,6 +12,8 @@ import { icon16 } from '@/ui/icons';
 // **只要会渲染文字就收口**：inline={false} + S 档（24px，与原高度一致，不会撑高评论头行）。
 // 变体保持 ghost（透明底、无边框）：这是一排次要动作，只加内边距、不改观感。
 // 特例：点踩在计数为 0 时文字为空 —— 加 inline={false} 后两种状态的命中区都是 24x24。
+// J3（拍板）：踩数只对管理员以上与内容作者下发。拿不到数字时那一格回答的是「**我自己**点没点」
+// ——选中态来自 my_vote（调用方换算成 disliked），可读名也跟着说「取消点踩」；数字一个都不占。
 export function CommentActions({
   likes,
   dislikes,
@@ -23,7 +25,8 @@ export function CommentActions({
   replyLabel = '回复',
 }: {
   likes: number;
-  dislikes: number;
+  /** 拿不到（undefined）就**不渲染数字**：那是「后端按身份没下发」，不是「0 个踩」。 */
+  dislikes?: number;
   liked?: boolean;
   disliked?: boolean;
   onLike?: () => void;
@@ -51,9 +54,10 @@ export function CommentActions({
         icon={icon16(ThumbsDown)}
         active={disliked}
         onClick={onDislike}
-        aria-label='点踩'
+        // 与点赞那颗同一个写法：可读名说清「这一下是投还是取消」，非特权用户就靠它知道自己的投票态
+        aria-label={disliked ? '取消点踩' : '点踩'}
       >
-        <span className='tabular-nums'>{dislikes || ''}</span>
+        {typeof dislikes === 'number' ? <span className='tabular-nums'>{dislikes || ''}</span> : null}
       </Button>
       <Button inline={false} height={ControlsHeight.S} ghost icon={icon16(MessageSquare)} onClick={onReply}>
         {replyLabel}
