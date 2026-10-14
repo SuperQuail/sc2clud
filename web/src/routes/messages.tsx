@@ -7,6 +7,7 @@ import { AtSign, Bell, BellOff, Check, Inbox, MessageSquare, Send, Settings, Thu
 import { icon16 } from '@/ui/icons';
 import { appPath, routePath } from '@/lib/url';
 import { qk } from '@/lib/query/keys';
+import { useLiveNotices } from '@/lib/query/live';
 import { formatCents, formatTime } from '@/lib/format';
 import { useSession } from '@/lib/perms';
 import {
@@ -383,6 +384,8 @@ function linkOf(n: Notification): string | null {
 
 function NoticesPane({ kind }: { kind: string }) {
   const qc = useQueryClient();
+  // 实时性（L11）：SSE 为主、30 秒轮询兜底。状态要显示出来 —— 实时坏了不能没人知道。
+  const live = useLiveNotices(true);
   // 后端**没有** GET /mutes，所以「这一类已经静音了吗」查不到：本屏里点过的记在本地，
   // 免得同一屏对同一个类别反复给入口（刷新后又会显示——那是缺的端点，记在进度文件的阻塞里）。
   const [muted, setMuted] = useState<Set<string>>(() => new Set());
@@ -411,7 +414,10 @@ function NoticesPane({ kind }: { kind: string }) {
   return (
     <NoticeList
       title={current.label}
-      hint={items.length > 0 ? '共 ' + items.length + ' 条' : undefined}
+      hint={
+        (items.length > 0 ? '共 ' + items.length + ' 条 · ' : '') +
+        (live === 'live' ? '实时同步' : '每 30 秒同步一次（推送未连上）')
+      }
       empty={
         list.isPending ? (
           <Loading what='通知' />
@@ -580,6 +586,7 @@ function MessagesHeader() {
 /** 通知四档的页头：未读通知口径 + 「全部已读」。 */
 function NoticesHeader() {
   const qc = useQueryClient();
+  const live = useLiveNotices(true);
   const unread = useQuery({ queryKey: qk.unread(), queryFn: ({ signal }) => fetchUnreadCount(signal) });
   const markAll = useMutation({
     mutationFn: () => markNotificationsRead({ all: true }),
@@ -592,7 +599,10 @@ function NoticesHeader() {
   return (
     <PageHeader
       title='通知中心'
-      description={unread.isSuccess ? (count > 0 ? '未读 ' + count + ' 条' : '没有未读通知') : '别人回复、点赞、@ 你时会出现在这里'}
+      description={
+        (unread.isSuccess ? (count > 0 ? '未读 ' + count + ' 条' : '没有未读通知') : '别人回复、点赞、@ 你时会出现在这里') +
+        (live === 'live' ? ' · 实时' : ' · 每 30 秒刷新')
+      }
       actions={
         <Button
           data-testid='notifications-read-all'

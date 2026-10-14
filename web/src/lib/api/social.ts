@@ -1,6 +1,7 @@
 import { api, apiPage } from './client';
 import type { Paged } from './forum';
 import { pageQuery, type PageQuery } from './paging';
+import { appPath } from '@/lib/url';
 
 // 社交与工单域：举报、申诉、通知（v2 §21.2 的 report / appeal / notify 部分）。
 // **申诉两条路**（完全重构/盲审合并结论.md §7）：
@@ -176,6 +177,17 @@ export function decideAppeal(body: {
 
 export function fetchUnreadCount(signal?: AbortSignal): Promise<{ count: number }> {
   return api<{ count: number }>('notifications/unread-count', { signal });
+}
+
+/**
+ * SSE 推送的地址（L11）。**事件体只有 `{changed:true}`**（见 forum/internal/notify/stream.go）——
+ * 它是「可能变了，去重取一次」的信号，不是数据。收到之后仍然读上面的两个 GET。
+ *
+ * 不能用 `api()`：那条路是 fetch + JSON，而 EventSource 要自己拿 URL。
+ * 前缀必须走 appPath（/ 与 /dev/ 两个前缀同一份产物），同 origin 会自动带会话 Cookie。
+ */
+export function noticeStreamUrl(): string {
+  return appPath('api/v1/notifications/stream');
 }
 
 export function markNotificationsRead(body: { ids: string[] } | { all: true }) {

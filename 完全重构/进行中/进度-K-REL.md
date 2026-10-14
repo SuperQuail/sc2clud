@@ -65,3 +65,25 @@
   - 下一步：前端落点 —— `web/src/lib/api/social.ts` 加 `noticeStreamUrl()`，`web/src/routes/messages.tsx` 里
     `EventSource`（收到信号 → 重取角标与当前档列表）+ **30s 轮询兜底**（老站 `inbox.html:275` 同值）。
   - 阻塞：无
+- [x] 前端落点：`lib/api/follow.ts` + `lib/query/live.ts`（SSE+30s 兜底） + 分区页关注按钮/关注数 + 通知档的「实时/轮询」标记
+  - 做了什么：
+    · `lib/api/follow.ts`：`FollowState`（照 `follow/types.go` 抄）+ 分区/用户两套 GET/PUT/DELETE + 两个列表类型；
+    · `lib/query/live.ts` 的 `useLiveNotices(enabled)`：`new EventSource(noticeStreamUrl())` 为主、
+      `setInterval(refresh, 30000)` 兜底（老站 `inbox.html:275` 同值），收到 `unread` 信号就 invalidate
+      角标与当前档列表；**断线不 close**（浏览器自己重连，老站同一条注释），只把状态退回「轮询」；
+      没有 `EventSource` 的环境只剩轮询，不假装实时。
+    · `lib/api/social.ts` 加 `noticeStreamUrl()`（前缀走 `appPath`，/ 与 /dev 同一份产物）；
+    · `routes/messages.tsx`：通知档的标题行显示「实时同步」/「每 30 秒同步一次（推送未连上）」，页头显示「实时」/「每 30 秒刷新」；
+    · `routes/board.tsx`：页头「N 帖子 · 今日 M · **N 关注**」（来自 `GET /boards/{slug}/follow`，不再是假 0）
+      + `data-testid='board-follow'` 的关注/已关注按钮（幂等端点，回执直接写缓存，不回读）。
+  - 证据：`npx vitest run` → **32 files / 164 tests passed**（基线 31 文件/162 用例，新增两条）；
+    `node scripts/check-size.ts` → `检查 291 个文件，超限 1 个，登记 1 个 / 文件体量门禁通过`；
+    新增 `routes/board.test.tsx`（关注数 7→点关注 8→点取关 7，PUT/DELETE 都记账）与
+    `routes/messages.test.tsx` 的 SSE 用例（地址 /api/v1/notifications/stream、onopen 前说「每 30 秒同步一次」、
+    onopen 后说「实时同步」、收到信号后重取）。
+    **两条都证明过会红**：把 `es.addEventListener('unread', refresh)` 注释掉 → SSE 用例 red；
+    把关注数写回 `' · 0 关注'` → 分区页用例 red（`Unable to find an element with the text: /7 关注/`）。
+  - 下一步：个人主页/帖子页右栏的「关注」落点（`routes/profile.tsx:136` 与 `12-topic/board-summary.tsx` 的
+    `onJoin`/成员格）—— 两个文件都不在我的作用域，端点与客户端都已就绪，见本文件末尾「需要 Lead 接线」第 3/4 条。
+  - 阻塞：无（前端全量 lint 里有 **10 条别人文件的 error**：`web/scripts/shoot-kfe.ts`（未跟踪，另有 typecheck 错）、
+    `routes/admin/{audit,reports,rewards,roles,settings,titles,users}.tsx` 的未用 import。我改的文件 lint 干净。）

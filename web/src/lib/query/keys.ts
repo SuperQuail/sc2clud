@@ -18,6 +18,9 @@ export const qk = {
   userTopics: (handle: string) => ['profile', handle, 'topics'] as const,
   notifications: () => ['notifications', 'list'] as const,
   unread: () => ['notifications', 'unread'] as const,
+  /** 关注状态（L5）：对象进 key —— 改一个分区的关注不影响另一个 */
+  followBoard: (slug: string) => ['follow', 'board', slug] as const,
+  followUser: (handle: string) => ['follow', 'user', handle] as const,
   unreadMessages: () => ['messages', 'unread'] as const,
   conversations: () => ['messages', 'conversations'] as const,
   thread: (handle: string) => ['messages', 'thread', handle] as const,
@@ -42,4 +45,9 @@ export const qk = {
   adminAiConfig: () => ['admin', 'ai-config'] as const,
   /** 搜索：type 与 q 都在 key 里 —— 换一个词就是另一次查询，不能互相覆盖 */
   search: (type: string, q: string) => ['search', type, q] as const,
+  /** 打赏域（lib/api/rewards.ts）：本人的收款码 / 设置 / 我发出的申报，以及某个人的收款码 */
+  paymentChannels: () => ['rewards', 'channels'] as const,
+  donationSettings: () => ['rewards', 'settings'] as const,
+  myDonations: () => ['rewards', 'mine'] as const,
+  userChannels: (handle: string) => ['rewards', 'channels', handle] as const,
 };

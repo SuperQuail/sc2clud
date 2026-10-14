@@ -185,3 +185,63 @@ it('旧书签的单值 ?kind=review 落到「系统通知」这一档（不显�
   // Ring 的 Button 没有 aria-pressed，选中态是类名
   expect(screen.getByTestId('notice-nav-kind:system,review,sanction,reward').className).toContain('ring-button-active');
 });
+
+// ── L11：通知的实时性 ────────────────────────────────────────────
+//
+// 老站的客户端（site/crates/sc2clud-web/templates/inbox.html:242-276）是两件事叠在一起：
+// EventSource 为主 + setInterval(pull, 30000) 兜底。这条盯的就是这两件事真的接上了 ——
+// **jsdom 没有 EventSource**，所以用例自造一个最小替身（记地址、能开、能派事件）。
+
+class FakeEventSource {
+  static last: FakeEventSource | null = null;
+  readonly url: string;
+  onopen: (() => void) | null = null;
+  onerror: (() => void) | null = null;
+  closed = false;
+  private listeners = new Map<string, Array<() => void>>();
+  constructor(url: string) {
+    this.url = url;
+    FakeEventSource.last = this;
+  }
+  addEventListener(type: string, fn: () => void) {
+    const list = this.listeners.get(type) ?? [];
+    list.push(fn);
+    this.listeners.set(type, list);
+  }
+  close() {
+    this.closed = true;
+  }
+  /** 服务端推来一个「变了」的信号 */
+  emit(type: string) {
+    for (const fn of this.listeners.get(type) ?? []) fn();
+  }
+  open() {
+    this.onopen?.();
+  }
+}
+
+it('通知中心建 SSE 流：地址走 api/v1/notifications/stream；连上显示「实时」，收到信号后重取', async () => {
+  const calls = mockApi();
+  vi.stubGlobal('EventSource', FakeEventSource);
+  renderCenter();
+  await screen.findByText(/回复了你的主题/);
+
+  const es = FakeEventSource.last;
+  expect(es).not.toBeNull();
+  expect(es!.url).toContain('/api/v1/notifications/stream');
+  expect(es!.closed).toBe(false);
+
+  // 连上之前不许说「实时」（否则「实时坏了」永远看不出来），onopen 之后必须说
+  expect(screen.getByText(/每 30 秒同步一次/)).toBeTruthy();
+  es!.open();
+  expect(await screen.findByText(/实时同步/)).toBeTruthy();
+
+  // 信号只触发**重取**，不携带正文（事件体只有 {changed:true}，见 forum/internal/notify/stream.go）
+  // 信号只触发**重取**，不携带正文（事件体只有 {changed:true}，见 forum/internal/notify/stream.go）。
+  // 这一档面板里由 NoticeCenter 自己拉的只有列表（角标在 NoticesHeader，那条用例不渲染它），
+  // 所以数列表请求。
+  const count = () => calls.filter((u) => u.includes('/api/v1/notifications?')).length;
+  const before = count();
+  es!.emit('unread');
+  await waitFor(() => expect(count()).toBeGreaterThan(before));
+});
