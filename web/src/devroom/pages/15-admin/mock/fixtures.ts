@@ -1,4 +1,4 @@
-import type { AdminUser, Report, ReviewQueueItem, Role, Title } from '@/lib/api/admin';
+import type { AdminUser, Donation, DonationStats, NoticeDefault, Report, ReviewQueueItem, Role, Title } from '@/lib/api/admin';
 
 // DevRoom 15-admin 的演示数据（**只给房间用**；产品路由由 ./admin-screens.tsx 的容器喂真端点）。
 //
@@ -223,4 +223,47 @@ export const DEMO_REPORTS: Report[] = [
     handler: RBrief('demo-admin', '示范管理员'), handled_at: '2026-10-11T02:00:00Z',
     handle_note: '已封号', created_at: '2026-10-10T20:00:00Z', open_reports: 0, created: true,
   },
+];
+
+/** 打赏核验队列的演示数据：字段名照 reward/dto.go 的 Donation（**amount_cents 是整数分**）。 */
+export const DEMO_DONATIONS: Donation[] = [
+  {
+    id: 'd-1', amount_cents: 5000, txn_id: '2026101200001', state: 'pending', note: '第三章加油',
+    post_id: 't-1', channel_id: 'c-1',
+    donor: RBrief('demo-marine', '陆战队员'), recipient: RBrief('demo-voidray', '虚空辉光舰'),
+    created_at: '2026-10-12T06:00:00Z',
+  },
+  {
+    id: 'd-2', amount_cents: 2000, txn_id: '2026101100007', state: 'pending', note: '',
+    post_id: 't-1', channel_id: 'c-2',
+    donor: RBrief('demo-thor', '雷神'), recipient: RBrief('demo-voidray', '虚空辉光舰'),
+    created_at: '2026-10-11T05:00:00Z',
+  },
+  {
+    id: 'd-3', amount_cents: 10000, txn_id: '2026100900003', state: 'approved', note: '地图包月支持',
+    post_id: '', channel_id: 'c-1',
+    donor: RBrief('demo-admin', '示范管理员'), recipient: RBrief('demo-thor', '雷神'),
+    verifier: RBrief('demo-admin', '示范管理员'), verified_at: '2026-10-09T08:00:00Z',
+    created_at: '2026-10-09T03:00:00Z',
+  },
+];
+
+/** DonationStats：public_* 只算双方都同意公开的，all_* 是全部 approved。 */
+export const DEMO_DONATION_STATS: DonationStats = {
+  public_total_cents: 150000,
+  all_total_cents: 320000,
+  public_count: 12,
+  all_count: 26,
+  leaderboard: [
+    { user: RBrief('demo-voidray', '虚空辉光舰'), total_cents: 210000, count: 14 },
+    { user: RBrief('demo-thor', '雷神'), total_cents: 110000, count: 12 },
+  ],
+};
+
+/** 按渠道的默认提示文案（channel 值域 default|wechat|alipay|other）。 */
+export const DEMO_NOTICE_DEFAULTS: NoticeDefault[] = [
+  { channel: 'default', text: '感谢支持，我会继续更新。' },
+  { channel: 'wechat', text: '微信收款码已更新，打赏后请回来申报单号。' },
+  { channel: 'alipay', text: '支付宝收款码同上。' },
+  { channel: 'other', text: '' },
 ];

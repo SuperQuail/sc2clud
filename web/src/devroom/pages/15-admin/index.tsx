@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { CURRENT_ADMIN } from './mock/perms';
-import { DEMO_REPORTS, DEMO_REVIEW, DEMO_ROLES, DEMO_TITLES, DEMO_USERS } from './mock/fixtures';
+import { DEMO_DONATIONS, DEMO_DONATION_STATS, DEMO_NOTICE_DEFAULTS, DEMO_REPORTS, DEMO_REVIEW, DEMO_ROLES, DEMO_TITLES, DEMO_USERS } from './mock/fixtures';
 import { AdminShell } from './shell';
 import { SCREEN_KEYS, type ScreenKey } from './nav';
 import { AiReviewScreen } from './screens/ai-review';
@@ -10,7 +10,7 @@ import { DiagnosticsScreen } from './screens/diagnostics';
 import { MailScreen } from './screens/mail';
 import { ReportsScreen, type ReportFilter } from './screens/reports';
 import { ReviewScreen, type ReviewFilter } from './screens/review';
-import { RewardsScreen } from './screens/rewards';
+import { RewardsScreen, type RewardsFilter } from './screens/rewards';
 import { RolesScreen } from './screens/roles';
 import { SettingsScreen } from './screens/settings';
 import { TitlesScreen } from './screens/titles';
@@ -30,7 +30,7 @@ const SCREENS: Record<ScreenKey, () => React.ReactNode> = {
   boards: () => <BoardsScreen />,
   review: () => <ReviewRoom />,
   reports: () => <ReportsRoom />,
-  rewards: () => <RewardsScreen />,
+  rewards: () => <RewardsRoom />,
   titles: () => <TitlesScreen />,
   mail: () => <MailScreen />,
   settings: () => <SettingsScreen />,
@@ -38,6 +38,28 @@ const SCREENS: Record<ScreenKey, () => React.ReactNode> = {
   audit: () => <AuditScreen />,
   diagnostics: () => <DiagnosticsScreen />,
 };
+
+/** 打赏核验屏的房间版。 */
+function RewardsRoom() {
+  const [filter, setFilter] = useState<RewardsFilter>({ state: 'pending' });
+  const [notice, setNotice] = useState(DEMO_NOTICE_DEFAULTS);
+  const [receipt, setReceipt] = useState<string | null>(null);
+  return (
+    <RewardsScreen
+      items={DEMO_DONATIONS.filter((r) => r.state === filter.state)}
+      hasMore={false}
+      filter={filter}
+      onFilterChange={setFilter}
+      stats={DEMO_DONATION_STATS}
+      noticeDefaults={notice}
+      onSaveNoticeDefaults={(items) => { setNotice(items); setReceipt('（房间演示：这里不发请求）渠道默认文案已整表替换'); }}
+      canVerify
+      canSiteSetting
+      onVerify={(ids, state, note) => setReceipt('（房间演示：这里不发请求）' + ids.length + ' 笔 → ' + state + '：' + (note || '（无说明）'))}
+      receipt={receipt ? <p className='text-[12px] text-muted-foreground'>{receipt}</p> : null}
+    />
+  );
+}
 
 /** 举报屏的房间版。 */
 function ReportsRoom() {
