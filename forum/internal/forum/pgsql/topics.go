@@ -420,14 +420,29 @@ UPDATE topics
 }
 
 // SetTopicExcerpt 只在编辑 1 楼正文时用（§4.5）：摘要与正文同源。
-// ResetTopicReview 把主题送回待审，并让 AI 重新看一次（ai_reviewed = false）。
+// ResetTopicReview 把主题送回待审：**复审由「内容变了」触发，不由时间触发**（老站的流程）。
 //
-// **复审由「内容变了」触发，不由时间触发**（老站的流程）：作者改完正文要重新过审，
-// 而 ai_review_note 一并清掉 —— 留着上一版内容的判定理由，会让人以为那是新内容的结论。
+// 2026-10-14 修（这条路径此前是**必然 500**）：原先写的是
+// `review_state = 'pending', ai_reviewed = false, ai_review_note = NULL`，
+// 而 topics 表**没有 ai_reviewed / ai_review_note 这两列**（任何迁移里都没有）——
+// 于是 PATCH /topics/{id} 只要带 content_md 就报「字段 t.ai_reviewed 不存在」、整个事务回滚：
+// **「编辑帖子正文」在真站上是 100% 失败的**，而只改标题没事。
+// （用例见 forum/review_queue_test.go 的 TestEditBodyResetsReview。）
+//
+// 四列一起清，语义是「这份内容还没有任何判定」：
+//   - review_source = NULL 是关键：AI 任务只在自己那侧写 'ai'，见到 manual 直接返回（d7 §1 铁律）；
+//     内容变过之后应当重新判，所以清空来源而不是留成 'manual'；
+//   - review_note / reviewed_by / reviewed_at 一起清：留着上一版内容的判定理由与判定人，
+//     会让人以为那是对新内容的结论（这正是原来那句注释想表达的）。
 func ResetTopicReview(ctx context.Context, tx Querier, topicID int64, now time.Time) error {
 	_, err := tx.ExecContext(ctx, `
 		UPDATE topics
-		   SET review_state = 'pending', ai_reviewed = false, ai_review_note = NULL, updated_at = $2
+		   SET review_state = 'pending',
+		       review_source = NULL,
+		       review_note   = NULL,
+		       reviewed_by   = NULL,
+		       reviewed_at   = NULL,
+		       updated_at    = $2
 		 WHERE id = $1`, topicID, now)
 	return err
 }

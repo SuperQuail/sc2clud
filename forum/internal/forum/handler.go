@@ -87,6 +87,12 @@ func (h *Handler) Register(rg *gin.RouterGroup, requireLogin gin.HandlerFunc, pe
 	rg.POST("/topics/:id/sources/:sid/verify", requireLogin, perm(authz.PermTopicEditOwn), h.verifySource)
 	rg.PUT("/users/:handle/block", requireLogin, h.blockUser)
 	rg.DELETE("/users/:handle/block", requireLogin, h.unblockUser)
+
+	// ---- 人工审核队列（2026-10-14 补；契约见 完全重构/进行中/后端接口对账.md）----
+	// 挂在 /admin 下：判据是全局权限点 post.review，与「作者也能做」的那批动作不是一回事。
+	// 中间件只判权限点；「这条主题在不在、可不可判」在 service 里判（拍板 §1.2）。
+	rg.GET("/admin/topics", requireLogin, perm(authz.PermPostReview), h.listReviewQueue)
+	rg.POST("/admin/topics/:id/review", requireLogin, perm(authz.PermPostReview), h.reviewTopic)
 }
 
 // ---- 读 ----
@@ -131,6 +137,49 @@ func (h *Handler) listTopics(c *gin.Context) {
 		return
 	}
 	httpx.OKList(c, page.Items, page.NextCursor)
+}
+
+type reviewQueueQuery struct {
+	State  string `form:"state"`
+	Board  string `form:"board"`
+	Q      string `form:"q"`
+	Cursor string `form:"cursor"`
+	Limit  int    `form:"limit"`
+}
+
+func (h *Handler) listReviewQueue(c *gin.Context) {
+	var q reviewQueueQuery
+	if err := httpx.BindQuery(c, &q); err != nil {
+		httpx.Fail(c, err)
+		return
+	}
+	page, err := h.svc.ListReviewQueue(c.Request.Context(), h.actor(c), ReviewQueueInput{
+		State: q.State, Board: q.Board, Q: q.Q, Cursor: q.Cursor, Limit: q.Limit,
+	})
+	if err != nil {
+		httpx.Fail(c, err)
+		return
+	}
+	httpx.OKList(c, page.Items, page.NextCursor)
+}
+
+type reviewTopicBody struct {
+	Action string `json:"action" binding:"required"`
+	Note   string `json:"note"`
+}
+
+func (h *Handler) reviewTopic(c *gin.Context) {
+	var b reviewTopicBody
+	if err := httpx.Bind(c, &b); err != nil {
+		httpx.Fail(c, err)
+		return
+	}
+	out, err := h.svc.ReviewTopic(c.Request.Context(), h.actor(c), c.Param("id"), b.Action, b.Note)
+	if err != nil {
+		httpx.Fail(c, err)
+		return
+	}
+	httpx.OK(c, out)
 }
 
 func (h *Handler) listUserTopics(c *gin.Context) {

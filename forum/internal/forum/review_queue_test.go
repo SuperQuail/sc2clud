@@ -1,0 +1,187 @@
+package forum
+
+import (
+	"testing"
+
+	"forum/internal/authz"
+)
+
+// review_queue_test.go 钉住「审核队列能把 pending 变成 approved」这条闭环。
+//
+// 这条闭环此前**完全不存在**（2026-10-14 补）：AI 拿不准的主题留在 pending，而公开流只放行
+// review_state='approved'，于是帖子在所有列表里消失、没有任何端点能救回来。
+// 所以第一个断言就是「发完帖公开流看不到它」——它是这个缺陷的直接表达。
+
+func TestReviewQueueApproveFlow(t *testing.T) {
+	h := newHarness(t)
+	roleID := h.seedRole("user", false)
+	h.seedBoard("campaign", 0, false)
+	authorID := h.seedUser("author", roleID, 1, false) // trusted=false：不享审核豁免
+	author := h.actor(authorID, roleID, authz.PermTopicCreate)
+
+	d := h.mustTopic(author, CreateTopicInput{BoardSlug: "campaign", Title: "待审帖", ContentMD: "正文"})
+	if d.ReviewState != "pending" {
+		t.Fatalf("普通作者发的主题应当留在 pending，实际 %q", d.ReviewState)
+	}
+
+	// ① 公开流看不到它 —— 这就是「AI 拿不准 = 帖子消失」的直接表达
+	feed, err := h.svc.ListTopics(h.ctx, nil, ListTopicsInput{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(feed.Items) != 0 {
+		t.Fatalf("待审主题不该出现在公开流，实际 %d 条", len(feed.Items))
+	}
+
+	// ② 审核员在队列里能看到它，并且带得出「AI 说了什么」
+	modID := h.seedUser("mod", roleID, 1, true)
+	mod := h.actor(modID, roleID, authz.PermPostReview)
+	queue, err := h.svc.ListReviewQueue(h.ctx, mod, ReviewQueueInput{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(queue.Items) != 1 || queue.Items[0].ID != d.ID {
+		t.Fatalf("队列应当有且只有这一条，实际 %+v", queue.Items)
+	}
+	if queue.Items[0].ReviewState != "pending" || queue.Items[0].Author.Handle != "author" {
+		t.Fatalf("队列项的形状不对: %+v", queue.Items[0])
+	}
+
+	// ③ 放行：三件事必须都发生 —— 状态、审计、给作者的通知任务
+	h.queue.reset()
+	item, err := h.svc.ReviewTopic(h.ctx, mod, d.ID, ReviewApprove, "")
+	if err != nil {
+		t.Fatalf("放行失败: %v", err)
+	}
+	if item.ReviewState != "approved" {
+		t.Fatalf("放行后 review_state 应当是 approved，实际 %q", item.ReviewState)
+	}
+	// review_source=manual 是**不可省**的一列：AI 任务见到 manual 会直接返回（d7 §1 铁律）
+	if item.ReviewSource == nil || *item.ReviewSource != "manual" {
+		t.Fatalf("人工判定必须落 review_source=manual，实际 %v", item.ReviewSource)
+	}
+	if n := h.countRows(t, "SELECT count(*) FROM audit_logs WHERE action = $1", AuditReviewAction); n != 1 {
+		t.Fatalf("审计应当有 1 行，实际 %d", n)
+	}
+	found := false
+	for _, ty := range h.queue.types() {
+		if ty == "notify:review" {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("放行后应当投一条 notify:review，实际任务: %v", h.queue.types())
+	}
+
+	// ④ 放行之后作者能改，改完必须**回到待审**（复审由「内容变了」触发）
+	item2, err := h.svc.ReviewTopic(h.ctx, mod, d.ID, ReviewReject, "来源不明")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if item2.ReviewState != "rejected" || item2.ReviewNote == nil || *item2.ReviewNote != "来源不明" {
+		t.Fatalf("拒绝必须落状态与理由，实际 %+v", item2)
+	}
+
+	// ⑤ 通过之后公开流才看得到
+	if _, err := h.svc.ReviewTopic(h.ctx, mod, d.ID, ReviewApprove, ""); err != nil {
+		t.Fatal(err)
+	}
+	feed2, err := h.svc.ListTopics(h.ctx, nil, ListTopicsInput{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(feed2.Items) != 1 {
+		t.Fatalf("放行后公开流应当有 1 条，实际 %d 条", len(feed2.Items))
+	}
+}
+
+// 拒绝必须给理由：作者在帖子页看到的就是这条 review_note，空理由等于让人收到「未通过」而不知道为什么。
+func TestReviewQueueRejectNeedsNote(t *testing.T) {
+	h := newHarness(t)
+	roleID := h.seedRole("user", false)
+	h.seedBoard("campaign", 0, false)
+	authorID := h.seedUser("author", roleID, 1, false)
+	d := h.mustTopic(h.actor(authorID, roleID, authz.PermTopicCreate),
+		CreateTopicInput{BoardSlug: "campaign", Title: "t", ContentMD: "x"})
+
+	modID := h.seedUser("mod", roleID, 1, true)
+	mod := h.actor(modID, roleID, authz.PermPostReview)
+
+	if _, err := h.svc.ReviewTopic(h.ctx, mod, d.ID, ReviewReject, "   "); err == nil {
+		t.Fatal("空理由的拒绝必须被拒绝")
+	}
+	// 状态不能被这次失败改掉
+	var state string
+	if err := h.pool.QueryRow(h.ctx, "SELECT review_state FROM topics WHERE public_id = $1", d.ID).Scan(&state); err != nil {
+		t.Fatal(err)
+	}
+	if state != "pending" {
+		t.Fatalf("失败的判定不该改状态，实际 %q", state)
+	}
+}
+
+// 队列是权限点守着的：游客 401、无 post.review 403、参数非法 400。
+func TestReviewQueueGuards(t *testing.T) {
+	h := newHarness(t)
+	roleID := h.seedRole("user", false)
+	h.seedBoard("campaign", 0, false)
+	plainID := h.seedUser("plain", roleID, 1, false)
+	plain := h.actor(plainID, roleID)
+
+	if _, err := h.svc.ListReviewQueue(h.ctx, nil, ReviewQueueInput{}); err == nil {
+		t.Fatal("游客必须 401")
+	}
+	_, err := h.svc.ListReviewQueue(h.ctx, plain, ReviewQueueInput{})
+	if err == nil {
+		t.Fatal("没有 post.review 必须 403")
+	}
+	assertCode(t, err, "common.forbidden")
+	if _, err := h.svc.ListReviewQueue(h.ctx, plain, ReviewQueueInput{State: "approved"}); err == nil {
+		t.Fatal("state=approved 必须 400（它不是队列的一档）")
+	}
+	if _, err := h.svc.ReviewTopic(h.ctx, plain, "whatever", "publish", ""); err == nil {
+		t.Fatal("action 只认 approve / reject")
+	}
+}
+
+// 改正文必须成功，并且把主题送回待审 —— 这条路径此前引用**不存在的列**
+// （ai_reviewed / ai_review_note，任何迁移里都没有），PATCH 带 content_md 必然 500。
+func TestEditBodyResetsReview(t *testing.T) {
+	h := newHarness(t)
+	roleID := h.seedRole("user", false)
+	h.seedBoard("campaign", 0, false)
+	authorID := h.seedUser("author", roleID, 1, false)
+	author := h.actor(authorID, roleID, authz.PermTopicCreate, authz.PermTopicEditOwn)
+
+	d := h.mustTopic(author, CreateTopicInput{BoardSlug: "campaign", Title: "t", ContentMD: "第一版"})
+
+	// 先由审核员放行，再改正文：改完必须回到 pending（复审由「内容变了」触发）
+	mod := h.actor(h.seedUser("mod", roleID, 1, true), roleID, authz.PermPostReview)
+	if _, err := h.svc.ReviewTopic(h.ctx, mod, d.ID, ReviewApprove, ""); err != nil {
+		t.Fatal(err)
+	}
+
+	body := "第二版正文"
+	if err := h.svc.UpdateTopic(h.ctx, author, d.ID, UpdateTopicInput{ContentMD: &body}); err != nil {
+		t.Fatalf("改正文必须成功（此前这里因为引用不存在的列而必然 500）: %v", err)
+	}
+	var resetState string
+	if err := h.pool.QueryRow(h.ctx, "SELECT review_state FROM topics WHERE public_id = $1", d.ID).Scan(&resetState); err != nil {
+		t.Fatal(err)
+	}
+	if resetState != "pending" {
+		t.Fatalf("改过正文应当回到 pending，实际 %q", resetState)
+	}
+
+	// 四列一起清：不能留着上一版的判定来源与理由，否则会被读成对新内容的结论
+	var source, note, by string
+	var at *string
+	if err := h.pool.QueryRow(h.ctx,
+		"SELECT COALESCE(review_source,''), COALESCE(review_note,''), COALESCE(reviewed_by::text,''), reviewed_at::text FROM topics WHERE public_id = $1",
+		d.ID).Scan(&source, &note, &by, &at); err != nil {
+		t.Fatal(err)
+	}
+	if source != "" || note != "" || by != "" || at != nil {
+		t.Fatalf("回到待审时必须清掉上一版判定：source=%q note=%q by=%q at=%v", source, note, by, at)
+	}
+}
