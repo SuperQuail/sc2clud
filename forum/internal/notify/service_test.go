@@ -630,6 +630,88 @@ func TestNotifyRewardReviewSanction(t *testing.T) {
 	}
 }
 
+// 不带 ?kind= 时必须真的返回全部：parseListKinds 原来对空串返回**无类型 nil**，
+// pgx 把它当 NULL 发出去，而 cardinality(NULL)=0 是 NULL、'x' = ANY(NULL) 也是 NULL ——
+// 整个 WHERE 恒不成立，**通知列表永远空**（2026-10-14 实测：25 条翻页一条都拿不到）。
+// 这条用例先红后绿：修在 parseListKinds（空串 → 空切片，而不是 nil）。
+func TestListWithoutKindReturnsEverything(t *testing.T) {
+	ctx, client, pool := newDB(t)
+	svc := newService(t, client, pool, nil)
+	u := newUser(t, ctx, pool, "alice")
+	for i, kind := range []string{KindReply, KindLike, KindSystem} {
+		in := CreateInput{UserID: u, Kind: kind, RefType: RefPost, RefID: int64(i + 1)}
+		if kind == KindSystem {
+			in = CreateInput{UserID: u, Kind: KindSystem, RefType: RefSystem, Text: "站点维护"}
+		}
+		if err := db.WithTx(ctx, client, func(tx *ent.Tx) error { return svc.Create(ctx, tx, in) }); err != nil {
+			t.Fatal(err)
+		}
+	}
+	res, err := svc.List(ctx, actor(u), ListInput{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(res.Items) != 3 {
+		t.Fatalf("不带 kind 时必须返回全部 3 条，实际 %d", len(res.Items))
+	}
+	// 带上 kind 仍然只过滤那一类（修 nil 不能把过滤也弄丢）
+	res, err = svc.List(ctx, actor(u), ListInput{Kind: KindLike})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(res.Items) != 1 || res.Items[0].Kind != KindLike {
+		t.Fatalf("?kind=like 该只返回 1 条 like，实际 %+v", res.Items)
+	}
+}
+
+// D4（交接单 M5）：通知是**消费时现读** topics，不是判定时快照。
+// reject 紧接着 approve 时，两条 notify:review 任务都是后一个状态被读走 ——
+// 「拒绝理由」一个字都送不到作者。修法：判定那一刻的 state/text 进 payload。
+func TestNotifyReviewCarriesSnapshotFromPayload(t *testing.T) {
+	ctx, client, pool := newDB(t)
+	svc := newService(t, client, pool, nil)
+	author := newUser(t, ctx, pool, "author")
+	mod := newUser(t, ctx, pool, "mod")
+	board := newBoard(t, ctx, pool, "mod")
+	topic := newTopic(t, ctx, pool, board, author)
+
+	// 第一次判定：拒绝（payload 里带着那一刻的状态与理由）
+	if err := svc.NotifyReview(ctx, CreateNotifyInput{
+		RefType: RefTopic, RefID: topic, State: "rejected", Text: "来源不明",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	// 作者在通知被消费之前又改好了，管理员紧接着放行
+	if _, err := pool.Exec(ctx,
+		"UPDATE topics SET review_state = 'approved', review_note = NULL, reviewed_by = $2, reviewed_at = now() WHERE id = $1",
+		topic, mod); err != nil {
+		t.Fatal(err)
+	}
+	if err := svc.NotifyReview(ctx, CreateNotifyInput{
+		RefType: RefTopic, RefID: topic, State: "approved",
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	// 去重键是 review:topic:<id>（uq_notifications_user_dedup），两次判定落在一行上。
+	// 但这**一行必须是先发生的那一次判定**：拒绝理由弄丢了就再也补不回来。
+	var payload string
+	if err := pool.QueryRow(ctx,
+		"SELECT payload::text FROM notifications WHERE user_id = $1 AND type = 'review' ORDER BY id LIMIT 1",
+		author).Scan(&payload); err != nil {
+		t.Fatal(err)
+	}
+	var got struct {
+		State string `json:"state"`
+		Text  string `json:"text"`
+	}
+	if err := json.Unmarshal([]byte(payload), &got); err != nil {
+		t.Fatal(err)
+	}
+	if got.State != "rejected" || got.Text != "来源不明" {
+		t.Fatalf("审核通知必须带判定那一刻的快照，实际 state=%q text=%q（%s）", got.State, got.Text, payload)
+	}
+}
 func TestNotifySkipsBannedRecipientsAndRespectsSettings(t *testing.T) {
 	ctx, client, pool := newDB(t)
 	settings := defaultSettings{byUser: map[int64]NoticeSetting{}}

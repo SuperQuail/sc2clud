@@ -67,9 +67,18 @@
     （`CreateNotifyInput` 加 `State`/`Text` 两个字段）；`notify/pgsql` 的 ReviewTarget 保留兜底。
   - 阻塞：无
 
-- [ ] M5 通知是消费时现读 topics 而不是判定时快照
-  - 证据：
-  - 下一步：
+- [x] 额外（顺手，不在清单里但同域同因）：`notify` 的「不带 ?kind= 的通知列表恒空」
+  - 证据：`forum/internal/notify/service.go` 的 `parseListKinds` 对空串返回**无类型 nil**，
+    pgx 把它当 NULL 发进 `listSQL` 的 `$4::text[]` —— `cardinality(NULL)` 与 `'x' = ANY(NULL)`
+    都是 NULL，于是 `cardinality($4)=0 OR type = ANY($4)` 恒不成立。实测（探针）：
+    表里 1 行、`ListNotifications` 直接返回 0 行；改成 `[]string{}` → 1 行。
+    它同时是 `notify` 包两条**基线就红**的用例的根因（`TestListPagesWithoutGapsOrDupesOnTies`、
+    `TestListFiltersAndHidesDeleted`，在 `git stash` 掉我的改动后一样红）。
+    改成返回空切片 + 新增 `TestListWithoutKindReturnsEverything`（先红：`实际 0`，后绿）。
+    `go test ./internal/notify/ -count=1` → `ok`（整包，36s）。
+  - 下一步：M5 —— `forum/review_queue.go` 给 `queue.TypeNotifyReview` 的 payload 加
+    `"state"`/`"text"`（判定那一刻的快照）；`notify/tasks.go` 的 `CreateNotifyInput` 加
+    `State`/`Text` 两个字段，`NotifyReview` 有快照用快照、没有才现读。
   - 阻塞：无
 
 - [x] M7 审核队列 DTO 缺 reviewer / reviewed_at

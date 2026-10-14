@@ -13,6 +13,7 @@ import (
 	"forum/internal/notify/pgsql"
 	"forum/internal/platform/apperr"
 	"forum/internal/platform/clock"
+	"forum/internal/platform/db"
 	"forum/internal/platform/idgen"
 )
 
@@ -65,6 +66,33 @@ func (s *Service) Create(ctx context.Context, tx *ent.Tx, in CreateInput) error 
 	}
 	return pgsql.NewTx(tx).InsertNotification(ctx, publicID.String(), in.UserID, actorID,
 		in.Kind, string(body), in.Link, dedup, s.clk.Now())
+}
+
+// NotifySystem 是**业务方直接发一条站内通知**的入口（不问队列）。
+//
+// 为什么需要它：队列任务类型只有 d4 §5.1 的那六种（reply/mention/like/reward/review/sanction），
+// 系统通知没有对应的任务类型，也没有触发它的领域事件 —— 它是「有人在某个流程里要告诉用户一件事」，
+// 例如申诉的答复（appeal 域的 C4）。自己没有表、也不想为一条通知加一个任务类型时走这里。
+//
+// 三件事与任务入口一致：写前置判定（静音 + 消息设置，复用 allowed）、自己开事务、
+// kind 固定 system（**调用方不许自选**：kind 的分档决定它在通知中心出现在哪一档）。
+func (s *Service) NotifySystem(ctx context.Context, userID int64, text, link string) error {
+	if userID == 0 {
+		return nil // 没有收件人（未登录提交的申诉走到这里）：不是错误，本来就没有人收
+	}
+	body := strings.TrimSpace(text)
+	if body == "" {
+		return nil
+	}
+	in := CreateInput{UserID: userID, Kind: KindSystem, RefType: RefSystem, Link: link, Text: body}
+	ok, err := s.allowed(ctx, in)
+	if err != nil {
+		return err
+	}
+	if !ok {
+		return nil
+	}
+	return db.WithTx(ctx, s.db, func(tx *ent.Tx) error { return s.Create(ctx, tx, in) })
 }
 
 // List 走 idx_notifications_inbox 的游标分页（d4 §4.1）。
@@ -200,7 +228,11 @@ func (s *Service) Purge(ctx context.Context, before time.Time, limit int) (int, 
 func parseListKinds(raw string) ([]string, error) {
 	raw = strings.TrimSpace(raw)
 	if raw == "" {
-		return nil, nil
+		// **空切片，不是 nil**：这个值直接进 listSQL 的 $4::text[]，而无类型 nil 会被
+		// pgx 当作 NULL 发出去 —— cardinality(NULL) 与 'x' = ANY(NULL) 都是 NULL，
+		// 于是 "cardinality($4)=0 OR type = ANY($4)" 恒不成立，**列表整页空**
+		// （2026-10-14 实测：25 条一条都拿不到）。语义上「不限类别」就是空集合。
+		return []string{}, nil
 	}
 	parts := strings.Split(raw, ",")
 	out := make([]string, 0, len(parts))
