@@ -96,7 +96,9 @@ it('搜索档发的是 ?q=&type=topics：结果只出现在面板里，信息流
   });
   renderHome('/?q=余烬');
 
-  await waitFor(() => expect(screen.getByTestId('search-results-topics')).toBeTruthy());
+  // 搜索面板是 **lazy**（它静态拖进 Ring 的 Tabs → react-virtualized 链，占首屏 53KB）。
+  // jsdom 里动态 import 首次解析会超过 waitFor 默认的 1s —— 给足窗口，断言本身没变。
+  await waitFor(() => expect(screen.getByTestId('search-results-topics')).toBeTruthy(), { timeout: 10_000 });
   expect(screen.getByRole('link', { name: '第三章「余烬」发布' })).toBeTruthy();
   // 信息流那条不该同时出现（搜索时信息流整体不渲染）
   expect(screen.queryByText('信息流里的帖子')).toBeNull();
@@ -170,5 +172,7 @@ it('提交才搜：输入框里打字不发请求，回车把 q 落到 URL', asy
   expect(callsAfterTyping.some((u) => u.includes('/search'))).toBe(false);
 
   act(() => fireEvent.submit(screen.getByTestId('search-form')));
-  await waitFor(() => expect(screen.getByTestId('search-results-topics')).toBeTruthy());
+  // 搜索面板是 **lazy**（它静态拖进 Ring 的 Tabs → react-virtualized 链，占首屏 53KB）。
+  // jsdom 里动态 import 首次解析会超过 waitFor 默认的 1s —— 给足窗口，断言本身没变。
+  await waitFor(() => expect(screen.getByTestId('search-results-topics')).toBeTruthy(), { timeout: 10_000 });
 });
