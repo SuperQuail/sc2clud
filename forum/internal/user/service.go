@@ -54,11 +54,11 @@ func NewService(db *ent.Client, avatars AvatarURL, clk clock.Clock, cfg Config) 
 
 // Profile 是个人主页的响应体（设计 §11.2）。
 type Profile struct {
-	ID           string     `json:"id"`
-	Handle       string     `json:"handle"`
-	Nickname     string     `json:"nickname"`
-	Avatar       string     `json:"avatar"`
-	AvatarSmall  string     `json:"avatar_small"`
+	ID          string `json:"id"`
+	Handle      string `json:"handle"`
+	Nickname    string `json:"nickname"`
+	Avatar      string `json:"avatar"`
+	AvatarSmall string `json:"avatar_small"`
 	// Cover 是个人主页的封面 / 背景（0030 的 users.cover_hash）。空串 = 没设过，前端走默认站内素材。
 	Cover        string     `json:"cover"`
 	Bio          string     `json:"bio"`

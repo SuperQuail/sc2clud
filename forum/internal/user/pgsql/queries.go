@@ -60,15 +60,15 @@ type ProfileRow struct {
 	AvatarHash      *string
 	AvatarSmallHash *string
 	// CoverHash 是 0030 加的封面列（NULL = 没设过）。
-	CoverHash       *string
-	Exp             int
-	Level           int
-	Status          string
-	CreatedAt       time.Time
-	TitleName       *string
-	TitleColor      *string
-	TopicCount      int
-	LikeReceived    int
+	CoverHash    *string
+	Exp          int
+	Level        int
+	Status       string
+	CreatedAt    time.Time
+	TitleName    *string
+	TitleColor   *string
+	TopicCount   int
+	LikeReceived int
 }
 
 // Profile 按 handle 取一行。查不到返回 (nil, false, nil)——「没有这个人」是正常分支。
