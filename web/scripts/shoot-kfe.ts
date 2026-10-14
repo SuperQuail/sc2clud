@@ -41,6 +41,8 @@ const shots: Shot[] = [
   // 个人设置 · 赞赏与收款码（上传 / 删除 / 两个开关 / 我的打赏记录）
   { name: 'settings-rewards-1440', url: '?stub=1&route=/settings', width: 1440, height: 1200, full: true },
   { name: 'settings-rewards-390', url: '?stub=1&route=/settings', width: 390, height: 1200, full: true },
+  // G5：DevRoom 11-profile 里「屏蔽词」那一行的 WIP 标记（拍板要求「不要假装能用」）
+  { name: 'devroom-g5-wip-1440', url: 'http://localhost:5321/devroom.html?page=11-profile', width: 1440, height: 1200, full: true, before: openSettingsTab },
 ];
 
 /** 点开赏卡/赞助格那颗大按钮（两页的按钮文案不同，按文案找）。 */
@@ -48,6 +50,14 @@ async function openSponsor(page: Page) {
   await page.wait(700);
   await page.clickByText('赞助');
   await page.wait(400);
+}
+
+/** G5 的标记在 DevRoom 11-profile 的「设置」标签里（默认停在「帖子」），点一下再拍。 */
+async function openSettingsTab(page: Page) {
+  await page.wait(900);
+  // 按 testid 点（IconTabs 给每个页签挂了 icon-tab-<key>）：按文案点会先命中 hero 上那些别的东西
+  if (!(await page.click('[data-testid=icon-tab-settings]'))) throw new Error('找不到「设置」页签');
+  await page.wait(500);
 }
 
 /** L7：作者改正文 → 保存 → 服务端把审核态从 approved 打回 pending，页头横幅要说「已重新提交复审」。 */
@@ -109,7 +119,8 @@ async function main() {
 
     let failed = 0;
     for (const s of shots) {
-      const target = await (await fetch('http://127.0.0.1:' + port + '/json/new?' + encodeURIComponent(base + s.url), { method: 'PUT' })).json();
+      // s.url 以 http 开头时当绝对地址用（DevRoom 走的是另一个 html 入口）
+      const target = await (await fetch('http://127.0.0.1:' + port + '/json/new?' + encodeURIComponent(s.url.startsWith('http') ? s.url : base + s.url), { method: 'PUT' })).json();
       ws = new WebSocket(target.webSocketDebuggerUrl);
       await new Promise((res) => ws!.addEventListener('open', res));
       ws.addEventListener('message', (ev) => {

@@ -96,15 +96,44 @@ const TOPIC_DETAIL = {
     },
   ],
   author: { ...USER('demo-admin', '示范管理员', { key: 'admin', name: '管理员' }), bio: '战役作者。', level: 27, joined_at: '2024-03-02T00:00:00Z' },
-  // 这两个字段会被下面的 PATCH 分支改写（演「保存 → 打回 pending」），所以显式注成 string
-  review_state: 'approved' as string,
-  review_note: null as string | null,
+  review_state: 'approved',
+  review_note: null,
   issue_open_count: 2,
   can_reply: true,
   // can_edit 照**作者视角**给：L7 的出图要真的走一遍「编辑 → 保存 → 打回 pending」，
   // 而「能不能编辑」后端是靠这个字段说的（路由用 wire.can_edit ?? 权限兜底）。
   can_edit: true,
 };
+
+/**
+ * 出图脚本会真的保存一次（L7 那条要演「保存 → 服务端打回 pending」），所以桩必须是**可写**的。
+ * 写在哪很关键：不能写模块变量 —— 同一个 Chrome 实例里每一张图都是**新标签页、共用同一份模块**，
+ * 于是「先拍的那张把状态改了，后拍的那张就不是初始态」；也不能写 localStorage（跨标签页共享，同样串味）。
+ * **sessionStorage 是按标签页隔离的**，正好等于「每张图各一份」。
+ */
+const SAVED_KEY = 'preview-topic-tp-1-saved';
+
+type SavedTopic = { title?: string; content_md?: string };
+
+function savedTopic(): SavedTopic {
+  try {
+    return JSON.parse(sessionStorage.getItem(SAVED_KEY) ?? '{}') as SavedTopic;
+  } catch {
+    return {};
+  }
+}
+
+/** 桩的当前值 = 基准 + 本标签页存过的那一次保存。 */
+function topicDetail(): typeof TOPIC_DETAIL {
+  const saved = savedTopic();
+  return {
+    ...TOPIC_DETAIL,
+    ...(saved.title ? { title: saved.title } : {}),
+    ...(saved.content_md ? { content_html: '<p>' + saved.content_md + '</p>' } : {}),
+    // 保存过正文 = 后端把审核态打回了 pending（forum 的 ResetTopicReview，597c4ac）
+    ...(saved.content_md ? { review_state: 'pending', review_note: null } : {}),
+  };
+}
 
 /** 第二个帖子详情：**只给出图用的第二态** —— 作者刚保存过、服务端把审核态打回了 pending（L7 的横幅）。
  *  真站的 pending 只有作者本人拿得到（后端过滤），桩照这个口径给。 */
@@ -207,12 +236,8 @@ export function fixtureFor(u: string, method: string, body?: unknown): Reply | u
   // L7 出图：作者保存正文 → 后端把 review_state 打回 pending（forum 的 ResetTopicReview）。
   // 桩要**跟着变**，否则拍到的还是「已通过」那一屏，等于没验。
   if (method === 'PATCH' && p.endsWith('/api/v1/topics/tp-1')) {
-    const b = (body ?? {}) as { title?: string; content_md?: string };
-    if (b.title) TOPIC_DETAIL.title = b.title;
-    if (b.content_md) TOPIC_DETAIL.content_html = '<p>' + b.content_md + '</p>';
-    TOPIC_DETAIL.review_state = 'pending';
-    TOPIC_DETAIL.review_note = null;
-    return { body: { data: { ...TOPIC_DETAIL } } };
+    sessionStorage.setItem(SAVED_KEY, JSON.stringify((body ?? {}) as SavedTopic));
+    return { body: { data: topicDetail() } };
   }
   // 管理后台（/admin/*）：自己的桩，具体路径写在那一份里
   const admin = adminFixtureFor(u);
@@ -229,7 +254,7 @@ export function fixtureFor(u: string, method: string, body?: unknown): Reply | u
   if (p.endsWith('/api/v1/site')) return { body: { data: SITE } };
   if (p.endsWith('/api/v1/boards')) return { body: { data: BOARDS } };
   if (p.includes('/api/v1/topics/tp-1/sources/')) return { status: 302 };
-  if (p.endsWith('/api/v1/topics/tp-1')) return { body: { data: TOPIC_DETAIL } };
+  if (p.endsWith('/api/v1/topics/tp-1')) return { body: { data: topicDetail() } };
   if (p.endsWith('/api/v1/topics/tp-2')) return { body: { data: TOPIC_RESUBMITTED } };
   if (p.endsWith('/api/v1/topics/tp-1/posts')) return { body: { data: POSTS, next_cursor: null } };
   if (p.endsWith('/api/v1/topics/tp-1/issues')) {
