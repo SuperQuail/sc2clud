@@ -62,3 +62,20 @@
   - 下一步：收尾自查（`gofmt -l .` + `go vet ./...` + 改过的包 `go test -count=1`），
     把 §6.2 的实测数写进进度；关掉本轮的进程（19399 的 forum run、24817 的嵌入式 pg、5299 的预览服务）。
   - 阻塞：无。
+- [x] 第4步：收尾自查 + 关进程
+  - 做了什么：跑了改过的那三个包的全量用例与全树 vet/gofmt；删掉本轮的两处临时脚手架
+    （`forum/internal/app/.mig-art-stand/`、`web/.tmp-migart-shot.mjs`）；按 PID 关掉三个进程。
+  - 证据：
+    · `gofmt -l .`（forum 全树）**空输出**，exit 0；`go vet ./...` exit 0；
+      `go test ./internal/app/ ./internal/media/ ./internal/platform/image/localstore/ -count=1`
+      → `ok forum/internal/app 14.3s` / `ok forum/internal/media 28.7s` / `ok .../localstore 0.07s`，TEST_EXIT=0。
+    · 关进程（按端口属主取 PID，不按进程名群杀）：24817 postgres(36880)、19399 forum-mig-art(13460)、
+      5299 node(10204) —— 三个端口现在都是「已释放」；CDP 端口 19411/19412 也已释放。
+    · `git status --short` 里只剩**别人的**在途文件（`web/src/devroom/pages/12-topic/author-card.tsx`、
+      `web/scripts/cdp-shot.ts` 的 size/mark 两个新动作）—— 我一个都没 add。
+  - 下一步：无（本包四条任务全部完成）。若要真上线：照 `完全重构/迁移素材/README.md` 在目标实例上跑
+    `forum board-covers -manifest <仓库里的 board-covers.json>`（先 `-dry-run` 看一遍）。
+  - 阻塞：无。**遗留三点**（都不属本包文件作用域，写在审计 §6 里等拍板）：
+    ① 公告区「只有管理员能发」仍未落地（§6.5 三条路）；
+    ② `tool_player`/`tool_dev` 的中文 label 比老站少一个「用」字（纯文案，改 `seed_data.go` 一行）；
+    ③ 老站 `site_texts` 的值要不要按 §4 的 SQL 带进 prod，是运维决定（新站默认值与老值相同）。
