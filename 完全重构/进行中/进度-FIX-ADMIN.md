@@ -53,3 +53,20 @@
   - 阻塞：**`pnpm typecheck` 与 `pnpm lint` 现在整体是红的，但与我无关**：`web/scripts/cdp-shot.ts`（FIX-MSG 在 1938cd6 提交的）
     typecheck 22 条错、eslint 2 条错；`web/src/routes/issues.new-issue.test.tsx`（FIX-TOPIC 在途）eslint 1 条错（手写 `<input>`）。
     我的文件：`pnpm typecheck` 过滤掉 cdp-shot.ts 后 **0 条**；`pnpm lint` 的 27 条里 0 条出自我改的文件。**请 Lead 让那两位收口。**
+
+- [x] 第 3 步：D15 把「dev 制品必须有入口」做成门禁（先红后绿）+ 入口可见可点的最终出图
+  - 做了什么：`web/scripts/check-bundle.ts` 第 4) 段新增 **4b-③**：**`dist/devroom/` 在（= 这是 dev 制品）而产品侧一个 DevRoom 入口都没有 → 红**，
+    并给出修法（按 pack-dev.ts 重新构建）。判据刻意**不是**「产品侧必须有入口」——那样真正的生产构建（只有 dist/index.html）会当场红。
+  - 证据：**会红**：把真 dev 制品拷成 dist、只把产品侧那份 JS 换成**不带 VITE_DEVROOM 的构建**（就是线上 /dev/ 的形状）→
+    `node scripts/check-bundle.ts` **exit 1**，输出里那条是
+    `✗ 这是 dev 制品（dist/devroom/ 在），但产品侧一个 DevRoom 入口都没有 —— 这次产品构建多半没开 VITE_DEVROOM=1（pack-dev.ts 是用 VITE_DEVROOM=1 构建的）。后果是 DevRoom 服务着却进不去（D15）。`；
+    **会绿**：按 pack-dev.ts 的配方重建（`VITE_DEVROOM=1 pnpm exec vite build` + preview-dist 并入 dist/devroom + devroom.html→index.html）→
+    `产物自洽检查通过：入口齐、20 个 DevRoom 页面在产物里、30 个资源都在、dev 制品：产品侧 DevRoom 入口 3 处，dist/devroom/** 自己的 15 处`，**exit 0**。
+    **最终出图**（服务的就是上面那份完整 dev 制品）：1440 → `hasEntry:true, href:"/devroom/", rect:[1280,844,144,40], position:fixed, z:50,
+    insideViewport:true, hitTest:true`；390 → `rect:[258,732,120,32], insideViewport:true, hitTest:true, overlapsFooter:false`；
+    **点它** → `url:"/devroom/", title:"DevRoom · 控件验证", rootChildren:1`（真跳进房间了）。控制台 0 问题。
+    图：`shots/fixadmin/d15-final-1440.png` / `d15-final-390.png`（右下角「开发页面（临时）」胶囊，不压页脚）/ `d15-final-click.png`（点进去之后的 DevRoom 首页）。
+    生产零痕迹那条（4b-②）**继续管着**，我只加强了它：不带 `VITE_DEVROOM` 的构建仍 0 命中（那一档 dist/devroom/ 也不在，所以 4b-③ 不进分支）。
+  - 下一步：收尾 —— 跑 `pnpm typecheck && pnpm lint && npx vitest run` 全量，把三条阻塞写给 Lead，按 PID 关掉自己起的进程。
+  - 阻塞：同第 2 步（`scripts/cdp-shot.ts` 的 typecheck 22 条 + eslint 2 条、`issues.new-issue.test.tsx` 的 eslint 1 条，都不是我的文件）。
+    另：`pnpm build` 现在会**先跑 tsc**，所以 **`pack-dev.ts` 与 `deploy.ps1` 现在都跑不动**（第 1 条阻塞的连带后果）—— 请 Lead 先让 cdp-shot.ts 收口。

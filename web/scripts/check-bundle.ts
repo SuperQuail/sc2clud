@@ -112,6 +112,21 @@ if (productHit.count > 0 && !devroomPresent) {
     problems.push('产品产物指向 DevRoom，但 dist/devroom/ 不存在（线上死链；这次构建开过 VITE_DEVROOM？）' + at);
   }
 }
+// 4b-③（FIX-ADMIN · D15）**方向反过来的一条**：这是 dev 制品（dist/devroom/ 在），产品侧却**一个入口都没有** ——
+//    2026-10-14 线上 /dev/ 就是这个形状：跑着的那份 index-HnB4KyJ6.js（385030 B）里
+//    「devroom」「开发页面」「开发者房间」四个串 0 命中，即那份是**不带 VITE_DEVROOM 的生产构建**。
+//    后果：DevRoom 在 /dev/devroom/ 好好地服务着，而首页上根本**没有门进去**（用户报的 D15）。
+//    上面两条都拦不住它（4b-① 只在「有链接没目录」时红，4b-② 把「没开开关」当成正常的生产构建）。
+//    判据不能写成「产品侧必须有入口」：那样真正的生产构建（只有 dist/index.html，没有 dist/devroom/）会当场红 ——
+//    为绿而写死的例外，比没有门禁更糟。所以**判据是「这份制品自己声明了它是 dev 制品」**（dist/devroom/ 在就是声明），
+//    生产制品不进这条分支。pack-dev.ts 的第 4 步正好会在这一步拦住一次坏的 dev 打包。
+if (devroomPresent && productHit.count === 0) {
+  problems.push(
+    '这是 dev 制品（dist/devroom/ 在），但产品侧一个 DevRoom 入口都没有 —— 这次产品构建多半没开 VITE_DEVROOM=1' +
+    '（pack-dev.ts 是用 VITE_DEVROOM=1 构建的）。后果是 DevRoom 服务着却进不去（D15）。' +
+    '别手改这道门禁：要么按 pack-dev.ts 重新构建，要么把这一条的理由写进文档。',
+  );
+}
 // 4c) 反向对照：DevRoom 自己的产物里必须扫得到 —— 否则 4b-② 的「生产侧 0 命中」可能只是「整个扫描什么都没读到」。
 const devHit = devroomPresent ? scanMarkers(devroomFiles, relDist) : { count: 0, at: [] as string[] };
 note(!devroomPresent || devHit.count > 0, 'dist/devroom/** 里扫不到任何 DevRoom 标记（扫描器没读到内容？4c 的「0 命中」因此不可信）');
