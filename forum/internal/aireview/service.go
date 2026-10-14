@@ -1,0 +1,280 @@
+package aireview
+
+import (
+	"context"
+	"encoding/json"
+	"fmt"
+	"strings"
+	"time"
+
+	"github.com/jackc/pgx/v5/pgxpool"
+
+	"forum/internal/ent"
+	"forum/internal/platform/ai"
+	"forum/internal/platform/clock"
+	"forum/internal/platform/queue"
+	"forum/internal/report"
+)
+
+// 站点设置键（d7 §2.2）。读到就用站点设置，读不到用代码默认值。
+const (
+	settingEnabled    = "ai.review.enabled"
+	settingDailyLimit = "ai.review.daily_limit_per_topic"
+
+	defaultDailyLimit = 3
+)
+
+// defaultPrompt 是 ai_config.prompt / prompt_report 留空时的内置提示词（d7 §4 逐字）。
+// 「宁可放过，不可错杀」那一段是刻意的：误杀正常帖子的代价远大于放过边缘内容。
+const defaultPrompt = `你是中文社区（星际争霸战役作者社区）的内容审核员。判断下面这篇帖子是否适合公开发布。
+
+拒绝（reject）—— 只在这些情况：
+  · 广告、推广、拉群、卖号、引流到站外交易；
+  · 辱骂、人身攻击、地域/民族歧视、色情、暴力威胁；
+  · 违法违规内容；
+  · 与本站主题完全无关的刷屏内容。
+
+拿不准（review）—— 下列情况必须交人工，不要自己决定：
+  · 你不确定是否违规；
+  · 内容涉及争议话题、指控某个人、或涉及真实身份；
+  · 正文为空、噪声、或明显是机器生成的乱码；
+  · 任何你无法判断的情境。
+
+其余一律通过（approve）。**宁可放过，不可错杀**——本站是创作者社区，误杀一篇正常帖子的代价远大于放过一篇边缘内容。
+
+理由（reason）用中文，不超过 60 字，直接说原因，不要复述规则。
+调用 submit_review 提交结论。`
+
+// JudgeFunc 是外呼口（platform/ai.Judge 的形状）：New 收到 nil 就用真的 Judge，用例注入假实现。
+type JudgeFunc func(ctx context.Context, cfg ai.Config, prompt, text string) (ai.Result, error)
+
+// Settings 是站点设置的只读视图，由 app 注入 site.Service —— **别的模块读站点开关的唯一入口**：
+// 本域不自己查 site_settings，那样会有第二份缓存与第二套默认值。
+type Settings interface {
+	SettingBool(ctx context.Context, key string) bool
+	SettingInt(ctx context.Context, key string) int
+}
+
+// Logger 只要一个 Warn：审核失败要能在日志里看见（d7 §7 的失败率数据靠它 + ai_config.last_error）。
+type Logger interface{ Warn(msg string, args ...any) }
+
+// TxQueue 是事务内入队口，由 app 注入（entQueue 把 *ent.Tx 收窄成 queue.TxExecutor）。
+// 举报到阈值时的 ai:review 与举报行**同一个事务**：事务回滚，任务也不存在（拍板 §5.4）。
+type TxQueue interface {
+	EnqueueTx(ctx context.Context, tx *ent.Tx, t queue.Task) error
+}
+
+// Service 是 AI 审核域（d7-ai-review.md）。
+//
+// **AI 是第一道审核，人是最后一道**：它不是独立业务线，而是审核队列的一个判定来源 ——
+// 读写 forum 的主题状态，并把每一次判定记进 review_events。
+type Service struct {
+	pool    *pgxpool.Pool
+	crypter Crypter
+	q       TxQueue
+	set     Settings
+	clk     clock.Clock
+	judge   JudgeFunc
+	log     Logger
+}
+
+// New 的签名就是接线契约（app/modules.go 的装配处）：库句柄是 pgx 原生池（ai_config 与
+// review_events 不加 ent schema），密钥加解密与发信**同一套**（d7 §2.1），judge 传 nil 走真外呼。
+func New(pool *pgxpool.Pool, judge JudgeFunc, crypter Crypter, q TxQueue, set Settings, clk clock.Clock, log Logger) *Service {
+	if judge == nil {
+		judge = ai.Judge
+	}
+	return &Service{pool: pool, crypter: crypter, q: q, set: set, clk: clk, judge: judge, log: log}
+}
+
+// ReviewTopic 是 d7 §6 的八步。ctx 来自任务，topicID 是**内部 id**（payload 里就是它）。
+func (s *Service) ReviewTopic(ctx context.Context, topicID int64, trigger string) error {
+	// 1) 配置与开关：ai_config.enabled 与 site_settings 的 ai.review.enabled 是「且」。
+	cfg, err := s.GetConfig(ctx)
+	if err != nil {
+		return err
+	}
+	if !cfg.Enabled || !s.set.SettingBool(ctx, settingEnabled) {
+		return nil
+	}
+	key, err := s.LoadKey(ctx)
+	if err != nil {
+		// 没配密钥不是错误：主题留在 pending，人工队列里能看到（d7 §10 验收 1）。
+		s.markError(ctx, err.Error())
+		return nil
+	}
+
+	// 2) 取主题：标题 + 1 楼 Markdown 源 + 可见性/判定来源 + 未处理举报数（sqlSubject 不含作者）。
+	var (
+		id          int64
+		publicID    string
+		title       string
+		body        string
+		visibility  string
+		source      *string
+		openReports int
+	)
+	err = s.pool.QueryRow(ctx, sqlSubject, topicID).Scan(&id, &publicID, &title, &body, &visibility, &source, &openReports)
+	if err != nil {
+		return nil // 主题没了：没什么可审的，不是错误
+	}
+	if visibility == "deleted" || (source != nil && *source == "manual") {
+		return nil // **AI 绝不覆盖人工判定**，也不碰已删主题（d7 §1/§6）
+	}
+
+	// 3) 单帖当日调用上限（d7 §2.2）：超限就留在 pending 交人工。
+	limit := s.set.SettingInt(ctx, settingDailyLimit)
+	if limit <= 0 {
+		limit = defaultDailyLimit // 键未声明时 site 返回 0：那是「没配」，不是「不许调」
+	}
+	var today int
+	if err := s.pool.QueryRow(ctx, sqlCallsToday, topicID).Scan(&today); err != nil {
+		return err
+	}
+	if today >= limit {
+		return nil
+	}
+
+	// 4) 组装：**不截断正文**（d7 §2.4），**不放作者信息**（d7 §11：昵称/邮箱/IP 与审核无关）。
+	prompt := strings.TrimSpace(cfg.Prompt)
+	if prompt == "" {
+		prompt = defaultPrompt
+	}
+	text := "标题：" + title + "\n\n正文：\n" + body
+	if trigger == "report" {
+		if p := strings.TrimSpace(cfg.PromptReport); p != "" {
+			prompt = p
+		}
+		text = fmt.Sprintf("【举报复核】该帖已被 %d 人举报，重点看是否违规。\n", openReports) + text
+	}
+
+	// 5) 外呼（超时在 ai.Config 里）。
+	res, err := s.judge(ctx, s.aiConfig(cfg, key), prompt, text)
+	if err != nil {
+		// 调用失败：记 last_error，**不改状态**（留在 pending 交人工）；返回错误让队列退避重试。
+		s.markError(ctx, err.Error())
+		return err
+	}
+	s.markOK(ctx)
+
+	// 6) 判定 -> 状态（d7 §1）。拿不准时两列都不写（见 outcome 的注释）。
+	state, note := outcome(res.Verdict, res.Reason)
+
+	// 7) 单事务：写 review_events + 改 topics。复审判违规额外 hidden + 审计 ——
+	// visibility 只到 hidden，**deleted 只有人能按**（d7 §1 硬规则 1）。
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+	if _, err := tx.Exec(ctx, sqlInsertEvent, topicID, trigger, string(res.Verdict),
+		trimRunes(res.Reason, 200), res.Categories, res.Model, res.LatencyMS); err != nil {
+		return err
+	}
+	hidden := trigger == "report" && res.Verdict == ai.Reject
+	if _, err := tx.Exec(ctx, sqlUpdateTopic, topicID, state, note, hidden); err != nil {
+		return err
+	}
+	if hidden {
+		detail, _ := json.Marshal(map[string]any{
+			"before":       map[string]string{"visibility": visibility},
+			"after":        map[string]string{"visibility": "hidden"},
+			"open_reports": openReports,
+		})
+		// audit_logs.target_id 是 varchar：按既有约定存**对外 id**，不存自增 id（0003_authz 第 99 行）。
+		if _, err := tx.Exec(ctx, sqlInsertAudit, publicID, string(detail)); err != nil {
+			return err
+		}
+	}
+	return tx.Commit(ctx)
+}
+
+// Test 是 d7 §8 的「测试连通」：真发一次请求，用固定短文本（**不消耗任何用户内容**）。
+// 回执是 TestView 的字段形状，**不含密钥、不含请求体**。
+func (s *Service) Test(ctx context.Context) (map[string]any, error) {
+	cfg, err := s.GetConfig(ctx)
+	if err != nil {
+		return nil, err
+	}
+	key, err := s.LoadKey(ctx)
+	if err != nil {
+		return nil, err
+	}
+	prompt := strings.TrimSpace(cfg.Prompt)
+	if prompt == "" {
+		prompt = defaultPrompt
+	}
+	res, err := s.judge(ctx, s.aiConfig(cfg, key), prompt, testText)
+	if err != nil {
+		s.markError(ctx, err.Error())
+		return nil, err
+	}
+	s.markOK(ctx)
+	return map[string]any{
+		"verdict": string(res.Verdict), "reason": res.Reason, "categories": res.Categories,
+		"model": res.Model, "latency_ms": res.LatencyMS, "raw": res.Raw,
+	}, nil
+}
+
+// TriggerReportReview 是举报域的 ReviewTrigger（d7 §1/§7）：举报到阈值 → 复核。
+// 它与举报行**同一个事务**（拍板 §5.4），所以入队走 tx，不走池。
+func (s *Service) TriggerReportReview(ctx context.Context, tx *ent.Tx, in report.ReportReviewInput) error {
+	if in.TopicID <= 0 {
+		return nil
+	}
+	// 到第二阈值：**不再调 AI**，直接转人工（防举报风暴打爆额度）。条件写在 SQL 里：
+	// 只在 review_source IS NULL 时落 manual，绝不覆盖既有判定。
+	if in.Human {
+		_, err := tx.ExecContext(ctx, sqlMarkManual, in.TopicID)
+		return err
+	}
+	// 第一阈值：入队一次复审。轮次 = 已发生的 report 类事件数，同一轮的多次举报只入队一条
+	//（unique_key 只在 pending/running 里去重，下一轮算出的轮次不同，所以不会被上一轮吃掉）。
+	rows, err := tx.QueryContext(ctx, sqlCountReportRounds, in.TopicID)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = rows.Close() }()
+	var round int
+	if rows.Next() {
+		if err := rows.Scan(&round); err != nil {
+			return err
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return err
+	}
+	return s.q.EnqueueTx(ctx, tx, queue.Task{
+		Type:      queue.TypeAIReview,
+		Payload:   json.RawMessage(payloadJSON(in.TopicID, "report")),
+		UniqueKey: "review:report:" + itoa64(in.TopicID) + ":" + itoa(round),
+		Priority:  priorityReview,
+		MaxRetry:  maxRetryReview,
+		RunAt:     s.clk.Now(),
+	})
+}
+
+// aiConfig 把库里的配置翻成外呼参数（外呼口只认这一个形状）。
+func (s *Service) aiConfig(cfg *Config, key string) ai.Config {
+	return ai.Config{
+		BaseURL: cfg.BaseURL, Model: cfg.Model, APIKey: key,
+		Thinking: cfg.Thinking, StrictMode: cfg.StrictMode,
+		MaxOutputTokens: cfg.MaxOutputTokens,
+		Timeout:         time.Duration(cfg.TimeoutMS) * time.Millisecond,
+	}
+}
+
+// outcome 把三态判定翻成 topics 的两列。**review（拿不准）返回 nil**：sql.go 的 sqlUpdateTopic
+// 用「$2 IS NULL」表达整段不动，于是拿不准不会覆盖上一轮/人工填的批注与来源 ——
+// fail-open 到人工，不是放行（d7 §3.5）。
+func outcome(v ai.Verdict, reason string) (state, note *string) {
+	if v == ai.Review {
+		return nil, nil
+	}
+	st := "approved"
+	if v == ai.Reject {
+		st = "rejected"
+	}
+	n := "AI 审核：" + trimRunes(reason, 200)
+	return &st, &n
+}

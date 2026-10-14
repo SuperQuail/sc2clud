@@ -8,6 +8,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 
+	"forum/internal/aireview"
 	"forum/internal/auth"
 	"forum/internal/config"
 	"forum/internal/forum"
@@ -52,6 +53,8 @@ type Modules struct {
 	Site    *site.Service
 	Mail    *mail.Service
 	Report  *report.Service
+	// AIReview 是 AI 审核域（d7）：它同时是 report 的 ReviewTrigger 实现（举报到阈值 → ai:review）。
+	AIReview *aireview.Service
 	// Captcha 是图形验证码的出题器（platform，不是业务域）：auth 消费它的结论。
 	Captcha *captcha.Service
 
@@ -119,9 +122,14 @@ func newModules(ctx context.Context, cfg *config.Config, in *Infra) (*Modules, e
 	m.Notify = notify.NewService(in.DB, in.Clock, notifyDB, notify.NewNoticeSettings(notifyDB))
 	m.Message = message.NewService(in.DB, in.Clock, messagepgsql.New(in.DB), msgUsers{m}, m.Forum)
 	m.Title = title.NewService(in.DB, in.DB, in.Clock, titleAudit{m})
-	// review=nil：审核域（AI 复核）还没实现，report 对 nil 有显式分支（reports.go:69），
-	// 举报本身照常成立。
-	m.Report = report.NewService(in.DB, reportTargets{m}, reportUsers{m}, m.Site, nil,
+
+	// AI 审核域（d7）：库句柄是 pgx 原生池（这两张表不加 ent schema），密钥加解密与发信同一套。
+	// crypter 从 mail 域拿 —— 主密钥只有一把，**不为 AI 再引一把**（d7 §2.1）。
+	if m.Mail.Crypter == nil {
+		return nil, fmt.Errorf("装配: aireview: mail 的主密钥没配好（FORUM_MAIL__KEY）")
+	}
+	m.AIReview = aireview.New(in.Pool, nil, m.Mail.Crypter, entQueue{in.Queue}, m.Site, in.Clock, in.Log)
+	m.Report = report.NewService(in.DB, reportTargets{m}, reportUsers{m}, m.Site, m.AIReview,
 		m.audit, in.Clock, in.Log)
 	return m, nil
 }

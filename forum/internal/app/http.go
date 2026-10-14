@@ -9,6 +9,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 
+	"forum/internal/aireview"
 	"forum/internal/auth"
 	"forum/internal/config"
 	"forum/internal/forum"
@@ -106,6 +107,8 @@ func registerAPIRoutes(r *gin.Engine, cfg *config.Config, m *Modules) {
 	site.NewHandler(m.Site, auth.FromGin).Register(v1, m.requireLogin, m.perm)
 	mail.NewHandler(m.Mail, auth.FromGin).Register(v1, m.requireLogin, m.perm)
 	report.NewHandler(m.Report, auth.FromGin).Register(v1, m.requireLogin, m.perm, m.limit)
+	// AI 审核的配置与连通测试（d7 §8）：权限点沿用 site.setting，不新造。
+	aireview.NewHandler(m.AIReview, auth.FromGin).Register(v1, m.requireLogin, m.perm)
 }
 
 // registerStatic 挂静态托管与 SPA 回退。

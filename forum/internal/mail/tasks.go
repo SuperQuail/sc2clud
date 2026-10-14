@@ -54,7 +54,7 @@ func (s *Service) HandleMailSend(ctx context.Context, payload []byte) error {
 	// mail_accounts，几行），换来的是「BindQuota 一定能落到对的那一行」——额度绑定写错记录
 	// 是静默的数据损坏，比一次小查询贵得多。
 	r := pgmail.NewRouter(pgmail.Dependencies{
-		DB: s.db, Crypter: s.crypter, Store: bindStore{svc: s, logID: lg.ID},
+		DB: s.db, Crypter: s.Crypter, Store: bindStore{svc: s, logID: lg.ID},
 		Clock: s.clk, Log: s.log,
 	})
 

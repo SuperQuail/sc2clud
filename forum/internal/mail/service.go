@@ -27,9 +27,12 @@ import (
 
 // Service 是发信域的全部业务逻辑。actor 由 handler 显式传入（拍板 §5.3），不从 context 取。
 type Service struct {
-	db      *ent.Client
-	pg      *pgsql.Queries
-	crypter *pgmail.Crypter // nil = 主密钥不可用：HasUsable 恒 false，Send 返回 ErrPermanent
+	db *ent.Client
+	pg *pgsql.Queries
+	// Crypter 是发信凭据的加解密器（chacha20poly1305）。导出是因为 AI 审核的 API Key 与发信凭据
+	// **同一把主密钥、同一套机制**（d7 §2.1）：主密钥只有一把，不为 AI 再引一把。
+	// nil = 主密钥不可用：HasUsable 恒 false，Send 返回 ErrPermanent。
+	Crypter *pgmail.Crypter
 	q       Queue
 	set     Settings
 	audit   *audit.Writer
@@ -51,7 +54,7 @@ func NewService(db *ent.Client, keys Keys, q Queue, set Settings, a *audit.Write
 	if err != nil {
 		s.log.Warn("mail: 主密钥不可用，发信功能关闭（配好 FORUM_MAIL__KEY 后重启即可）", "err", err.Error())
 	} else {
-		s.crypter = crypt
+		s.Crypter = crypt
 	}
 	return s
 }
@@ -70,7 +73,7 @@ func oldKeys(s string) []string {
 // 判定与 platform/mail.Router 的取账号逻辑同源：可用 = enabled + 未归档 + 凭据能解开 + reset_tz 合法。
 // **额度满不算不可用**：额度会恢复，那是「今天发不出去」，不是「发信系统坏了」。
 func (s *Service) HasUsable(ctx context.Context) (bool, error) {
-	if s.crypter == nil {
+	if s.Crypter == nil {
 		return false, nil // 没有主密钥 = 一封信都发不出去
 	}
 	rows, err := s.pg.Candidates(ctx)
@@ -78,7 +81,7 @@ func (s *Service) HasUsable(ctx context.Context) (bool, error) {
 		return false, err
 	}
 	for _, c := range rows {
-		if _, err := s.crypter.Decrypt(c.Cipher, c.Nonce, []byte(c.PublicID)); err != nil {
+		if _, err := s.Crypter.Decrypt(c.Cipher, c.Nonce, []byte(c.PublicID)); err != nil {
 			continue
 		}
 		if _, err := loadTZ(c.ResetTZ); err != nil {

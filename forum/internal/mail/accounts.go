@@ -90,10 +90,10 @@ func (s *Service) CreateAccount(ctx context.Context, actor *authz.Actor, in Acco
 	var cipher, nonce []byte
 	var secretAt *time.Time
 	if len(secret) > 0 {
-		if s.crypter == nil {
+		if s.Crypter == nil {
 			return nil, fmt.Errorf("mail: 没有可用的主密钥，不能保存凭据")
 		}
-		if cipher, nonce, err = s.crypter.Encrypt(secret, []byte(pid.String())); err != nil {
+		if cipher, nonce, err = s.Crypter.Encrypt(secret, []byte(pid.String())); err != nil {
 			return nil, fmt.Errorf("加密凭据: %w", err)
 		}
 		secretAt = &now
@@ -204,10 +204,10 @@ func (s *Service) UpdateAccount(ctx context.Context, actor *authz.Actor, publicI
 			up = up.SetEnabled(*in.Enabled)
 		}
 		if len(secret) > 0 {
-			if s.crypter == nil {
+			if s.Crypter == nil {
 				return fmt.Errorf("mail: 没有可用的主密钥，不能轮换凭据")
 			}
-			cipher, nonce, err := s.crypter.Encrypt(secret, []byte(row.PublicID.String()))
+			cipher, nonce, err := s.Crypter.Encrypt(secret, []byte(row.PublicID.String()))
 			if err != nil {
 				return fmt.Errorf("加密凭据: %w", err)
 			}
@@ -315,11 +315,11 @@ func (s *Service) SendTest(ctx context.Context, actor *authz.Actor, publicID str
 	if !row.Enabled || row.ArchivedAt != nil {
 		return nil, apperr.Invalid(map[string]string{"account": "账号已停用或已归档，不能测试发信"})
 	}
-	if s.crypter == nil {
+	if s.Crypter == nil {
 		s.log.Warn("mail: 主密钥不可用，测试发信失败", "account", row.Name)
 		return nil, ErrSecretUndecryptable
 	}
-	if _, err := s.crypter.Decrypt(bytesOf(row.SecretCipher), bytesOf(row.SecretNonce), []byte(row.PublicID.String())); err != nil {
+	if _, err := s.Crypter.Decrypt(bytesOf(row.SecretCipher), bytesOf(row.SecretNonce), []byte(row.PublicID.String())); err != nil {
 		s.log.Warn("mail: 账号凭据解不开，测试发信失败", "account", row.Name, "err", err.Error())
 		return nil, ErrSecretUndecryptable
 	}

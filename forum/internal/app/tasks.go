@@ -42,6 +42,7 @@ func registerTasks(in *Infra, m *Modules) {
 
 	w.Handle(queue.TypeMailSend, m.Mail.HandleMailSend)
 	w.Handle(queue.TypeSearchIndex, m.indexTopic)
+	w.Handle(queue.TypeAIReview, m.reviewTopic)
 	w.Handle(queue.TypeImageGC, m.Media.GCImages)
 	w.Handle(queue.TypeJobCleanup, m.cleanup)
 }
@@ -102,6 +103,21 @@ func (m *Modules) indexTopic(ctx context.Context, payload []byte) error {
 		TopicID: ref.ID, Title: card.Title, BodyText: body,
 		Tokens: search.Tokenize(card.Title + " " + body),
 	})
+}
+
+// reviewTopic 处理 ai:review（d7 §6）：payload {"topic_id": <bigint>, "trigger": "create"|"report"}。
+//
+// 任务的返回值就是「要不要重试」：网络 / 5xx / 429 这类 return err 交给队列退避（max_retry=2 之后进 dead，
+// 主题留在 pending 交人工）；解析失败与「拿不准」都是成功返回 —— 重试也是同样的结果。
+func (m *Modules) reviewTopic(ctx context.Context, payload []byte) error {
+	var p struct {
+		TopicID int64  `json:"topic_id"`
+		Trigger string `json:"trigger"`
+	}
+	if err := unmarshalPayload(payload, &p); err != nil || p.TopicID <= 0 {
+		return queue.ErrSkipRetry // payload 是我们自己写的：解不出就是代码 bug
+	}
+	return m.AIReview.ReviewTopic(ctx, p.TopicID, p.Trigger)
 }
 
 // cleanup 处理 queue:cleanup（cron 每小时入队一次，启动时先跑一轮）。
