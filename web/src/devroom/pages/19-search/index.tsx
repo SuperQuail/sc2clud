@@ -1,10 +1,12 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import Button from '@jetbrains/ring-ui-built/components/button/button';
 import Toggle from '@jetbrains/ring-ui-built/components/toggle/toggle';
 import { roomHref } from '@/devroom/room-links';
 import { KV, Panel, Pill, ScreenHead, Toolbar } from '@/devroom/pages/15-admin/bits';
+import { HeaderSearch } from '@/ui/nav/header-search';
 import { SearchPanel, type SearchState, type SearchTab } from './search-panel';
 import { SEARCH_SCOPE, searchTopics, searchUsers, toTopicRow } from './data';
+import { TOPICS } from '../14-home/mock';
 
 // DevRoom 19 · 搜索（内嵌在首页的那一块）。
 // 实际站现在的搜索是**临时简化版**：只有帖子一档、没有独立的加载/空/错误态、窄屏下按钮文字把输入框挤窄。
@@ -26,7 +28,66 @@ function initFromUrl(): { q: string; type: SearchTab; state: SearchState } {
   };
 }
 
+// 顶栏那一块（D11）：**真件**（@/ui/nav/header-search）挂在房间的假数据上。
+// 它自己不 fetch —— 取数走 lib/api（只允许 client.ts 发请求），所以这里在页面级别把
+// GET /api/v1/search 换成 19-search 的假数据；产品入口不需要这一段，接线由 shell 负责（见进度文件的阻塞）。
+function useSearchStub() {
+  useEffect(() => {
+    const real = window.fetch;
+    window.fetch = (async (input: RequestInfo | URL) => {
+      const url = new URL(typeof input === 'string' ? input : input instanceof URL ? input.href : input.url, 'http://room');
+      if (!url.pathname.endsWith('/api/v1/search')) return real(input as RequestInfo);
+      // 后端的用户档条目是 SearchItem（id 是数字）；帖子档是 TopicCardDTO（与信息流同形）
+      const data =
+        url.searchParams.get('type') === 'users'
+          ? searchUsers(url.searchParams.get('q') ?? '').map((u, i) => ({ ...u, id: i + 1 }))
+          : searchTopics(url.searchParams.get('q') ?? '').map((t) => {
+              const row = TOPICS.find((x) => x.id === t.id);
+              return {
+                id: t.id,
+                kind: row?.kind ?? 'discussion',
+                title: t.title,
+                excerpt: t.excerpt,
+                board: { slug: row?.board.slug ?? 'custom-campaign', name: row?.board.name ?? '自制战役' },
+                author: { handle: 'demo-admin', nickname: t.author.nickname, avatar_hash: null, avatar_small_hash: null },
+                reply_count: t.reply_count,
+                like_count: t.like_count,
+                view_count: t.view_count,
+                pinned: false,
+                featured: false,
+                locked: false,
+                cover_hash: null,
+                created_at: t.created_at,
+                last_reply_at: t.last_reply_at,
+              };
+            });
+      return new Response(JSON.stringify({ data, next_cursor: null }), { status: 200, headers: { 'content-type': 'application/json' } });
+    }) as typeof window.fetch;
+    return () => {
+      window.fetch = real;
+    };
+  }, []);
+}
+
+/**
+ * 出图用：`?click=<css 选择器>` 打开后自动点它一次。
+ * 为什么要有它：顶栏搜索是**点开才有**的浮层，静态截图拍不到展开态（出图脚本没法往页面里注入脚本）。
+ * 只在带参数时生效，参数还会从地址栏里去掉 —— 它不是一个产品行为。
+ */
+function useAutoClick() {
+  useEffect(() => {
+    const el = new URLSearchParams(location.search).get('click');
+    if (!el) return;
+    const t = window.setTimeout(() => {
+      document.querySelector(el)?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    }, 400);
+    return () => window.clearTimeout(t);
+  }, []);
+}
+
 export default function SearchPage() {
+  useSearchStub();
+  useAutoClick();
   const [init] = useState(initFromUrl);
   const [draft, setDraft] = useState(init.q);
   const [query, setQuery] = useState(init.q);
@@ -73,6 +134,23 @@ export default function SearchPage() {
         note='首页顶部那一块（不单独开页面）。契约：GET /api/v1/search?q=&type=topics|users&limit=&cursor= —— 这里不 fetch，结果来自 15-admin / 14-home 的同一份假数据。'
         actions={<Pill tone='outline'>{'当前档：' + (tab === 'topics' ? '帖子' : '用户')}</Pill>}
       />
+
+      <Panel
+        title='顶栏搜索（D11：不换页，就地展开）'
+        note='下面是真件 @/ui/nav/header-search —— 产品里它长在 app/shell.tsx 的顶栏里（那个文件由 Lead 管）。点它不会离开这一页，搜索栏与结果就地展开；结果区是懒加载的（首屏预算），所以第一次点开有一瞬「正在打开搜索…」。'
+      >
+        <div className='flex flex-wrap items-center gap-4'>
+          {/* 模拟顶栏那一行的底色与高度，好看出浮层相对按钮的位置 */}
+          <span className='flex items-center gap-1 rounded-md border border-border bg-background px-3 py-2'>
+            <span className='pr-2 text-[13px] text-muted-foreground'>模拟顶栏：</span>
+            <HeaderSearch />
+          </span>
+          <span className='text-[11px] leading-relaxed text-muted-foreground'>
+            键入「战役」回车：结果就地出现在浮层里（帖子档），切「用户」档看搜人；
+            点浮层外面或按 Esc 收起；<b>地址栏不会变、页面不会跳</b>。
+          </span>
+        </div>
+      </Panel>
 
       <Toolbar>
         <Toggle checked={failNext} onChange={(e) => setFailNext(e.target.checked)}>

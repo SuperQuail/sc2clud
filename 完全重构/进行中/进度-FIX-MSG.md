@@ -35,6 +35,36 @@
     出图：`shots/fixmsg/dr-msg-like2-900.png`（房间）与 `pr-msg-notices-900.png`（产品，真壳 + 桩数据）——
     同一档的标题「通知中心」、描述、导航选中态、行内容与动作槽位一致，差别只有数据。
     `npx vitest run src/devroom/pages/10-messages src/routes/messages.test.tsx` → `Tests 12 passed`。
-  - 下一步：D11 顶栏搜索 —— 在 `web/src/ui/nav/` 新增可复用的「就地展开搜索栏」件，DevRoom 出图，
-    产品接线是 `shell.tsx` 那一行（Lead 专属，见阻塞）。
-  - 阻塞：同第一节的三条（shell.tsx 专属 / 产品出图入口没有 query 维度 / devroom/main.tsx 挂了 Providers）。
+  - 下一步：D11 顶栏搜索 —— 见下一条（已完成，剩 Lead 的一行接线）。
+  - 阻塞：同第一节的三条（shell.tsx 专属 / 产品出图入口没有 query 维度 / devroom/main.tsx 挂了 Providers）；
+    D11 的那一行接线是本条清单最后一件不属于我的事。
+
+- [x] D11 顶栏搜索：**不换页、顶部就地展开并聚焦**的可复用件（接线那一行留给 Lead）
+  - 证据：新增 `web/src/ui/nav/header-search.tsx`（自包含的开合浮层：再点一次 / 点外面 / Esc 收起，
+    **刻意没有 href** ——旧实现那颗是 `href={appPath('')}` 的链接，点了跳回首页）
+    与 `header-search-results.tsx`（结果区 = 首页那一块 `SearchPanel`，**同一个件**；懒加载，因为
+    SearchPanel 为 Tabs 静态拖进 react-virtualized 一条链 53 KB gzip，见 routes/home.tsx 的注释）；
+    `header-search.test.tsx` 2 条：①「不导航 + 就地展开 + 焦点进输入框」（`activeElement` 就是输入框）；
+    ② 打开搜索**不发任何 `/api/v1/search` 请求**（提交才发）。实测红过两次：先红在
+    「点开找不到输入框」（Ring 的 Input 不吃 autoFocus，改成结果区挂载后自己 focus），
+    再红在「焦点不在输入框」（`expected <body> to be <input>`），修完两条绿。
+    出图：`shots/fixmsg/dr-search-open-900.png`（展开态）与 `cdp-3-results.png`
+    （**键入「战役」回车后结果就地出现**：帖子档 5 条，地址栏没变、页面没跳）——
+    为此加了 `web/scripts/cdp-shot.ts`（CDP + Node 自带 WebSocket，能 click / type / key / shot；
+    一次性 `--screenshot` 拍不到「键入之后」的状态，而 D11 的验收正是那一步）。
+    `npx vitest run src/ui/nav src/devroom/pages/19-search src/devroom/pages/10-messages src/routes/messages.test.tsx`
+    → `Test Files 7 passed / Tests 25 passed`；`gate:ui` / `gate:controls`（48 件）/ `gate:urls` 全绿。
+  - 下一步：**Lead 接线**（见下面的阻塞，一行）→ 然后我出产品页对照图（顶栏那一颗点开的样子）。
+  - 阻塞：**`web/src/app/shell.tsx` 第 39 行**（Lead 专属，我不改）现在是：
+    ```
+    {/* 搜索内嵌在首页（用户要求不单独开页面），所以这个按钮只是把人带到首页的搜索框旁 */}
+    <Button ghost inline={false} height={ControlsHeight.S} href={appPath('')} icon={icon16(Search)}>
+      搜索
+    </Button>
+    ```
+    改成一行即可（`Search` 图标与 `appPath` 若不再被该文件其它地方使用，顺手删 import；
+    `HeaderSearch` 已登记进 registry，`gate:controls` 放行）：
+    ```
+    <HeaderSearch />
+    ```
+    接线后建议把「首页那一条」保留（首页内嵌搜索不动，用户明确说过保持现状）。

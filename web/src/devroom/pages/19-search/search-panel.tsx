@@ -9,6 +9,7 @@ import { TopicRow, type TopicRowData } from '@/ui/topic/topic-row';
 import { CompactRowSkeleton } from '../14-home/states';
 // 空态的唯一实现在 @/ui/state/empty（14-home/states.tsx 里那份 EmptyState 已删）
 import { Empty } from '@/ui/state/empty';
+import { cn } from '@/lib/utils';
 import { SEARCH_SCOPE, type SearchUser } from './data';
 
 // 搜索面板（全站的搜索体验唯一实现）。
@@ -42,15 +43,17 @@ export type SearchPanelProps = {
   users: SearchUser[];
   error?: string;
   onRetry?: () => void;
+  /** 外层盒子的额外类名（顶栏那份用它把面板变成浮层；首页不传 = 逐字不变） */
+  className?: string;
 };
 
 export function SearchPanel(props: SearchPanelProps) {
-  const { q, onQChange, onSubmit, onClear, tab, onTabChange, state, topics, users, error, onRetry } = props;
+  const { q, onQChange, onSubmit, onClear, tab, onTabChange, state, topics, users, error, onRetry, className } = props;
   const counts: Record<SearchTab, number> = { topics: topics.length, users: users.length };
   const rows = tab === 'topics' ? topics : users;
 
   return (
-    <section className='flex flex-col gap-3'>
+    <section className={cn('flex flex-col gap-3', className)}>
       <div className='flex flex-wrap items-center gap-2 border-y border-border py-2'>
         {/* 用原生 form 接 Enter：Ring 的 Input 没有 onPressEnter，手写 onKeyDown 要赌它透传 DOM 属性 */}
         <form

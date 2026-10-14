@@ -267,6 +267,24 @@ export const VERIFIED: VerifiedControl[] = [
     ],
   },
   {
+    name: 'header-search',
+    path: '@/ui/nav/header-search',
+    page: '19-search',
+    verifiedOn: '2026-10-14',
+    props: [
+      'HeaderSearch({ className? })：**自包含**的开合浮层 —— 数据自己取、状态自己拿，宿主什么都不用给',
+      '没有 value / onChange：它是「顶栏那一颗」，不是受控输入；输入框的受控态在结果区内部（header-search-results）',
+    ],
+    notes: [
+      '**D11 的落点**：点它不换页，顶部就地展开搜索栏并聚焦（用户原话）；收起有三种 —— 再点一次、点浮层外面、Esc。',
+      '旧实现是顶栏一颗链接按钮（href=appPath("")，点了跳回首页），所以这个件**刻意没有 href**：它不该把人带走。',
+      '**接线点只有一个**：app/shell.tsx 顶栏那一行（Lead 专属文件）。把原来那颗链接按钮换成 <HeaderSearch /> 即可，别的都不用改。',
+      '结果区（header-search-results）就是首页那一块搜索面板（19-search 的 SearchPanel），**同一个件**：两档、四态、空态、窄屏折叠都只有一份实现；懒加载是因为 SearchPanel 为 Tabs 静态拖进 react-virtualized 一条链（53 KB gzip，见 routes/home.tsx 的注释）。',
+      '**实测两条坑**：① Ring 的 Input 不吃 autoFocus —— 聚焦是结果区挂载后自己 querySelector("input").focus() 做的；② React.lazy 那一层在 vitest 的 jsdom 下不落地（始终停在 fallback），header-search.test.tsx 把结果区换成同步替身并预热，真实实现由 19-search 的出图覆盖。',
+      '浮层挂在这颗按钮上（relative），不是挂 header —— 挂 header 要改 shell 的 className，而那个文件不在 FIX-MSG 的作用域里。',
+    ],
+  },
+  {
     name: 'search-panel',
     path: '@/devroom/pages/19-search/search-panel',
     page: '19-search',
