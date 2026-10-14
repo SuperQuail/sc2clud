@@ -22,7 +22,7 @@
 
 ## 步骤
 
-- [x] 第 0 步：F1 核实「生产构建里真的没有 DevRoom 入口」—— **0 命中，不需要修**
+- [x] 第 0 步：F1 核实「生产构建里真的没有 DevRoom 入口」—— **0 命中，不需要修**（临时扫描器已删，判据进了 F3 的门禁）
   - 做了什么：不带 `VITE_DEVROOM` 跑一次 `pnpm build`，用一次性扫描器 `web/.tmp-wfi-scan.cjs`（扫描器**自带自检**：
     needles 拿去扫已知含 devroom 的 `src/ui/dev-entry.tsx`，扫不到就 exit 2 拒绝出结论）扫 `dist/`。
   - 证据：`cd web && pnpm build` → `✓ built in 1.02s`（exit 0）；`node .tmp-wfi-scan.cjs` →
@@ -31,9 +31,41 @@
     `产品产物里的 devroom 命中总数：0（期望 0）` → exit 0。
     三个 needle：`devroom`、`开发页面`（入口文案）、`开发者房间`。`dist/index.html` 里只有
     `assets/index-*.js` 与若干 modulepreload，**没有** `devroom` 链接。
-  - 下一步：F3 把这套扫描折进 `web/scripts/check-bundle.ts`（新增 4) 段：产品侧 `.js/.html/.css/.json/.txt/.map`
-    里不得出现 `devroom`/`开发页面`/`开发者房间`，跳过 `dist/devroom/**`；命中时逐处打印
-    `文件+偏移+上下文`；并**先证明它会红**（`VITE_DEVROOM=1 pnpm build` 造出带 dev 入口的产物 → 必须 exit 1），再清白重建证明绿。
+  - 下一步：F3 把这套扫描折进 `web/scripts/check-bundle.ts`（新增 4) 段）。
+  - 阻塞：无
+
+- [x] 第 1 步：F3 把「DevRoom 只在 dev 制品里」做成门禁（`web/scripts/check-bundle.ts` 新增第 4) 段）
+  - 做了什么：① 新增 `scanMarkers()`：逐文件逐处返回「文件 + 偏移 + 命中词 + 上下文」，命中时直接进 `problems`
+    （不再只报一句「有命中」）；② 判据 **`devroom` / `开发页面` / `开发者房间`** 三个词，扫产品侧
+    `.js/.html/.css/.json/.txt/.map`，跳过 `dist/devroom/**`（那是 DevRoom 自己的入口，按设计有它）；
+    ③ 断言是**双向**的：产品侧带了这个链接就必须有 `dist/devroom/index.html` 兜住（否则线上死链），
+    没开开关的生产构建必须 0 命中；④ 两个必须非零的对照：`src/ui/dev-entry.tsx` 源文件里扫得到、`dist/devroom/**` 里扫得到
+    —— 扫描器坏了/路径变了/字符串被拆开时也要红，而不是打印一个漂亮的 0。
+  - 证据：**会红**（`$env:VITE_DEVROOM='1'; pnpm build; node scripts/check-bundle.ts`，exit 1，2 条新增）→
+    `✗ 产品产物指向 DevRoom，但 dist/devroom/ 不存在（线上死链；这次构建开过 VITE_DEVROOM？）dist/assets/index-dd3c5ucU.js:286034 「devroom」 …href:N(\`devroom/\`)…` 与
+    `…:286272 「开发页面」 …children:\`开发页面（临时）\`…`；
+    **会绿**（`Remove-Item Env:\VITE_DEVROOM; pnpm build; node scripts/check-bundle.ts`）→ 新检查 0 命中，
+    只剩两条与本次改动无关的基线条目（裸 dist 没有 `dist/devroom/index.html`）；
+    **完整 dev 制品会绿**（模拟 `pack-dev.ts`：VITE_DEVROOM=1 构建 + `pnpm preview:build` + 并入 `dist/devroom/`）→
+    `产物自洽检查通过：入口齐、20 个 DevRoom 页面在产物里、29 个资源都在、dev 制品：产品侧 DevRoom 入口 2 处，dist/devroom/** 自己的 14 处`，exit 0。
+    **F1 的关键实测**：开关真的接在打包器上 —— 不带变量 `index-BPHrUDIx.js`（chunk 里连 `bottom-4 right-4` 类名都搜不到），
+    带 `VITE_DEVROOM=1` 变成 `index-dd3c5ucU.js` 且多了 `var ll=!0;function ul(){return ll?…}`。
+  - 下一步：F2 出图（端口 5239，dev 制品里入口是右下角固定的「开发页面（临时）」胶囊）。1440 与 390 两个视口各一张，
+    图里要能证明拍的是当前源码（往 DOM 插可见标记）。若判定它遮挡内容/不显眼，改 `web/src/ui/dev-entry.tsx`
+    的 `className`/`位置`/`文案`，重出图（**本文件就是给它准备的**）。
+  - 阻塞：无（另有一处**顺带发现**，见「第 2 步」）
+
+- [x] 第 2 步：修 `check-bundle.ts` 里一条**从来没生效过**的检查（它现在会拦住打包，必须先修）
+  - 做了什么：第 2) 段的页面 key 正则原本匹配 `'01-interactive': {` 这种**对象字面量**写法，而 `app.tsx` 早已改成
+    `{ key: '01-interactive', title, el }` 的数组 → 一直解析出 **0 个 key**，于是 `length>0` 那条断言从没红过、
+    逐页存在性检查一个都没跑（"永远通过的检查"）。改成 `/key:\s*'([0-9]{2}-[a-z0-9-]+)'/g`。
+    这不是"顺手优化"：一是 `pack-dev.ts` 第 4 步会调它，留着它红就没法打包；二是 F3 的对照就长在这段里。
+  - 证据：**旧行为**：`node scripts/check-bundle.ts`（完整 dev 制品）→ `✗ 从 app.tsx 里没解析出任何页面 key（注册写法变了？）` exit 1；
+    `git show HEAD:web/src/devroom/app.tsx | Select-String "^\s+\{ key:"` → `{ key: '00-showroom', … }`（提交里的写法就是数组）。
+    **新行为**：`20 个 DevRoom 页面在产物里` exit 0。**这条复活后的检查会红**：临时往 `app.tsx` 插
+    `{ key: '99-wfi-probe', … }` → `✗ DevRoom 页面 99-wfi-probe 不在产物里（构建顺序错了或忘了 build）` exit 1，
+    随后 `git checkout -- src/devroom/app.tsx` 恢复 → exit 0。
+  - 下一步：F2 出图（同第 1 步的下一步）。
   - 阻塞：无
 
 - [ ] F2 dev 里入口是否显眼可点、不遮挡内容（1440 / 390 出图）
