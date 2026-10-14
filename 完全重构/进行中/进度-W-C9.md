@@ -118,3 +118,60 @@ rg = rg.Group("", httpx.ValidPathIDs("id"))
     （本域 {id} 三条：`GET /launcher/assets/{id}/go`、`PATCH /admin/launcher/releases/{id}`、
     `DELETE /admin/launcher/assets/{id}`），用例打 `GET /api/v1/launcher/assets/not-a-uuid/go`。
   - 阻塞：无
+---
+
+## 收尾（W-C9，2026-10-14）
+
+**任务完成**：8 个域的 `Register` 第一行各挂一行
+`rg = rg.Group("", httpx.ValidPathIDs("id"))`（与 W-C7 在 forum 域挂法一致），每域一个提交 + 一条会红用例。
+
+| commit | 域 | 该域的 {id} 路径 | 挂闸前的实测状态（红） |
+|---|---|---|---|
+| `2887cca` | media | `POST /topics/{id}/images`、`DELETE /topics/{id}/images/{hash}`（hash 不校验）、`DELETE /me/payment-channels/{id}` | **500 common.internal（SQLSTATE 22P02）** |
+| `aef46e3` | release | `GET /launcher/assets/{id}/go`、`PATCH /admin/launcher/releases/{id}`、`DELETE /admin/launcher/assets/{id}` | 404 |
+| `20e3cc1` | message | `DELETE /messages/{id}`（`:handle` 不是 ID） | 404 |
+| `148657f` | mail | `PATCH`/`DELETE /admin/mail/accounts/{id}`、`POST /admin/mail/accounts/{id}/test` | 404 |
+| `5eeb908` | title | `PATCH /admin/titles/{id}`、`POST`/`DELETE /admin/users/{id}/titles/{titleId}` | 404 |
+| `9a006aa` | report | `PATCH /admin/reports/{id}` | 404 |
+| `f0e8704` | site | `POST /banners/{id}/dismiss`、`PATCH /admin/announcements/{id}`、`PATCH /admin/banners/{id}` | 404 |
+| `cedfea1` | reward | `DELETE /rewards/{id}`、`POST /admin/rewards/{id}/verify` | 401（证法二；证法一见下） |
+
+**收工验证（命令 + 结尾输出）**：
+
+- `gofmt -l .`（`forum/`，用 `.tools\go\bin\gofmt.exe`）→ 无输出，`gofmt exit=0`；
+- `go vet ./...` → `vet exit=0`；
+- `go test ./internal/media/... ./internal/release/... ./internal/message/... ./internal/mail/... ./internal/title/... ./internal/report/... ./internal/site/... ./internal/reward/... -count=1`
+  → `ok` × 8（media 50.9s / release 48.8s / message 37.8s / message/pgsql 27.9s / mail 50.4s / title 40.2s /
+  report 41.1s / site 37.8s / reward 56.9s；mail|title|report|site 的 `pgsql` 子包 `[no test files]`），`domains exit=0`；
+- `go test ./internal/app/ -count=1` → `ok forum/internal/app 15.466s`，7 条全 PASS
+  （`TestEndToEndMainChain`、`TestAppealEndToEnd` 都在 —— 真路由装配没被弄坏），`app exit=0`。
+
+**认账（与交接单 C9 的推断不一致的地方，以实测为准）**：
+
+1. **只有 media 真中招**（非 uuid → 22P02 → 500，日志已贴在它那一条里）。交接单说这 8 个域「同样中招」，
+   实测是 1/8。
+2. 其余 7 域**各自在 service / pgsql 层早就收口了**：release 的三处 `public_id` 原生 SQL 前都有 `uuid.Parse`；
+   title 有 `checkPublicID`；message / mail / report / site 用 `idgen.ParsePublicID` 后给 404；
+   reward 的 `parsePublicID` 给的 400 与闸**逐字节相同**。
+   闸在这 7 个域的价值不是修 500，而是把「对外 ID 一律 uuid」从「每个 service 各自记得写」收回**路由层**
+   —— 这正是 `ValidPathIDs` 注释里写的理由（每条新路由都记得写一遍的规则等于没有规则）。
+3. 用例的断言口径是**恰好 400**（闸的语义），不是「400 或 404」。所以除 reward 外 7 条在挂闸前都是红的
+   （500 或 404 → 400），reward 的两次证法见它那一条。
+4. **各域没有 `{sid}`**：`sid` 只在 forum 域（`/topics/{id}/sources/{sid}...`），W-C7 已挂。
+5. 挂闸顺序：闸是**组中间件**，排在路由自己的 `requireLogin` 之前 —— 所以未登录时打一个非 uuid 的 `{id}`
+   现在得到 400 而不是 401。用这条顺序差做成了 reward 的会红用例。
+
+**没做的（留给 Lead / 别人）**：
+
+- `title` 的 `:titleId` 没进闸（本任务给的挂法是只点名 `"id"`）。它现在由 `AssignTitle` 的 `checkPublicID`
+  兜成 404；要不要统一成闸的 400 是语义取舍，没人拍过。
+- 同形态的 `{id}` 还在 `auth`（`/admin/users/{id}` 一族）、`notify`（`/notifications/{id}`）、
+  `appeal`（`AppealReview` 的 topic id）等域，**不在本次 8 域作用域**。抽查：notify 用 `idgen.ParsePublicID`（404）、
+  appeal 走注入的 `topics.Ref`。要不要一律挂闸由 Lead 定。
+- 没碰 `web/**`，没跑 `pnpm check`（前端不归本任务）。
+
+**收尾动作**：
+
+- `%TEMP%` 里 `forum-pg-*` 只有 2 个（`13:53`），都 <60 分钟，按规矩**没动**；需要清的 0 个；
+- 没有起任何常驻进程（没跑 vite / chrome / 额外服务）：唯一的长任务是我自己的 `go test` 后台作业 `pwsh-1263`，
+  已 `completed`（`exit code: 0`）。
