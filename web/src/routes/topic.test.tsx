@@ -80,13 +80,15 @@ const mocks = vi.hoisted(() => ({
   deletePost: vi.fn(),
   createPost: vi.fn(),
   updateTopic: vi.fn(),
+  /** 详情响应的覆盖（默认 null = 用 WIRE）。B6 那条要靠它演「保存后服务端把 review_state 打回 pending」。 */
+  topic: { current: null as Record<string, unknown> | null },
 }));
 
 vi.mock('@/lib/api/forum', async (orig) => {
   const actual = await orig<typeof import('@/lib/api/forum')>();
   return {
     ...actual,
-    fetchTopic: () => Promise.resolve(WIRE),
+    fetchTopic: () => Promise.resolve({ ...WIRE, ...(mocks.topic.current ?? {}) }),
     fetchPosts: () => Promise.resolve({ items: [], next: null }),
     fetchBoards: () => Promise.resolve([BOARD]),
     createReport: mocks.createReport,
@@ -162,6 +164,27 @@ it('举报打到 POST /reports，字段名与后端 DTO 逐字一致（target_ty
       detail: undefined,
     }),
   );
+});
+
+it('B6：编辑保存发的 PATCH 带 content_md（后端凭它把 review_state 打回 pending），页面上说清这一点', async () => {
+  mocks.updateTopic.mockResolvedValue({});
+  renderPage();
+  await screen.findByTestId('topic-main');
+  fireEvent.click(screen.getByTestId('topic-edit'));
+  const dialog = await screen.findByRole('dialog');
+  fireEvent.change(dialog.querySelector('input')!, { target: { value: '改过的标题' } });
+  // 这次保存之后服务端会把 review_state 从 rejected 打回 pending（forum 的 ResetTopicReview）——
+  // 桩要跟着变，否则测的是「回执没变」这种谁都看不出来的东西。
+  mocks.topic.current = { review_state: 'pending', review_note: null };
+  fireEvent.click(dialog.querySelector('[data-testid=edit-save]')!);
+  // 不带 content_md 的 PATCH 不会重置审核态 —— 所以正文必须在体内；
+  // 正文由 content_html 剥标签得到（topic-view 的 toText），所以这里是「正文第一段。」
+  await waitFor(() =>
+    expect(mocks.updateTopic).toHaveBeenCalledWith(WIRE.id, { title: '改过的标题', content_md: '正文第一段。' }),
+  );
+  // B6 的那句实话：保存 = 重新提交审核，回执必须说出来（旧回执只会说「更新了」，作者不知道自己在重审）
+  await waitFor(() => expect(screen.getAllByTestId('design-action-note')[0]!.textContent).toContain('已重新提交审核'));
+  mocks.topic.current = null;
 });
 
 it('删帖与删回复打到各自的端点（帖子级 / 楼层级是两个动作）', async () => {
