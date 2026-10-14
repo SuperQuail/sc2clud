@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strings"
 	"time"
 
 	"forum/internal/authz"
@@ -79,7 +80,11 @@ func (s *Service) List(ctx context.Context, actor *authz.Actor, in ListInput) (*
 		at, cursorID = &k, id
 	}
 	// 多取一行就知道还有没有下一页，省一次 COUNT
-	rows, err := s.pg.ListNotifications(ctx, actor.UserID, at, cursorID, in.Kind, in.UnreadOnly, limit+1)
+	kinds, err := parseListKinds(in.Kind)
+	if err != nil {
+		return nil, err
+	}
+	rows, err := s.pg.ListNotifications(ctx, actor.UserID, at, cursorID, kinds, in.UnreadOnly, limit+1)
 	if err != nil {
 		return nil, err
 	}
@@ -188,6 +193,33 @@ var noticeScopes = map[string]bool{"all": true, "none": true}
 // Purge 分批硬删软删超过保留期的通知（d4 §5.5，给 cron 调）。
 func (s *Service) Purge(ctx context.Context, before time.Time, limit int) (int, error) {
 	return s.pg.Purge(ctx, before, limit)
+}
+
+// parseListKinds 把 ?kind=reply,mention 拆成数组并校值域。空串 = 全部（不限）。
+// 值域与 kinds.go 的 Kind* 逐字一致；**不含 KindLink** —— 它是静音用的值，不是通知类别。
+func parseListKinds(raw string) ([]string, error) {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return nil, nil
+	}
+	parts := strings.Split(raw, ",")
+	out := make([]string, 0, len(parts))
+	for _, p := range parts {
+		p = strings.TrimSpace(p)
+		if p == "" {
+			continue
+		}
+		if !noticeListKinds[p] {
+			return nil, apperr.Invalid(map[string]string{"kind": "不支持的类别：" + p})
+		}
+		out = append(out, p)
+	}
+	return out, nil
+}
+
+var noticeListKinds = map[string]bool{
+	KindReply: true, KindMention: true, KindLike: true, KindReward: true,
+	KindReview: true, KindSanction: true, KindSystem: true,
 }
 
 func clampLimit(n int) int {

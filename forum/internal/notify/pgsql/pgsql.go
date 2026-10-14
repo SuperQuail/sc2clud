@@ -60,7 +60,7 @@ SELECT n.id, n.public_id::text, n.type, n.payload::text, n.link, n.read_at, n.cr
  WHERE n.user_id = $1
    AND n.deleted_at IS NULL
    AND ($2::timestamptz IS NULL OR (n.created_at, n.id) < ($2::timestamptz, $3::bigint))
-   AND ($4::text = '' OR n.type = $4)
+   AND (cardinality($4::text[]) = 0 OR n.type = ANY($4::text[]))
    AND ($5::bool = false OR n.read_at IS NULL)
  ORDER BY n.created_at DESC, n.id DESC
  LIMIT $6`
@@ -81,8 +81,8 @@ type NotificationRow struct {
 }
 
 func (q *Queries) ListNotifications(ctx context.Context, userID int64, at *time.Time, cursorID int64,
-	kind string, unreadOnly bool, limit int) ([]NotificationRow, error) {
-	rows, err := q.db.QueryContext(ctx, listSQL, userID, at, cursorID, kind, unreadOnly, limit)
+	kinds []string, unreadOnly bool, limit int) ([]NotificationRow, error) {
+	rows, err := q.db.QueryContext(ctx, listSQL, userID, at, cursorID, kinds, unreadOnly, limit)
 	if err != nil {
 		return nil, fmt.Errorf("notify: list: %w", err)
 	}
