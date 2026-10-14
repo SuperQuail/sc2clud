@@ -107,7 +107,9 @@ func TestListNotificationsPlanUsesInboxIndex(t *testing.T) {
 	other := newUser(t, ctx, pool, "other")
 	seed(t, ctx, pool, me, other)
 
-	got := plan(t, ctx, pool, listSQL, me, nil, 0, "", false, 20)
+	// $4 现在是 text[]（2026-10-14 起 ?kind= 收多值）：传空串会去转 text[] 而报 22P02，
+	// 传 nil 会被 pgx 当 NULL、让 cardinality(NULL) 整条谓词变 NULL。空数组才是"不限"。
+	got := plan(t, ctx, pool, listSQL, me, nil, 0, []string{}, false, 20)
 	if !strings.Contains(got, "idx_notifications_inbox") {
 		t.Fatalf("列表查询没用上 idx_notifications_inbox:\n%s", got)
 	}
@@ -116,7 +118,7 @@ func TestListNotificationsPlanUsesInboxIndex(t *testing.T) {
 	}
 
 	// 带 kind 过滤与只取未读时也不许退化成全表扫
-	got = plan(t, ctx, pool, listSQL, me, nil, 0, "reply", true, 20)
+	got = plan(t, ctx, pool, listSQL, me, nil, 0, []string{"reply"}, true, 20)
 	if strings.Contains(got, "Seq Scan on notifications") {
 		t.Fatalf("带 kind/unread 过滤时出现全表扫:\n%s", got)
 	}
