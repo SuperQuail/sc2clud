@@ -44,6 +44,8 @@ const shots: Shot[] = [
   // 个人设置 · 赞赏与收款码（上传 / 删除 / 两个开关 / 我的打赏记录）
   { name: 'settings-rewards-1440', url: '?stub=1&route=/settings', width: 1440, height: 1200, full: true },
   { name: 'settings-rewards-390', url: '?stub=1&route=/settings', width: 390, height: 1200, full: true },
+  // L6：打回修改（第四态）—— 横幅文案与「拒绝」不同，且有「查看最后过审版本」的入口
+  { name: 'topic-revision-1440', url: '?stub=1&me=author&review=revision_requested&route=/t/tp-1', width: 1440, height: 900, full: false, before: openRevisionDialog, main: 'main' },
   // L2：首页信息流的排序三档（最新回复 / 最新发布 / **最热**）—— 最热由 K-BE 的 sort=hot 支撑
   { name: 'home-sort-hot-1440', url: '?stub=1&route=%2F%3Fsort%3Dhot', width: 1440, height: 900, full: false, main: 'main' },
   // J5：问题反馈页的检索条（自由词 ?q= 发后端）+ 排序四档
@@ -57,6 +59,13 @@ async function openSponsor(page: Page) {
   await page.wait(700);
   await page.clickByText('赞助');
   await page.wait(400);
+}
+
+/** L6：点开「查看最后过审版本」——拍的是弹层里的**过审正文**，不是页面上手上那一版。 */
+async function openRevisionDialog(page: Page) {
+  await page.wait(900);
+  if (!(await page.click('[data-testid=topic-revision-view]'))) throw new Error('找不到「查看最后过审版本」');
+  await page.wait(500);
 }
 
 /** G5 的标记在 DevRoom 11-profile 的「设置」标签里（默认停在「帖子」），点一下再拍。 */

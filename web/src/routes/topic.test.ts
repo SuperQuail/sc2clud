@@ -78,7 +78,14 @@ it('详情 → 设计件：正文、时间、精华、审核态、我的三态�
   expect(t.pinned).toBe(true);
   expect(t.viewer).toEqual({ liked: true, bookmarked: false, following: false });
   // 只有作者看得到的理由
-  expect(toReview(WIRE)).toEqual({ state: 'rejected', pendingHuman: false, note: '正文含未标明来源的下载地址' });
+  // L6：`revision`（最后一个过审版本）**只有打回修改（revision_requested）时才非空** ——
+  // 后端也只在那一态给 `revision_of`（forum/map.go:77），所以这里是 null 而不是编一份出来。
+  expect(toReview(WIRE)).toEqual({
+    state: 'rejected',
+    pendingHuman: false,
+    note: '正文含未标明来源的下载地址',
+    revision: null,
+  });
 });
 
 it('作者：头像取 avatar_hash 拼成 /img/<hash>，等级/经验/头衔取用户域那一份', () => {

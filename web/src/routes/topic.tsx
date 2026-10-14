@@ -59,6 +59,8 @@ type TopicWire = {
   issue_open_count?: number;
   can_edit?: boolean;
   can_reply?: boolean;
+  /** L6：只有 `revision_requested`（打回修改）时才有值 —— 上一份**过审的**正文（forum/map.go:77）。 */
+  revision_of?: { content_md: string; content_html: string; approved_at: string } | null;
 };
 
 /** 分区内导航：后端只有 kind 这一个筛选（featured / announcement 两个筛选没有端点，routes/board.tsx 同一处缺口），
@@ -412,6 +414,8 @@ export function toReview(t: ApiTopicDetail): TopicReview {
   const raw = t as ApiTopicDetail & TopicWire;
   return {
     state: (raw.review_state ?? 'approved') as TopicReview['state'],
+    // L6：打回修改时那一份「最后过审版本」。**没有就不造假**（后端也只在第四态给）。
+    revision: raw.revision_of ? { content_html: raw.revision_of.content_html, approved_at: raw.revision_of.approved_at } : null,
     // shortcut: 后端没有 review_pending_human 这个字段（forum/dto.go 里没有），先恒 false =「正在自动检查」那一档
     pendingHuman: false,
     note: raw.review_note ?? null,

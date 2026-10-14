@@ -184,3 +184,25 @@
   - 下一步：J6 的 `GET /api/v1/issues/kinds` 后端**还没有路由**（`Service.IssueKinds` 在，
     `handler.go` 里没有挂）—— 等它挂上前端的类型下拉只能是写死的四类。
   - 阻塞：J6 的 kinds 端点（见下）；L6 / L8 图片仍等（见「阻塞」一节）。
+
+- [x] **L6 作者侧「打回修改」+「查看最后过审版本」**（K-BE 已交第四态 `revision_requested` 与 `revision_of`）。
+  ① `devroom/pages/12-topic/review-state.tsx`：`ReviewState` 加第四态；**文案与操作都与「拒绝」分开**——
+     标题「需要修改后再审」（蓝、Clock3 图标）+ 一句「这篇不是被拒绝：按下面的审核意见改一版，
+     会重新进入审核队列」；操作说明也换成「存完就自动回到审核中（**不需要**另点一次提交）」，
+     并且这一档**不渲染**「重新提交审核」那颗按钮（那是 rejected 的路径）。
+  ② 新件 `devroom/pages/12-topic/revision-dialog.tsx` + `ReviewRevisionButton`（review-state.tsx）：
+     「查看最后过审版本」入口，点开是只读弹层，正文走 `@/ui/comment` 的 `CommentBody`（与帖子正文同一渲染路径）。
+     **为什么不就地换掉正文**：打回期间作者要接着改，正文区必须留给手上这一版（后端给的就是它），
+     参照物放一个随手能关的弹层里才不打架。
+  ③ `routes/topic.tsx` 的 `TopicWire` 补 `revision_of`，`toReview` 把它映射成 `review.revision`；
+     线从 `main-column.tsx` 铺到 `topic-view.tsx`。
+  - 证据：`npx vitest run` → `Test Files 34 passed (34) / Tests 175 passed (175)`；
+    `pnpm lint` → `0 errors, 20 warnings`；`pnpm typecheck` 0 错。
+    **证明会红**：把第四态的标题改回 `'未通过审核'`（= 把它当 rejected 处理）→
+    `topic.test.tsx` 的 L6 那条红：`expected '未通过审核这篇不是被拒绝…' to contain '需要修改后再审'`。
+    路由级用例（`routes/topic.test.tsx` 新增一条）：`data-state=revision_requested`、标题与「不是被拒绝」都在、
+    理由显示、**没有** `topic-resubmit`，点 `topic-revision-view` 后弹层里有 `revision_of` 的正文。
+    出图并**看图**：`shots/kfe/topic-revision-1440.png` —— 页头蓝框「需要修改后再审 / 这篇不是被拒绝…」，
+    正文区仍是手上那一版，弹层「最后过审版本（通过于 2026年10月13日）」里是**上一次过审的正文**。
+  - 下一步：队列第四档（`state=revision_requested`）归后台审核屏（K-ADMIN 那条线）。
+  - 阻塞：无。

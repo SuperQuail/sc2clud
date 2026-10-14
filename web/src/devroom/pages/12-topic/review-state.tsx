@@ -3,7 +3,7 @@ import Button from '@jetbrains/ring-ui-built/components/button/button';
 import { ControlsHeight } from '@jetbrains/ring-ui-built/components/global/controls-height';
 // ButtonSet 是**默认导出**（命名导出在这个包里不存在，typecheck 会直接报 TS2614）
 import ButtonSet from '@jetbrains/ring-ui-built/components/button-set/button-set';
-import { AlertTriangle, Clock3, Send, ShieldAlert } from 'lucide-react';
+import { AlertTriangle, Clock3, History, Send, ShieldAlert } from 'lucide-react';
 import { icon16 } from '@/ui/icons';
 import { DesignActionNote } from './design-action';
 
@@ -15,8 +15,10 @@ import { DesignActionNote } from './design-action';
 //  2. 非作者根本收不到 pending / rejected 的帖子（后端过滤，d7 §1）。
 //     所以这里**没有**「游客看到审核中」这种分支：能渲染出这个横幅，就说明看的人就是作者；
 //  3. 判定来源（ai / manual / trusted）**不在帖子页显示**，那是管理视角（拍板 §10.3）。
-export type ReviewState = 'pending' | 'approved' | 'rejected';
+export type ReviewState = 'pending' | 'approved' | 'rejected' | 'revision_requested';
 
+// 四档的配色：打回修改用**琥珀**（不是 rejected 的红）——
+// 拍板 §L6 要求的正是「改改就能过」与「直接拒绝」在作者眼里必须不同，颜色是最快的那一层区分。
 const TONE: Record<Exclude<ReviewState, 'approved'>, { box: string; icon: string }> = {
   pending: {
     box: 'border-primary/35 bg-primary/8',
@@ -25,6 +27,13 @@ const TONE: Record<Exclude<ReviewState, 'approved'>, { box: string; icon: string
   rejected: {
     box: 'border-destructive/45 bg-destructive/8',
     icon: 'text-destructive',
+  },
+  // 打回修改用 primary（蓝），与 pending 同一套色、与 rejected 的红分开：
+  // ① 语义上它确实是「还要再走一轮审核」，不是被拒；② tokens.css 里**没有** warning/amber 那一档，
+  // 而 gate:tokens 不许写死颜色 —— 所以这里只用已有令牌，靠**文案与图标**把两档彻底分开。
+  revision_requested: {
+    box: 'border-primary/45 bg-primary/10',
+    icon: 'text-primary',
   },
 };
 
@@ -35,6 +44,7 @@ export function ReviewStateBanner({
   resubmit,
   pendingHuman = false,
   resubmitted = false,
+  revisionView,
 }: {
   state: ReviewState;
   note?: string | null;
@@ -50,6 +60,8 @@ export function ReviewStateBanner({
    * 「我的改动到底有没有送去重审」—— 没有这一档，界面只回一句「正在审核中」，与首次投稿无法区分。
    */
   resubmitted?: boolean;
+  /** L6：打回修改时「看最后一个过审版本」的入口（内容由宿主给，横幅只摆位置） */
+  revisionView?: ReactNode;
 }) {
   if (state === 'approved') return null; // 正常帖：什么都不显示
   const tone = TONE[state];
@@ -71,27 +83,36 @@ export function ReviewStateBanner({
       data-state={state}
       // 出图/断言用：resubmitted 是**同一 state 下的另一档**，只靠 data-state 分不出来
       data-resubmitted={state === 'pending' && resubmitted ? '1' : undefined}
-      aria-label={state === 'pending' ? '审核中' : '未通过审核'}
+      aria-label={state === 'pending' ? '审核中' : state === 'revision_requested' ? '需要修改' : '未通过审核'}
       className={'flex flex-col gap-1 rounded-lg border px-3 py-2.5 ' + tone.box}
     >
       <span className='flex flex-wrap items-center gap-2'>
-        {state === 'pending' ? (
-          <Clock3 aria-hidden className={'size-4 shrink-0 ' + tone.icon} />
-        ) : (
+        {/* 打回修改用 Clock3（还要再走一轮），不是 ShieldAlert（被挡下了）——
+            图标与配色一起把「改改就能过」与「直接拒绝」分开（拍板 §L6 要的正是这个心理预期差别）。 */}
+        {state === 'rejected' ? (
           <ShieldAlert aria-hidden className={'size-4 shrink-0 ' + tone.icon} />
+        ) : (
+          <Clock3 aria-hidden className={'size-4 shrink-0 ' + tone.icon} />
         )}
         <span
           className={
-            'text-[14px] font-semibold ' + (state === 'pending' ? 'text-foreground' : 'text-destructive')
+            'text-[14px] font-semibold ' + (state === 'rejected' ? 'text-destructive' : 'text-foreground')
           }
         >
-          {state === 'pending' ? pendingTitle : '未通过审核'}
+          {state === 'pending' ? pendingTitle : state === 'revision_requested' ? '需要修改后再审' : '未通过审核'}
         </span>
       </span>
       {state === 'pending' ? (
         <span className='text-[12px] text-muted-foreground'>{pendingNote}</span>
       ) : (
         <>
+          {state === 'revision_requested' ? (
+            // 打回修改不是「拒绝」：说清「按意见改一版就能重新进队列」，并把上一次过审的内容放到手边 ——
+            // 作者改坏之后唯一的参照就是它（拍板 §L6：原始版本已过审时显示它）。
+            <span className='text-[12px] leading-relaxed text-muted-foreground'>
+              这篇不是被拒绝：按下面的审核意见改一版，会重新进入审核队列；通过之前只有你自己能看到。
+            </span>
+          ) : null}
           {note ? (
             // 理由是 AI / 管理员写的中文句子，最长可到 varchar(500)、实际常见 100–200 字：
             // **不给单行截断**，整段换行展开（break-words 防长串英文/URL 溢出），行高放宽到 1.7 便于读
@@ -104,14 +125,36 @@ export function ReviewStateBanner({
             {/* 这句话原本是个**空头承诺**（盲审二号 13）：说「可以修改后重新提交」，界面上却没有修改入口。
                 现在两件事都落地：动作条上的「编辑」（post.update_own）负责改，这里的按钮负责重新提交。 */}
             <span className='text-[12px] text-muted-foreground'>
-              改完可以重新提交：点动作条上的「编辑」改标题与正文，存完回来点右边的「重新提交审核」。
+              {state === 'revision_requested'
+                ? '点动作条上的「编辑」改标题与正文，存完就自动回到「审核中」（不需要另点一次提交）。'
+                : '改完可以重新提交：点动作条上的「编辑」改标题与正文，存完回来点右边的「重新提交审核」。'}
             </span>
+            {revisionView}
             {resubmit ? <span className='ml-auto'>{resubmit}</span> : null}
             {appeal ? <span className={resubmit ? '' : 'ml-auto'}>{appeal}</span> : null}
           </span>
         </>
       )}
     </section>
+  );
+}
+
+/**
+ * L6：打回修改时的「查看最后过审版本」入口。
+ * 为什么它是这个功能的**必要**一半：打回期间正文就是作者手上改的那一版，
+ * 而「原始版本已过审就显示它」这句话如果没有入口，作者就只能靠自己回忆上次写了什么。
+ */
+export function ReviewRevisionButton({ onOpen }: { onOpen?: () => void }) {
+  return (
+    <Button
+      inline={false}
+      height={ControlsHeight.S}
+      icon={icon16(History)}
+      data-testid='topic-revision-view'
+      onClick={onOpen}
+    >
+      查看最后过审版本
+    </Button>
   );
 }
 
@@ -193,6 +236,7 @@ export function ReviewStateDemoBar({
     pending: '审核中',
     approved: '正常',
     rejected: '未通过',
+    revision_requested: '打回修改',
   };
   return (
     <section
@@ -203,7 +247,7 @@ export function ReviewStateDemoBar({
         DevRoom 演示 · 审核态
       </span>
       <ButtonSet>
-        {(['pending', 'approved', 'rejected'] as ReviewState[]).map((s) => (
+        {(['pending', 'approved', 'rejected', 'revision_requested'] as ReviewState[]).map((s) => (
           <Button key={s} active={s === value} onClick={() => onChange(s)}>
             {LABEL[s]}
           </Button>

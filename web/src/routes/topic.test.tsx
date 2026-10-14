@@ -193,6 +193,41 @@ it('B6：编辑保存发的 PATCH 带 content_md（后端凭它把 review_state 
   mocks.topic.current = null;
 });
 
+// L6（拍板）：「打回修改」是**独立状态**（不是 rejected）—— 作者侧文案与操作都要与「拒绝」不同，
+// 而且要给「查看最后过审版本」的入口（原始版本已过审时显示它）。
+// 判据：同一个 review_state 下，横幅的 data-state、标题、文案三样都与 rejected 不同，
+// 并且点那个入口能看到后端给的 revision_of 正文。
+it('L6：revision_requested 与「拒绝」是两套文案，且能查看最后过审版本', async () => {
+  mocks.topic.current = {
+    review_state: 'revision_requested',
+    review_note: '第 3 段引用的来源没有标注出处，补一下',
+    revision_of: {
+      content_md: '上一版的正文',
+      content_html: '<p>这是上一次过审时的正文。</p>',
+      approved_at: '2026-10-13T02:00:00Z',
+    },
+  };
+  renderPage();
+  await screen.findByTestId('topic-main');
+
+  const banner = screen.getByTestId('review-banner');
+  expect(banner.getAttribute('data-state')).toBe('revision_requested');
+  // 文案必须说清「不是被拒绝」（这正是「改改就能过」与「直接拒绝」的心理预期差别）
+  expect(banner.textContent).toContain('需要修改后再审');
+  expect(banner.textContent).toContain('这篇不是被拒绝');
+  expect(banner.textContent).toContain('第 3 段引用的来源没有标注出处');
+  // 与「拒绝」那一档的差异：拒绝才有「重新提交审核」，打回是「改完存下就自动回审核中」
+  expect(screen.queryByTestId('topic-resubmit')).toBeNull();
+  expect(banner.textContent).toContain('不需要另点一次提交');
+
+  // 「查看最后过审版本」：点开能看到 revision_of 的正文（后端给的那一份，不是手上这一版）
+  fireEvent.click(screen.getByTestId('topic-revision-view'));
+  const dialog = await screen.findByRole('dialog');
+  expect(dialog.textContent).toContain('最后过审版本');
+  expect(dialog.textContent).toContain('这是上一次过审时的正文。');
+  mocks.topic.current = null;
+});
+
 it('删帖与删回复打到各自的端点（帖子级 / 楼层级是两个动作）', async () => {
   renderPage();
   await screen.findByTestId('topic-main');

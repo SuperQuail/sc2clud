@@ -96,8 +96,11 @@ const TOPIC_DETAIL = {
     },
   ],
   author: { ...USER('demo-admin', '示范管理员', { key: 'admin', name: '管理员' }), bio: '战役作者。', level: 27, joined_at: '2024-03-02T00:00:00Z' },
-  review_state: 'approved',
-  review_note: null,
+  // 这三个字段会被 topicDetail() 覆盖（演「保存 → 打回 pending」与「打回修改」两态），
+  // 所以基准值在这里**显式放宽**：不收窄的话展开出的对象与基准不是同一个类型（TS2322）。
+  review_state: 'approved' as string,
+  review_note: null as string | null,
+  revision_of: undefined as { content_md: string; content_html: string; approved_at: string } | undefined,
   issue_open_count: 2,
   can_reply: true,
   // can_edit 照**作者视角**给：L7 的出图要真的走一遍「编辑 → 保存 → 打回 pending」，
@@ -123,15 +126,31 @@ function savedTopic(): SavedTopic {
   }
 }
 
-/** 桩的当前值 = 基准 + 本标签页存过的那一次保存。 */
+/**
+ * 桩的当前值 = 基准 + 本标签页存过的那一次保存 + 出图用的 `?review=` 覆盖。
+ * `?review=revision_requested` 演 L6 的第四态（打回修改）：后端那时会一并给出 `revision_of`
+ * ——「最后一个过审版本」（拍板 §L6：原始版本已过审时显示它）。
+ */
 function topicDetail(): typeof TOPIC_DETAIL {
   const saved = savedTopic();
+  const review = new URLSearchParams(location.search).get('review');
   return {
     ...TOPIC_DETAIL,
     ...(saved.title ? { title: saved.title } : {}),
     ...(saved.content_md ? { content_html: '<p>' + saved.content_md + '</p>' } : {}),
     // 保存过正文 = 后端把审核态打回了 pending（forum 的 ResetTopicReview，597c4ac）
     ...(saved.content_md ? { review_state: 'pending', review_note: null } : {}),
+    ...(review === 'revision_requested' && !saved.content_md
+      ? {
+          review_state: 'revision_requested',
+          review_note: '第 3 段引用的来源没有标注出处，请补上原始出处后再提交。',
+          revision_of: {
+            content_md: '上一版的正文',
+            content_html: '<p>这是上一次过审时的正文：隐藏结局在 15:00 前到废墟触发，读档后事件计时按任务时间算。</p>',
+            approved_at: '2026-10-13T02:00:00Z',
+          },
+        }
+      : {}),
   };
 }
 

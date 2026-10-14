@@ -11,9 +11,10 @@ import { BoardSummary } from './board-summary';
 import { IssueNudge } from './issue-nudge';
 import { LeftRail } from './left-rail';
 import { MainColumn, TopicMeta } from './main-column';
-import { AuthorOnlyHint, ReviewAppealButton, ReviewResubmitButton, type ReviewState } from './review-state';
+import { AuthorOnlyHint, ReviewAppealButton, ReviewResubmitButton, ReviewRevisionButton, type ReviewState } from './review-state';
 import { RewardPanel } from './reward-panel';
 import type { Board, BoardNav, BoardSlug, PaymentChannel, TopicAuthor, TopicDetail } from './types';
+import { RevisionDialog } from './revision-dialog';
 
 // 两个弹层**按需加载**（与「评论区」同一个理由）：它们只在点「举报 / 编辑」时才需要，
 // 却会把 Ring 的 Dialog + Radio + Input 整包拖进公开首屏 —— 实测这一页给首屏加了约 50KB gzip，
@@ -37,6 +38,12 @@ const EditTopicDialog = lazy(() => import('./edit-dialog').then((m) => ({ defaul
 /** 审核态：后端 review_state / review_note / review_pending_human 三件（pending 的两档文案） */
 export type TopicReview = {
   state: ReviewState;
+  /**
+   * L6：打回修改时后端给的**最后一个过审版本**（`TopicDetailDTO.revision_of`）。
+   * 「打回期间只有作者可见可编辑」，所以这份内容是作者改坏之后的唯一参照 ——
+   * 界面上要有入口能看到它，否则「原始版本已过审就显示它」这句话落不了地。
+   */
+  revision?: { content_html: string; approved_at: string } | null;
   /** 后端还没有这个字段（shortcut）：真站先恒 false，等于「正在自动检查」那一档 */
   pendingHuman?: boolean;
   /** L7：这一次 pending 是作者改完正文重提上来的（真站由「刚保存 + 服务端回了 pending」推出） */
@@ -187,6 +194,9 @@ export function TopicView({
   const [tab, setTab] = useState<TopicTaskTab>('content');
   // 弹层与确认：只开一个（举报 / 编辑 / 删帖三件事各是各的，同时开着人不知道自己在确认什么）
   const [layer, setLayer] = useState<'report' | 'edit' | 'delete' | null>(initialLayer);
+  // L6：打回修改时那份「最后过审版本」的弹层。与举报/编辑/删除同一套「只开一个」的规矩，
+  // 但它不改任何东西（纯只读的参照），所以不放进 layer 那个联合类型里。
+  const [revisionOpen, setRevisionOpen] = useState(false);
   // 举报对象：null = 帖子本身，非 null = 某条回复（回复级举报带 target_type=post）
   const [reportTarget, setReportTarget] = useState<{ id: string; label: string } | null>(null);
 
@@ -234,6 +244,7 @@ export function TopicView({
             reviewState={review.state}
             reviewPendingHuman={review.pendingHuman ?? false}
             reviewResubmitted={review.resubmitted ?? false}
+            reviewRevision={review.revision ? <ReviewRevisionButton onOpen={() => setRevisionOpen(true)} /> : null}
             reviewNote={review.note ?? null}
             reviewAppeal={rejected && onAppeal ? <ReviewAppealButton onAppeal={onAppeal} /> : null}
             reviewResubmit={rejected && onResubmit ? <ReviewResubmitButton onResubmit={onResubmit} /> : null}
@@ -355,6 +366,12 @@ export function TopicView({
           />
         </aside>
       </div>
+
+      {/* L6：最后过审版本的只读弹层。与举报/编辑一样挂在页面级（Dialog 自己进 portal），
+          但**不在 layer 那个联合里** —— 它不改任何东西，同时开着也不冲突。 */}
+      {revisionOpen && review.revision ? (
+        <RevisionDialog revision={review.revision} onClose={() => setRevisionOpen(false)} />
+      ) : null}
     </div>
   );
 }
