@@ -14,7 +14,7 @@ const BRIEF = (handle: string, nickname: string) => ({ handle, nickname, avatar:
 
 const ROLE = (id: number, key: string, name: string, color: string, isSuper = false) => ({
   id, key, name, description: key, depth: 0, badge_color: color, is_system: true,
-  is_super: isSuper, priority: id * 10, perm_keys: [], user_count: 3,
+  is_super: isSuper, priority: id * 10, perm_keys: ROLE_PERMS[key] ?? [], user_count: 3,
 });
 
 export const ME_ADMIN = {
@@ -77,6 +77,14 @@ const STATS = {
     { user: BRIEF('demo-voidray', '虚空辉光舰'), total_cents: 210000, count: 14 },
     { user: BRIEF('demo-thor', '雷神'), total_cents: 110000, count: 12 },
   ],
+};
+
+/** role_permissions 是**已展开的并集**（§9.8），所以这里每个角色给的是它的全量。 */
+const ROLE_PERMS: Record<string, string[]> = {
+  user: ["topic.create","topic.edit.own"],
+  creator: ["topic.create","topic.edit.own","resource.publish","topic.pin"],
+  admin: ["topic.create","topic.edit.own","topic.delete.any","topic.lock","topic.pin","topic.move","resource.publish","post.review","user.ban","user.mute","report.handle","reward.verify"],
+  superadmin: [],
 };
 
 const ROLES = [ROLE(1, 'user', '普通用户', ''), ROLE(2, 'creator', '认证创作者', '#2563eb'), ROLE(3, 'admin', '管理员', '#7c3aed'), ROLE(4, 'superadmin', '超级管理员', '#f97316', true)];

@@ -1,4 +1,4 @@
-import type { AdminUser, Announcement, AuditItem, Banner, Donation, DonationStats, Domain, MailAccount, NoticeDefault, Report, ReviewQueueItem, Role, SettingItem, Title } from '@/lib/api/admin';
+import type { AdminUser, Announcement, AuditItem, Banner, Permission, Donation, DonationStats, Domain, MailAccount, NoticeDefault, Report, ReviewQueueItem, Role, SettingItem, Title } from '@/lib/api/admin';
 
 // DevRoom 15-admin 的演示数据（**只给房间用**；产品路由由 ./admin-screens.tsx 的容器喂真端点）。
 //
@@ -315,4 +315,31 @@ export const DEMO_AUDIT: AuditItem[] = [
   { id: 410, created_at: '2026-10-12T09:00:00Z', action: 'permission.expire', target_type: 'user', target_id: 'u-6', ip: '', actor: null, detail: { before: { perm: 'post.review', expires_at: null } } },
   { id: 409, created_at: '2026-10-11T03:20:00Z', action: 'topic.review', target_type: 'topic', target_id: 't-3', ip: '203.0.113.24', actor: { id: 'u-1', handle: 'demo-admin', nickname: '示范管理员' }, detail: { action: 'reject', state: 'rejected', note: '未标注原作者与出处链接', from: 'pending' } },
   { id: 408, created_at: '2026-10-10T00:05:00Z', action: 'permission.revoke', target_type: 'user', target_id: 'u-7', ip: '127.0.0.1', actor: null, detail: { before: { perm: 'post.review' } } },
+];
+
+/** 权限点目录的演示数据：字段名照 auth/service.go 的 PermItem（key/group/name/description）。 */
+export const DEMO_PERMISSIONS: Permission[] = [
+  { key: 'topic.create', group: '内容', name: '发主题', description: '发主题、发回复、发 issue、发 issue 评论' },
+  { key: 'topic.edit.own', group: '内容', name: '编辑自己的内容', description: '' },
+  { key: 'topic.delete.any', group: '内容', name: '删任何人的内容', description: '' },
+  { key: 'topic.lock', group: '内容', name: '锁定 / 解锁', description: '' },
+  { key: 'topic.pin', group: '内容', name: '置顶与精华', description: '两个端点同一个点' },
+  { key: 'topic.move', group: '内容', name: '移动主题', description: '' },
+  { key: 'resource.publish', group: '内容', name: '发资源帖', description: 'kind=resource 时额外要它' },
+  { key: 'post.review', group: '内容', name: '人工审核', description: '人工审核队列：通过 / 拒绝' },
+  { key: 'user.ban', group: '用户', name: '封号', description: '封号 / 解封（users.status）' },
+  { key: 'user.mute', group: '用户', name: '禁言', description: '全局 / 指定分区，带到期时间' },
+  { key: 'role.edit', group: '授权', name: '改角色矩阵', description: '改角色的权限矩阵' },
+  { key: 'role.assign', group: '授权', name: '分配角色', description: '给用户分配基线角色' },
+  { key: 'permission.grant', group: '授权', name: '追加权限', description: '点对点追加 / 回收' },
+  { key: 'title.grant', group: '授权', name: '发头衔', description: '' },
+  { key: 'title.manage', group: '运营', name: '头衔目录维护', description: '归档而非删除' },
+  { key: 'board.manage', group: '分区', name: '分区管理', description: '增删改、排序、封面、ACL' },
+  { key: 'board.moderate', group: '分区', name: '分区内治理', description: '只在命中的分区' },
+  { key: 'report.handle', group: '运营', name: '处理举报', description: '' },
+  { key: 'reward.verify', group: '运营', name: '核验打赏', description: '' },
+  { key: 'mail.manage', group: '系统', name: '发信账号', description: '' },
+  { key: 'site.setting', group: '系统', name: '站点设置', description: '文案、公告与横幅' },
+  { key: 'audit.view', group: '系统', name: '查审计', description: '' },
+  { key: 'audit.export', group: '系统', name: '导出审计', description: '与 audit.view 分开' },
 ];

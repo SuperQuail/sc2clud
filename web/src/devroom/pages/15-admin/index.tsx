@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { CURRENT_ADMIN } from './mock/perms';
-import { DEMO_ANNOUNCEMENTS, DEMO_AUDIT, DEMO_BANNERS, DEMO_DOMAINS, DEMO_DONATIONS, DEMO_DONATION_STATS, DEMO_MAIL, DEMO_NOTICE_DEFAULTS, DEMO_REPORTS, DEMO_REVIEW, DEMO_ROLES, DEMO_SETTINGS, DEMO_TITLES, DEMO_USERS } from './mock/fixtures';
+import { DEMO_PERMISSIONS, DEMO_ANNOUNCEMENTS, DEMO_AUDIT, DEMO_BANNERS, DEMO_DOMAINS, DEMO_DONATIONS, DEMO_DONATION_STATS, DEMO_MAIL, DEMO_NOTICE_DEFAULTS, DEMO_REPORTS, DEMO_REVIEW, DEMO_ROLES, DEMO_SETTINGS, DEMO_TITLES, DEMO_USERS } from './mock/fixtures';
 import { AdminShell } from './shell';
 import { SCREEN_KEYS, type ScreenKey } from './nav';
 import { AiReviewScreen } from './screens/ai-review';
@@ -26,7 +26,7 @@ import { UsersScreen, type UsersFilter } from './screens/users';
 // 这样出图/评审能直接给到某一屏（「URL 即状态」的最小版本）。
 const SCREENS: Record<ScreenKey, () => React.ReactNode> = {
   users: () => <UsersRoom />,
-  roles: () => <RolesScreen />,
+  roles: () => <RolesRoom />,
   boards: () => <BoardsScreen />,
   review: () => <ReviewRoom />,
   reports: () => <ReportsRoom />,
@@ -38,6 +38,21 @@ const SCREENS: Record<ScreenKey, () => React.ReactNode> = {
   audit: () => <AuditRoom />,
   diagnostics: () => <DiagnosticsScreen />,
 };
+
+/** 角色矩阵屏的房间版。 */
+function RolesRoom() {
+  const [roles, setRoles] = useState(DEMO_ROLES);
+  const [receipt, setReceipt] = useState<string | null>(null);
+  return (
+    <RolesScreen
+      roles={roles}
+      permissions={DEMO_PERMISSIONS}
+      canEdit
+      onSave={(roleId, permKeys) => { setRoles((p) => p.map((r) => (r.id === roleId ? { ...r, perm_keys: permKeys } : r))); setReceipt('（房间演示：这里不发请求）矩阵已保存，' + permKeys.length + ' 个权限点'); }}
+      receipt={receipt ? <p className='text-[12px] text-muted-foreground'>{receipt}</p> : null}
+    />
+  );
+}
 
 /** 审计屏的房间版。 */
 function AuditRoom() {
