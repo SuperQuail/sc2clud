@@ -73,3 +73,10 @@
    （「最后过审版本」现在也意味着「读者此刻正在看的那一版」）。
 4. **`topic_revisions.pending_*` 三列同生同死**（迁移 0029 的 CHECK）：只写一半会让
    「有没有待审版本」的判据与渲染对不上。
+5. **收工时的实测（2026-10-14 18:4x）**：`gofmt -l .` 空、`go vet ./...` 0、
+   `go test ./internal/forum/ -count=1` **ok 80.4s**（含我全部新用例）、
+   `npx vitest run` **37 文件 / 187 用例全绿**。
+   中途有两次整包失败都是**别人在途**：`admin_boards_write.go` 引用了还没落地的
+   `s.incBoardCover`（verify 时红、几分钟后他们补上 `deps.go` 就绿了），
+   以及 `12-topic/types.ts` 给 `TopicDetail` 加了必填 `content_md` 但调用方还没跟完。
+   **都不在我的改动上，也没有一个字节是我碰的**（我的提交只含 16 + 4 个文件，见两个 commit）。
