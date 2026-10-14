@@ -5,10 +5,10 @@ import { ControlsHeight } from '@jetbrains/ring-ui-built/components/global/contr
 import { useQuery } from '@tanstack/react-query';
 import { ArrowLeft, Plus } from 'lucide-react';
 import { icon16 } from '@/ui/icons';
-import { appPath } from '@/lib/url';
+import { appPath, routePath } from '@/lib/url';
 import { qk } from '@/lib/query/keys';
 import { fetchBoards } from '@/lib/api/forum';
-import { BoardRail as BoardRailView, type BoardSummary } from '@/devroom/pages/03-navigation/board-rail';
+import { BoardRail as BoardRailView, type BoardSummary, type RailLink } from '@/devroom/pages/03-navigation/board-rail';
 
 // 页面级的两个小件（**不是控件**，是版式）：页头（标题 + 描述 + 动作）与分区侧栏。
 // 它们放在 routes/_parts 而不是 src/ui：src/ui 是「控件库」，加控件要走 DevRoom 验证 + 登记
@@ -88,5 +88,11 @@ export function BoardRail({ current, className }: { current?: string; className?
       cover_hash: raw.cover_hash ?? raw.cover ?? '',
     };
   });
-  return <BoardRailView boards={rows} current={current} className={className} />;
+  return <BoardRailView boards={rows} current={current} className={className} link={RailRouterLink} />;
+}
+
+/** 把 react-router 的 `<Link to>` 适配成 View 要的 `{ href }`：View 因此不认识路由库。 */
+function RailRouterLink({ href, ...rest }: Parameters<RailLink>[0]) {
+  // Link 的 to 是 **basename 相对**的（appPath 的结果已经含 /dev 前缀，再给 Link 会变成 /dev/dev/…）
+  return <Link to={routePath(href)} {...rest} />;
 }

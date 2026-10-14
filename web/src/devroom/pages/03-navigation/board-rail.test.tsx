@@ -1,6 +1,5 @@
 import { expect, it } from 'vitest';
 import { render, screen } from '@testing-library/react';
-import { MemoryRouter } from 'react-router';
 import { BoardCover, BoardRail, type BoardSummary } from './board-rail';
 
 // D3（2026-10-14 用户实测：「左侧分区列表没有任何图片」）的渲染侧。
@@ -17,12 +16,10 @@ const BOARDS: BoardSummary[] = [
   { slug: 'emperor', name: '皇帝区', cover_hash: '', description: '', topic_count: 0 },
 ];
 
+// **View 里不出现 react-router**（房间不在 RouterProvider 里，import 了它就渲染不了）：
+// 所以这里连测试也不套 MemoryRouter —— 缺省落地件就是普通 <a href>，产品宿主自己传 Link。
 function renderRail(current?: string) {
-  return render(
-    <MemoryRouter>
-      <BoardRail boards={BOARDS} current={current} />
-    </MemoryRouter>,
-  );
+  return render(<BoardRail boards={BOARDS} current={current} />);
 }
 
 // 封面图是装饰性的（alt=''），所以它的 role 是 presentation —— 按 DOM 找，不按 role=img 找。
@@ -34,19 +31,11 @@ it('有封面的分区画图，图的地址是 /img/<裸哈希>', () => {
 });
 
 it('没有封面的分区落稳定占位：首字 + slug 定的色相（不是空白）', () => {
-  const { container } = render(
-    <MemoryRouter>
-      <BoardCover slug='emperor' name='皇帝区' hash='' />
-    </MemoryRouter>,
-  );
+  const { container } = render(<BoardCover slug='emperor' name='皇帝区' hash='' />);
   const box = container.firstElementChild as HTMLElement;
   expect(box.textContent).toBe('皇');
   // 同一个 slug 两次渲染必须是同一个色（色相由 slug 算，与用户头像同一套公式）
-  const again = render(
-    <MemoryRouter>
-      <BoardCover slug='emperor' name='皇帝区' hash='' />
-    </MemoryRouter>,
-  );
+  const again = render(<BoardCover slug='emperor' name='皇帝区' hash='' />);
   expect((again.container.firstElementChild as HTMLElement).getAttribute('style')).toBe(box.getAttribute('style'));
   // jsdom 把 hsl() 归一化成 rgb()（就绪：比对颜色值要先归一化，不能比字符串原文）
   expect(box.getAttribute('style')).toMatch(/^background: rgb\(/);

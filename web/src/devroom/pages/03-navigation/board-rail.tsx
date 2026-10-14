@@ -1,5 +1,5 @@
-import { Link } from 'react-router';
-import { imagePath, routePath } from '@/lib/url';
+import type { ReactNode } from 'react';
+import { imagePath } from '@/lib/url';
 import { cn } from '@/lib/utils';
 
 // 分区侧栏（首页 / 分区页共用）。**prop 驱动的 View**：只吃分区数组，不 fetch、不认路由表
@@ -29,13 +29,16 @@ function hueOf(key: string): number {
 
 /** 侧栏一行的封面位：有封面用图，没有就用「首字 + slug 色相」的稳定占位。 */
 export function BoardCover({ slug, name, hash, className }: { slug: string; name: string; hash?: string | null; className?: string }) {
+  // hash 是**裸哈希**（后端 BoardDTO 给的形状）；房间是静态预览服务、没有 /img/{hash} 这条读口，
+  // 所以也接住「已经是路径」的写法（以 / 开头），房间的演示数据用站内素材就能画出一张真封面。
+  const src = hash ? imagePath(hash.startsWith('/') ? hash : '/img/' + hash) : null;
   return (
     <span
       className={cn('grid size-5 shrink-0 place-items-center overflow-hidden rounded-[4px] text-[11px] font-semibold text-white select-none', className)}
-      style={hash ? undefined : { background: 'hsl(' + hueOf(slug) + ' 62% 46%)' }}
+      style={src ? undefined : { background: 'hsl(' + hueOf(slug) + ' 62% 46%)' }}
     >
-      {hash ? (
-        <img src={imagePath('/img/' + hash)} alt='' loading='lazy' decoding='async' className='size-full object-cover' />
+      {src ? (
+        <img src={src} alt='' loading='lazy' decoding='async' className='size-full object-cover' />
       ) : (
         <span aria-hidden>{[...name][0] ?? '?'}</span>
       )}
@@ -43,7 +46,30 @@ export function BoardCover({ slug, name, hash, className }: { slug: string; name
   );
 }
 
-export function BoardRail({ boards, current, className }: { boards: BoardSummary[]; current?: string; className?: string }) {
+/**
+ * 行的落地件由调用方给，**View 里不出现 react-router**：
+ * 房间不在 RouterProvider 里（app.tsx 只认 ?page=），View 一旦 import react-router 就**渲染不了**
+ * （实测：Cannot destructure property 'basename' of 's.useContext(...)' as it is null）
+ * —— 与 10-messages 的 notice-center-view 同一条约定（那里也是把「点击改 URL」留在宿主）。
+ * 缺省就是普通 `<a href>`（房间用），产品页传 react-router 的 Link（SPA 内跳，不整页刷新）。
+ */
+export type RailLink = (props: { href: string; className?: string; title?: string; 'aria-current'?: 'page'; children: ReactNode }) => ReactNode;
+
+/** 缺省落地件：普通 `<a>`（房间与静态预览用；产品宿主传 react-router 的 Link）。 */
+const PlainLink = 'a' as unknown as RailLink;
+
+export function BoardRail({
+  boards,
+  current,
+  className,
+  link,
+}: {
+  boards: BoardSummary[];
+  current?: string;
+  className?: string;
+  link?: RailLink;
+}) {
+  const Link = link ?? PlainLink;
   // 拿不到分区时**整块消失**而不是画骨架：它是辅助导航，不该在首屏抢走内容的注意力。
   if (boards.length === 0) return null;
   return (
@@ -51,20 +77,26 @@ export function BoardRail({ boards, current, className }: { boards: BoardSummary
       <h2 className='px-2 pb-1 text-[11px] font-medium tracking-wide text-muted-foreground'>分区</h2>
       {boards.map((b) => {
         const isCurrent = b.slug === current;
-        return (
-          <Link
-            key={b.slug}
-            to={routePath('b/' + encodeURIComponent(b.slug))}
-            aria-current={isCurrent ? 'page' : undefined}
-            title={b.description || b.name}
-            className={cn(
-              'flex items-center gap-2 rounded-md px-2 py-1.5 text-[13px] outline-none transition-colors focus-visible:ring-[3px] focus-visible:ring-ring/50',
-              isCurrent ? 'bg-primary/10 font-semibold text-primary ring-1 ring-primary/40' : 'text-foreground hover:bg-muted',
-            )}
-          >
+        const cls = cn(
+          'flex items-center gap-2 rounded-md px-2 py-1.5 text-[13px] outline-none transition-colors focus-visible:ring-[3px] focus-visible:ring-ring/50',
+          isCurrent ? 'bg-primary/10 font-semibold text-primary ring-1 ring-primary/40' : 'text-foreground hover:bg-muted',
+        );
+        const href = '/b/' + encodeURIComponent(b.slug);
+        const title = b.description || b.name;
+        const inner = (
+          <>
             <BoardCover slug={b.slug} name={b.name} hash={b.cover_hash} />
             <span className='min-w-0 flex-1 truncate'>{b.name}</span>
             <span className='shrink-0 text-[11px] tabular-nums text-muted-foreground'>{b.topic_count ?? 0}</span>
+          </>
+        );
+        return isCurrent ? (
+          <Link key={b.slug} href={href} className={cls} title={title} aria-current='page'>
+            {inner}
+          </Link>
+        ) : (
+          <Link key={b.slug} href={href} className={cls} title={title}>
+            {inner}
           </Link>
         );
       })}
