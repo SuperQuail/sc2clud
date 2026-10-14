@@ -58,3 +58,15 @@
     加一条 `fetchUserFollow` 查询 + `followUser/unfollowUser` mutation，把 `authorFollow` 传给 `TopicView` 即可
     （样板逐字照 `routes/profile.tsx`）；已把这段发给 Lead。
   - 阻塞：无（上面那处是交接，不是阻塞：View 侧三态与出图都已就绪）
+
+## 收工验证（FIX-TITLE）
+
+- `pnpm typecheck` = 0 错；`pnpm lint` = 0 error（17 warnings，全是仓库既有的 react-refresh / exhaustive-deps）。
+- `npx vitest run` = **51 文件 / 252 用例全绿**（含本包新增的 11 条：D16/D17/D19 的作者卡 7 条 + D18/D19 的真站 profile 8 条 —— 其中 3 条是 D18 的）。
+- 分门禁（`pnpm check` 不跑：它会 `pnpm build` 清 dist、同一时刻只允许一个人）：
+  `gate:ui` / `gate:controls`（48 个已登记控件，没新增）/ `gate:urls` 全过；
+  `gate:tokens` 我从 5 → 0 处（`src/preview/product-fixture.ts` 的头衔色改令牌），**剩下的 5 处都在
+  `src/preview/admin-fixtures.ts`（`git show HEAD:…` 里就有，非本包引入）**；
+  `gate:size` 红在 `web/src/routes/topic.test.tsx`（546 行，FIX-JSON 正在加断言的文件）——**不是本包文件**，
+  本包改过的 8 个文件里最长的是 `routes/profile.tsx`（约 430 行）。
+- 出图端口 5217（vite dev）为本包自取，收工按 PID 关；`shots/fix-title/` 是本包的图（`shots/` 在 .gitignore 里，与前任们一致）。
