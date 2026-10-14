@@ -10,6 +10,7 @@ import (
 	"github.com/gin-gonic/gin"
 
 	"forum/internal/aireview"
+	"forum/internal/appeal"
 	"forum/internal/auth"
 	"forum/internal/config"
 	"forum/internal/forum"
@@ -109,6 +110,22 @@ func registerAPIRoutes(r *gin.Engine, cfg *config.Config, m *Modules) {
 	report.NewHandler(m.Report, auth.FromGin).Register(v1, m.requireLogin, m.perm, m.limit)
 	// AI 审核的配置与连通测试（d7 §8）：权限点沿用 site.setting，不新造。
 	aireview.NewHandler(m.AIReview, auth.FromGin).Register(v1, m.requireLogin, m.perm)
+	// 申诉与反馈（C4 免登录 + C5 作者申诉）：**每请求一个 handler**，
+	// 因为它的 Store 上带着「当前事务执行器」这一份可变状态（见 app/appeal.go 的说明）。
+	registerAppeal(r, v1, m)
+}
+
+// registerAppeal 把 appeal 域的路由挂上去。三条与别的域不同的地方：
+//
+//  1. 每请求新装配一次（`m.appealService()` 里 new 一个 Store）—— Store 带可变状态，不能共享；
+//  2. 免登录的两条路走**按 IP** 的限流（同层的 m.limit 按登录用户计数，对它们不适用）；
+//  3. 其余三条（/me/appeals、C5、管理端）与别的域完全一样。
+func registerAppeal(r *gin.Engine, v1 *gin.RouterGroup, m *Modules) {
+	// 每请求一份：构造只有几次分配，而共享会让并发的两个请求互相清掉对方的事务。
+	perRequest := func(fn func(*appeal.Handler) gin.HandlerFunc) gin.HandlerFunc {
+		return func(c *gin.Context) { fn(appeal.NewHandler(m.appealService(), auth.FromGin))(c) }
+	}
+	appeal.RegisterRoutes(v1, perRequest, m.requireLogin, m.perm, m.limitIP)
 }
 
 // registerStatic 挂静态托管与 SPA 回退。

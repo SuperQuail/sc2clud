@@ -157,6 +157,54 @@ var endpointLimits = map[string]struct {
 	"report:create": {10, time.Hour}, // d6 §5.6 第 5 条
 	"reward:create": {10, time.Hour}, // d6 §4 第 8 条
 	"reward:verify": {60, time.Hour}, // 核验是管理动作，额度放宽
+	// 申诉的两条免登录路（C4）：闸门是图形验证码（见 appeal 域的 checkCaptcha），
+	// 限流是第二道 —— 它挡的是「同一来源反复提交」。
+	//
+	// 取 20/小时的理由：一个 IP 背后常常是一整个 NAT（学校 / 公司 / 小区），
+	// 而申诉天然是成批出现的（一次封禁事件里同一个网段的多个人同时来申诉）。
+	// 20 对单个人远超需要（他自己还有 24 小时 3 条的额度），对批量也只挡住脚本。
+	"appeal:create": {20, time.Hour},
+	// 查进展的额度放宽到 60：正常用户会反复回来看结果，而这条路的真正防线是
+	// 「单号 + 邮箱两条都对上」（单号本身不可枚举：AP-<id+2000> 里 id 是全局自增，
+	// 猜中一条要同时猜中邮箱）。60 只挡暴力枚举。
+	"appeal:lookup": {60, time.Hour},
+}
+
+// limitIP 是按来源 IP 计数的限流（免登录端点的唯一可用身份）。
+//
+// 与下面的 limit 分开：那个按登录用户计数、且要求路由挂了 requireLogin，
+// 对免登录的两条路只会永远拒绝放行（actor.UserID == 0）。
+func (m *Modules) limitIP(key string, next ...gin.HandlerFunc) gin.HandlerFunc {
+	rate, ok := endpointLimits[key]
+	if !ok {
+		rate = defaultRate
+		m.in.Log.Warn("装配: 限流键没上表，按兜底额度", "key", key, "limit", rate.limit)
+	}
+	return func(c *gin.Context) {
+		k := key + ":ip:" + c.ClientIP()
+		pass, retry, err := m.in.Limiter.Allow(c.Request.Context(), k, rate.limit, rate.window)
+		if err != nil {
+			// 限流后端不可用 = 拒绝放行（platform/kv 的约定），否则它是「一挂就没有限流」。
+			m.in.Log.Error("装配: 限流后端不可用", "key", k, "err", err.Error())
+			httpx.Fail(c, apperr.ErrRateLimited.WithMsg("限流服务不可用，请稍后再试"))
+			return
+		}
+		if !pass {
+			secs := int(retry.Seconds())
+			if secs < 1 {
+				secs = 1
+			}
+			httpx.Fail(c, apperr.ErrRateLimited.WithMsg("操作太频繁，请 "+strconv.Itoa(secs)+" 秒后再试"))
+			return
+		}
+		// next 是这条路由自己的中间件链（与 appeal.chain 同义：逐段判 IsAborted）。
+		for _, h := range next {
+			h(c)
+			if c.IsAborted() {
+				return
+			}
+		}
+	}
 }
 
 // defaultRate 是没上表的键的兜底：宁可慢一点，也不要「没配 = 不限流」。

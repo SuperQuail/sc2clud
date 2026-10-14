@@ -14,11 +14,14 @@ import (
 // Brief 是别的域要的最小用户画像（message / title / reward / report 各自 deps.go 的并集）。
 // 跨域的类型转换在 app 层做：业务模块之间不互相 import（上线设计 §2 P1 决策 2）。
 type Brief struct {
-	ID            int64
-	PublicID      string
-	Handle        string
-	Nickname      string
-	Status        string
+	ID       int64
+	PublicID string
+	Handle   string
+	Nickname string
+	Status   string
+	// RoleID 是判定要用的那一列（auth.LoadActor 的第一个参数就是它）。
+	// 没有它时，任何「后台任务里要算一次权限」的调用方都得回来自己查一次 users 表。
+	RoleID        int64
 	AvatarHash    string
 	AvatarSmall   string
 	DefaultAvatar string
@@ -59,7 +62,8 @@ func (s *Service) brief(ctx context.Context, where predicate.User) (*Brief, erro
 	return &Brief{
 		ID: u.ID, PublicID: u.PublicID.String(), Handle: u.Username,
 		Nickname: displayName(u.Nickname, u.Username),
-		Status:   u.Status, AvatarHash: deref(u.AvatarHash), AvatarSmall: deref(u.AvatarSmallHash),
+		Status:   u.Status, RoleID: u.RoleID,
+		AvatarHash: deref(u.AvatarHash), AvatarSmall: deref(u.AvatarSmallHash),
 		DefaultAvatar: deref(u.DefaultAvatarHash),
 	}, nil
 }
