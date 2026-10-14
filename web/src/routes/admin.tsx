@@ -1,4 +1,4 @@
-import { createElement, lazy, Suspense, type ComponentType } from 'react';
+import { createElement, Suspense, type ComponentType } from 'react';
 import { Navigate, useNavigate, useParams } from 'react-router';
 import Button from '@jetbrains/ring-ui-built/components/button/button';
 import { Lock } from 'lucide-react';
@@ -6,7 +6,17 @@ import { SCREEN_KEYS, type ScreenKey } from '@/devroom/pages/15-admin/nav';
 import { AdminShell } from '@/devroom/pages/15-admin/shell';
 import { appPath, routePath } from '@/lib/url';
 import { can, useSession } from '@/lib/perms';
-import { AuditScreenContainer, MailScreenContainer, PendingScreen, RolesScreenContainer, ReportsScreenContainer, ReviewScreenContainer, RewardsScreenContainer, SettingsScreenContainer, TitlesScreenContainer, UsersScreenContainer } from './admin-screens';
+import { PendingScreen } from './admin/_shared';
+import { AiReviewScreenContainer } from './admin/ai';
+import { AuditScreenContainer } from './admin/audit';
+import { MailScreenContainer } from './admin/mail';
+import { ReportsScreenContainer } from './admin/reports';
+import { ReviewScreenContainer } from './admin/review';
+import { RewardsScreenContainer } from './admin/rewards';
+import { RolesScreenContainer } from './admin/roles';
+import { SettingsScreenContainer } from './admin/settings';
+import { TitlesScreenContainer } from './admin/titles';
+import { UsersScreenContainer } from './admin/users';
 import { Empty, ErrorState, Loading } from './_parts/state';
 
 // 管理后台（契约 /admin/*，前端方案 §6「在路由层声明所需权限点，缺权限直接渲染 403，不发无谓请求」）。
@@ -14,7 +24,7 @@ import { Empty, ErrorState, Loading } from './_parts/state';
 // 路由与舞台复用 DevRoom 15-admin 的 NAV / SideNav / **AdminShell**（面包屑 + 当前管理员卡 + 权限明细）
 // 与 12 个屏组件本身 —— 同一份实现，不是两份（上线设计 P2 决策 2/3）。
 //
-// 接线形状：**路由只声明权限点与布局**，取数在 ./admin-screens.tsx 的每个容器里
+// 接线形状：**路由只声明权限点与布局**，取数在 ./admin/ 目录里（一屏一个容器文件）；
 //（一个屏一个容器，容器把 /admin/* 变成屏的 props；屏里不 import mock、不发请求）。
 // 这样「一屏接完」的判据只有一条：它的容器在不在。没有容器的屏渲染 PendingScreen，
 // **不拿示例数据兜底** —— 界面看着正常、其实什么都没发生，正是本仓库要消灭的形态。
@@ -35,8 +45,10 @@ const PERM_BY_SCREEN: Record<ScreenKey, string> = {
   diagnostics: 'site.setting',
 };
 
-// 12 个屏逐个按需加载：静态 import 会把它们（连同各自的重控件）打进同一个 chunk，
-// 那个 chunk 一旦超过体积预算就会把整条门禁拖红（实测 66KB gzip）。按屏分割后每个屏只在点开它时下载。
+// 屏的映射。**不再逐个 lazy()**：容器要 import 屏（屏是纯 props 组件），屏与容器成对进来；
+// 再包一层 lazy 只会把同一份代码切成两半、多一次往返。整块切分由路由层负责
+//（上线的 router.tsx 里 /admin/* 是 lazy 的，所以这 12 屏不会进首屏）。
+// 代价：12 屏现在落在同一个 chunk 里 —— 体积门禁（gate:budget 的单路由 chunk ≤ 120KB）是判据。
 type AnyScreen = ComponentType<Record<string, never>>;
 
 const SCREEN_COMPONENT: Record<ScreenKey, AnyScreen> = {
@@ -49,7 +61,7 @@ const SCREEN_COMPONENT: Record<ScreenKey, AnyScreen> = {
   titles: TitlesScreenContainer,
   mail: MailScreenContainer,
   settings: SettingsScreenContainer,
-  ai: lazy(() => import('@/devroom/pages/15-admin/screens/ai-review').then((m) => ({ default: m.AiReviewScreen }))),
+  ai: AiReviewScreenContainer,
   audit: AuditScreenContainer,
   diagnostics: PendingScreen('diagnostics'),
 };

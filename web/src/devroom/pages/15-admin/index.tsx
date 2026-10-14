@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { CURRENT_ADMIN } from './mock/perms';
-import { DEMO_PERMISSIONS, DEMO_ANNOUNCEMENTS, DEMO_AUDIT, DEMO_BANNERS, DEMO_DOMAINS, DEMO_DONATIONS, DEMO_DONATION_STATS, DEMO_MAIL, DEMO_NOTICE_DEFAULTS, DEMO_REPORTS, DEMO_REVIEW, DEMO_ROLES, DEMO_SETTINGS, DEMO_TITLES, DEMO_USERS } from './mock/fixtures';
+import { DEMO_AI_CONFIG, DEMO_AI_TEST, DEMO_PERMISSIONS, DEMO_ANNOUNCEMENTS, DEMO_AUDIT, DEMO_BANNERS, DEMO_DOMAINS, DEMO_DONATIONS, DEMO_DONATION_STATS, DEMO_MAIL, DEMO_NOTICE_DEFAULTS, DEMO_REPORTS, DEMO_REVIEW, DEMO_ROLES, DEMO_SETTINGS, DEMO_TITLES, DEMO_USERS } from './mock/fixtures';
 import { AdminShell } from './shell';
 import { SCREEN_KEYS, type ScreenKey } from './nav';
 import { AiReviewScreen } from './screens/ai-review';
@@ -34,10 +34,28 @@ const SCREENS: Record<ScreenKey, () => React.ReactNode> = {
   titles: () => <TitlesRoom />,
   mail: () => <MailRoom />,
   settings: () => <SettingsRoom />,
-  ai: () => <AiReviewScreen />,
+  ai: () => <AiRoom />,
   audit: () => <AuditRoom />,
   diagnostics: () => <DiagnosticsScreen />,
 };
+
+/** AI 审核屏的房间版。 */
+function AiRoom() {
+  const [cfg, setCfg] = useState(DEMO_AI_CONFIG);
+  const [test, setTest] = useState(DEMO_AI_TEST);
+  const [receipt, setReceipt] = useState<string | null>(null);
+  return (
+    <AiReviewScreen
+      config={cfg}
+      canSetting
+      onPatch={(p) => { setCfg((c) => ({ ...c, ...p })); setReceipt('（房间演示：这里不发请求）已保存 ' + Object.keys(p).join('、')); }}
+      onSaveSecret={() => { setCfg((c) => ({ ...c, has_secret: true, secret_updated_at: new Date().toISOString() })); setReceipt('（房间演示：这里不发请求）密钥已保存（只写不回显）'); }}
+      onTest={() => { setTest(DEMO_AI_TEST); setReceipt(null); }}
+      testResult={test}
+      receipt={receipt ? <p className='text-[12px] text-muted-foreground'>{receipt}</p> : null}
+    />
+  );
+}
 
 /** 角色矩阵屏的房间版。 */
 function RolesRoom() {

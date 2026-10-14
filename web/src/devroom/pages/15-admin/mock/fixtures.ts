@@ -1,4 +1,4 @@
-import type { AdminUser, Announcement, AuditItem, Banner, Permission, Donation, DonationStats, Domain, MailAccount, NoticeDefault, Report, ReviewQueueItem, Role, SettingItem, Title } from '@/lib/api/admin';
+import type { AdminUser, AiConfig, AiTestView, Announcement, AuditItem, Banner, Permission, Donation, DonationStats, Domain, MailAccount, NoticeDefault, Report, ReviewQueueItem, Role, SettingItem, Title } from '@/lib/api/admin';
 
 // DevRoom 15-admin 的演示数据（**只给房间用**；产品路由由 ./admin-screens.tsx 的容器喂真端点）。
 //
@@ -343,3 +343,32 @@ export const DEMO_PERMISSIONS: Permission[] = [
   { key: 'audit.view', group: '系统', name: '查审计', description: '' },
   { key: 'audit.export', group: '系统', name: '导出审计', description: '与 audit.view 分开' },
 ];
+
+/** AI 审核配置的演示数据：字段名照 aireview/dto.go 的 ConfigView（密钥只有 has_secret）。 */
+export const DEMO_AI_CONFIG: AiConfig = {
+  enabled: true,
+  provider: 'deepseek',
+  base_url: 'https://api.deepseek.com',
+  model: 'deepseek-chat',
+  thinking: false,
+  strict_mode: true,
+  timeout_ms: 20000,
+  max_output_tokens: 1024,
+  temperature: 0,
+  prompt: '你是社区内容审核员。判定下面这篇帖子是否合规。\n只回 JSON：{"verdict":"approve|reject|review","reason":"中文理由","categories":[]}\n拿不准就用 review（转人工），不要猜。',
+  prompt_report: '你是社区举报复核员。这条帖子已被举报若干次，请判定举报是否成立。\n只回 JSON：{"verdict":"approve|reject|review","reason":"中文理由","categories":[]}',
+  has_secret: true,
+  secret_updated_at: '2026-10-01T03:20:00Z',
+  last_ok_at: '2026-10-12T13:20:00Z',
+  last_error: '超时 20000ms（POST https://api.deepseek.com/v1/chat/completions）',
+  last_error_at: '2026-10-11T22:10:00Z',
+};
+
+export const DEMO_AI_TEST: AiTestView = {
+  verdict: 'review',
+  reason: '拿不准是否有外站导流：正文提到了网盘但没给链接。',
+  categories: ['spam'],
+  model: 'deepseek-chat',
+  latency_ms: 812,
+  raw: '{"verdict":"review","reason":"拿不准是否有外站导流","categories":["spam"]}',
+};
