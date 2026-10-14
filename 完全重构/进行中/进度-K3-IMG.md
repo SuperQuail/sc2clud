@@ -139,3 +139,13 @@
   1. 主题详情页的配图图集与「删除配图」按钮 —— 落点在 K2-C 手里的 `routes/topic.tsx` 与
      `devroom/pages/12-topic/**`（`images` 至今零渲染）；且后端还缺 `GET /topics/{id}/images` 这条读口。
   2. 首屏预算只剩 1.2 KB —— 本轮前端改动全在 lazy 路由下，没往首屏加东西。
+### 收工后的两条追加观察（18:36）
+
+1. **本文件提到的「我的四个提交」可能在 `git log --oneline` 里不连续** —— 同一时刻有两个 agent 在提交
+   （K2-B / K2-C），历史是交错的。核过的判据不是「排在第几条」，而是
+   `git merge-base --is-ancestor <我的提交> HEAD` 三条全 exit 0（f8c67e3 / 8a8ff33 / ce407b9）。
+   工作区里我的文件也都干净。
+2. **`web/src/ui/rich/markdown-editor.tsx` 又被 K2-C 改了**（未提交）：它加了一个可选 `onQueryChange`
+   用于 @ 提及候选的按需查询（拍板第三轮第 4 条）。本轮**不抢**——我的 `onUpload` 与它的 `onQueryChange`
+   是同一份 props 列表里的两个可选 prop，交集只有类型声明那一段，合并时注意别把任一方丢掉即可。
+   我的那一版已在提交 8a8ff33 里（`onUpload` 的两条路：拖拽与点选）。
