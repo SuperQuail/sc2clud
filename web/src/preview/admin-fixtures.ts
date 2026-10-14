@@ -51,6 +51,26 @@ const REVIEW = [
     reviewer: BRIEF('demo-admin', '示范管理员'), reviewed_at: '2026-10-11T03:00:00Z', review_verdict: 'reject',
     created_at: '2026-10-10T21:00:00Z', updated_at: '2026-10-11T03:00:00Z',
   },
+  // 06.2 的两档（K2-C 出图用）：打回修改（第四态）与「已发布 + 有改动等着替换上线」。
+  // 后者的 review_state 就是 approved —— 线上还挂着旧版，改动在待审槽里（topic_revisions.pending_md），
+  // 所以这一档**不能**按状态名去查（队列 SQL 的 state=draft）。
+  {
+    id: 't-4', board: RB('tool-dev', '工具与开发'), author: BRIEF('demo-voidray', '虚空辉光舰'),
+    kind: 'discussion', title: '触发器里 Wait 之后变量被清空（已按意见补了完整的复现步骤）',
+    excerpt: '补了最小复现工程与两张截图，第三节按审核意见重写了。',
+    review_state: 'revision_requested', review_note: '第三节请补一个最小复现工程，现在看不出是引擎行为还是写法问题',
+    review_source: 'manual', reviewer: BRIEF('demo-admin', '示范管理员'),
+    reviewed_at: '2026-10-12T12:00:00Z', review_verdict: 'revision_requested',
+    created_at: '2026-10-12T07:30:00Z', updated_at: '2026-10-12T13:10:00Z',
+  },
+  {
+    id: 't-5', board: RB('custom-campaign', '自制战役'), author: BRIEF('demo-marine', '陆战队员'),
+    kind: 'resource', title: '第三章「余烬」下载与改动说明（改了一版：修好第二章的存档继承）',
+    excerpt: '已发布的那一版还在线上；这一版修了存档继承，等替换上线。',
+    review_state: 'approved', review_note: null, review_source: 'manual',
+    reviewer: BRIEF('demo-admin', '示范管理员'), reviewed_at: '2026-10-12T06:00:00Z', review_verdict: 'approve',
+    created_at: '2026-10-10T09:00:00Z', updated_at: '2026-10-12T14:20:00Z',
+  },
 ];
 
 const AUDIT = [
@@ -173,9 +193,14 @@ const USER_DETAIL: Record<string, unknown> = {
   },
 };
 
+// 后台分区列表里「已经有封面」的那一行用它 —— 出图要看得见**换与清两颗按钮都在**，
+// 而 cover_hash 为空时按设计不画「清空封面」（没有可清的）。
+// 这个 hash 对应 public/img/<hash>（1x1 占位图，只为让 <img> 不裂）。
+export const COVER_HASH = 'c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0';
+
 /** 后台分区列表：**含归档**，position 是行号（1 起），moderators 只有在任的。 */
 const BOARDS2 = [
-  { id: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', slug: 'custom-campaign', name: '自制战役', description: '战役作者发布与讨论', cover_hash: '', status: 'active', acl_enabled: true, min_post_level: 0, position: 1, topic_count: 812, post_count: 9421, today_count: 17, moderators: [] },
+  { id: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', slug: 'custom-campaign', name: '自制战役', description: '战役作者发布与讨论', cover_hash: COVER_HASH, status: 'active', acl_enabled: true, min_post_level: 0, position: 1, topic_count: 812, post_count: 9421, today_count: 17, moderators: [] },
   { id: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb', slug: 'tool-dev', name: '工具与开发', description: '模型、纹理、音效与工具链', cover_hash: '', status: 'active', acl_enabled: false, min_post_level: 0, position: 2, topic_count: 431, post_count: 3802, today_count: 9, moderators: [] },
   { id: 'cccccccc-cccc-4ccc-8ccc-cccccccccccc', slug: 'announcement', name: '公告与活动', description: '站点公告、赛事与活动', cover_hash: '', status: 'active', acl_enabled: true, min_post_level: 3, position: 3, topic_count: 24, post_count: 308, today_count: 2, moderators: [] },
   { id: 'dddddddd-dddd-4ddd-8ddd-dddddddddddd', slug: 'archive', name: '旧版存档', description: '旧站迁移时的历史分区，只读', cover_hash: '', status: 'archived', acl_enabled: false, min_post_level: 0, position: 4, topic_count: 1204, post_count: 8890, today_count: 0, moderators: [] },

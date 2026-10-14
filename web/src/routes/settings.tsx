@@ -90,11 +90,9 @@ export function SettingsPage() {
     queryFn: ({ signal }) => fetchUserProfile(contact, signal),
     enabled: contact !== '',
   });
-  const [pickedCover, setPickedCover] = useState<UploadedImage[]>([]);
-  const afterCover = () => {
-    setPickedCover([]);
-    void queryClient.invalidateQueries({ queryKey: qk.profile(contact) });
-  };
+  // 换完封面**不存本地预览**：弹层里的预览位读的就是服务端那一张（换完 invalidate，回来即新图），
+  // 存一份本地预览反而会多一个「传上去了但服务端回执还没到」的中间态要解释。
+  const afterCover = () => void queryClient.invalidateQueries({ queryKey: qk.profile(contact) });
   const saveCover = useMutation({ mutationFn: (file: Blob) => uploadCover(file), onSuccess: afterCover });
   const removeCover = useMutation({ mutationFn: () => clearCover(), onSuccess: afterCover });
   const signOut = useMutation({
@@ -265,10 +263,10 @@ export function SettingsPage() {
           {/* 与主页那颗「更换封面」是**同一个弹层**（cover-picker.tsx），所以两处的限额文案与
               压缩口径不会各说一套。传上去就生效：读的是 GET /users/{handle} 的 cover。 */}
           <CoverPicker
-            cover={pickedCover[0]?.url ?? coverQuery.data?.cover ?? null}
+            cover={coverQuery.data?.cover ?? null}
             pending={saveCover.isPending}
             label={coverQuery.data?.cover ? '更换封面' : '加个封面'}
-            onPick={(file) => { setPickedCover([]); saveCover.mutate(file); }}
+            onPick={(file) => saveCover.mutate(file)}
             // 「清空封面」= DELETE /me/cover：主页回到默认站内素材（不是一片空白）。
             actions={coverQuery.data?.cover ? (
               <Button inline={false} height={ControlsHeight.S} disabled={removeCover.isPending} onClick={() => removeCover.mutate()}>

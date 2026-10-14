@@ -24,9 +24,14 @@ export type CoverPickerProps = {
   /** 挂载后回传句柄：页面别处的按钮可以代它打开（与 AvatarSetting 的 onReady 同一用法） */
   onReady?: (api: CoverPickerHandle | null) => void;
   label?: string;
+  /**
+   * true = 只回传句柄，**不画那颗按钮**（入口在别处，例如个人主页 hero 右上角那颗）。
+   * 少了它就会出现两颗「更换封面」：一颗在 hero 上、一颗在页面流里（2026-10-14 出图时看到过）。
+   */
+  headless?: boolean;
 };
 
-export function CoverPicker({ cover, onPick, actions, pending = false, onReady, label = '更换封面' }: CoverPickerProps) {
+export function CoverPicker({ cover, onPick, actions, pending = false, onReady, label = '更换封面', headless = false }: CoverPickerProps) {
   const [open, setOpen] = useState(false);
   // 弹层内容**第一次打开才挂载**：<dialog> 里的东西即使没打开也躺在 DOM 里，
   // 于是页面会凭空多出一个 input[type=file]（DevRoom 那条「别人主页连上传控件都不在 DOM 里」
@@ -49,9 +54,11 @@ export function CoverPicker({ cover, onPick, actions, pending = false, onReady, 
 
   return (
     <>
-      <Button inline={false} height={ControlsHeight.S} disabled={pending} onClick={() => { setEverOpened(true); setOpen(true); }}>
-        {label}
-      </Button>
+      {headless ? null : (
+        <Button inline={false} height={ControlsHeight.S} disabled={pending} onClick={() => { setEverOpened(true); setOpen(true); }}>
+          {label}
+        </Button>
+      )}
       <dialog
         ref={dialog}
         onClose={() => setOpen(false)}

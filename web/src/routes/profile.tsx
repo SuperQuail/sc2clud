@@ -208,7 +208,8 @@ export function ProfilePage() {
       <CoverPicker
         cover={u.cover ? assetUrl(u.cover) : null}
         pending={coverSave.isPending}
-        label={u.cover ? '更换封面' : '加个封面'}
+        // 入口是 hero 右上那颗（它通过句柄代点这里）——弹层自己不画按钮，否则同页两颗
+        headless
         onPick={(file) => coverSave.mutate(file)}
         onReady={(api) => { coverApi.current = api; }}
         actions={u.cover ? (

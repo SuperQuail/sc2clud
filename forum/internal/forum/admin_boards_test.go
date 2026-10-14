@@ -271,15 +271,25 @@ func TestUpdateBoardCoverHashDistinguishesAbsentFromClear(t *testing.T) {
 	if d.CoverHash != newHash || d.Name != name {
 		t.Fatalf("只改名字时封面必须原样保留: cover=%q name=%q", d.CoverHash, d.Name)
 	}
-	// 审计里要有这次改动（「谁把封面撤了」是这类后台最常被追问的问题）
-	var detail string
+	// 审计要如实记「谁把封面撤了」（这类后台最常被追问的问题），而且**不能顺手编出没改的字段**：
+	//   · 最新一条 = ③ 的改名：after 里只该有 name；
+	//   · 上一条   = ② 的清空：after 里要有 cover_hash。
+	var renamed, cleared string
 	if err := h.pool.QueryRow(h.ctx,
-		"SELECT detail::text FROM audit_logs WHERE action = $1 ORDER BY id DESC LIMIT 2",
-		AuditBoardUpdate).Scan(&detail); err != nil {
+		"SELECT detail::text FROM audit_logs WHERE action = $1 ORDER BY id DESC OFFSET 0 LIMIT 1",
+		AuditBoardUpdate).Scan(&renamed); err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(detail, "cover_hash") {
-		t.Fatalf("改名那一条审计的 after 里不该编出 cover_hash: %s", detail)
+	if strings.Contains(renamed, "cover_hash") {
+		t.Fatalf("只改名字那一条审计的 after 里不该有 cover_hash: %s", renamed)
+	}
+	if err := h.pool.QueryRow(h.ctx,
+		"SELECT detail::text FROM audit_logs WHERE action = $1 ORDER BY id DESC OFFSET 1 LIMIT 1",
+		AuditBoardUpdate).Scan(&cleared); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(cleared, "cover_hash") {
+		t.Fatalf("清空封面那一条审计要留下 cover_hash: %s", cleared)
 	}
 }
 

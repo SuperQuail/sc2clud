@@ -294,6 +294,7 @@ export function BoardsScreen({
                         <Button
                           inline={false}
                           height={ControlsHeight.S}
+                          data-testid='board-cover-clear'
                           disabled={!canEdit || busy}
                           onClick={() => setDraft({ ...d, cover_hash: '' })}
                         >

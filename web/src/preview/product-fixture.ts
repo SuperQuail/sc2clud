@@ -1,4 +1,4 @@
-import { adminFixtureFor, ME_ADMIN } from './admin-fixtures';
+import { adminFixtureFor, COVER_HASH, ME_ADMIN } from './admin-fixtures';
 // 产品预览入口的数据桩（`web/product.html`，只在 vite.preview.config.ts 里构建 —— 不进产品产物）。
 //
 // 为什么要它：产品路由页（/ 、/messages 、/issues …）此前**出不了图** —— vite.preview.config.ts 只收
@@ -346,6 +346,8 @@ export function fixtureFor(u: string, method: string, body?: unknown): Reply | u
           like_received: 12480,
           joined_at: '2024-03-02T00:00:00Z',
           title: null,
+          // 个人主页封面（0030）：桩数据里设一张，出图才看得见「更换封面 + 清空封面」两态
+          cover: '/img/' + COVER_HASH,
         },
       },
     };
