@@ -19,6 +19,9 @@ func NewHandler(svc *Service, actorOf ActorFromGin) *Handler {
 
 // Register 挂 /api/v1/messages/*（d4 §3.4）。
 func (h *Handler) Register(rg *gin.RouterGroup, requireLogin gin.HandlerFunc) {
+	// 非 uuid 的 {id} 一律在进 service 之前挡成 400（见 platform/httpx.ValidPathIDs）。
+	rg = rg.Group("", httpx.ValidPathIDs("id"))
+
 	g := rg.Group("/messages", requireLogin)
 	g.GET("", h.listConversations)
 	g.GET("/unread-count", h.unreadTotal)
