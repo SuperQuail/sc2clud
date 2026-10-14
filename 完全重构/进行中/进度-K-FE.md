@@ -32,4 +32,25 @@
 
 ## 记录
 
-（每条一提交，四行：做了什么 / 证据 / 下一步 / 阻塞）
+- [x] **L1 第 1 步：把打赏域的前端客户端从零建起来**（新增 `web/src/lib/api/rewards.ts` + `rewards.test.ts`）。
+  八条端点一次接齐：`GET /users/{handle}/channels`、`POST/GET/DELETE /me/payment-channels`、
+  `POST /rewards`、`GET /me/rewards`、`GET /users/{handle}/rewards`、`GET/PATCH /me/donation-settings`、
+  `DELETE /rewards/{id}`（撤回）。类型直接复用 `admin-types.ts` 已有的 `Donation`/`UserBrief`（不复制第二份 DTO）。
+  - 证据：`cd web && npx vitest run src/lib/api/rewards.test.ts` → `Test Files 1 passed (1) / Tests 8 passed (8)`。
+    **先证明会红**：把 `createDonation` 的路径临时写成 `'reward'` 再跑 → `1 failed | 7 passed`，
+    `AssertionError: expected '/api/v1/reward' to be '/api/v1/rewards'`；改回 `'rewards'` 后 8/8 绿。
+    全量：`npx vitest run` → `Test Files 30 passed (30) / Tests 158 passed (158)`；
+    `pnpm lint` → `19 problems (0 errors, 19 warnings)`（都是既有的 react-refresh / exhaustive-deps 警告，非本次新增）。
+  - 下一步：`web/src/routes/settings.tsx` 里加「赞赏与收款码」一节（新件
+    `web/src/devroom/pages/11-profile/payment-channels.tsx`）：`useQuery(qk.donationSettings())` +
+    `fetchMyDonations()` 列我的申报（撤回按钮走 `withdrawDonation`），收款码用
+    `ImageUploader variant='avatar'` 选图 → `addPaymentChannel(file, label)`，列表项 `deletePaymentChannel(id)`；
+    两个开关分别 PATCH `show_channels` / `records_public`；图一律过 `channelImageSrc()`。
+    然后把 `web/src/routes/profile.tsx` 的 `SponsorCard` 与 `web/src/routes/topic.tsx` 的 `RewardPanel`
+    接上真数据（两处现在分别写死 `channels={[]}` 与 `const channels = []`）。
+  - 阻塞：**无**（本步只碰 `web/src/lib/api/**`）。
+    另记一条**与本人无关的既有红灯**（交接单 §3.2「不许整文件覆盖」的受害面已经修好一半，
+    但工作区里还有人没写完）：`pnpm typecheck` 现在报 2 个错，都在**别人作用域**的
+    `web/src/devroom/pages/15-admin/index.tsx(34,18)` 与 `web/src/routes/admin.tsx(49,3)`
+    （`TitlesScreenProps` 未供给，两文件都是 ` M` 在途状态，非我改动）。本条不会被我碰到；
+    另：`--filter` 不可用的情况下我用了 `pnpm lint` 与 `npx vitest run`，两者均绿。
