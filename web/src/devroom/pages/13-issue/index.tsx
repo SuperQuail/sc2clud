@@ -8,7 +8,7 @@ import { ISSUE_STATUS_LABEL, type IssueStatus, type IssueSummary } from '../12-t
 import { COMMENTS, ISSUES, ME, MENTION_CANDIDATES } from './data';
 import { IssueDetail } from './issue-detail';
 import { IssueFilterBar, SORT_LABEL, type Scope, type SortKey } from './issue-filter-bar';
-import { NewIssueDialog } from './new-issue-dialog';
+import { NewIssuePanel } from './new-issue-panel';
 import { matchesQuery, parseQuery } from './query';
 import { IssueKindButton, KINDS, TopicTaskTabs, type IssueKind } from './shared';
 import type { IssueComment, IssueDetail as Detail } from './types';
@@ -123,7 +123,7 @@ export default function IssuePage() {
     setStatus(undefined);
   }
 
-  function createIssue(draft: { kind: IssueKind; title: string; bodyHtml: string; bodyJson: string }) {
+  function createIssue(draft: { kind: IssueKind; title: string; bodyJson: string; bodyHtml?: string }) {
     const now = new Date().toISOString();
     const issue: Detail = {
       id: 'new-' + now,
@@ -131,7 +131,7 @@ export default function IssuePage() {
       status: 'open',
       title: draft.title,
       bodyMarkdown: draft.bodyJson,
-      bodyHtml: draft.bodyHtml,
+      bodyHtml: draft.bodyHtml ?? '',
       labels: [],
       author: ME,
       assignee: null,
@@ -288,8 +288,9 @@ export default function IssuePage() {
         </div>
       </div>
 
+      {/* D7：房间与真站同一块页内表单（原来两边都是弹窗） */}
       {dialogKind ? (
-        <NewIssueDialog initialKind={dialogKind} onClose={() => setDialogKind(null)} onSubmit={createIssue} />
+        <NewIssuePanel initialKind={dialogKind} onClose={() => setDialogKind(null)} onSubmit={createIssue} />
       ) : null}
     </div>
   );

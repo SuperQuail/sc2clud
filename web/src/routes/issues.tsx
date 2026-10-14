@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useMemo, useState, type ComponentType } from 'react';
 import { useNavigate, useSearchParams } from 'react-router';
 import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import Button from '@jetbrains/ring-ui-built/components/button/button';
@@ -13,35 +13,28 @@ import {
   fetchTopicIssues,
   setIssueCommentVote,
   updateIssue,
-  type Issue,
-  type IssueComment as ApiIssueComment,
 } from '@/lib/api/issues';
-import type { TopicAuthorSummary } from '@/lib/api/forum';
-import { searchUsers, type SearchUser } from '@/lib/api/user';
-import type { MentionCandidate } from '@/ui/comment/mention-types';
+import { searchUsers } from '@/lib/api/user';
 import { appPath, routePath } from '@/lib/url';
 import { qk } from '@/lib/query/keys';
-import { formatTime } from '@/lib/format';
 import { useSession } from '@/lib/perms';
+import { editorJsonToMarkdown } from '@/ui/rich/markdown-editor';
 import { cn } from '@/lib/utils';
-import type { CommentData } from '@/ui/comment/types';
-import type { UserSummary } from '@/ui/user/user-badge';
 import { IssueCard } from '@/devroom/pages/12-topic/_task/issue-card';
 import { ISSUE_STATUS_LABEL, type IssueKind, type IssueStatus, type IssueSummary } from '@/devroom/pages/12-topic/_task/types';
 import { IssueDetail } from '@/devroom/pages/13-issue/issue-detail';
 import { IssueFilterBar, type Scope, type SortKey } from '@/devroom/pages/13-issue/issue-filter-bar';
-import { NewIssueDialog } from '@/devroom/pages/13-issue/new-issue-dialog';
+import { NewIssuePanel, type IssueEditorProps } from '@/devroom/pages/13-issue/new-issue-panel';
 import { matchesQuery, parseQuery } from '@/devroom/pages/13-issue/query';
 import { IssueKindButton, KINDS, TopicTaskTabs } from '@/devroom/pages/13-issue/shared';
-import type { IssueDetail as DesignIssueDetail } from '@/devroom/pages/13-issue/types';
-import { imageUrl } from './_parts/mappers';
+import { toIssueComment, toIssueDesignDetail, toIssueSummary, toMentionCandidates } from './_parts/issues-mappers';
 import { Empty, ErrorState, Loading } from './_parts/state';
 
 // 问题反馈页：DevRoom 13-issue 的**同一个版面**，数据换成真端点（完全重构/进行中/设计对齐.md 第 2 节「问题反馈」一行）。
-// 版面一格都不是这一页画的：顶部双按钮 / 四个类型入口 / 检索条 / 列表项 / 详情面板 / 新建弹窗全部来自
+// 版面一格都不是这一页画的：顶部双按钮 / 四个类型入口 / 检索条 / 列表项 / 详情面板 / 新建表单全部来自
 // @/devroom/pages/13-issue 与 12-topic/_task（它们已是 prop 驱动的共享件）。这一页只做三件事：
 //   ① 取数据（列表 / 详情 / 评论 / 楼中楼）；
-//   ② 把后端 DTO 的形状对成设计件吃的形状（**字段名照 forum/internal/forum/dto.go 抄**，见下面 toSummary / toDesignDetail）；
+//   ② 把后端 DTO 的形状对成设计件吃的形状（**字段名照 forum/internal/forum/dto.go 抄**，见 _parts/issues-mappers.ts）；
 //   ③ 把每个动作接到真端点上（新建、开关、发评论）。
 //
 // 端点（forum/internal/forum/handler.go:48-82）：GET /issues、GET /topics/{id}/issues、GET /issues/{id}、
@@ -63,74 +56,15 @@ function parseKind(v: string | null): IssueKind | undefined {
   return v === 'bug' || v === 'feature' || v === 'difficulty' || v === 'other' ? v : undefined;
 }
 
-/** UserBriefDTO（forum/dto.go:12-17）→ 用户件的 UserSummary。
- *  头像字段是**裸哈希** avatar_hash，不过 imageUrl 换算的话头像全是首字母占位（与 mappers.ts 同一个坑）。 */
-function toUser(u: TopicAuthorSummary): UserSummary {
-  // avatar_hash 现在就在 TopicAuthorSummary 上（照 DTO 抄），不用再 as 一层
-  return { handle: u.handle, nickname: u.nickname, avatar: imageUrl(u.avatar_hash), role: u.role ?? null, title: u.title ?? null };
-}
-
-/** IssueDTO → W1 的 IssueSummary。**两处必换算**（设计稿的便利命名 vs 后端契约）：
- *  id ← number（卡片与详情显示的 #编号；public_id 只用来发请求），标签在详情件里叫 labels 而后端叫 tags。 */
-function toSummary(i: Issue): IssueSummary {
-  return {
-    id: i.number,
-    kind: i.kind,
-    status: i.status,
-    title: i.title,
-    author: toUser(i.author),
-    commentCount: i.comment_count,
-    createdAt: formatTime(i.created_at),
-    updatedAt: formatTime(i.updated_at),
-  };
-}
-
-/** IssueDTO / IssueDetailDTO → 13-issue 详情面板吃的形状（bodyMarkdown 它不渲染，正文走 bodyHtml）。 */
-function toDesignDetail(i: Issue, bodyHtml: string): DesignIssueDetail {
-  return {
-    ...toSummary(i),
-    bodyMarkdown: '',
-    bodyHtml,
-    labels: i.tags,
-    assignee: i.assignee ? toUser(i.assignee) : null,
-  };
-}
-
-/** 提及候选：后端 `SearchItem` → 编辑器吃的 `MentionCandidate`（与 routes/topic.tsx 同一份映射：
- *  id 后端就是数字 user id，正是 `mention:<id>` 里那个真源；avatar 已拼成 /img/<hash>；
- *  ambiguous（按显示名判的重名）就是编辑器要的 duplicate 标记）。 */
-export function toMentionCandidates(items: SearchUser[]): MentionCandidate[] {
-  return items.map((u) => ({
-    id: String(u.id),
-    handle: u.handle,
-    nickname: u.nickname,
-    avatar: u.avatar,
-    duplicate: u.ambiguous,
-  }));
-}
-
-/** IssueCommentDTO → @/ui/comment 的 CommentData（与 routes/_parts/mappers.ts 的 toComments 同一套映射）。 */
-function toComment(c: ApiIssueComment, replies: ApiIssueComment[]): CommentData {
-  const one = (x: ApiIssueComment): CommentData => ({
-    id: x.id,
-    author: toUser(x.author),
-    body: x.body_html,
-    createdAt: formatTime(x.created_at),
-    likes: x.like_count,
-    // J3（拍板）：踩数**按身份下发** —— 普通用户 / 游客的响应里没有这个键（DTO 带 omitempty），
-    // 所以这里**故意不回落成 0**：`?? 0` 会把「接口没给」变成「0 个踩」，等于前端替后端把这个数补出来。
-    // CommentData.dislikes 已是可选：undefined 传到 CommentActions 就是**那一格不显示数字**，
-    // 「我自己点没点」由下面的 disliked（my_vote）回答。
-    dislikes: x.dislike_count,
-    // 真源是 my_vote（dto.go:198），不是 viewer.value —— 读错字段时赞踩态恒为假且不报错
-    liked: x.my_vote === 1,
-    disliked: x.my_vote === -1,
-  });
-  const base = one(c);
-  return replies.length === 0 ? base : { ...base, replies: { total: replies.length, items: replies.map(one) } };
-}
-
-export function IssuesPage() {
+// DTO → 设计件形状的四个映射搬到了 ./_parts/issues-mappers（纯函数、不认识 React，也不取数）。
+// 搬家的理由只有一个：这个文件已经超过 gate:size 的 500 行上限（用 useEffect 之外的办法越堆越长），
+// 而路由该留的只是「取数 + 传参」。
+export function IssuesPage({
+  NewIssueEditor,
+}: {
+  /** 测试注入点（透传给 NewIssuePanel 的 Editor）：Lexical 在 jsdom 里不产生真实的编辑事件 */
+  NewIssueEditor?: ComponentType<IssueEditorProps>;
+} = {}) {
   const [sp, setSp] = useSearchParams();
   const navigate = useNavigate();
   const session = useSession();
@@ -219,7 +153,7 @@ export function IssuesPage() {
       // shortcut: 楼中楼没有批量端点，IssueCommentDTO 也没有 reply_count（dto.go:191-201），
       //   「哪条有回复」只能逐条问 —— 一页 20 条 = 21 个请求。后端补批量或计数后改这里。
       const replies = await Promise.all(page.items.map((c) => fetchIssueCommentReplies(c.id, signal)));
-      return page.items.map((c, i) => toComment(c, replies[i] ?? []));
+      return page.items.map((c, i) => toIssueComment(c, replies[i] ?? []));
     },
   });
 
@@ -228,7 +162,7 @@ export function IssuesPage() {
       createIssue(topicId, { kind: draft.kind, title: draft.title, body_md: draft.bodyJson }),
     onSuccess: (issue) => {
       void queryClient.invalidateQueries({ queryKey: ['issues'] });
-      closeDialog();
+      closeForm();
       resetFilters();
       setStatusTab('open');
       setSelectedId(issue.id);
@@ -298,7 +232,9 @@ export function IssuesPage() {
   const labelOptions = useMemo(() => [...new Set(rows.flatMap((r) => r.tags))], [rows]);
   const topicTitle = rows[0]?.topic_title ?? '';
   const hasNext = sort !== 'comments' && list.hasNextPage;
-  const dialogKind = pickedKind ?? entryKind;
+  // D7：新建反馈是**页内的一块表单区**，不再是弹窗。三种进入方式共用它：
+  // 四个类型入口（openKind）、空态里的「新建一条」、以及 ?kind= 深链（entryKind）。
+  const formKind = pickedKind ?? entryKind ?? null;
   const failed =
     ([
       { what: '提交反馈', m: create },
@@ -307,9 +243,10 @@ export function IssuesPage() {
       { what: '评论投票', m: voteComment },
     ].find((s) => s.m.isError) ?? null);
 
-  function closeDialog() {
+  /** 收起表单：本地那一份清掉，同时把地址里的 ?kind= 也擦干净（刷新后不会又弹回来） */
+  function closeForm() {
     setPickedKind(null);
-    if (entryKind) {
+    if (sp.get('kind')) {
       const next = new URLSearchParams(sp);
       next.delete('kind');
       setSp(next, { replace: true });
@@ -460,7 +397,7 @@ export function IssuesPage() {
                 <ul className='flex flex-col'>
                   {visible.map((row) => (
                     <li key={row.id}>
-                      <ClickableIssueRow issue={toSummary(row)} selected={row.id === selectedId} onOpen={() => setSelectedId(row.id)} />
+                      <ClickableIssueRow issue={toIssueSummary(row)} selected={row.id === selectedId} onOpen={() => setSelectedId(row.id)} />
                     </li>
                   ))}
                 </ul>
@@ -490,7 +427,7 @@ export function IssuesPage() {
             ) : detail.data ? (
               // 详情面板**只吃详情响应**：换页签把这条挤出列表时它照样在（列表那边只是筛选结果）
               <IssueDetail
-                issue={toDesignDetail(detail.data, detail.data.body_html)}
+                issue={toIssueDesignDetail(detail.data, detail.data.body_html)}
                 comments={thread.data ?? []}
                 me={me}
                 candidates={toMentionCandidates(mentions.data ?? [])}
@@ -511,11 +448,17 @@ export function IssuesPage() {
         </div>
       </div>
 
-      {dialogKind ? (
-        <NewIssueDialog
-          initialKind={dialogKind}
-          onClose={closeDialog}
-          onSubmit={(draft) => create.mutate({ kind: draft.kind, title: draft.title, bodyJson: draft.bodyJson })}
+      {formKind ? (
+        <NewIssuePanel
+          initialKind={formKind}
+          pending={create.isPending}
+          onClose={closeForm}
+          {...(NewIssueEditor ? { Editor: NewIssueEditor } : {})}
+          // D6：编辑器给的是 EditorState JSON，**上行前换成 Markdown** —— 后端 body_md 那一列
+          // 走 goldmark → bluemonday 渲染成 body_html，发 JSON 上去页面上显示的就是那段 JSON。
+          onSubmit={(draft) =>
+            create.mutate({ kind: draft.kind, title: draft.title, bodyJson: editorJsonToMarkdown(draft.bodyJson) })
+          }
         />
       ) : null}
     </div>
