@@ -4,7 +4,7 @@ import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tansta
 import Button from '@jetbrains/ring-ui-built/components/button/button';
 import Island from '@jetbrains/ring-ui-built/components/island/island';
 import { ControlsHeight } from '@jetbrains/ring-ui-built/components/global/controls-height';
-import { FolderOpen, Flag, ImagePlus, MessageSquare, Star } from 'lucide-react';
+import { FolderOpen, Flag, MessageSquare, Star } from 'lucide-react';
 import { icon16 } from '@/ui/icons';
 import { TitleBadge } from '@/ui/user/title-badge';
 import { RoleBadge } from '@/ui/user/role-badge';
@@ -12,11 +12,12 @@ import { IconTabs, type IconTabItem } from '@/ui/nav/icon-tabs';
 import { TopicRow } from '@/ui/topic/topic-row';
 import { ProfileHero, type ProfileStat } from '@/devroom/pages/11-profile/profile-hero';
 import { CoverPicker, type CoverPickerHandle } from '@/ui/cover-picker';
+import { ImageUploader } from '@/ui/rich/image-uploader';
 import { SponsorCard } from '@/devroom/pages/11-profile/sponsor-card';
 import { assetUrl, appPath, routePath } from '@/lib/url';
 import { qk } from '@/lib/query/keys';
 import { can, useSession } from '@/lib/perms';
-import { clearCover, fetchUserProfile, fetchUserTopics, uploadCover } from '@/lib/api/user';
+import { clearCover, fetchUserProfile, fetchUserTopics, uploadAvatar, uploadCover } from '@/lib/api/user';
 import { createDonation, fetchDonationSettings, fetchUserChannels } from '@/lib/api/rewards';
 import { formatCents, formatTime } from '@/lib/format';
 import { isApiError } from '@/lib/api/errors';
@@ -97,6 +98,14 @@ export function ProfilePage() {
     mutationFn: () => clearCover(),
     onSuccess: () => void queryClient.invalidateQueries({ queryKey: qk.profile(handle) }),
   });
+  // 头像就地换（2026-10-14 用户要求）：hero 上的头像自己就是入口 —— 悬停出「替换图像」，
+  // 点它打开文件选择。上传器挂在页根、**headless**（只提供 file input 与句柄），
+  // 与封面那套一模一样：选完即传，成功后 invalidate 资料查询。
+  const avatarApi = useRef<{ open: () => void } | null>(null);
+  const avatarSave = useMutation({
+    mutationFn: (file: Blob) => uploadAvatar(file),
+    onSuccess: () => void queryClient.invalidateQueries({ queryKey: qk.profile(handle) }),
+  });
   // 打赏申报（POST /rewards）：**是登记，不是付款** —— 钱是扫码直接给作者的，站点不经手资金。
   const donate = useMutation({
     mutationFn: (v: { channelId: string; amountCents: number }) =>
@@ -150,23 +159,9 @@ export function ProfilePage() {
         avatar={u.avatar || null}
         title={u.title}
         stats={stats}
-        // hero 右上角是「更换封面 + 更换头像」一对（2026-10-14 起封面也是真的了：0030 + /me/cover）。
-        // 头像的落点仍是设置页那块真上传控件；封面就地弹层（页根部的 CoverPicker）。
-        topActions={
-          isSelf ? (
-            <span className='rounded-md bg-background/85 backdrop-blur-sm'>
-              <Button
-                data-testid='change-avatar'
-                inline={false}
-                height={ControlsHeight.S}
-                icon={icon16(ImagePlus)}
-                href={appPath('settings')}
-              >
-                更换头像
-              </Button>
-            </span>
-          ) : undefined
-        }
+        // 头像的入口就是头像本身（AvatarPicker，2026-10-14）；封面那套走 onCoverPick 的弹层。
+        // 不再有独立的「更换头像」按钮 —— 用户明确要求去掉。
+        onAvatarPick={isSelf ? () => avatarApi.current?.open() : undefined}
         actions={
           <>
             {isSelf ? (
@@ -201,6 +196,20 @@ export function ProfilePage() {
             )}
           </>
         }
+      />
+
+      {/* 头像的上传器：只有 file input 与句柄（headless），界面入口是 hero 上那颗头像本身。
+          「移除头像」放在设置页（那里有体积提示与配套说明），这里只做「换一张」。 */}
+      <ImageUploader
+        variant='avatar'
+        headless
+        images={[]}
+        onReady={(api) => { avatarApi.current = api; }}
+        onError={() => {}}
+        onChange={(next) => {
+          const file = next[0]?.file;
+          if (file) avatarSave.mutate(file);
+        }}
       />
 
       {/* 封面就地换：与 /settings 那处、后台分区屏那处**同一个弹层**（cover-picker.tsx）。

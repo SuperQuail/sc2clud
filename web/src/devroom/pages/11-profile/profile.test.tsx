@@ -13,7 +13,11 @@ function withQuery(query: string, run: () => void) {
 it('本人主页：有设置标签，切过去能看到改密码/退出登录/上传头像', () => {
   withQuery('?page=11-profile', () => {
     render(<ProfilePage />);
-    expect(screen.getByTestId('change-avatar')).toBeTruthy(); // hero 上的入口
+    // 2026-10-14 起 hero 上的入口**就是头像本身**（独立的「更换头像」按钮已删）：
+    // 悬停出暗色滤镜 + 「替换图像」，点它代点上传器的 open()（房间里 = 切到设置标签并打开文件框）。
+    const entry = screen.getByTestId('avatar-upload-entry');
+    expect(entry).toBeTruthy();
+    expect(screen.getByText('替换图像')).toBeTruthy(); // 覆盖层文案在 DOM 里（默认透明，悬停才可见）
     expect(screen.getByTestId('icon-tab-settings')).toBeTruthy();
     act(() => screen.getByTestId('icon-tab-settings').click());
     expect(screen.getByTestId('password-save')).toBeTruthy();
@@ -22,11 +26,21 @@ it('本人主页：有设置标签，切过去能看到改密码/退出登录/�
   });
 });
 
+it('点头像就是「换头像」这个动作本身（不再需要找一颗按钮）', () => {
+  withQuery('?page=11-profile', () => {
+    render(<ProfilePage />);
+    // 先点页签进设置，再回到 hero 上点头像：两条路都能到同一个上传控件
+    expect(screen.queryByTestId('password-save')).toBeNull();
+    act(() => screen.getByTestId('avatar-upload-entry').click());
+    expect(screen.getByTestId('password-save')).toBeTruthy();
+  });
+});
+
 it('看别人主页：这些入口一行都不出现（账号面板没有挂载点）', () => {
   withQuery('?page=11-profile&sponsor=other', () => {
     const { container } = render(<ProfilePage />);
     expect(screen.queryByTestId('icon-tab-settings')).toBeNull();
-    expect(screen.queryByTestId('change-avatar')).toBeNull();
+    expect(screen.queryByTestId('avatar-upload-entry')).toBeNull(); // 别人主页：头像不是入口，一行都不出现
     expect(screen.queryByTestId('logout')).toBeNull();
     expect(screen.queryByTestId('password-save')).toBeNull();
     // 连上传控件本身都不在 DOM 里（这就是"一行都不出现"的硬证据）

@@ -39,6 +39,7 @@ export function ImageUploader({
   onError,
   maxSize,
   onReady,
+  headless = false,
 }: {
   images: UploadedImage[];
   onChange: (next: UploadedImage[]) => void;
@@ -55,8 +56,14 @@ export function ImageUploader({
   existingCount?: number;
   /** 限额丢弃等提示交给使用方（表单要显示错误行） */
   onError?: (message: string) => void;
-  /** 挂载后回传「打开文件选择」的句柄：页面别处的按钮可以代点（例：hero 上的「更换头像」） */
+  /** 挂载后回传「打开文件选择」的句柄：页面别处的按钮可以代点（例：hero 上的头像就是入口） */
   onReady?: (api: { open: () => void } | null) => void;
+  /**
+   * 只要那个 file input、**不画自己的界面**（2026-10-14 加）。
+   * 用途：本人主页的头像自己就是入口（AvatarPicker），上传器挂在页根只为提供 input 与句柄 ——
+   * 与 cover-picker 的 headless 同一用法。限额/错误仍走 onError。
+   */
+  headless?: boolean;
 }) {
   // 头像与封面都是「一个槽」：已有的那张是「现在这张」，再选一张是换掉它。
   const single = variant !== 'list';
@@ -125,6 +132,9 @@ export function ImageUploader({
       onChange={(e) => void accept(e.target.files)}
     />
   );
+
+  // headless：只交回 input（句柄已经由上面的 useEffect 给出去），不渲染预览与按钮。
+  if (headless) return fileInput;
 
   if (single) {
     const current = images[0];

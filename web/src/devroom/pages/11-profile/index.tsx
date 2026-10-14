@@ -5,7 +5,7 @@ import Island from '@jetbrains/ring-ui-built/components/island/island';
 import ButtonSet from '@jetbrains/ring-ui-built/components/button-set/button-set';
 import Tag, { TagType } from '@jetbrains/ring-ui-built/components/tag/tag';
 import { useRef, useState } from 'react';
-import { FolderOpen, Heart, ImagePlus, MessageSquare, MoreHorizontal, Star, UserPlus, UserRound } from 'lucide-react';
+import { FolderOpen, Heart, MessageSquare, MoreHorizontal, Star, UserPlus, UserRound } from 'lucide-react';
 import { assetUrl } from '@/lib/url';
 import { icon16 } from '@/ui/icons';
 import { UserAvatar } from '@/ui/user/avatar';
@@ -223,26 +223,8 @@ export default function ProfilePage() {
         // 本人可点（切到设置标签、就地打开封面上传器）；看别人主页时画一颗**明确禁用**的 ——
         // 换别人的封面既无意义也无权限，但入口的形状还在，读的人不会以为整块 hero 挂了。
         onCoverPick={selfView.isSelf ? pickCover : null}
-        topActions={
-          <>
-            {/* 「更换头像」的落点：上传器在「设置」标签里（那里有预览、移除与体积提示），
-                这里只负责把人送过去。落在同一个位置、同一档高度，读起来是「封面 / 头像」一对动作。
-                只在本人主页出现 —— 看别人主页时换别人的头像既无意义也无权限。 */}
-            {selfView.isSelf ? (
-              <span className='rounded-md bg-background/85 backdrop-blur-sm'>
-                <Button
-                  inline={false}
-                  height={ControlsHeight.S}
-                  data-testid='change-avatar'
-                  icon={icon16(ImagePlus)}
-                  onClick={pickAvatar}
-                >
-                  更换头像
-                </Button>
-              </span>
-            ) : null}
-          </>
-        }
+        // 独立的「更换头像」按钮已删（2026-10-14 用户要求）：头像是入口本身。
+        // 房间里上传器在「设置」标签，所以这里点一下是「切过去并就地打开文件框」。
         actions={
           <>
             <Button primary inline={false} height={ControlsHeight.S} icon={icon16(UserPlus)}>关注</Button>

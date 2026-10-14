@@ -3,6 +3,7 @@ import { ControlsHeight } from '@jetbrains/ring-ui-built/components/global/contr
 import { ImagePlus, MapPin } from 'lucide-react';
 import type { ReactNode } from 'react';
 import { icon16 } from '@/ui/icons';
+import { AvatarPicker } from '@/ui/avatar-picker';
 import { UserAvatar } from '@/ui/user/avatar';
 import { Username } from '@/ui/user/username';
 import { RoleBadge, type UserRole } from '@/ui/user/role-badge';
@@ -152,21 +153,9 @@ export function ProfileHero({
               和「更换封面」那颗按钮的位置关系也说不清；设计稿里跳一步比多一套控件划算。 */}
           <span className='rounded-full ring-4 ring-background/60'>
             {onAvatarPick ? (
-              <span className='relative block'>
-                <UserAvatar name={nickname} src={avatar} size='xl' />
-                {/* 头像角上的小按钮才是上传入口（本人态才画）：点了切到「设置」标签并就地打开文件框。
-                    看别人主页时这颗按钮不渲染，也没有「设置」标签 —— 一行都不出现。 */}
-                <span className='absolute -right-1 -bottom-1 rounded-full bg-background'>
-                  <Button
-                    inline={false}
-                    height={ControlsHeight.S}
-                    icon={icon16(ImagePlus)}
-                    aria-label='更换头像'
-                    data-testid='avatar-upload-entry'
-                    onClick={onAvatarPick}
-                  />
-                </span>
-              </span>
+              // 头像本身就是入口（2026-10-14 用户要求）：悬停叠暗色滤镜 + 「替换图像」，点它开文件选择。
+              // 角上那颗独立小按钮已删；上传器由调用方挂在页根（headless 形态），这里只代点它的 open()。
+              <AvatarPicker nickname={nickname} src={avatar} onPick={onAvatarPick} />
             ) : (
               <UserAvatar name={nickname} src={avatar} size='xl' />
             )}

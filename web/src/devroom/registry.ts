@@ -249,6 +249,24 @@ export const VERIFIED: VerifiedControl[] = [
     ],
   },
   {
+    name: 'avatar-picker',
+    path: '@/ui/avatar-picker',
+    page: '11-profile',
+    verifiedOn: '2026-10-14',
+    props: [
+      'nickname / src / size（透传 UserAvatar）',
+      'onPick()：点了之后打开图片选择器；调用方接的是 headless ImageUploader 的 open()',
+      'label（覆盖层文案，默认「替换图像」）',
+      'disabledReason：传了就**明确禁用 + title 说原因**（看别人主页时用）',
+    ],
+    notes: [
+      '**头像本身是入口**（2026-10-14 用户要求）：不做独立按钮，悬停/键盘聚焦时叠暗色滤镜 + 「替换图像」，点它开文件选择。',
+      '放在 src/ui 是因为业务代码不许手写 <button>（gate:ui），而「整块头像可点 + 上面盖一层文字」没法用 Ring Button 的尺寸规则表达。',
+      '覆盖层是 aria-hidden（语义由 button 的 aria-label 承担）；键盘 Tab 可达、Enter/Space 天然可用。',
+      '上传器用 @/ui/rich/image-uploader 的 **headless** 形态挂在页根（新增，与 cover-picker 的 headless 同一用法）——不重复造第二个 <input file>。',
+    ],
+  },
+  {
     name: 'search-panel',
     path: '@/devroom/pages/19-search/search-panel',
     page: '19-search',
