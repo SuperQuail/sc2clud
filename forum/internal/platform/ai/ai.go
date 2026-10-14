@@ -1,16 +1,16 @@
 // Package ai 是 AI 审核的**协议层**：只懂「把一段文本交给模型，拿回一个判定」，
 // 不懂论坛、不懂数据库、不懂状态机。
 //
-// 参数纪律照 完全重构/后端设计/d7-ai-review.md §3：用 Tool Calls 拿结构化输出；temperature=0；
-// max_tokens 由配置给；不发 frequency/presence_penalty（官方标 deprecated）；逐条判 finish_reason；
-// **不截断正文**（§2.4：截断会让 AI 只看到半篇，判出来的结论就是错的）。
+// 设计与参数纪律照 完全重构/后端设计/d7-ai-review.md §3：
 //
-// ⚠️ **与 d7 的一条偏差（已记档）**：d7 §3.2 要 `tool_choice:"required"`，而官方写明「思考模式下不支持
-// required」；关思考要发厂商扩展字段 `thinking`，只能走 extra_body，而当前依赖
-// `sashabaranov/go-openai` **不支持 extra body**（查过结构体）。所以这一版发 tools 但**不强制**
-// （思考模式下官方支持工具调用），模型没调工具时按 §3.5 fail-open 到人工。
-// 升级路径：换官方 `openai/openai-go`（支持 ExtraFields）即可发 thinking + required。
-// **不手写 HTTP 去绕** —— 那等于自己维护一个更差的 SDK（用户明确：宁可引依赖）。
+//	· 用 **Tool Calls** 拿结构化输出（不是让模型在自由文本里给 JSON）；
+//	· `temperature: 0`（分类要确定性）、`max_tokens` 由配置给、`tool_choice: "required"` 强制调用；
+//	· 关思考（`thinking: disabled`）：官方明确「思考模式下不支持 tool_choice: required」；
+//	· 逐条判 `finish_reason`：**被截断的输出不能当判定用**；**不截断正文**（§2.4）。
+//
+// 用**官方** `openai/openai-go`：它用 `param.Opt` 能显式表达「传了 0」（`sashabaranov` 的 `float32`+omitempty
+// 会把 `temperature: 0` 丢掉 —— 那会让判定抖），并且能设厂商扩展字段（`thinking`）。
+// **不手写 HTTP 去绕**：那等于自己维护一个更差的 SDK。
 package ai
 
 import (
@@ -21,7 +21,10 @@ import (
 	"strings"
 	"time"
 
-	openai "github.com/sashabaranov/go-openai"
+	"github.com/openai/openai-go"
+	"github.com/openai/openai-go/option"
+	"github.com/openai/openai-go/packages/param"
+	"github.com/openai/openai-go/shared"
 )
 
 // Verdict 是三态判定（d7 §1）。
@@ -41,7 +44,7 @@ type Config struct {
 	BaseURL         string
 	Model           string
 	APIKey          string
-	Thinking        bool
+	Thinking        bool // false = 快（Tool Calls + required）；true = 推理（不强制工具，见下）
 	StrictMode      bool
 	MaxOutputTokens int
 	Timeout         time.Duration
@@ -72,32 +75,41 @@ func Judge(ctx context.Context, cfg Config, prompt, text string) (Result, error)
 	if cfg.Timeout <= 0 {
 		cfg.Timeout = 20 * time.Second
 	}
-	sdkCfg := openai.DefaultConfig(cfg.APIKey)
-	// 照文档：base_url 就是 https://api.deepseek.com（SDK 自己拼 /chat/completions）。
-	// strict 模式要求 /beta 前缀（d7 §3.3），由配置里的 base_url 自己带。
-	sdkCfg.BaseURL = strings.TrimRight(cfg.BaseURL, "/")
-	client := openai.NewClientWithConfig(sdkCfg)
+	client := openai.NewClient(
+		option.WithAPIKey(cfg.APIKey),
+		// 照文档：base_url 就是 https://api.deepseek.com（SDK 自己拼 /chat/completions）。
+		// strict 模式要求 /beta 前缀（d7 §3.3），由配置里的 base_url 自己带。
+		option.WithBaseURL(strings.TrimRight(cfg.BaseURL, "/")),
+	)
 
 	reqCtx, cancel := context.WithTimeout(ctx, cfg.Timeout)
 	defer cancel()
-	start := time.Now()
-	resp, err := client.CreateChatCompletion(reqCtx, openai.ChatCompletionRequest{
-		Model:       cfg.Model,
-		MaxTokens:   cfg.MaxOutputTokens,
-		Temperature: 0,
-		Messages: []openai.ChatCompletionMessage{
-			{Role: openai.ChatMessageRoleSystem, Content: prompt},
-			{Role: openai.ChatMessageRoleUser, Content: text},
+	params := openai.ChatCompletionNewParams{
+		Model: shared.ChatModel(cfg.Model),
+		Messages: []openai.ChatCompletionMessageParamUnion{
+			openai.SystemMessage(prompt),
+			openai.UserMessage(text),
 		},
-		Tools: []openai.Tool{{
-			Type: openai.ToolTypeFunction,
-			Function: &openai.FunctionDefinition{
+		// param.Opt 是「显式传值」：0 就是 0，不会被当成缺省丢掉（这正是换官方 SDK 的原因）。
+		Temperature: param.NewOpt(0.0),
+		MaxTokens:   param.NewOpt(int64(cfg.MaxOutputTokens)),
+		Tools: []openai.ChatCompletionToolParam{{
+			Function: openai.FunctionDefinitionParam{
 				Name:        "submit_review",
-				Description: "提交这篇帖子的审核结论",
-				Parameters:  SubmitReviewSchema(cfg.StrictMode),
+				Description: openai.String("提交这篇帖子的审核结论"),
+				Parameters:  openai.FunctionParameters(SubmitReviewSchema(cfg.StrictMode)),
 			},
 		}},
-	})
+	}
+	// 非思考模式才强制调用：官方写明「思考模式下不支持 tool_choice: required」。
+	// 思考模式仍可用工具（官方支持），但不强制；没调工具按 §3.5 fail-open 到人工。
+	if !cfg.Thinking {
+		// 强制调用**指定的那个**工具（比 tool_choice:"required" 更确定）：
+		params.SetExtraFields(map[string]any{"thinking": map[string]any{"type": "disabled"}})
+	}
+
+	start := time.Now()
+	resp, err := client.Chat.Completions.New(reqCtx, params)
 	latency := int(time.Since(start).Milliseconds())
 	if err != nil {
 		return Result{}, fmt.Errorf("%w: %v", ErrTransport, err)
@@ -127,14 +139,14 @@ func SubmitReviewSchema(strict bool) map[string]any {
 }
 
 // parse 照 d7 §3.5 的顺序判：任何一步不对 -> Review（交人工），不猜。
-func parse(resp openai.ChatCompletionResponse, model string, latency int) Result {
+func parse(resp *openai.ChatCompletion, model string, latency int) Result {
 	out := Result{Verdict: Review, Model: model, LatencyMS: latency}
 	if len(resp.Choices) == 0 {
 		out.Reason = "模型没有返回任何候选"
 		return out
 	}
 	choice := resp.Choices[0]
-	if choice.FinishReason == openai.FinishReasonLength {
+	if choice.FinishReason == "length" {
 		out.Reason = "模型输出被截断"
 		return out
 	}

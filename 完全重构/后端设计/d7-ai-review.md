@@ -376,3 +376,18 @@ review_events 只回答「它被谁、因为什么、判过几次」。
 §6 第 4 步写「组装 user 消息（标题 + 正文，**按 §2.4 截断**）」，而 §2.4 自己写着「**不做任何截断**」。
 两处冲突时按**明确禁止的那条**执行：**不截断**（截断会让 AI 只看到半篇，判出来的结论就是错的）。
 已把 §6 那句改掉。
+### 第三条偏差（换官方 SDK 之后仍然存在，2026-10-14）
+
+换成官方 `openai/openai-go` 后，前两条偏差已经**修好并有用例证明**：
+
+| 偏差 | 现状 | 证据 |
+|---|---|---|
+| `temperature: 0` 发不出去 | **已修** | 用例断言请求体里有 `"temperature":0`（`param.NewOpt(0.0)` 能把 0 显式发出去） |
+| 关掉思考 | **已修** | 用例断言请求体里有 `"thinking":{"type":"disabled"}`（`SetExtraFields` 透传未知字段） |
+| `tool_choice: "required"` | **仍未发出** ✗ | 上游 SDK v1.12.0 的 `ChatCompletionToolChoiceOptionUnionParam` **序列化不出来**：
+具名构造器与 `OfAuto` 都赋值成功但请求体里没有该字段；`SetExtraFields` 又会把**已知字段**过滤掉（`thinking` 能过、`tool_choice` 过不去）。 |
+
+**影响与兜底**：不发 `tool_choice` 时模型仍会调用 `submit_review`（我们的 schema 只给这一个工具），
+万一没调，`§3.5` 的 fail-open 会让它转人工 ✓ —— **不会因此放行违规内容**。
+**修法**：等上游修联合序列化（或换 OpenAI 官方的 Go SDK 大版本）后，把它挪回 `ToolChoice` 字段；
+代码里那条注释写明了这件事，用例里也标了「上游修好就加回断言」。
