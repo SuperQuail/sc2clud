@@ -18,7 +18,8 @@ const reviewQueueColumns = `t.id, t.public_id::text, t.title, t.kind, COALESCE(t
        a.id, a.public_id, a.username, COALESCE(NULLIF(a.nickname, ''), a.username),
        COALESCE(NULLIF(a.avatar_hash, ''), a.default_avatar_hash, ''),
        COALESCE(NULLIF(a.avatar_small_hash, ''), NULLIF(a.avatar_hash, ''), a.default_avatar_hash, ''), a.status,
-       t.created_at, t.updated_at, t.reviewed_at,
+       t.created_at, t.updated_at,
+       ev.verdict, COALESCE(ev.created_at, t.reviewed_at),
        r.id, r.public_id, r.username, COALESCE(NULLIF(r.nickname, ''), r.username),
        COALESCE(NULLIF(r.avatar_hash, ''), r.default_avatar_hash, ''),
        COALESCE(NULLIF(r.avatar_small_hash, ''), NULLIF(r.avatar_hash, ''), r.default_avatar_hash, ''), r.status`
@@ -27,7 +28,12 @@ const reviewQueueFrom = `
   FROM topics t
   JOIN boards b ON b.id = t.board_id
   JOIN users  a ON a.id = t.author_id
-  LEFT JOIN users r ON r.id = t.reviewed_by`
+  LEFT JOIN LATERAL (
+    SELECT e.verdict, e.created_at, e.actor_id
+      FROM review_events e WHERE e.topic_id = t.id
+     ORDER BY e.created_at DESC, e.id DESC LIMIT 1
+  ) ev ON true
+  LEFT JOIN users r ON r.id = ev.actor_id`
 
 // ReviewQueueRow 是队列的一行：一屏要能判断「这是什么、谁写的、AI 说了什么」。
 type ReviewQueueRow struct {
@@ -44,8 +50,12 @@ type ReviewQueueRow struct {
 	BoardSlug    string
 	BoardName    string
 	Author       UserRow
-	// ReviewedAt 是**上一次判定**的时间（NULL = 还没人判过）；Reviewer 是判定人，
-	// AI 判定时 reviewed_by 为空 → nil（设计稿的审核屏要显示「谁判的、判过几次」）。
+	// Verdict / ReviewedAt / Reviewer 是**最近一次判定**（review_events 最新一条）的三个同源列，
+	// 一起取一起不取（拆开就会出现「结论是 A 的、判的人是 B」）。没有判定事件时三样都是 NULL。
+	// 为什么不读 topics.reviewed_by：AI 判定也会写 review_events 却不写 reviewed_by
+	// （aireview/sql.go 的 sqlUpdateTopic 不碰那一列）—— 读它等于把「AI 转人工」显示成没人判过。
+	// 时间用 COALESCE(ev.created_at, t.reviewed_at)：手工塞过 reviewed_at 而没有事件的老数据也兜得住。
+	Verdict    *string
 	ReviewedAt *time.Time
 	Reviewer   *UserRow
 	CreatedAt  time.Time
@@ -70,7 +80,8 @@ func scanReviewQueueRow(rows *sql.Rows, r *ReviewQueueRow) error {
 		&r.BoardSlug, &r.BoardName,
 		&r.Author.ID, &r.Author.PublicID, &r.Author.Handle, &r.Author.Nickname,
 		&avatar, &avatarSmall, &r.Author.Status,
-		&r.CreatedAt, &r.UpdatedAt, &r.ReviewedAt,
+		&r.CreatedAt, &r.UpdatedAt,
+		&r.Verdict, &r.ReviewedAt,
 		&rvID, &rvPublic, &rvHandle, &rvNick, &rvAvatar, &rvAvatarSmall, &rvStatus,
 	); err != nil {
 		return err

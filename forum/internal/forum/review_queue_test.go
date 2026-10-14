@@ -385,16 +385,24 @@ func TestReviewQueueDTOCarriesReviewerAndVerdict(t *testing.T) {
 		t.Fatalf("rejected 档的 verdict 应当是 reject，实际 %v", it.ReviewVerdict)
 	}
 
-	// AI 判定（reviewed_by 为空）时 reviewer 必须是 nil，而不是一个空壳对象
-	if _, err := h.pool.Exec(h.ctx, "UPDATE topics SET reviewed_by = NULL WHERE public_id = $1", d.ID); err != nil {
+	// AI 判定：**review_events 有事件但 actor_id 为空**（aireview/sql.go 的 sqlInsertEvent 不写 actor），
+	// 而 topics.reviewed_by 一直没人动。三个字段都从事件那一侧取，所以：
+	// reviewer = null、但 verdict = review（AI 转人工）依然在 —— 审核屏就是靠它挑出这一类。
+	if _, err := h.pool.Exec(h.ctx,
+		"UPDATE review_events SET actor_id = NULL, verdict = 'review' WHERE topic_id = (SELECT id FROM topics WHERE public_id = $1) AND id = (SELECT max(id) FROM review_events WHERE topic_id = (SELECT id FROM topics WHERE public_id = $1))",
+		d.ID); err != nil {
 		t.Fatal(err)
 	}
 	queue, err = h.svc.ListReviewQueue(h.ctx, mod, ReviewQueueInput{State: ReviewQueueRejected})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if it := queue.Items[0]; it.Reviewer != nil {
-		t.Fatalf("reviewed_by 为空时 reviewer 必须是 nil（AI 判的没有审阅人），实际 %+v", it.Reviewer)
+	it = queue.Items[0]
+	if it.Reviewer != nil {
+		t.Fatalf("事件没有 actor 时 reviewer 必须是 nil（AI 判的没有审阅人），实际 %+v", it.Reviewer)
+	}
+	if it.ReviewVerdict == nil || *it.ReviewVerdict != "review" {
+		t.Fatalf("AI 转人工的 verdict 必须是 review，实际 %v", it.ReviewVerdict)
 	}
 }
 

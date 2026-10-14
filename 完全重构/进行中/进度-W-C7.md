@@ -111,6 +111,18 @@
     用例同时钉住 JSON 三个键、未判定时三个字段都是 null、改判后 verdict 跟着变、
     `reviewed_by` 为空时 reviewer 是 null 而不是空壳对象。
     `go test ./internal/forum/ -run TestReviewQueue -count=1`：4 条全 PASS；`gofmt -l` 空、`go vet` 退出 0。
+  - **修正（同一步，M7 复看）**：第一版把 `review_verdict` 从 `review_state` 推导 —— **错了**。
+    前端契约不是这么定义的：`web/src/devroom/pages/15-admin/mock/content.ts:98` 写的是
+    「最近一次判定的 verdict：ai + review = **AI 转人工**（队列里要高亮）」，值域是
+    `approve|reject|review` 三档，而 `review_state` 只有三态、推不出 `review`；
+    更糟的是第一版会显示成「AI 通过」而不是「AI 转人工」，正好把审核员最先要看的那一类盖掉。
+    现在改成 `reviewQueueFrom` 里 `LEFT JOIN LATERAL (SELECT verdict, created_at, actor_id FROM
+    review_events WHERE topic_id = t.id ORDER BY created_at DESC, id DESC LIMIT 1) ev ON true`，
+    连 `reviewer` 也一起改从 `ev.actor_id` 取（AI 判定会写事件却不写 `topics.reviewed_by`，
+    读后者等于说「没人判过」）；`reviewed_at = COALESCE(ev.created_at, t.reviewed_at)`（兜老数据）。
+    取舍：`reviewer`/`reviewed_at`/`review_verdict` 三列**同源同取同不取**，不会出现「结论是 A 的、
+    判的人是 B」。用例的对应断言改成「事件 actor 为空 → reviewer null 但 verdict=review」。
+    `go test ./internal/forum/ ./internal/notify/ -count=1` → 两个包 `ok`（64s / 46s）。
   - 下一步：M4 —— `forum/internal/forum/pgsql/review_queue.go` 新增
     `InsertReviewEvent(ctx, tx, topicID, trigger, source, verdict, reason string, actorID *int64, now)`，
     在 `forum/internal/forum/review_queue.go` 的 `ReviewTopic` 事务里（`InsertReviewAudit` 之后）

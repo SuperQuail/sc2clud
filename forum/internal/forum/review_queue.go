@@ -88,9 +88,9 @@ type ReviewQueueItemDTO struct {
 	// 设计稿的审核屏要显示「谁判的、判过几次」；判定历史本身在 review_events，这里只带上最近一次。
 	Reviewer   *UserBriefDTO `json:"reviewer"`
 	ReviewedAt *time.Time    `json:"reviewed_at"`
-	// ReviewVerdict 是最近一次的结论 approve | reject | null（没判过）。
-	// **从 review_state 推导**，不是新的一列：topics 只有三态，rejected 之外的判定都是放行；
-	// 完整历史（含 ai 判定）在 review_events 里。
+	// ReviewVerdict 是**最近一次判定事件**的结论：approve | reject | review（"review" = AI 转人工，
+	// 审核屏要把它挑出来）| null（还没判过）。取自 review_events，不是从 review_state 推导 ——
+	// topics 只有三态，推不出 'review' 那一档，而它恰恰是审核员最先要看的一类。
 	ReviewVerdict *string   `json:"review_verdict"`
 	CreatedAt     time.Time `json:"created_at"`
 	// UpdatedAt 是内容的版本号：**判定时必须原样回传**（expected_updated_at）。
@@ -302,11 +302,7 @@ func reviewQueueItemDTO(r pgsql.ReviewQueueRow) ReviewQueueItemDTO {
 	if r.ReviewedAt != nil {
 		at := r.ReviewedAt.UTC()
 		d.ReviewedAt = &at
-		verdict := ReviewApprove
-		if r.ReviewState == "rejected" {
-			verdict = ReviewReject
-		}
-		d.ReviewVerdict = &verdict
 	}
+	d.ReviewVerdict = r.Verdict
 	return d
 }
