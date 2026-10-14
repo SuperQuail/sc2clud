@@ -2,17 +2,19 @@ package notify
 
 import (
 	"context"
+	"time"
 
 	"github.com/gin-gonic/gin"
 
 	"forum/internal/authz"
 )
 
-// NoticeSettings 读 user_notice_settings。实现方：*user.Service。
+// NoticeSettings 读写 user_notice_settings。实现方：本域的 noticeSettings（settings.go）。
 //
 // 接口在使用方定义，app 层注入（后端方案 §4.2 第 3 条）：user 包不需要知道 notify 存在。
 type NoticeSettings interface {
 	Get(ctx context.Context, userID int64) (*NoticeSetting, error)
+	Set(ctx context.Context, userID int64, s NoticeSetting, at time.Time) error
 }
 
 // NoticeSetting 是「要不要发这条通知」需要的四件事（d4 §4.1 的判定）。

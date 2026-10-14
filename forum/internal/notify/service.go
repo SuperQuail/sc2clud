@@ -155,6 +155,36 @@ func (s *Service) UnsetMute(ctx context.Context, actor *authz.Actor, in MuteInpu
 	return s.pg.UnsetMute(ctx, actor.UserID, kind, targetKey)
 }
 
+// Settings 读自己的消息设置（GET /notifications/settings）。
+// 表里没有这一行时返回列默认值 —— 前端因此拿到的一定是四个可用值，不需要「没设置过」这一态。
+func (s *Service) Settings(ctx context.Context, actor *authz.Actor) (*NoticeSetting, error) {
+	return s.settings.Get(ctx, actor.UserID)
+}
+
+// UpdateSettings 全量保存消息设置：四个字段一起给，没有「只改一个」的半更新语义
+// （表就四列，全量写最省事，也不会出现「没传的字段被清成零值」这种歧义）。
+// 返回值从库里重读，回执与下次 GET 一定是同一份。
+func (s *Service) UpdateSettings(ctx context.Context, actor *authz.Actor, in NoticeSetting) (*NoticeSetting, error) {
+	fields := map[string]string{}
+	if !noticeScopes[in.ReplyScope] {
+		fields["reply_scope"] = "只能是 all / none"
+	}
+	if !noticeScopes[in.MentionScope] {
+		fields["mention_scope"] = "只能是 all / none"
+	}
+	if len(fields) > 0 {
+		return nil, apperr.Invalid(fields)
+	}
+	if err := s.settings.Set(ctx, actor.UserID, in, s.clk.Now()); err != nil {
+		return nil, err
+	}
+	return s.settings.Get(ctx, actor.UserID)
+}
+
+// 值域与 ck_user_notice_settings_reply_scope / _mention_scope 逐字一致。
+// 没有 "followed"：拍板 §8.3 —— 本产品没有「关注用户」，0018 把它从值域里删了。
+var noticeScopes = map[string]bool{"all": true, "none": true}
+
 // Purge 分批硬删软删超过保留期的通知（d4 §5.5，给 cron 调）。
 func (s *Service) Purge(ctx context.Context, before time.Time, limit int) (int, error) {
 	return s.pg.Purge(ctx, before, limit)

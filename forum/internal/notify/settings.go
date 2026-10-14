@@ -2,6 +2,7 @@ package notify
 
 import (
 	"context"
+	"time"
 
 	"forum/internal/notify/pgsql"
 )
@@ -22,4 +23,11 @@ func (n noticeSettings) Get(ctx context.Context, userID int64) (*NoticeSetting, 
 		Alert: r.Alert, ReplyScope: r.ReplyScope,
 		MentionScope: r.MentionScope, LikeAlert: r.LikeAlert,
 	}, nil
+}
+
+func (n noticeSettings) Set(ctx context.Context, userID int64, s NoticeSetting, at time.Time) error {
+	return n.pg.UpsertNoticeSetting(ctx, userID, pgsql.NoticeSettingRow{
+		Alert: s.Alert, ReplyScope: s.ReplyScope,
+		MentionScope: s.MentionScope, LikeAlert: s.LikeAlert,
+	}, at)
 }

@@ -25,7 +25,48 @@ func (h *Handler) Register(rg *gin.RouterGroup, requireLogin gin.HandlerFunc) {
 	g.POST("/read", h.markRead)
 	g.PUT("/mutes", h.setMute)
 	g.DELETE("/mutes", h.unsetMute)
+	g.GET("/settings", h.getSettings)
+	g.PUT("/settings", h.putSettings)
 	g.DELETE("/:id", h.remove)
+}
+
+// noticeSettingDTO 是消息设置的回执形状（JSON 字段名即契约，前端照抄）。
+type noticeSettingDTO struct {
+	Alert        bool   `json:"alert"`
+	ReplyScope   string `json:"reply_scope"`
+	MentionScope string `json:"mention_scope"`
+	LikeAlert    bool   `json:"like_alert"`
+}
+
+func toSettingDTO(s *NoticeSetting) noticeSettingDTO {
+	return noticeSettingDTO{Alert: s.Alert, ReplyScope: s.ReplyScope, MentionScope: s.MentionScope, LikeAlert: s.LikeAlert}
+}
+
+func (h *Handler) getSettings(c *gin.Context) {
+	actor, _ := h.actorOf(c)
+	s, err := h.svc.Settings(c.Request.Context(), actor)
+	if err != nil {
+		httpx.Fail(c, err)
+		return
+	}
+	httpx.OK(c, toSettingDTO(s))
+}
+
+func (h *Handler) putSettings(c *gin.Context) {
+	var b noticeSettingDTO
+	if err := httpx.Bind(c, &b); err != nil {
+		httpx.Fail(c, err)
+		return
+	}
+	actor, _ := h.actorOf(c)
+	s, err := h.svc.UpdateSettings(c.Request.Context(), actor, NoticeSetting{
+		Alert: b.Alert, ReplyScope: b.ReplyScope, MentionScope: b.MentionScope, LikeAlert: b.LikeAlert,
+	})
+	if err != nil {
+		httpx.Fail(c, err)
+		return
+	}
+	httpx.OK(c, toSettingDTO(s))
 }
 
 type listQuery struct {

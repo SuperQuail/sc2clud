@@ -88,6 +88,15 @@ func (d defaultSettings) Get(_ context.Context, userID int64) (*NoticeSetting, e
 	return &NoticeSetting{Alert: true, ReplyScope: "all", MentionScope: "all", LikeAlert: true}, nil
 }
 
+// Set 是替身的另一半：只让「保存后读得回来」在用例里成立；值域校验在 service 里，不在这里。
+// byUser 为 nil（newService 的默认替身）时丢弃写入 —— 那些用例只关心「发不发通知」。
+func (d defaultSettings) Set(_ context.Context, userID int64, s NoticeSetting, _ time.Time) error {
+	if d.byUser != nil {
+		d.byUser[userID] = s
+	}
+	return nil
+}
+
 func actor(id int64) *authz.Actor { return &authz.Actor{UserID: id} }
 
 // ---------- 夹具：别的域的表直接写 SQL（users / boards / topics / posts / ...）----------

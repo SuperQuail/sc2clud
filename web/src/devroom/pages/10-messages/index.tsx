@@ -29,35 +29,44 @@ export default function MessagesPage() {
     () => new URLSearchParams(window.location.search).get('panel') ?? 'messages',
   );
   const [peer] = useState(() => new URLSearchParams(window.location.search).get('peer'));
-  const [privacy, setPrivacy] = useState('all');
+  // 设置项**逐字照后端真源**（forum/internal/notify/deps.go 的 NoticeSetting 四项 +
+  // 迁移 0018 的 CHECK 值域），2026-10-14 按 0018 核对后改过两处：
+  //   ① 删掉「关注的人」：拍板 §8.3 说本产品没有关注用户，reply_scope 的 CHECK 只有 all / none
+  //      （0018_notice_settings.up.sql:24）。留着它就是一个**选不中**的假选项。
+  //   ② 补上 mention_scope 与 like_alert：后端本来就有这两项，稿里原先漏了，于是这一屏保不住完整的设置。
+  // 「消息屏蔽词」后端没有这个能力（没有表、没有端点），按规矩先从这里撤掉，记进 完全重构/进行中/设计对齐.md。
   const [notice, setNotice] = useState(true);
-  const [blocked, setBlocked] = useState<string[]>(['广告', '代练']);
+  const [replyScope, setReplyScope] = useState('all');
+  const [mentionScope, setMentionScope] = useState('all');
+  const [likeAlert, setLikeAlert] = useState(true);
 
   const settings: SettingRow[] = [
-    { key: 'notice', kind: 'toggle', title: '消息提醒', hint: '关闭后，消息将不再进行提醒', value: notice, onChange: setNotice },
+    { key: 'alert', kind: 'toggle', title: '消息提醒', hint: '关闭后，消息将不再进行提醒', value: notice, onChange: setNotice },
     {
-      key: 'reply',
+      key: 'reply_scope',
       kind: 'radio',
       title: '回复我的消息提醒',
-      hint: '接收谁的评论消息提醒',
+      hint: '接收谁的评论消息提醒（后端只有 all / none 两个取值）',
       options: [
         { key: 'all', label: '所有人' },
-        { key: 'followed', label: '关注的人' },
         { key: 'none', label: '不接收任何消息提醒' },
       ],
-      value: privacy,
-      onChange: setPrivacy,
+      value: replyScope,
+      onChange: setReplyScope,
     },
     {
-      key: 'blocked',
-      kind: 'tags',
-      title: '消息屏蔽词',
-      hint: '添加后，将不再接受包含屏蔽词的消息',
-      items: blocked,
-      addLabel: '添加屏蔽词',
-      onAdd: () => setBlocked((v) => [...v, '新屏蔽词' + (v.length + 1)]),
-      onRemove: (t) => setBlocked((v) => v.filter((x) => x !== t)),
+      key: 'mention_scope',
+      kind: 'radio',
+      title: '@ 我的消息提醒',
+      hint: '接收谁的 @ 提醒',
+      options: [
+        { key: 'all', label: '所有人' },
+        { key: 'none', label: '不接收任何 @ 提醒' },
+      ],
+      value: mentionScope,
+      onChange: setMentionScope,
     },
+    { key: 'like_alert', kind: 'toggle', title: '收到的赞', hint: '关掉后别人赞我不再提醒', value: likeAlert, onChange: setLikeAlert },
   ];
 
   // DevRoom 的导航条被限宽在 1100px；私信是「导航 + 会话列表 + 聊天区」的三列，自己放宽到 1280px 再居中

@@ -289,7 +289,8 @@ export function TopicPage() {
       onDeleteComment={(_parentId, id) => removeReply.mutate(id)}
       onVoteComment={(id, value) => {
         const post = posts.data?.items.find((p) => p.id === id);
-        vote.mutate({ id, value, on: post?.viewer?.value === value });
+        // on = 已经在同向投过 -> 这次是取消（字段名是 my_vote，不是 viewer.value）
+        vote.mutate({ id, value, on: post?.my_vote === value });
       }}
       replyPrompt={
         // 未登录**不隐藏评论区**（前端方案 §5.4：显示入口，点了引导登录，别让人不知道功能存在）

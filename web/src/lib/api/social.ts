@@ -43,8 +43,36 @@ export type Notification = {
   actor?: { handle: string; nickname: string; avatar?: string | null; avatar_small?: string | null } | null;
 };
 
-export function fetchNotifications(q: PageQuery = {}, signal?: AbortSignal): Promise<Paged<Notification>> {
-  return apiPage<Notification>('notifications', { query: pageQuery(q), signal });
+/**
+ * 通知列表。真源 notify/handler.go:31-36 的 listQuery：kind / unread / cursor / limit。
+ * kind 走 ?kind=reply|mention|like|reward|review|sanction|system（值域与 notify/kinds.go 逐字一致），
+ * 不传 = 全部 —— DevRoom 10-messages 左侧那几档就是靠它分的，原先这个函数只传游标，所以分档做不出来。
+ */
+export type NotificationQuery = PageQuery & { kind?: string; unread?: boolean };
+
+export function fetchNotifications(q: NotificationQuery = {}, signal?: AbortSignal): Promise<Paged<Notification>> {
+  const { kind, unread, ...page } = q;
+  return apiPage<Notification>('notifications', { query: { kind, unread, ...pageQuery(page) }, signal });
+}
+
+// ── 消息设置（2026-10-14 新增的两个端点，存储层 user_notice_settings 早就在）──────────
+// 四项与表里的列一一对应（notify/deps.go 的 NoticeSetting）：alert / reply_scope /
+// mention_scope / like_alert。值域只有 all | none —— **没有 followed**：
+// 拍板 §8.3 说本产品没有「关注用户」，0018 的 CHECK 就把它从值域里删了。
+export type NoticeSettings = {
+  alert: boolean;
+  reply_scope: 'all' | 'none';
+  mention_scope: 'all' | 'none';
+  like_alert: boolean;
+};
+
+export function fetchNoticeSettings(signal?: AbortSignal): Promise<NoticeSettings> {
+  return api<NoticeSettings>('notifications/settings', { signal });
+}
+
+/** 全量保存：表就四列，没有「只改一个」的半更新语义（后端也是 PUT 全量）。 */
+export function updateNoticeSettings(body: NoticeSettings): Promise<NoticeSettings> {
+  return api<NoticeSettings>('notifications/settings', { method: 'PUT', body });
 }
 
 export function fetchUnreadCount(signal?: AbortSignal): Promise<{ count: number }> {

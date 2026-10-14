@@ -62,8 +62,9 @@ export function toComments(posts: Post[]): CommentData[] {
     likes: p.like_count,
     // dislike_count 是否随响应下发待 P1 确认（§21.2 只写了「点赞数」）；缺省 0 不会假装踩过
     dislikes: p.dislike_count ?? 0,
-    liked: p.viewer?.value === 1,
-    disliked: p.viewer?.value === -1,
+    // 真源是 PostDTO.my_vote（forum/dto.go:131），不是 viewer.value —— 读错字段时赞踩态恒为假且不报错
+    liked: p.my_vote === 1,
+    disliked: p.my_vote === -1,
   });
   const roots = posts.filter((p) => p.parent_id === null);
   const repliesOf = new Map<string, Post[]>();

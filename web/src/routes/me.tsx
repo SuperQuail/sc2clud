@@ -107,7 +107,7 @@ export function MePage() {
           {reports.data?.items.map((r) => (
             <li key={r.id} className='flex flex-col gap-1 rounded-lg border border-border bg-card px-4 py-3'>
               <span className='flex flex-wrap items-center gap-2'>
-                <span className='text-[14px] font-medium text-foreground'>{r.target_title}</span>
+                <span className='text-[14px] font-medium text-foreground'>{r.target_label}</span>
                 <span className='rounded-full bg-muted px-2 py-0.5 text-[11px] text-muted-foreground'>
                   {STATE_LABEL[r.state] ?? r.state}
                 </span>

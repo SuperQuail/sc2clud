@@ -104,14 +104,21 @@ export type Post = {
   like_count: number;
   dislike_count?: number;
   created_at: string;
-  /** 我的投票：0 = 没投，1 / -1 = 投过 */
-  viewer?: { value: 0 | 1 | -1 };
+  /**
+   * 我的投票：0 = 没投，1 = 赞，-1 = 踩。
+   *
+   * 2026-10-14 修：这里原本声明成 `viewer?: { value }`，**线上根本没有 viewer 这个字段** ——
+   * 真源是 forum/internal/forum/dto.go:131 的 `json:"my_vote"`（map.go:141 逐字赋值）。
+   * 后果是评论区「已赞 / 已踩」恒为假：点过的赞再点一次不是取消而是又投一次，而且**不报错**。
+   */
+  my_vote: number;
 };
 
 export type TopicFilter = {
   board?: string;
   kind?: string;
-  sort?: 'latest' | 'new' | 'hot';
+  /** 真源 forum/internal/forum/dto.go 的 parseTopicSort 只认 latest / new —— 'hot' 会被 400 拒掉 */
+  sort?: 'latest' | 'new';
   q?: string;
 } & PageQuery;
 
@@ -226,7 +233,8 @@ export function fetchMyBookmarks(q: PageQuery = {}, signal?: AbortSignal): Promi
 export type MyReport = {
   id: string;
   target_type: ReportTargetType;
-  target_title: string;
+  /** 真源 forum/internal/report/dto.go:10 的 `target_label`（2026-10-14 修：原写 target_title -> 每行标题恒空白） */
+  target_label: string;
   reason: ReportReason;
   state: 'open' | 'handled' | 'dismissed';
   handle_note?: string | null;

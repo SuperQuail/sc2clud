@@ -78,11 +78,28 @@ export function register(body: {
   return api<{ handle: string }>('auth/register', { method: 'POST', body: withCaptcha(body) });
 }
 
-/** 邮箱激活走 6 位验证码（后端开工前拍板 §11：不发链接），所以提交的是文本 token */
-export function verifyEmail(token: string): Promise<void> {
-  return api<void>('auth/email/verify', { method: 'POST', body: { token } });
+// ── 验证码类的三个端点共用一个形状 ───────────────────────────────────────────
+// 真源 forum/internal/auth/handler.go:88-106 的 verifyCodeReq：`code` 必填，身份走
+// **username 或 email 二选一**（都给或都不给都是 400）。
+//
+// 2026-10-14 修：原先 verifyEmail/forgot 走的是「token」这个不存在的字段名 ——
+// **邮箱激活因此 100% 400**（页面提示「激活码不对」，其实请求根本没被受理）；
+// resetPassword 发的 `token` 也不是后端的 `reset_ticket`。与本文件 login 那条同族。
+function loginOf(who: string): { username: string } | { email: string } {
+  const v = who.trim();
+  return v.includes('@') ? { email: v } : { username: v };
 }
 
+/** 邮箱激活：POST /auth/email/verify { username|email, code }（6 位验证码，拍板 §11 不发链接） */
+export function verifyEmail(who: string, code: string): Promise<void> {
+  return api<void>('auth/email/verify', { method: 'POST', body: { ...loginOf(who), code } });
+}
+
+/**
+ * 重发激活码：POST /auth/email/resend。
+ * **必须已登录**（handler.go:42 挂了 RequireLogin，服务端用会话里的人发信，不收用户名）——
+ * 注册接口不建会话，所以「刚注册完就重发」在服务端是 401，页面要把这一点说清楚。
+ */
 export function resendVerification(): Promise<void> {
   return api<void>('auth/email/resend', { method: 'POST' });
 }
@@ -91,6 +108,15 @@ export function forgotPassword(email: string): Promise<void> {
   return api<void>('auth/password/forgot', { method: 'POST', body: { email } });
 }
 
-export function resetPassword(token: string, newPassword: string): Promise<void> {
-  return api<void>('auth/password/reset', { method: 'POST', body: { token, new_password: newPassword } });
+/** 找回密码第一步：POST /auth/password/verify-code { username|email, code } -> 换取 reset_ticket */
+export function verifyResetCode(who: string, code: string): Promise<{ reset_ticket: string }> {
+  return api<{ reset_ticket: string }>('auth/password/verify-code', { method: 'POST', body: { ...loginOf(who), code } });
+}
+
+/** 找回密码第二步：真源 handler.go:112-115 的 resetReq{reset_ticket,new_password} */
+export function resetPassword(resetTicket: string, newPassword: string): Promise<void> {
+  return api<void>('auth/password/reset', {
+    method: 'POST',
+    body: { reset_ticket: resetTicket, new_password: newPassword },
+  });
 }
