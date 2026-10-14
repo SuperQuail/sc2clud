@@ -1,4 +1,5 @@
 import { api } from './client';
+import { appPath } from '@/lib/url';
 
 // 认证与会话（v2 §21.2 auth 段）。**登录态的唯一真源是 GET /api/v1/me**：
 // 游客返回 200 + data:null，所以这里没有「未登录 = 报错」这种分支（前端方案 §5.4）。
@@ -26,8 +27,11 @@ export type Session = {
 
 export type Captcha = { id: string; image_base64: string };
 
-export function fetchMe(signal?: AbortSignal): Promise<Session | null> {
-  return api<Session | null>('me', { signal });
+export async function fetchMe(signal?: AbortSignal): Promise<Session | null> {
+  const s = await api<Session | null>('me', { signal });
+  // 后端给的 avatar 是**站内绝对路径**（/img/<hash>）。站点可能挂在 /dev/ 下，前端必须补上 base，
+  // 否则浏览器会去站外拿 /img/… → 顶栏头像 404（dev 上实测就是这个现象）。
+  return s && s.avatar ? { ...s, avatar: appPath(s.avatar) } : s;
 }
 
 export function fetchCaptcha(signal?: AbortSignal): Promise<Captcha> {
