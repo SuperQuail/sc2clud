@@ -31,13 +31,28 @@ const SCREENS: Record<ScreenKey, () => React.ReactNode> = {
   review: () => <ReviewRoom />,
   reports: () => <ReportsRoom />,
   rewards: () => <RewardsRoom />,
-  titles: () => <TitlesScreen />,
+  titles: () => <TitlesRoom />,
   mail: () => <MailScreen />,
   settings: () => <SettingsScreen />,
   ai: () => <AiReviewScreen />,
   audit: () => <AuditScreen />,
   diagnostics: () => <DiagnosticsScreen />,
 };
+
+/** 头衔目录屏的房间版。 */
+function TitlesRoom() {
+  const [titles, setTitles] = useState(DEMO_TITLES);
+  const [receipt, setReceipt] = useState<string | null>(null);
+  return (
+    <TitlesScreen
+      titles={titles}
+      canManage
+      onCreate={(b) => { setTitles((p) => [...p, { id: 't-' + (p.length + 1), ...b, archived_at: null }]); setReceipt('（房间演示：这里不发请求）已新建「' + b.name + '」'); }}
+      onUpdate={(id, b) => { setTitles((p) => p.map((t) => (t.id === id ? { ...t, ...b, archived_at: b.archived ? '2026-10-12T13:45:00Z' : null } : t))); setReceipt('（房间演示：这里不发请求）已保存'); }}
+      receipt={receipt ? <p className='text-[12px] text-muted-foreground'>{receipt}</p> : null}
+    />
+  );
+}
 
 /** 打赏核验屏的房间版。 */
 function RewardsRoom() {
