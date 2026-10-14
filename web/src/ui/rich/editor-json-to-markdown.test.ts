@@ -1,5 +1,5 @@
 import { expect, it } from 'vitest';
-import { editorJsonToMarkdown } from './markdown-editor';
+import { editorJsonToMarkdown } from './editor-json-to-markdown';
 
 // D6 的那一半纯函数：EditorState JSON → Markdown。
 // 为什么必须有它：上行给后端的 body_md / content_md 是 **Markdown**（后端 forum 的 render 拿它过

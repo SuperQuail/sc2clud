@@ -18,7 +18,7 @@ import { searchUsers } from '@/lib/api/user';
 import { appPath, routePath } from '@/lib/url';
 import { qk } from '@/lib/query/keys';
 import { useSession } from '@/lib/perms';
-import { editorJsonToMarkdown } from '@/ui/rich/markdown-editor';
+import { editorJsonToMarkdown } from '@/ui/rich/editor-json-to-markdown';
 import { cn } from '@/lib/utils';
 import { IssueCard } from '@/devroom/pages/12-topic/_task/issue-card';
 import { ISSUE_STATUS_LABEL, type IssueKind, type IssueStatus, type IssueSummary } from '@/devroom/pages/12-topic/_task/types';

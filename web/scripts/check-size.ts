@@ -7,14 +7,14 @@ import { fileURLToPath } from 'node:url';
 const SRC: string = fileURLToPath(new URL('../src', import.meta.url));
 const LIMIT = 500;
 const PENDING: Record<string, string> = {
-  // 2026-10-14：W1 的信息中心（DevRoom 10-messages）。**重构目标**：把「取数 + 通知四档 + 私信面板」
-  // 拆成 notice-center（壳 + 导航 + 各档面板）与 dm-panel（会话列表 + 聊天）两个文件；行数只减不增。
-  'routes/messages.tsx': '拆成 notice-center / dm-panel 两个文件',
+  // 2026-10-14 FIX-TOPIC 收口：routes/messages.tsx 的重构**已经做完**（FIX-MSG 的 D10 把信息中心收成
+  // prop 驱动的 notice-center View + 薄宿主，该文件降到 232 行），登记按门禁的规矩撤掉 ——
+  // 留着它就是一条「已归还的债还挂在账上」，而 gate:size 会因此常红（谁也不会去修一条假账）。
   // 2026-10-14：K3-FIX 给 topic.tsx 补了关注分区 / 成员数 / 角色徽标 / 提及候选 / MarkdownEditor 编辑，
   // 涨到 546 行。**重构目标**：把三块弹层与动作条拆到 routes/topic/ 下，行数只减不增。
   'routes/topic.tsx': '拆出弹层与动作条到 routes/topic/',
-  // 2026-10-14：W3/K3-FIX 给 issues.tsx 补了检索/筛选/赞踩/排序，涨到 540 行。
-  'routes/issues.tsx': '拆出列表与详情到 routes/issues/',
+  // 2026-10-14 FIX-TOPIC：issues.tsx 已降到 497 行（DTO 映射搬到 routes/_parts/issues-mappers.ts、
+  // 表单搬进 13-issue/new-issue-panel.tsx、列表/详情留在页面里）——登记按门禁的规矩撤掉。
   // 2026-10-14：K-ADMIN 给后台分区屏补了封面预览/更换/清空与 ACL/版主，涨到 510 行。
   'devroom/pages/15-admin/screens/boards.tsx': '拆出 ACL 矩阵与版主任免面板',
 };
