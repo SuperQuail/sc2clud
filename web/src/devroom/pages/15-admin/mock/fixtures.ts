@@ -1,4 +1,4 @@
-import type { AdminUser, AiConfig, AiTestView, Announcement, AuditItem, Banner, Permission, Donation, DonationStats, Domain, MailAccount, NoticeDefault, Report, ReviewQueueItem, Role, SettingItem, Title } from '@/lib/api/admin';
+import type { AdminUser, AdminUserDetail, AiConfig, AiTestView, Announcement, AuditItem, Banner, Permission, Donation, DonationStats, Domain, MailAccount, NoticeDefault, Report, ReviewQueueItem, Role, SettingItem, Title } from '@/lib/api/admin';
 
 // DevRoom 15-admin 的演示数据（**只给房间用**；产品路由由 ./admin-screens.tsx 的容器喂真端点）。
 //
@@ -29,7 +29,9 @@ type Seed = {
   id: string; username: string; nickname: string; email: string; role: string; status: string;
   ev: string | null; ac: string | null; trusted: boolean; created: string; last: string | null;
   topics: number; replies: number; title: string | null;
-  extra: AdminUser['extra_permissions']; sanctions: AdminUser['sanctions'];
+  /** 追加权限与处罚**不在列表项里**：它们进下面的 DEMO_USER_DETAIL（详情接口的三张表）。 */
+  extra: { key: string; expires_at: string | null }[];
+  sanctions: AdminUserDetail['sanctions'];
 };
 
 const SEED: Seed[] = [
@@ -87,9 +89,11 @@ const SEED: Seed[] = [
     "extra": [],
     "sanctions": [
       {
-        "kind": "mute_post",
-        "scope": "全局",
+        "id": 9001,
+        "action": "post",
+        "board": null,
         "until": "2026-11-30T15:59:59Z",
+        "created_at": "2026-10-30T15:59:59Z",
         "reason": "刷屏推广外站"
       }
     ]
@@ -159,14 +163,28 @@ const SEED: Seed[] = [
   }
 ];
 
+// 列表项照 AdminUserDTO **逐字段**（role 只有 key/name/badge_color；avatar、extra_permissions、
+// title、sanctions **都不在这一行**里 —— 那是详情接口的三张表，见下面的 DEMO_USER_DETAIL）。
 export const DEMO_USERS: AdminUser[] = SEED.map((s) => ({
-  id: s.id, username: s.username, nickname: s.nickname, email: s.email, avatar: null,
-  role: R(s.role), extra_permissions: s.extra, status: s.status,
-  email_verified_at: s.ev, activated_at: s.ac, trusted: s.trusted,
+  id: s.id, username: s.username, nickname: s.nickname, email: s.email,
+  role: { key: R(s.role).key, name: R(s.role).name, badge_color: R(s.role).badge_color },
+  status: s.status,
+  email_verified_at: s.ev, activated_at: s.ac, trusted: s.trusted, level: 1,
   created_at: s.created, last_login_at: s.last,
-  title: s.title ? { name: T(s.title).name, color: T(s.title).color } : null,
-  topic_count: s.topics, reply_count: s.replies, sanctions: s.sanctions,
+  topic_count: s.topics, reply_count: s.replies,
 }));
+
+/** 详情（GET /admin/users/{id}）的演示数据：列表项 + 三张关联表。 */
+export const DEMO_USER_DETAIL: Record<string, AdminUserDetail> = Object.fromEntries(
+  SEED.map((s) => [s.id, {
+    ...DEMO_USERS.find((u) => u.id === s.id)!,
+    sanctions: s.sanctions,
+    user_permissions: s.extra.map((x) => ({ key: x.key, name: x.key, reason: '（房间演示）', expires_at: x.expires_at, granted_at: '2026-10-01T00:00:00Z' })),
+    user_titles: s.title
+      ? [{ id: T(s.title).id, key: T(s.title).key, name: T(s.title).name, color: T(s.title).color, description: T(s.title).description ?? '', granted_at: '2024-01-01T00:00:00Z', archived_at: T(s.title).archived_at }]
+      : [],
+  } satisfies AdminUserDetail]),
+);
 
 const RB = (slug: string, name: string) => ({ slug, name });
 const RBrief = (handle: string, nickname: string) => ({ handle, nickname, avatar: '', avatar_small: '' });

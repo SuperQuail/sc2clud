@@ -4,7 +4,11 @@ import { pageQuery, PAGE_LIMIT } from './paging';
 export type * from './admin-types';
 
 import type {
+  AdminACLItem,
+  AdminBoard,
+  AdminModeratorItem,
   AdminUser,
+  AdminUserDetail,
   AdminUserFilter,
   AiConfig,
   AiTestView,
@@ -13,6 +17,8 @@ import type {
   AuditItem,
   Banner,
   BatchItem,
+  CreateBoardInput,
+  Diagnostics,
   Domain,
   Donation,
   DonationFilter,
@@ -28,6 +34,7 @@ import type {
   Role,
   SettingItem,
   Title,
+  UpdateBoardInput,
 } from './admin-types';
 
 // 管理后台的客户端（契约 /api/v1/admin/*，实测清单见 完全重构/进行中/后端接口对账.md 第 1 节）。
@@ -76,8 +83,7 @@ export function revokeUserPerm(userId: string, perm: string): Promise<void> {
   return api<void>('admin/users/' + encodeURIComponent(userId) + '/permissions/' + encodeURIComponent(perm), { method: 'DELETE' });
 }
 
-/** 封号 / 解封。真源 auth/handler.go 的 banReq：action 只有 ban | unban。 */
-/** 用户列表分页。**后端还没有这条路由**：调它会拿到 404，界面必须如实显示而不是空表。 */
+/** 用户列表分页（C1 已落地）。包络 {data, next_cursor}；筛选三根状态轴照 auth/handler.go 的 adminUsersQueryReq。 */
 export function fetchUsers(f: AdminUserFilter, signal?: AbortSignal): Promise<{ items: AdminUser[]; next: string | null }> {
   return apiPage<AdminUser>('admin/users', {
     query: {
@@ -88,6 +94,7 @@ export function fetchUsers(f: AdminUserFilter, signal?: AbortSignal): Promise<{ 
   });
 }
 
+/** 封号 / 解封。真源 auth/handler.go 的 banReq：action 只有 ban | unban。 */
 export function banUser(userId: string, action: 'ban' | 'unban', reason: string): Promise<{ status: string; sessions_revoked: number }> {
   return api('admin/users/' + encodeURIComponent(userId) + '/ban', { method: 'POST', body: { action, reason } });
 }
@@ -95,6 +102,68 @@ export function banUser(userId: string, action: 'ban' | 'unban', reason: string)
 /** 踢掉某人的全部会话（封号不带踢；这条是独立的动作）。 */
 export function revokeUserSessions(userId: string): Promise<{ revoked: number }> {
   return api('admin/users/' + encodeURIComponent(userId) + '/sessions/revoke', { method: 'POST' });
+}
+
+/** 用户详情：列表项 + 三张关联表（sanctions / user_permissions / user_titles）。**只有这条给那三张表**。 */
+export function fetchUserDetail(userId: string, signal?: AbortSignal): Promise<AdminUserDetail> {
+  return api<AdminUserDetail>('admin/users/' + encodeURIComponent(userId), { signal });
+}
+
+// ── 分区管理（forum/admin_boards.go + handler_admin_boards.go，C2 已落地）──────
+// 九条路由一个形状：列表/读不翻页（后台分区数量是几十，不是几万），ACL 与版主按分区取。
+
+/** 后台分区列表，**含归档**（公开列表只给 active）。 */
+export function fetchAdminBoards(signal?: AbortSignal): Promise<AdminBoard[]> {
+  return api<AdminBoard[]>('admin/boards', { signal });
+}
+
+/** 建分区。slug 建后不可改（改 slug = 废掉所有外链），所以只有这里能传。 */
+export function createBoard(b: CreateBoardInput): Promise<AdminBoard> {
+  return api<AdminBoard>('admin/boards', { method: 'POST', body: b });
+}
+
+/** 改分区：**只发改动过的字段**（后端 UpdateBoardInput 全是指针，没发的键不动；空 body 400）。 */
+export function updateBoard(id: string, b: UpdateBoardInput): Promise<AdminBoard> {
+  return api<AdminBoard>('admin/boards/' + encodeURIComponent(id), { method: 'PATCH', body: b });
+}
+
+/** 重排：**必须给全部**分区的 id 且不重复 —— 少一个就会有分区留在原 sort 上与别人撞在一起。 */
+export function reorderBoards(ids: string[]): Promise<void> {
+  return api<void>('admin/boards/reorder', { method: 'POST', body: { ids } });
+}
+
+export function fetchBoardAcl(id: string, signal?: AbortSignal): Promise<AdminACLItem[]> {
+  return api<AdminACLItem[]>('admin/boards/' + encodeURIComponent(id) + '/acl', { signal });
+}
+
+/** ACL **全量替换**（逐格 PATCH 会暴露「禁止优先」的中间态）。空数组 = 清空整张矩阵。
+ *  同一行既 can 又 deny、重复 role_id、角色不存在都是 400（后端逐条校验，不静默）。 */
+export function replaceBoardAcl(id: string, acls: AdminACLItem[]): Promise<AdminACLItem[]> {
+  return api<AdminACLItem[]>('admin/boards/' + encodeURIComponent(id) + '/acl', { method: 'PUT', body: { acls } });
+}
+
+/** 版主名单：**含已卸任的历史行**（grown_at 非空）。划过期的行不删，所以「谁什么时候被免的」答得出来。 */
+export function fetchBoardModerators(id: string, signal?: AbortSignal): Promise<AdminModeratorItem[]> {
+  return api<AdminModeratorItem[]>('admin/boards/' + encodeURIComponent(id) + '/moderators', { signal });
+}
+
+/** 任命版主（幂等：重复任命 = 改任期）。expires_at 为 RFC3339，空串 = 永久；给了必须是将来。 */
+export function grantBoardModerator(id: string, userId: string, expiresAt?: string): Promise<AdminModeratorItem[]> {
+  return api<AdminModeratorItem[]>('admin/boards/' + encodeURIComponent(id) + '/moderators', {
+    method: 'POST',
+    body: { user_id: userId, expires_at: expiresAt ?? '' },
+  });
+}
+
+export function revokeBoardModerator(id: string, userId: string): Promise<void> {
+  return api<void>('admin/boards/' + encodeURIComponent(id) + '/moderators/' + encodeURIComponent(userId), { method: 'DELETE' });
+}
+
+// ── 自检面板（auth/admin_diagnostics.go，C3 已落地）────────────────────────
+// **debug 关掉时整体 404**（common.not_found），不是空 200 —— 那个 404 必须如实显示。
+
+export function fetchDiagnostics(signal?: AbortSignal): Promise<Diagnostics> {
+  return api<Diagnostics>('admin/diagnostics', { signal });
 }
 
 // ── 审核队列（forum/handler.go，已实装）────────────────────────────────────
@@ -129,16 +198,10 @@ export function handleReport(id: string, state: 'handled' | 'dismissed', note: s
 
 // ── 打赏核验（reward/dto.go）─────────────────────────────────────────────
 
-/** 用户列表分页。**后端还没有这条路由**：调它会拿到 404，界面必须如实显示而不是空表。 */
-
 /** 批量处理：一个事务 + 逐条 CAS + **逐条结果**（别指望整批原子回滚）。 */
 export function handleReportsBatch(ids: string[], state: 'handled' | 'dismissed', note: string): Promise<{ results: BatchItem[] }> {
   return api('admin/reports/batch', { method: 'POST', body: { ids, state, note } });
 }
-
-/** 用户列表分页。**后端还没有这条路由**：调它会拿到 404，界面必须如实显示而不是空表。 */
-
-/** 批量处理：一个事务 + 逐条 CAS + **逐条结果**（别指望整批原子回滚）。 */
 
 /** 队列的包络是 **{data, next_cursor}**（reward 用 httpx.OKPage）。 */
 export function fetchDonations(f: DonationFilter, signal?: AbortSignal): Promise<{ items: Donation[]; next: string | null }> {

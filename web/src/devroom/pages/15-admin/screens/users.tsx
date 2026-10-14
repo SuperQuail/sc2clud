@@ -10,7 +10,7 @@ import { UserAvatar } from '@/ui/user/avatar';
 import { Username } from '@/ui/user/username';
 import { RoleBadge } from '@/ui/user/role-badge';
 import { TitleBadge } from '@/ui/user/title-badge';
-import type { AdminUser, Role, Title } from '@/lib/api/admin';
+import type { AdminUser, AdminUserDetail, Role, Title } from '@/lib/api/admin';
 import { DataTable, TableFooter, type Sort } from '../data-table';
 import { ConfirmDialog, DangerAction } from '../confirm';
 import { DisabledReason, GateNote, KV, Numbers, Panel, Pill, ScreenHead, Stat, StatRow, Toolbar } from '../bits';
@@ -22,8 +22,9 @@ import { DisabledReason, GateNote, KV, Numbers, Panel, Pill, ScreenHead, Stat, S
 // 之前这一屏直接 import ../mock —— 于是整个后台是一张示例表，后端改了也没人看得见。
 // 角色目录来自 GET /admin/roles（已实装）、头衔目录 GET /admin/titles（已实装）、
 // 角色 / 封号 / 踢会话 / 发头衔四个动作都走 auth 与 title 域**已实装**的管理端点。
-// **GET /admin/users 本身还没有**（交接单 C1，W-D1 在补）：在这一条落地前宿主拿到的是 404，
-// 屏上会如实显示「用户列表没能加载」——不拿示例数据兜底（见进度文件 W-D2 的阻塞第 1 条）。
+// **GET /admin/users 与 /admin/users/{id} 已落地**（C1）。列表项与详情是**两个形状**：
+// 详情那三张表（sanctions / user_permissions / user_titles）只有 GET /admin/users/{id} 给，
+// 所以右栏在选中一行之后才去取它 —— 不在列表接口上假装那些字段存在（这正是上一版类型的错法）。
 
 export type StatusFilter = 'all' | 'normal' | 'pending_act' | 'banned' | 'unverified';
 
@@ -40,6 +41,11 @@ export type UsersFilter = { q: string; status: StatusFilter; role: string };
 
 export type UsersScreenProps = {
   users: AdminUser[];
+  /** 选中那一行的详情（GET /admin/users/{id}）：三张关联表只有它有。没选中或还没到就是 null */
+  detail: AdminUserDetail | null;
+  detailLoading?: boolean;
+  /** 点一行 → 宿主去取详情（右栏的三张表要它） */
+  onSelect: (id: string) => void;
   /** 后端游标分页的累计条数（宿主给；拿不到就传 users.length） */
   total: number;
   loading?: boolean;
@@ -65,20 +71,22 @@ export type UsersScreenProps = {
 };
 
 export function UsersScreen({
-  users, total, loading = false, error = null, filter, onFilterChange,
+  users, detail, detailLoading = false, onSelect, total, loading = false, error = null, filter, onFilterChange,
   roles, titles, canBan, canAssignRole, canGrantTitle,
   onBan, onRevokeSessions, onSetRole, onGrantTitle, receipt,
 }: UsersScreenProps) {
   const [selected, setSelected] = useState<string[]>([]);
   const [sort, setSort] = useState<Sort>({ key: 'created_at', dir: 'desc' });
-  const [activeId, setActiveId] = useState<string | null>(null);
+  // 选中态就在列表里（不另存 state）：屏是无状态展示，详情由宿主持有 —— 少一处会与列表错位的状态
+  const activeId = detail?.id ?? null;
   const [pending, setPending] = useState<{ kind: 'ban' | 'unban'; ids: string[] } | null>(null);
   const [grantTo, setGrantTo] = useState<string | null>(null);
   const [roleTo, setRoleTo] = useState<string | null>(null);
   const [page, setPage] = useState(1);
   const [size, setSize] = useState(20);
 
-  const activeUser = users.find((u) => u.id === activeId) ?? null;
+  // 详情接口那一份优先（它多三张表）；回退到列表项只在「详情还没到」的空档里用
+  const activeUser: AdminUserDetail | AdminUser | null = detail ?? null;
   const selectedUsers = users.filter((u) => selected.includes(u.id));
   const bannedSelected = selectedUsers.filter((u) => u.status !== 'banned');
   const activeSelected = selectedUsers.filter((u) => u.status === 'banned');
@@ -92,7 +100,8 @@ export function UsersScreen({
       key: 'user', title: '用户', track: 'minmax(158px,1.5fr)', sortable: true, sortValue: (u: AdminUser) => u.nickname,
       render: (u: AdminUser) => (
         <span className='flex min-w-0 items-center gap-2'>
-          <UserAvatar name={u.nickname} src={u.avatar} size='sm' />
+          {/* 列表项 DTO **没有 avatar**（不给密码/会话/IP 也顺手不回头像）：这一格按昵称首字起色块 */}
+          <UserAvatar name={u.nickname} src={null} size='sm' />
           <span className='flex min-w-0 flex-col leading-tight'>
             <Username nickname={u.nickname} handle={u.username} size='sm' strong badge='none' />
             <span className='truncate text-[10px] text-muted-foreground'>{u.email}</span>
@@ -104,14 +113,12 @@ export function UsersScreen({
       ),
     },
     {
-      key: 'role', title: '角色', track: 'minmax(88px,0.8fr)', sortable: true, sortValue: (u: AdminUser) => u.role.priority,
+      // 没有 sortable：列表项的 role 只有 key/name/badge_color 三列（AdminUserRoleRef），
+      // 没有 priority 可排 —— 上一版拿 RoleItem.priority 排，那字段在这一行根本不存在。
+      key: 'role', title: '角色', track: 'minmax(88px,0.8fr)',
       render: (u: AdminUser) => (
         <span className='flex min-w-0 flex-col gap-0.5 leading-tight'>
           <RoleBadge role={{ key: u.role.key, name: u.role.name, color: u.role.badge_color }} />
-          {u.extra_permissions.length > 0 ? (
-            <span className='text-[10px] text-muted-foreground'>+{u.extra_permissions.length} 追加</span>
-          ) : null}
-          {u.title ? <TitleBadge title={u.title} size='sm' /> : null}
         </span>
       ),
     },
@@ -141,7 +148,7 @@ export function UsersScreen({
             )}
             {canGrantTitle ? <Button onClick={() => setGrantTo(u.id)}>发头衔</Button> : null}
             {canAssignRole ? <Button onClick={() => setRoleTo(u.id)}>改角色</Button> : null}
-            <Button onClick={() => setActiveId(u.id)}>详情</Button>
+            <Button onClick={() => onSelect(u.id)}>详情</Button>
           </span>
         );
       },
@@ -157,7 +164,7 @@ export function UsersScreen({
       />
 
       <StatRow>
-        <Stat label='符合条件的用户' value={total} hint='后端游标分页的累计条数' />
+        <Stat label='本页用户' value={total} hint='后端游标分页**不给总数**（只有 next_cursor），所以这里只数本页' />
         <Stat label='本页已封禁' value={users.filter((u) => u.status === 'banned').length} tone='danger' />
         <Stat label='本页待激活' value={users.filter((u) => !u.activated_at).length} hint='可读不可写（activated_at）' />
         <Stat label='本页邮箱未验证' value={users.filter((u) => !u.email_verified_at).length} hint='不能登录' />
@@ -225,7 +232,7 @@ export function UsersScreen({
             sort={sort}
             onSortChange={setSort}
             activeKey={activeId}
-            onRowClick={(u) => setActiveId(u.id)}
+            onRowClick={(u) => onSelect(u.id)}
             loading={loading}
             minWidth={604}
             empty='没有符合条件的用户'
@@ -238,7 +245,7 @@ export function UsersScreen({
             {activeUser ? (
               <>
                 <div className='mb-2 flex items-center gap-2'>
-                  <UserAvatar name={activeUser.nickname} src={activeUser.avatar} size='lg' />
+                  <UserAvatar name={activeUser.nickname} src={null} size='lg' />
                   <span className='flex min-w-0 flex-col leading-tight'>
                     <Username nickname={activeUser.nickname} handle={activeUser.username} strong badge='none' />
                     <span className='truncate text-[11px] text-muted-foreground'>{activeUser.email}</span>
@@ -246,7 +253,7 @@ export function UsersScreen({
                 </div>
                 <div className='mb-2 flex flex-wrap items-center gap-1'>
                   <RoleBadge role={{ key: activeUser.role.key, name: activeUser.role.name, color: activeUser.role.badge_color }} />
-                  {activeUser.title ? <TitleBadge title={activeUser.title} /> : null}
+                  {detail && detail.user_titles.length > 0 ? <TitleBadge title={detail.user_titles[0]!} /> : null}
                   {activeUser.trusted ? <Pill tone='ok'>trusted：发帖免审</Pill> : <Pill>发帖进审核队列</Pill>}
                 </div>
                 <KV k='登录名（不可改）' v={activeUser.username} hint='DB §4.1 不变量：注册后固定' />
@@ -261,11 +268,12 @@ export function UsersScreen({
             )}
           </Panel>
 
-          <Panel title='追加权限（user_permissions）' note='点对点追加：带 expires_at，到期自动失效。**读接口不回显理由**（reason 只在审计里，auth/privileges.go）。'>
-            {activeUser && activeUser.extra_permissions.length > 0 ? (
+          <Panel title='追加权限（user_permissions）' note='点对点追加：带 reason 与 expires_at，到期自动失效。这两列**只有详情接口给**（AdminGrantDTO）。'>
+            {detailLoading ? <p className='text-[12px] text-muted-foreground'>正在取详情…</p>
+              : detail && detail.user_permissions.length > 0 ? (
               <div className='flex flex-col'>
-                {activeUser.extra_permissions.map((p) => (
-                  <KV key={p.key} k={p.key} v={p.expires_at ? fmtDate(p.expires_at) + ' 到期' : '永久'} />
+                {detail.user_permissions.map((g) => (
+                  <KV key={g.key} k={g.name + '（' + g.key + '）'} v={g.expires_at ? fmtDate(g.expires_at) + ' 到期' : '永久'} hint={g.reason} />
                 ))}
               </div>
             ) : (
@@ -273,15 +281,18 @@ export function UsersScreen({
             )}
           </Panel>
 
-          <Panel title='处罚记录' note='13.7：分区级限期禁言；D6 判定顺序第 2 步命中即拒绝'>
-            {activeUser && activeUser.sanctions.length > 0 ? (
+          <Panel title='处罚记录' note='13.7 / D6 第 2 步：**含已过期的行**——后台要能回答「这个人被处理过几次」，删掉历史就答不了。'>
+            {detailLoading ? <p className='text-[12px] text-muted-foreground'>正在取详情…</p>
+              : detail && detail.sanctions.length > 0 ? (
               <div className='flex flex-col gap-1.5'>
-                {activeUser.sanctions.map((s, i) => (
-                  <div key={s.kind + String(i)} className='rounded-sm border border-border px-2 py-1'>
+                {detail.sanctions.map((s) => (
+                  <div key={String(s.id)} className='rounded-sm border border-border px-2 py-1'>
                     <div className='flex items-center gap-1.5'>
-                      <Pill tone='danger'>{s.kind === 'mute_post' ? '禁发帖' : '禁评论'}</Pill>
-                      <span className='text-[12px] text-foreground'>{s.scope}</span>
-                      <span className='text-[11px] text-muted-foreground'>至 {fmtDate(s.until)}</span>
+                      {/* action 的值域是 post | reply | all（DB 的 sanctions），不是 mock 里的 mute_post */}
+                      <Pill tone='danger'>{s.action === 'post' ? '禁发帖' : s.action === 'reply' ? '禁回复' : '全站禁言'}</Pill>
+                      <span className='text-[12px] text-foreground'>{s.board ? '/' + s.board.slug + ' ' + s.board.name : '全站'}</span>
+                      <span className='text-[11px] text-muted-foreground'>{s.until ? '至 ' + fmtDate(s.until) : '永久'}</span>
+                      <span className='text-[11px] text-muted-foreground'>开单 {fmtDate(s.created_at)}</span>
                     </div>
                     <p className='text-[11px] text-muted-foreground'>{s.reason}</p>
                   </div>
@@ -401,7 +412,8 @@ function SetRoleDialog({ user, roles, onClose, onSet }: {
 }) {
   const [roleId, setRoleId] = useState<number | null>(null);
   if (!user) return null;
-  const current = roleId ?? user.role.id;
+  // 列表项的 role 只有 key（AdminUserRoleRef），**没有 id** —— 当前值要用 key 去 /admin/roles 里换 id
+  const current = roleId ?? roles.find((r) => r.key === user.role.key)?.id ?? 0;
   const options = roles.map((r) => ({ key: String(r.id), label: r.name + '（' + r.key + '）' }));
   return (
     <Dialog show label='改基线角色' onCloseAttempt={onClose} onOverlayClick={onClose} onEscPress={onClose}>
@@ -419,7 +431,7 @@ function SetRoleDialog({ user, roles, onClose, onSet }: {
         />
         <div className='flex items-center justify-end gap-2'>
           <Button onClick={onClose}>取消</Button>
-          <Button primary disabled={current === user.role.id} onClick={() => { onSet(user.id, current); onClose(); }}>保存</Button>
+          <Button primary disabled={current === 0 || current === roles.find((r) => r.key === user.role.key)?.id} onClick={() => { onSet(user.id, current); onClose(); }}>保存</Button>
         </div>
       </div>
     </Dialog>

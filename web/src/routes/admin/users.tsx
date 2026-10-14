@@ -5,12 +5,14 @@ import {
   banUser,
   fetchRoles,
   fetchTitles,
+  fetchUserDetail,
   fetchUsers,
   grantTitle,
   revokeUserSessions,
   setUserRole,
 } from '@/lib/api/admin';
 import type {
+AdminUserDetail,
 AdminUserFilter,
 } from '@/lib/api/admin';
 import { isApiError } from '@/lib/api/errors';
@@ -19,12 +21,15 @@ import { errorLine } from './_shared';
 import { UsersScreen, type UsersFilter } from '@/devroom/pages/15-admin/screens/users';
 
 // ── 屏 a：用户管理 ────────────────────────────────────────────────────────
-// 依赖 GET /admin/users（交接单 C1，W-D1 在补）+ 已实装的 /admin/roles、/admin/titles 与四个动作端点。
+// 依赖 GET /admin/users 与 GET /admin/users/{id}（C1 已落地）+ 已实装的 /admin/roles、/admin/titles
+// 与四个动作端点。列表项与详情是**两个形状**：那三张关联表只有详情接口给，所以选中一行才去取。
 
 export function UsersScreenContainer() {
   const qc = useQueryClient();
   const session = useSession();
   const [filter, setFilter] = useState<UsersFilter>({ q: '', status: 'all', role: 'all' });
+  const [activeId, setActiveId] = useState<string | null>(null);
+  const [detail, setDetail] = useState<AdminUserDetail | null>(null);
   const [receipt, setReceipt] = useState<string | null>(null);
 
   // 三根状态轴在 wire 上是两个独立布尔（auth/pgsql/admin_users.go 的 AdminUsersFilter）——
@@ -38,13 +43,23 @@ export function UsersScreenContainer() {
   }), [filter]);
 
   const users = useQuery({ queryKey: qk.adminUsers(apiFilter), queryFn: ({ signal }) => fetchUsers(apiFilter, signal) });
+  // 选中即取详情（不是随列表一起取：三张关联表每行都拉一次是 N+1）。**不缓存上一行**：
+  // 换了人就把旧详情清掉，否则右栏会显示上一个用户的处罚记录 —— 那比空白危险。
+  const pick = (id: string) => {
+    setActiveId(id);
+    setDetail(null);
+    void fetchUserDetail(id)
+      .then((d) => setDetail((cur) => (cur === null || cur.id === id ? d : cur)))
+      .catch((e) => setReceipt('详情没能加载：' + (errorLine(e) ?? '')));
+  };
   const roles = useQuery({ queryKey: qk.adminRoles(), queryFn: ({ signal }) => fetchRoles(signal) });
   const titles = useQuery({ queryKey: qk.adminTitles(), queryFn: ({ signal }) => fetchTitles(signal) });
 
   const done = (msg: string) => { setReceipt(msg); void qc.invalidateQueries({ queryKey: ['admin'] }); };
   const ban = useMutation({
     mutationFn: async (v: { ids: string[]; action: 'ban' | 'unban'; reason: string }) => {
-      // 逐条调用：后端**没有**批量用户端点（交接单 C6），所以这里如实逐条发，并把成功条数报回去。
+      // 逐条调用而不是打批量端点（C6 的 POST /admin/users/batch）：那一条的 reason 是**整批一个**，
+      // 而这里每一行可能因为守卫（最后一个超管、越权改角色）单独失败 —— 逐条发才拿得到「哪一条为什么失败」。
       let ok = 0; const failed: string[] = [];
       for (const id of v.ids) {
         try { await banUser(id, v.action, v.reason); ok++; } catch (e) { failed.push(id + '：' + (errorLine(e) ?? '')); }
@@ -80,11 +95,15 @@ export function UsersScreenContainer() {
   return (
     <UsersScreen
       users={users.data?.items ?? []}
+      detail={activeId && detail?.id === activeId ? detail : null}
+      detailLoading={activeId !== null && detail?.id !== activeId}
+      onSelect={pick}
+      // 游标分页：后端**不给总数**（只给 next_cursor），所以这里是本页条数，屏上如实写「本页」
       total={users.data?.items.length ?? 0}
       loading={users.isPending}
       error={users.error ? { message: errorLine(users.error) ?? '', status: isApiError(users.error) ? users.error.status : 0 } : null}
       filter={filter}
-      onFilterChange={setFilter}
+      onFilterChange={(f) => { setFilter(f); setActiveId(null); setDetail(null); }}
       roles={roles.data ?? []}
       titles={titles.data ?? []}
       canBan={can(me, 'user.ban')}

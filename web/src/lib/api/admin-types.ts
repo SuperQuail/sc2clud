@@ -23,17 +23,42 @@ export type Role = {
   user_count: number;
 };
 export type Permission = { key: string; group: string; name: string; description: string };
-export type ExtraPerm = { key: string; expires_at: string | null };
+/** 用户行上的基线角色：**只有三列**（auth/admin_users.go 的 AdminUserRoleRef）。
+ *  与 /admin/roles 的 RoleItem 不是同一个东西 —— 那个带 id 与 perm_keys，这个不带；
+ *  所以改角色时要把 RoleItem.id 从 /admin/roles 里取，不能从这一行读。 */
+export type AdminUserRoleRef = { key: string; name: string; badge_color: string };
+/** 一条处罚（auth/admin_users.go 的 AdminSanctionDTO）。**只有详情接口给**；
+ *  `action` 值域 post | reply | all，`board` 为 null = 全站，`until` 为 null = 永久。 */
+export type AdminSanction = {
+  id: number;
+  action: string;
+  board: { slug: string; name: string } | null;
+  reason: string;
+  until: string | null;
+  created_at: string;
+};
+/** 一条点对点追加的权限（AdminGrantDTO）。**reason 在这里是有的**（详情接口）；只有 key 与到期不要臆造。 */
+export type AdminGrant = { key: string; name: string; reason: string; expires_at: string | null; granted_at: string };
+/** 用户持有的头衔（AdminTitleDTO）：与 /admin/titles 的 Title 是同一形状，多一个 granted_at。 */
+export type AdminUserTitle = {
+  id: string;
+  key: string;
+  name: string;
+  color: string;
+  description: string;
+  granted_at: string;
+  archived_at: string | null;
+};
+/** admin_users.go 的 AdminUserDTO —— **列表项的逐字段**。
+ *  这份类型曾经是照 C1 的验收清单推的、与端点对不上（avatar / extra_permissions / title / sanctions
+ *  都不在列表项里，role 是整个 RoleItem）。2026-10-14 拿 auth/admin_users.go 逐字段核过一遍。 */
 export type AdminUser = {
   id: string;
   username: string;
   nickname: string;
   email: string;
-  avatar: string | null;
   /** 基线角色，**单一**（RBAC权限树设计.md §1：角色之间永不并集） */
-  role: Role;
-  /** 点对点追加（user_permissions）；**读接口不给 reason**，只有 key 与到期 */
-  extra_permissions: ExtraPerm[];
+  role: AdminUserRoleRef;
   /** 封禁轴 */
   status: string;
   /** 邮箱验证轴 */
@@ -42,14 +67,20 @@ export type AdminUser = {
   activated_at: string | null;
   /** trusted = 发帖跳过人工审核（DB §4.1） */
   trusted: boolean;
+  level: number;
   created_at: string;
   last_login_at: string | null;
-  title: { name: string; color: string | null } | null;
   topic_count: number;
   reply_count: number;
-  /** 处罚记录（分区级限期禁言） */
-  sanctions: { kind: string; scope: string; until: string; reason: string }[];
 };
+/** admin_users.go 的 AdminUserDetailDTO：列表项 + 三张关联表（详情接口才给）。 */
+export type AdminUserDetail = AdminUser & {
+  sanctions: AdminSanction[];
+  user_permissions: AdminGrant[];
+  user_titles: AdminUserTitle[];
+};
+/** 三根状态轴**在 wire 上是两个独立布尔**（activated / email_verified）+ 一个 status：
+ *  「待激活」与「未验证」不是同一根轴，合成一个 status 会让筛「未验证」漏掉已激活的人。 */
 export type AdminUserFilter = { q?: string; status?: string; activated?: string; email_verified?: string; role?: string } & PageQuery;
 export type ReviewQueueItem = {
   id: string;
@@ -242,4 +273,76 @@ export type AiTestView = {
   model: string;
   latency_ms: number;
   raw: string;
+};
+
+/** forum/admin_boards.go 的 AdminBoardDTO（后台分区列表项，**含归档**）。
+ *  `cover_hash` 空串 = 没有封面（后端把 NULL 折成空串）；`position` 是 sort 升序下的行号（1 起，展示用）；
+ *  `moderators` 只含**在任**的任期（过期的留在库里当历史，见 GET .../moderators）。 */
+export type AdminBoard = {
+  id: string;
+  slug: string;
+  name: string;
+  description: string;
+  cover_hash: string;
+  status: string;
+  acl_enabled: boolean;
+  min_post_level: number;
+  position: number;
+  topic_count: number;
+  post_count: number;
+  today_count: number;
+  moderators: AdminModerator[];
+};
+/** AdminModerator：一行在任的版主任期（expires_at 为 null = 永久）。 */
+export type AdminModerator = {
+  user_id: string;
+  handle: string;
+  nickname: string;
+  granted_at: string;
+  expires_at: string | null;
+};
+/** AdminModeratorItem：版主端点的回执，**含历史行**（grown_at 非空 = 已卸任）。
+ *  读口是 GET /admin/boards/{id}/moderators —— 列表项里那个 moderators[] 只有在任的。 */
+export type AdminModeratorItem = AdminModerator & { grown_at: string | null };
+/** AdminACLItem：矩阵的一格。role_key 一起给（界面要显示「认证创作者」而不是一个数字）。 */
+export type AdminACLItem = {
+  role_id: number;
+  role_key: string;
+  can_post: boolean;
+  can_reply: boolean;
+  deny_post: boolean;
+  deny_reply: boolean;
+};
+/** 建分区（CreateBoardInput）：slug 建后不可改，所以只有建的时候能给。 */
+export type CreateBoardInput = {
+  slug: string;
+  name: string;
+  description: string;
+  status?: string;
+  acl_enabled?: boolean;
+  min_post_level?: number;
+  cover_hash?: string;
+};
+/** 改分区（UpdateBoardInput）：**指针语义** —— 只发改动过的字段，没发的后端不动（连空 body 都会 400）。 */
+export type UpdateBoardInput = {
+  name?: string;
+  description?: string;
+  status?: string;
+  acl_enabled?: boolean;
+  min_post_level?: number;
+  cover_hash?: string;
+};
+/** auth/admin_diagnostics.go 的 DiagnosticCheckDTO：ok 是 status 的布尔投影，
+ *  status 还可能是 skipped ——「没查」不能显示成「通过」（那是这类面板最常见的假绿）。 */
+export type DiagnosticCheck = { name: string; status: string; detail: string; ms: number; ok: boolean };
+/** DiagnosticsDTO。**debug 关掉时端点整体 404**（不是空 200），所以这屏拿不到数据时
+ *  必须把那个 404 如实说出来，而不是渲染一张空表。 */
+export type Diagnostics = {
+  debug_enabled: boolean;
+  version: string;
+  started_at: string | null;
+  readonly: boolean;
+  checks: DiagnosticCheck[];
+  total: number;
+  failed: number;
 };
