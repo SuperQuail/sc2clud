@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from 'react';
+import { Suspense, lazy, useState, type ReactNode } from 'react';
 import Button from '@jetbrains/ring-ui-built/components/button/button';
 import { ControlsHeight } from '@jetbrains/ring-ui-built/components/global/controls-height';
 import type { CommentData } from '@/ui/comment/types';
@@ -8,14 +8,18 @@ import { TopicTaskTabs, type TopicTaskTab } from './_task/task-tabs';
 import type { IssueKind } from './_task/types';
 import { AuthorCard } from './author-card';
 import { BoardSummary } from './board-summary';
-import { EditTopicDialog } from './edit-dialog';
 import { IssueNudge } from './issue-nudge';
 import { LeftRail } from './left-rail';
 import { MainColumn, TopicMeta } from './main-column';
-import { ReportDialog } from './report-dialog';
 import { AuthorOnlyHint, ReviewAppealButton, ReviewResubmitButton, type ReviewState } from './review-state';
 import { RewardPanel } from './reward-panel';
 import type { Board, BoardNav, BoardSlug, PaymentChannel, TopicAuthor, TopicDetail } from './types';
+
+// 两个弹层**按需加载**（与「评论区」同一个理由）：它们只在点「举报 / 编辑」时才需要，
+// 却会把 Ring 的 Dialog + Radio + Input 整包拖进公开首屏 —— 实测这一页给首屏加了约 50KB gzip，
+// 而首屏预算一共 150KB（前端方案 §9.1）。首屏 JS 只花在首屏真要用的东西上。
+const ReportDialog = lazy(() => import('./report-dialog').then((m) => ({ default: m.ReportDialog })));
+const EditTopicDialog = lazy(() => import('./edit-dialog').then((m) => ({ default: m.EditTopicDialog })));
 
 // 12-topic 的**整页组合**：顶部两个大页签 → 三栏（左：分区与分区内导航／中：全文+来源+动作+评论／
 // 右：分区简介→发帖者→赞助→问题反馈）。
@@ -252,7 +256,8 @@ export function TopicView({
             receipt={receipt}
             reportDialog={
               layer === 'report' ? (
-                <ReportDialog
+                <Suspense fallback={<p className='text-[13px] text-muted-foreground'>正在打开举报…</p>}>
+                  <ReportDialog
                   // 帖子级：只说「你已举报过」不说上次的事由 —— 后端幂等（重复举报回 200 + 既有那条），
                   // 而详情响应里没有「我举报它时选的是哪一条」，编一个事由就是假信息。
                   targetLabel={
@@ -262,21 +267,24 @@ export function TopicView({
                     setLayer(null);
                     onSubmitReport?.(reason, detail, reportTarget);
                   }}
-                  onClose={() => setLayer(null)}
-                />
+                    onClose={() => setLayer(null)}
+                  />
+                </Suspense>
               ) : null
             }
             editDialog={
               layer === 'edit' ? (
-                <EditTopicDialog
+                <Suspense fallback={<p className='text-[13px] text-muted-foreground'>正在打开编辑…</p>}>
+                  <EditTopicDialog
                   title={topic.title}
                   text={toText(topic.content_html)}
                   onSave={(next) => {
                     setLayer(null);
                     onEdit?.(next);
                   }}
-                  onClose={() => setLayer(null)}
-                />
+                    onClose={() => setLayer(null)}
+                  />
+                </Suspense>
               ) : null
             }
           />
