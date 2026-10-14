@@ -27,6 +27,18 @@
 - **L6**：需要 `ck_topics_review_state` 加第四态（独立分类）与「最后过审版本」的存储/DTO 字段。
 - **J3**：需要 K-BE 决定踩数（`dislike_count`）对谁下发；**接口不下发就不显示**，不在前端藏。
 - **J5 / J9**：**已解除**（K-BE 已交付，前端已接线，见记录最后一条）。
+## 收工状态（2026-10-14 17:30）
+
+- 队列里**能做的都做完了**：L1（打赏整块）/ L2 / L6 / J5 / J9 / L7 / G5 / L8（表情那一半）/
+  `UI与后端对齐.md` 定位订正 / L3·L4·L9 留文档。
+- 剩下的是**三类**：① 等 K-BE 的端点（J6 的 `issues/kinds`）；② 等 media 的私信图片通道（L8 的发图）；
+  ③ 要 Lead 授权才能动的冻结目录（J3 把 `ui/comment` 的 `dislikes` 改成可选）。
+- 每一格的收工口径都是同一条：**会红的用例 + 看图**。
+  最后一次全量：`npx vitest run` → `34 passed (34) / 175 passed (175)`；
+  `pnpm lint` → `0 errors, 20 warnings`；`pnpm typecheck` 0 错。
+- 出图脚本 `web/scripts/shoot-kfe.ts`（13 张，图在 `shots/kfe/`）**同一条连跑两次都 0 失败** ——
+  桩按标签页隔离，L7 那条「真的保存一次」不会污染下一张。
+
 - **J6 的类型下拉还写死四类**：`forum/internal/forum/issues.go:120` 有 `Service.IssueKinds`，
   但 `handler.go` **没有挂路由**（`GET /api/v1/issues/kinds` 不存在）—— 前端要「值域数据驱动」
   就必须先有这个只读端点。等 K-BE 挂上。
