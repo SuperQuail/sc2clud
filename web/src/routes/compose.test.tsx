@@ -1,0 +1,133 @@
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { MemoryRouter, Route, Routes } from 'react-router';
+import { afterEach, expect, it, vi } from 'vitest';
+import { Providers } from '@/app/providers';
+import { ComposePage } from './compose';
+
+// 真页面（routes/compose.tsx）用**设计稿的件**：这里只换网络边界，断言那几件真的进了 DOM，
+// 而且用的是**服务端真实的字段**（sources[] 的 provider / extraction_code / upkeep，不是照 mock 猜的）。
+// 2026-10-14 用户要求：发帖页与 devroom/pages/18-compose 一致，并补下载来源编辑器。
+afterEach(() => {
+  vi.unstubAllGlobals();
+});
+
+type Reply = { status?: number; body?: unknown };
+function mockApi(byPath: (url: string) => Reply) {
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(async (url: string | URL | Request) => {
+      const reply = byPath(String(url));
+      return new Response(reply.body === undefined ? null : JSON.stringify(reply.body), {
+        status: reply.status ?? 200,
+        headers: { 'content-type': 'application/json' },
+      });
+    }),
+  );
+}
+
+const ME = {
+  data: { id: 'u1', handle: 'demo-admin', nickname: '管理员', email_verified: true, perms: ['topic.create'], is_super: false },
+};
+const BOARDS = {
+  data: [{ slug: 'custom-campaign', name: '自制战役', description: '玩家自制战役', cover: null, topic_count: 3 }],
+};
+// 形状照后端 TopicDetailDTO：sources[] 是 SourceDTO（id / go_path / label / url / provider /
+// extraction_code / size / upkeep / verified_at）。
+const TOPIC = {
+  data: {
+    id: 'tp-1',
+    board: { slug: 'custom-campaign', name: '自制战役' },
+    kind: 'resource',
+    title: '第三章「余烬」发布',
+    content_md: '# 余烬',
+    content_html: '<p>正文</p>',
+    author: { handle: 'demo-admin', nickname: '管理员' },
+    reply_count: 0,
+    like_count: 0,
+    view_count: 0,
+    featured_at: null,
+    pinned: false,
+    created_at: '2026-10-12T01:20:00Z',
+    last_reply_at: null,
+    updated_at: '2026-10-12T02:20:00Z',
+    sources: [
+      {
+        id: 's1',
+        provider: 'baidu',
+        label: '主线战役 v3.1',
+        url: 'https://pan.baidu.com/s/1abc',
+        go_path: '/api/v1/topics/tp-1/sources/s1/go',
+        extraction_code: 'sc2c',
+        size: '2.4 GB',
+        verified_at: '2026-10-13T02:00:00Z',
+        upkeep: 'active',
+      },
+      {
+        id: 's2',
+        provider: 'pan123',
+        label: '旧版',
+        url: 'https://www.123pan.com/s/old',
+        go_path: '/api/v1/topics/tp-1/sources/s2/go',
+        extraction_code: null,
+        size: '',
+        verified_at: null,
+        upkeep: 'archived',
+      },
+    ],
+  },
+};
+
+function renderCompose(path: string) {
+  return render(
+    <Providers>
+      <MemoryRouter initialEntries={[path]}>
+        <Routes>
+          <Route path='/new' element={<ComposePage />} />
+        </Routes>
+      </MemoryRouter>
+    </Providers>,
+  );
+}
+
+it('新建页：提交区说清缺什么（设计稿的 SubmitBar）+ 预览与编辑器同一份状态 + 来源什么时候能加', async () => {
+  mockApi((url) => (url.includes('/me') ? { body: ME } : { body: BOARDS }));
+  renderCompose('/new');
+
+  await waitFor(() => expect(screen.getByTestId('compose-missing').textContent).toContain('标题'));
+  expect(screen.getByTestId('compose-missing').textContent).toContain('正文');
+  expect(screen.getByLabelText('预览')).toBeTruthy();
+  expect(screen.getByTestId('preview-toggle')).toBeTruthy();
+  // 新建时还没有 topic id，来源编辑器画不出来 —— 但不能静默，要说清什么时候能加
+  expect(screen.queryByTestId('compose-sources')).toBeNull();
+  fireEvent.click(screen.getByTestId('compose-kind-resource'));
+  expect(screen.getByTestId('compose-sources-later').textContent).toContain('发布');
+});
+
+it('编辑资源帖：SourceEditor 用的是服务端那份 sources（真字段：站点 / 提取码 / 归档 / 链接原文）', async () => {
+  mockApi((url) =>
+    url.includes('/me') ? { body: ME } : url.includes('/topics/tp-1') ? { body: TOPIC } : { body: BOARDS },
+  );
+  renderCompose('/new?edit=tp-1');
+
+  await waitFor(() => expect(screen.getByTestId('source-row-s1')).toBeTruthy());
+  expect(screen.getByTestId('source-row-s1').textContent).toContain('百度网盘');
+  expect(screen.getByTestId('source-row-s1').textContent).toContain('sc2c');
+  expect(screen.getByTestId('source-row-s1').textContent).toContain('2.4 GB');
+  expect(screen.getByTestId('source-row-s2').textContent).toContain('已归档');
+  // 链接原文只在编辑时露出来（读者点的是 go_path，不是这个）
+  expect(screen.getByTitle('https://pan.baidu.com/s/1abc')).toBeTruthy();
+  // 编辑态：按钮说的是「保存修改」，标题已从接口回填
+  expect(screen.getByTestId('compose-submit').textContent).toContain('保存修改');
+  expect((screen.getByTestId('compose-title') as HTMLInputElement).value).toBe('第三章「余烬」发布');
+});
+
+it('编辑非资源帖：不画来源编辑器，但说清为什么（后端 forum.not_resource）', async () => {
+  const discussion = { data: { ...TOPIC.data, kind: 'discussion', sources: [] } };
+  mockApi((url) =>
+    url.includes('/me') ? { body: ME } : url.includes('/topics/tp-1') ? { body: discussion } : { body: BOARDS },
+  );
+  renderCompose('/new?edit=tp-1');
+
+  await waitFor(() => expect(screen.getByTestId('compose-sources-other-kind')).toBeTruthy());
+  expect(screen.queryByTestId('compose-sources')).toBeNull();
+});

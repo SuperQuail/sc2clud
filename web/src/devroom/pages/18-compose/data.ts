@@ -4,6 +4,7 @@ import type { BoardSlug } from '@/devroom/pages/12-topic/types';
 import { KIND_TAG, TOPIC_KIND_LABEL } from '@/devroom/pages/14-home/topic-kind';
 import type { TopicKind } from '@/devroom/pages/14-home/mock';
 import { MY_ACCOUNT, CANDIDATES } from '@/devroom/pages/12-topic/mock';
+import type { SourceRow } from './source-form';
 
 // 18-compose 的假数据。**全部从已有页面借来，本文件只补两样这里没有的东西**：
 //   ① 标题上限（数据库设计 §4.2 topics.title = varchar(200)）；
@@ -86,6 +87,41 @@ export const MENTIONS = CANDIDATES;
  *  战役社区的命根子是 .SC2Map / .zip / 录像，所以这三类必须在提示里点名。 */
 export const ATTACH_ACCEPT = '.SC2Map,.SC2MapMod,.zip,.rar,.7z,.SC2Replay,.rep,.txt,.md';
 export const ATTACH_HINT = '支持 .SC2Map / .zip / .SC2Replay / .txt；单个 ≤ 20MB，最多 5 个。';
+
+/** 下载来源编辑器的演示数据（形状照后端 SourceDTO，真页面里来自 GET /topics/{id} 的 sources[]）。
+ *  三条各代表一种情形：主站网盘（百度，带提取码）、代码仓库（GitHub）、已经归档的老来源。 */
+export const DEMO_SOURCES: SourceRow[] = [
+  {
+    id: 's_demo_1',
+    provider: 'baidu',
+    label: '主线战役 v3.1（含补丁）',
+    url: 'https://pan.baidu.com/s/1sc2cludDemoA',
+    extraction_code: 'sc2c',
+    size: '2.4 GB',
+    verified_at: new Date(Date.now() - 3 * 3600_000).toISOString(),
+    upkeep: 'active',
+  },
+  {
+    id: 's_demo_2',
+    provider: 'github',
+    label: '仓库 Releases（源码 + 打包脚本）',
+    url: 'https://github.com/sc2clud/campaign/releases',
+    extraction_code: null,
+    size: '18 MB',
+    verified_at: new Date(Date.now() - 26 * 3600_000).toISOString(),
+    upkeep: 'active',
+  },
+  {
+    id: 's_demo_3',
+    provider: 'pan123',
+    label: '旧版 v2.9（不再更新）',
+    url: 'https://www.123pan.com/s/sc2cludDemoB',
+    extraction_code: null,
+    size: '2.1 GB',
+    verified_at: new Date(Date.now() - 200 * 24 * 3600_000).toISOString(),
+    upkeep: 'archived',
+  },
+];
 
 /** 审核口径（后端 §9 与 15-admin 的审核队列）：trusted 作者直接发布，其余进待审 */
 export const REVIEW_HINT = {

@@ -13,7 +13,18 @@ import { visibleLength, type Draft } from './draft';
 // **按钮为什么是灰的 / 提交之后去哪**。分开写就会出现「禁用了但不说为什么」的洞
 // （盲审合并结论 §2.7：十几个关键动作点了无反馈，人分不清「静默」与「坏了」）。
 
-export function SubmitButton({ disabled, busy, onClick }: { disabled: boolean; busy: boolean; onClick: () => void }) {
+export function SubmitButton({
+  disabled,
+  busy,
+  onClick,
+  label = '提交审核',
+}: {
+  disabled: boolean;
+  busy: boolean;
+  onClick: () => void;
+  /** 真页面上「发布」与「保存修改」是两件事，所以这句话由调用方给（房间里默认提交审核） */
+  label?: string;
+}) {
   return (
     <Button
       data-testid='compose-submit'
@@ -25,18 +36,28 @@ export function SubmitButton({ disabled, busy, onClick }: { disabled: boolean; b
       loader={busy}
       onClick={onClick}
     >
-      {busy ? '提交中…' : '提交审核'}
+      {busy ? '提交中…' : label}
     </Button>
   );
 }
 
 /** 表单底部的提交区：缺什么、为什么灰、以及没接上的那些动作（明说，不许静默）。 */
-export function SubmitBar({ reason, busy, onSubmit }: { reason: string | null; busy: boolean; onSubmit: () => void }) {
+export function SubmitBar({
+  reason,
+  busy,
+  onSubmit,
+  label,
+}: {
+  reason: string | null;
+  busy: boolean;
+  onSubmit: () => void;
+  label?: string;
+}) {
   const blocked = reason !== null;
   return (
     <div className='flex flex-col gap-2 border-t border-border pt-3'>
       <div className='flex flex-wrap items-center gap-3'>
-        <SubmitButton disabled={blocked} busy={busy} onClick={onSubmit} />
+        <SubmitButton disabled={blocked} busy={busy} onClick={onSubmit} label={label} />
         <span className='text-[11px] text-muted-foreground'>草稿与自动保存还没定案（盲审合并结论 §7），这一版没有「存草稿」按钮。</span>
       </div>
       {blocked ? (
@@ -113,10 +134,11 @@ export function SubmitResult({
   );
 }
 
-/** 预览卡：标题/分区/标签/正文与提交的是**同一份状态**，所以预览不会与发布结果漂移。 */
-export function PreviewCard({ draft }: { draft: Draft }) {
+/** 预览卡：标题/分区/标签/正文与提交的是**同一份状态**，所以预览不会与发布结果漂移。
+ *  boardName 是给真页面留的：它拿到的 slug 来自接口，不在这份设计稿的分区表里。 */
+export function PreviewCard({ draft, boardName }: { draft: Draft; boardName?: string }) {
   const title = draft.title.trim();
-  const board = draft.board ? BOARD_NAME[draft.board] : '还没选分区';
+  const board = boardName || (draft.board ? BOARD_NAME[draft.board] : '还没选分区');
   const empty = visibleLength(draft.html) === 0;
   return (
     <article className='flex flex-col gap-2 rounded-lg border border-border bg-card p-4'>

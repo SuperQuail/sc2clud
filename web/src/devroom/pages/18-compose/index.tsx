@@ -13,14 +13,18 @@ import { FormAlert } from '@/devroom/pages/16-auth/form-alert';
 import { roomHref } from '@/devroom/room-links';
 import { BOARDS } from '@/devroom/pages/12-topic/mock';
 import { PreviewPane } from './preview-pane';
+import { SourceEditor } from './source-editor';
 import { BackLinks, SubmitBar, SubmitResult } from './submit-gate';
 import { disabledReason, type Draft } from './draft';
+import type { SourceInput } from '@/lib/api/forum';
+import type { SourceRow } from './source-form';
 import {
   ATTACH_ACCEPT,
   ATTACH_HINT,
   BODY_MAX,
   BOARD_OPTIONS,
   DEFAULT_BOARD,
+  DEMO_SOURCES,
   IMAGE_MAX,
   MENTIONS,
   NOT_ACTIVATED,
@@ -67,6 +71,9 @@ export default function ComposePage() {
   const [title, setTitle] = useState('');
   const [doc, setDoc] = useState<{ json: string; html: string; length: number }>({ json: '', html: '', length: 0 });
   const [attachments, setAttachments] = useState<Attachment[]>([]);
+  // 下载来源：房间里只改本地 state（真页面走 /topics/{id}/sources 的四条端点）
+  const [sources, setSources] = useState<SourceRow[]>(DEMO_SOURCES);
+  const [sourceBusy, setSourceBusy] = useState(false);
   const [busy, setBusy] = useState(false);
   const [submitted, setSubmitted] = useState<Draft | null>(null);
 
@@ -81,6 +88,38 @@ export default function ComposePage() {
       setSubmitted(post);
       window.scrollTo({ top: 0 });
     }, 700);
+  }
+
+  async function saveSource(body: SourceInput, id?: string) {
+    setSourceBusy(true);
+    await new Promise((r) => window.setTimeout(r, 250)); // 演示里也要看得出「保存中」
+    setSourceBusy(false);
+    setSources((list) =>
+      id
+        ? list.map((s) =>
+            s.id === id
+              ? { ...s, provider: body.provider, label: body.label ?? '', url: body.url, extraction_code: body.extraction_code ?? null, size: body.size ?? '' }
+              : s,
+          )
+        : list.concat({
+            id: 's_demo_' + Date.now(),
+            provider: body.provider,
+            label: body.label ?? '',
+            url: body.url,
+            extraction_code: body.extraction_code ?? null,
+            size: body.size ?? '',
+          }),
+    );
+  }
+
+  async function deleteSource(row: SourceRow) {
+    setSources((list) => list.filter((s) => s.id !== row.id));
+  }
+
+  async function verifySource(row: SourceRow) {
+    setSources((list) =>
+      list.map((s) => (s.id === row.id ? { ...s, verified_at: new Date().toISOString(), upkeep: 'active' } : s)),
+    );
   }
 
   function reset() {
@@ -127,6 +166,8 @@ export default function ComposePage() {
             onAttachments={setAttachments}
             disabled
           />
+          {/* 未激活时来源编辑器也画出来、整块禁用（与正文同一口径），不是藏起来 */}
+          <SourceEditor items={sources} disabled onSave={saveSource} onDelete={deleteSource} onVerify={verifySource} />
         </fieldset>
       </div>
     );
@@ -166,6 +207,18 @@ export default function ComposePage() {
               attachments={attachments}
               onAttachments={setAttachments}
               disabled={false}
+            />
+            {/* 来源编辑器：真页面只在「编辑已有的资源帖」时画（后端按 topic id 挂来源，发新帖时还没有 id）。
+                房间里整件画出来，好把「空 / 有数据 / 禁用」三种状态都看到。 */}
+            <p className='m-0 rounded-lg border border-dashed border-border px-3 py-2 text-[11px] leading-relaxed text-muted-foreground'>
+              下载来源（编辑器演示）：真页面在编辑已有的资源帖时才画它 —— 后端按帖子 id 挂来源，发新帖时还没有 id。发完点帖子页的「编辑」回来加。
+            </p>
+            <SourceEditor
+              items={sources}
+              busy={sourceBusy}
+              onSave={saveSource}
+              onDelete={deleteSource}
+              onVerify={verifySource}
             />
             <SubmitBar reason={reason} busy={busy} onSubmit={submit} />
           </main>

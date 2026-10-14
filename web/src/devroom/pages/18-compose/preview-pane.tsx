@@ -8,7 +8,18 @@ import type { Draft } from './draft';
 // 预览：把 draft.html 渲染出来的样子。渲染走 **@/ui/comment/comment-body → @/ui/markdown**，
 // 也就是帖子页正文用的同一个件（全站唯一渲染 content_html 的地方），所以预览与发布后**不可能不一致**。
 // 收起是纯 CSS 的 hidden，预览树不卸载 —— 否则每次展开都要重新渲染一遍图片。
-export function PreviewPane({ draft, show = true, onHide }: { draft: Draft; show?: boolean; onHide?: () => void }) {
+export function PreviewPane({
+  draft,
+  show = true,
+  onHide,
+  boardName,
+}: {
+  draft: Draft;
+  show?: boolean;
+  onHide?: () => void;
+  /** 真页面的分区名（slug 来自接口，不在设计稿的分区表里） */
+  boardName?: string;
+}) {
   return (
     <section aria-label='预览' className={'flex flex-col gap-2 ' + (show ? '' : 'hidden')}>
       <div className='flex flex-wrap items-center justify-between gap-2'>
@@ -19,7 +30,7 @@ export function PreviewPane({ draft, show = true, onHide }: { draft: Draft; show
           </Button>
         ) : null}
       </div>
-      <PreviewCard draft={draft} />
+      <PreviewCard draft={draft} boardName={boardName} />
     </section>
   );
 }

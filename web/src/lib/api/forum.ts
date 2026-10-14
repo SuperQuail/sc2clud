@@ -83,9 +83,12 @@ export type TopicDetail = Topic & {
 
 export type TopicSource = {
   id: string;
-  provider: 'netdisk' | 'github';
+  /** provider 是开放小集合，词表只有一处：SOURCE_PROVIDERS（对应后端 sources.go 的 switch） */
+  provider: SourceProvider;
   label: string;
   go_path: string;
+  /** 服务端存的原始链接：只在「编辑来源」时回填输入框（读者点的是 go_path，走 302 计数） */
+  url: string;
   extraction_code?: string | null;
   size?: string;
   verified_at?: string | null;
@@ -232,4 +235,73 @@ export type MyReport = {
 
 export function fetchMyReports(q: PageQuery = {}, signal?: AbortSignal): Promise<Paged<MyReport>> {
   return apiPage<MyReport>('me/reports', { query: pageQuery(q), signal });
+}
+
+// ---- 下载来源（资源帖）----
+//
+// 端点与形状对着后端抄：POST/PATCH/DELETE /api/v1/topics/{id}/sources[/{sid}]，
+// DTO 是 forum/internal/forum/dto.go 的 SourceDTO（读）与 handler.go 的 sourceBody（写，见下）。
+//
+// provider 是**开放小集合**：词表只有后端一处 —— forum/internal/forum/sources.go validSourceInput 的
+// switch。写错一个词不是「回落成通用图标」，而是**400 fields.provider**，所以这里把同一份词表列出来，
+// 18-compose 的编辑器用它出下拉（老库的 123pan/direct 在新站叫 pan123/website）。
+export const SOURCE_PROVIDERS = [
+  'baidu',
+  'aliyun',
+  'quark',
+  'lanzou',
+  'pan123',
+  'weiyun',
+  'onedrive',
+  'mega',
+  'website',
+  'github',
+  'gitee',
+  'other',
+] as const;
+
+export type SourceProvider = (typeof SOURCE_PROVIDERS)[number];
+
+/**
+ * 新增 / 修改下载源的请求体，逐字对应后端 sourceBody：
+ * provider 与 url 是 required（后端 binding），**PATCH 也是整条替换**（后端 updateSource 走的是同一个 body），
+ * 所以编辑时这些字段都要带上，不是「只发改过的那几个」。
+ *
+ * 注意 sourceBody **没有 upkeep**（归档字段后端没从 binding 开出来，见 sources.go 的注释与实现不一致），
+ * 所以归档来源在界面上是只读信息，不是可改的开关。extraction_code 传 null = 没有提取码。
+ */
+export type SourceInput = {
+  provider: SourceProvider;
+  url: string;
+  label?: string;
+  extraction_code?: string | null;
+  size?: string;
+};
+
+export function fetchSources(topicId: string, signal?: AbortSignal): Promise<TopicSource[]> {
+  return api<TopicSource[]>('topics/' + encodeURIComponent(topicId) + '/sources', { signal });
+}
+
+export function createSource(topicId: string, body: SourceInput): Promise<TopicSource> {
+  return api<TopicSource>('topics/' + encodeURIComponent(topicId) + '/sources', { method: 'POST', body });
+}
+
+export function updateSource(topicId: string, sourceId: string, body: SourceInput): Promise<TopicSource> {
+  return api<TopicSource>('topics/' + encodeURIComponent(topicId) + '/sources/' + encodeURIComponent(sourceId), {
+    method: 'PATCH',
+    body,
+  });
+}
+
+/** 真删（后端 DELETE 是物理删除）：填错、重复了才用；归档走 UpdateSource 的 upkeep。 */
+export function deleteSource(topicId: string, sourceId: string): Promise<null> {
+  return api<null>('topics/' + encodeURIComponent(topicId) + '/sources/' + encodeURIComponent(sourceId), {
+    method: 'DELETE',
+  });
+}
+
+/** 「我确认它还有效」：verified_at 与 upkeep 一起变（后端 §7.3），要作者显式点一次。 */
+export function verifySource(topicId: string, sourceId: string): Promise<{ ok: boolean }> {
+  const path = 'topics/' + encodeURIComponent(topicId) + '/sources/' + encodeURIComponent(sourceId) + '/verify';
+  return api<{ ok: boolean }>(path, { method: 'POST' });
 }
