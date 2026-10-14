@@ -56,3 +56,17 @@
     全套 `npx vitest run` → `Test Files 28 passed (28) / Tests 144 passed (144)`；`pnpm typecheck` 无输出；`npx eslint src/routes/messages.tsx src/routes/messages.test.tsx` → exit 0。
   - 下一步：B3 改 `web/src/devroom/pages/13-issue/issue-filter-bar.tsx:19`：`created: '最早创建'` → `'最新创建'`（后端三种排序列全 DESC：`forum/internal/forum/pgsql/issues.go:110-113,157`）。
   - 阻塞：无
+- [x] 第 3 步：B3 排序标签说实话 + B4 新建反馈弹窗那句过期话 + B5 评论赞/踩接上端点
+  - 做了什么：① `13-issue/issue-filter-bar.tsx` 的 `SORT_LABEL.created`：`'最早创建'` → `'最新创建'`（后端三种排序列全 DESC）；
+    ② `13-issue/new-issue-dialog.tsx:54` 删掉「（本页数据是本地的，用于验证交互闭环）」→「提交后会存到服务端」；
+    ③ `lib/api/issues.ts` 加 `setIssueCommentVote(id, value: 1|-1|0)`（PUT/DELETE `issue-comments/{id}/vote`，返回 **VoteResultDTO**：`like_count/dislike_count/my_vote`，字段名照 `dto.go:209`）；
+    `13-issue/issue-detail.tsx` 的 `IssueDetail` 加 `onVote?: (id, value) => void` 并传给 `CommentList`；
+    `routes/issues.tsx` 加 `voteComment` mutation（同向再点 = 取消 → value 0 → DELETE）并接进 `onVote` 与失败回执列表。
+  - 证据：`cd web && pnpm typecheck` → 无输出；
+    `npx vitest run src/routes/issues.test.tsx` → `Tests 5 passed`，新增用例「评论的赞 / 踩」；
+    **先证明它会红**：把 `onVote` 换成 `undefined` → `AssertionError: expected undefined to be 'DELETE'`（1 failed），接回来即绿。
+    全套 `npx vitest run` → `Test Files 28 passed (28) / Tests 145 passed (145)`；
+    `node scripts/check-size.ts` → `检查 261 个文件，超限 1 个，登记 1 个 / 文件体量门禁通过`（`routes/messages.tsx` 580 行，本来就在 PENDING 里）。
+  - 下一步：B8 —— 产品页出图脚手架：新建 `web/product.html` + `web/src/preview/product.tsx`（真 Shell + MemoryRouter，可切路由）、
+    `web/vite.preview.config.ts` 的 `rollupOptions.input` 加 `product: 'product.html'`，再写进 `开发必读 §8`。
+  - 阻塞：无

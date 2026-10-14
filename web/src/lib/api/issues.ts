@@ -109,6 +109,18 @@ export function updateIssue(
   return api<{ ok: boolean }>('issues/' + encodeURIComponent(id), { method: 'PATCH', body });
 }
 
+/** 评论的赞 / 踩：value=0 是「取消」，后端是 DELETE（与 setPostVote 同一套幂等语义）。
+ *  返回 VoteResultDTO（dto.go:209）—— 两个计数 + 我的投票，调用方可以直接用它刷新那一条。 */
+export function setIssueCommentVote(id: string, value: 1 | -1 | 0): Promise<VoteResult> {
+  return api<VoteResult>('issue-comments/' + encodeURIComponent(id) + '/vote', {
+    method: value === 0 ? 'DELETE' : 'PUT',
+    body: value === 0 ? undefined : { value },
+  });
+}
+
+/** VoteResultDTO：投票后的计数（拍板 §3：两个计数 + 我的投票）。 */
+export type VoteResult = { like_count: number; dislike_count: number; my_vote: number };
+
 /** 发评论：parent_id 非空 = 楼中楼（只允许指向顶层评论，后端保证）。 */
 export function createIssueComment(
   id: string,

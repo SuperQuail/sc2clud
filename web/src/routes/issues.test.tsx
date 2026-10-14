@@ -126,6 +126,38 @@ describe('问题反馈页（真端点）', () => {
     });
   });
 
+  it('评论的赞 / 踩：先 PUT {value:1}，同向再点发 DELETE（取消）', async () => {
+    const calls = mockApi((u) => {
+      if (u.includes('/api/v1/me')) return { body: { data: ME } };
+      if (u.includes('/topics/tp-1/issues')) return { body: { data: [ISSUE], next_cursor: null } };
+      if (u.includes('/issues/i-128/comments')) return { body: { data: [COMMENT], next_cursor: null } };
+      if (u.includes('/issue-comments/c-1/replies')) return { body: { data: [REPLY] } };
+      if (u.includes('/issues/i-128')) return { body: { data: { ...ISSUE, body_html: '<p>复现：读档后事件不触发。</p>' } } };
+      if (u.includes('/vote')) return { body: { data: { like_count: 12, dislike_count: 0, my_vote: 1 } } };
+      return undefined;
+    });
+    renderIssues('/issues?topic=tp-1');
+    fireEvent.click(await screen.findByRole('button', { name: /^打开反馈 #128/ }));
+    // 评论来自 IssueCommentDTO 的 my_vote（dto.go:198）：COMMENT 是 1 → 按钮已选、显示 12
+    await screen.findByText('确认是 bug，下个补丁修。');
+    const top = screen.getAllByRole('button', { name: '点赞，当前 12 个赞' })[0]!;
+    expect(top.className).toContain('ring-button-active');
+
+    // 同向再点一次 = 取消（my_vote=1 → 这次发 value=0，后端写 DELETE）
+    fireEvent.click(top);
+    await waitFor(() => {
+      const del = calls.find((c) => c.url.includes('/issue-comments/c-1/vote'));
+      expect(del?.method).toBe('DELETE');
+    });
+    // 另一半（PUT {value:x}）用点踩走：同一批按钮、同一个端点，只换 value。
+    // 为什么不拿「先点赞再取消」证明 PUT：那两下之间界面还没换态，第一下也只会发 value=0。
+    fireEvent.click(screen.getAllByRole('button', { name: '点踩' })[0]!);
+    await waitFor(() => {
+      const down = calls.find((c) => c.url.includes('/issue-comments/c-1/vote') && c.method === 'PUT');
+      expect(down?.body).toEqual({ value: -1 });
+    });
+  });
+
   it('未登录：点「报个 Bug」只给一句实话，不发任何写请求', async () => {
     const calls = mockApi((u) => {
       if (u.includes('/api/v1/me')) return { body: { data: null } };

@@ -16,7 +16,9 @@ export type Scope = 'all' | 'mine' | 'assigned';
 export const SORT_LABEL: Record<SortKey, string> = {
   updated: '最新更新',
   comments: '评论最多',
-  created: '最早创建',
+  // 后端三种排序列全是 DESC（forum/internal/forum/pgsql/issues.go:110-113,157），
+  // 所以 created 是「最新创建」。原先写「最早创建」是照设计稿 mock 抄的，那是一句假话。
+  created: '最新创建',
 };
 
 // Ring UI 的 Select 只认条目对象：selected 要传**条目本身**，不是 key（登记表里记过的坑）

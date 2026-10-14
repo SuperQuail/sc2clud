@@ -11,6 +11,7 @@ import {
   fetchIssueComments,
   fetchIssues,
   fetchTopicIssues,
+  setIssueCommentVote,
   updateIssue,
   type Issue,
   type IssueComment as ApiIssueComment,
@@ -231,6 +232,19 @@ export function IssuesPage() {
     [rows, parsed, pickedLabels],
   );
 
+  // 评论的赞 / 踩：同向再点一次 = 取消（value=0 → DELETE）。怎么知道「同向」：CommentData 上的 liked/disliked
+  // 是 toComment() 从 my_vote 换算的（dto.go:198），与帖子页 onVoteComment 用同一个判定。
+  const voteComment = useMutation({
+    mutationFn: (v: { id: string; value: 1 | -1 }) => {
+      const mine = (thread.data ?? [])
+        .flatMap((c) => [c, ...(c.replies?.items ?? [])])
+        .find((c) => c.id === v.id);
+      const same = v.value === 1 ? mine?.liked === true : mine?.disliked === true;
+      return setIssueCommentVote(v.id, same ? 0 : v.value);
+    },
+    onSettled: () => void queryClient.invalidateQueries({ queryKey: ['issue', selectedId, 'comments'] }),
+  });
+
   const labelOptions = useMemo(() => [...new Set(rows.flatMap((r) => r.tags))], [rows]);
   const topicTitle = rows[0]?.topic_title ?? '';
   const hasNext = sort !== 'comments' && list.hasNextPage;
@@ -240,6 +254,7 @@ export function IssuesPage() {
       { what: '提交反馈', m: create },
       { what: '改状态', m: toggle },
       { what: '发评论', m: comment },
+      { what: '评论投票', m: voteComment },
     ].find((s) => s.m.isError) ?? null);
 
   function closeDialog() {
@@ -421,6 +436,8 @@ export function IssuesPage() {
                 candidates={[]}
                 onSetStatus={(next) => toggle.mutate(next)}
                 onComment={(parentId, body) => comment.mutate({ parentId, body: body.json })}
+                // on = 已经在同向投过 -> 这一次是取消（CommentList 的约定与帖子页一致）
+                onVote={(id, value) => voteComment.mutate({ id, value })}
                 onClose={() => setSelectedId(null)}
               />
             ) : null}

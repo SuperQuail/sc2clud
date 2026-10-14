@@ -51,7 +51,7 @@ export function NewIssueDialog({
         <div className='flex flex-col gap-1'>
           <h2 className='text-base font-semibold text-foreground'>我要反馈</h2>
           <p className='text-[12px] text-muted-foreground'>
-            先选类型，再写标题与正文。提交后会立刻出现在左边的列表里（本页数据是本地的，用于验证交互闭环）。
+            先选类型，再写标题与正文。提交后会存到服务端，并立刻出现在左边的列表里。
           </p>
         </div>
 

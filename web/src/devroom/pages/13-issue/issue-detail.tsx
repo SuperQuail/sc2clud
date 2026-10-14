@@ -23,6 +23,7 @@ export function IssueDetail({
   candidates,
   onSetStatus,
   onComment,
+  onVote,
   onClose,
 }: {
   issue: IssueDetail;
@@ -31,6 +32,8 @@ export function IssueDetail({
   candidates: MentionCandidate[];
   onSetStatus: (next: IssueDetail['status']) => void;
   onComment: (parentId: string | null, body: { json: string; html: string }) => void;
+  /** 评论的赞 / 踩：不传就是只显示两个数字（后端 PUT /issue-comments/{id}/vote 一直在） */
+  onVote?: (id: string, value: 1 | -1) => void;
   onClose: () => void;
 }) {
   const open = issue.status === 'open';
@@ -93,7 +96,14 @@ export function IssueDetail({
         <CommentBody body={issue.bodyHtml} className='prose-sm max-w-none text-[15px] leading-[1.75] text-foreground' />
       </article>
 
-      <CommentList comments={comments} total={issue.commentCount} me={me} candidates={candidates} onSubmit={onComment} />
+      <CommentList
+        comments={comments}
+        total={issue.commentCount}
+        me={me}
+        candidates={candidates}
+        onSubmit={onComment}
+        onVote={onVote}
+      />
     </section>
   );
 }
