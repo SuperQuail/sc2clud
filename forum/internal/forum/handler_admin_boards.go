@@ -11,7 +11,6 @@ import (
 
 // 分区管理的 handler（C2）。仍然只做四件事：绑定 → 取 actor → 调 service → httpx.OK/Created/Fail。
 
-
 // ── 分区管理（C2） ───────────────────────────────────────────────
 // handler 仍然只做四件事：绑定 → 取 actor → 调 service → httpx.OK/Created/Fail。
 
