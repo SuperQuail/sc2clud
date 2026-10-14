@@ -242,7 +242,10 @@ func (a *blindAPI) blindTopic(name string) (*blindActors, string) {
 	modID := a.h.seedUser("mo"+name, roleID, 1, true)
 	mod := a.h.actor(modID, roleID, authz.PermPostReview)
 	otherID := a.h.seedUser("ot"+name, roleID, 1, false)
-	other := a.h.actor(otherID, roleID)
+	// other 带 topic.edit.own：app 层的 perm 中间件就是这么放行的（它判的是权限点，
+	// 不是这一条主题归谁）。**只有过了中间件才走得到 service 的归属判定** ——
+	// 少了这个权限，A3 测的会是中间件的 403，而不是「改别人的帖」那条路径。
+	other := a.h.actor(otherID, roleID, authz.PermTopicEditOwn)
 
 	d := a.h.mustTopic(author, CreateTopicInput{BoardSlug: "b" + name, Title: "待审 " + name, ContentMD: "第一版正文"})
 	if d.ReviewState != "pending" {
@@ -388,12 +391,29 @@ func TestBlindGuardsOnHTTP(t *testing.T) {
 		t.Fatalf("越权判定不该改状态，实际 %q", s)
 	}
 
-	// 无权者改别人的正文：**中间件在 handler 之前就 403 了**，
-	// service 里那条「不可见 → topic.not_found」根本到不了。
-	// 与 errors.go 写的「不存在 / 不可见 / 已软删 不区分」冲突，单列见报告「存疑 3」。
+	// 无权者改别人的正文：404，不是 403（缺陷 D4 已修）。
+	//
+	// 要测到 requireTopicEdit 那一层，主题必须**先放行**（待审帖对别人本来就不可见，
+	// 那条路走的是 TopicRef 的 0 行，测不出归属判定）。放行之后两条路径给同一个 404：
+	// 「存在但不归你」与「不存在」不可区分 —— 这正是 errors.go 承诺的「不区分」。
+	// 旧行为：service 的 requireTopicEdit 返回 403，等于对一个普通用户承认这条主题存在。
+	a.as(ac.mod)
+	if w := a.review(id, `{"action":"approve"}`); w.Code != http.StatusOK {
+		t.Fatalf("前置放行失败: %d %s", w.Code, w.Body.String())
+	}
 	a.as(ac.other)
 	w = a.patch(topicPath(id), `{"content_md":"我要改别人的帖"}`)
-	a.wantCode(w, http.StatusForbidden, "common.forbidden")
+	a.wantCode(w, http.StatusNotFound, "topic.not_found")
+	// 内容一个字都没动
+	var body string
+	if err := a.h.pool.QueryRow(a.h.ctx,
+		"SELECT content_md FROM posts p JOIN topics t ON t.id = p.topic_id WHERE t.public_id = $1 AND p.floor = 1",
+		id).Scan(&body); err != nil {
+		t.Fatal(err)
+	}
+	if body != "第一版正文" {
+		t.Fatalf("越权编辑不该改到正文，实际 %q", body)
+	}
 
 	// 不存在的主题：404（这条走的是 service 的 ErrTopicNotFound）
 	a.as(ac.other)

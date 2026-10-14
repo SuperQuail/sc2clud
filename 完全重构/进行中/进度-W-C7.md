@@ -33,9 +33,22 @@
     `TestBlindGuardsOnHTTP` 那条「无权者改别人的正文」得到 404 topic.not_found。
   - 阻塞：无
 
-- [ ] D4 无权编辑别人的主题返回 403 vs errors.go 注释「不区分」
-  - 证据：
-  - 下一步：
+- [x] D4 无权编辑别人的主题返回 403 vs errors.go 注释「不区分」
+  - 证据：**选了改行为**（保留 errors.go 的承诺）：`forum/internal/forum/topics.go` 的
+    `requireTopicEdit` 最后一行 `apperr.ErrForbidden` → `ErrTopicNotFound`（UpdateTopic 的调用点
+    也加了注释）。理由：这个函数的调用者都已经过了中间件的 `topic.edit.own`，拒绝只可能发生在
+    别人的帖上；403 就是对普通用户承认「这条主题存在」。取舍写在 commit 里。
+    **会红的证明**：把那一行临时换回 `apperr.ErrForbidden` →
+    `go test ./internal/forum/ -run TestBlindGuardsOnHTTP -v` →
+    `blind_probe_test.go:406: 期望 HTTP 404，实际 403`；换回 → PASS。
+    探针台同时修了一处**测不准**：`ac.other` 原先没有 `topic.edit.own`，A3 那条测的是
+    中间件的 403、根本到不了归属判定；现在给它这个权限，并且先放行主题（待审帖对别人本来
+    就不可见，走的是 TopicRef 的 0 行）—— 这样测的才是 `requireTopicEdit`。
+    `go test ./internal/forum/ -count=1` ok（59s，全包）；`gofmt -l internal/forum/` 空、`go vet` 退出 0。
+  - 下一步：M7 —— `forum/internal/forum/pgsql/review_queue.go` 的 `reviewQueueColumns` 加
+    `r.username, COALESCE(NULLIF(r.nickname,''), r.username), r.avatar_hash …` 与 `t.reviewed_at`
+    （LEFT JOIN users r ON r.id = t.reviewed_by），`ReviewQueueRow` 加 `Reviewer *UserRow` +
+    `ReviewedAt *time.Time`，DTO 加 `reviewer`/`reviewed_at` 两个 json 字段。
   - 阻塞：无
 
 - [ ] M4 人工判定不落 review_events

@@ -356,6 +356,8 @@ func (s *Service) UpdateTopic(ctx context.Context, actor *authz.Actor, publicID 
 		}
 		return err
 	}
+	// 改不了就是「不存在」：查不到 / 不可见 / 已软删与「不是你的帖」给同一个 404。
+	// 分开就等于承认这条主题存在（errors.go 的承诺），而这正是 403 会漏的东西。
 	if err := s.requireTopicEdit(actor, ref); err != nil {
 		return err
 	}
@@ -557,11 +559,17 @@ func (s *Service) PinTopic(ctx context.Context, actor *authz.Actor, publicID, fi
 
 // requireTopicEdit 是「改这条主题」的权限：作者走 own，其他人走 delete.any（管理端）或版主作用域。
 // 拍板 §1.2 没有单独的 topic.edit.any——改别人的帖子由 delete.any + board.moderate 表达。
+//
+// 判不下来时给 ErrTopicNotFound 而不是 ErrForbidden（**故意的**）：这个函数的调用者都已经
+// 过了中间件的 topic.edit.own，也就是「能改自己的帖」，所以拒绝只可能发生在别人的帖上 ——
+// 403 等于告诉一个普通用户「这条主题存在，只是不归你」。errors.go 承诺过
+// 「不存在 / 不可见 / 已软删不区分」，这一条就是那句话的落点（D4，2026-10-14）。
+// 能看见这条主题的人（版主 / 持 delete.any 的管理员）走的是上面那个分支，不受影响。
 func (s *Service) requireTopicEdit(actor *authz.Actor, ref *pgsql.TopicRef) error {
 	if canEditTopic(actor, authz.PermTopicEditOwn, authz.PermTopicDeleteAny, ref.AuthorID, ref.BoardID) {
 		return nil
 	}
-	return apperr.ErrForbidden
+	return ErrTopicNotFound
 }
 
 func parseTopicSort(s string) (pgsql.TopicSort, error) {
