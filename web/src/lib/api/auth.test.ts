@@ -4,7 +4,38 @@ import { mockFetch } from '@/test/fetch-mock';
 
 afterEach(() => {
   vi.unstubAllGlobals();
+  document.head.innerHTML = '';
+  vi.resetModules();
 });
+// ── D2（2026-10-14 实测：「顶栏右上角头像裂图，主页头像正常」）───────────────────────────────
+//
+// 根因不在前端渲染：两条 URL 的**来源不同**。
+//   · 主页：GET /users/{handle} → user.Profile.Avatar 走 media 的 urlOf() → `/img/<hash>`（完整路径）；
+//   · 顶栏：GET /me → auth.MeResult.Avatar = deref(u.AvatarHash)（forum/internal/auth/account.go:507）——
+//     **裸哈希**，既没有 /img/ 前缀，也没有 media/avatar.go:14-22 那段默认头像回落。
+// 于是 fetchMe 里那层「补 base」（auth.ts:34）在真数据上**没有生效对象**：补出来的是 /dev/<64位hex> → 404
+// （真站实测：/dev/img/<hash> 是 webp，/dev/<hash> 不是图）。
+//
+// 这条用例是那份缺陷的可执行形态：**先红**。等后端把 /me 的 Avatar 交给 user.AvatarURL 拼成
+// `/img/<hash>`（与 /users/{handle} 用同一份实现、同样回落默认头像池）之后，它自动转绿。
+// 后半段同时钉住「不要重复补前缀」：已带 base 的值必须原样穿过。
+it('D2：/me 的头像下发必须是 /img/<hash>（裸哈希会让顶栏拼成 /dev/<hash> → 404）', async () => {
+  // BASE 是模块加载时从 <base href> 读的，而缺陷只在 /dev/ 前缀下可见（生产 BASE=/ 时补不出来前缀），
+  // 所以照 url.test.ts 的写法：先换 base、清模块，再动态 import。
+  vi.resetModules();
+  document.head.innerHTML = '<base href="/dev/">';
+  const mod = await import('./auth');
+  mockFetch([{ body: { data: { handle: 'Alenger', nickname: '爱兰琪尔', avatar: '8bec38b093bbc516c0de99f21466ede0d7cad56eddb1f5fabce3c475ec068604' } } }]);
+  const now = await mod.fetchMe();
+  // 旧行为：裸哈希被 appPath 当成站点相对路径 → /dev/<64位hex>（真站 404）
+  expect(now?.avatar).not.toContain('8bec38b093bbc516c0de99f21466ede0d7cad56eddb1f5fabce3c475ec068604');
+
+  // 后端**应该**下发的形状（= /users/{handle} 那一份：media 的 urlOf 拼过 /img/）
+  mockFetch([{ body: { data: { handle: 'Alenger', nickname: '爱兰琪尔', avatar: '/img/8bec38b093bbc516c0de99f21466ede0d7cad56eddb1f5fabce3c475ec068604' } } }]);
+  const ok = await mod.fetchMe();
+  expect(ok?.avatar).toBe('/dev/img/8bec38b093bbc516c0de99f21466ede0d7cad56eddb1f5fabce3c475ec068604');
+});
+
 
 // 图形验证码是「id + answer」成对校验的（服务端按 id 找答案，无论对错都作废），
 // 所以请求体里两个字段名都必须与后端契约逐字一致：captcha_id / captcha_answer。
