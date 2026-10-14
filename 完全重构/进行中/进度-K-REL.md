@@ -87,3 +87,16 @@
     `onJoin`/成员格）—— 两个文件都不在我的作用域，端点与客户端都已就绪，见本文件末尾「需要 Lead 接线」第 3/4 条。
   - 阻塞：无（前端全量 lint 里有 **10 条别人文件的 error**：`web/scripts/shoot-kfe.ts`（未跟踪，另有 typecheck 错）、
     `routes/admin/{audit,reports,rewards,roles,settings,titles,users}.tsx` 的未用 import。我改的文件 lint 干净。）
+- [x] 收工校验（我这一个包 + 我改的两个包）
+  - 证据：`gofmt -l .` → **我改的文件一个都不在输出里**（列出的 7 个是别人在途的：
+    `internal/forum/{dto.go,board_levels_test.go,hot_sort_test.go,issue_filter_test.go,path_order_test.go,revision_test.go}` 与
+    `internal/forum/pgsql/boards.go`）；`go vet ./...` → **vet-exit=0**（全模块）；
+    `go test ./internal/follow/... ./internal/notify/... -count=1` →
+    `ok forum/internal/follow 17.750s` / `ok forum/internal/notify 27.952s` / `ok forum/internal/notify/pgsql 8.932s`；
+    前端 `npx vitest run` → **32 files / 164 tests passed**；`node scripts/check-size.ts` 通过；
+    `check-ui-usage` / `check-urls` / `check-controls` 三条门禁通过。
+  - 下一步：等 Lead 接线后，用真后端验一次 SSE：`curl -N -b <cookie> http://127.0.0.1:8080/api/v1/notifications/stream`
+    应看到 `: connected`，随后 15 秒一条 `: ping`；另开一个会话给别人发一条回复，流上应出现 `event: unread` + `data: {"changed":true}`。
+  - 阻塞：**未出图**（本机没有后端：`127.0.0.1:8080` 没起；产品预览的桩数据在 `web/src/preview/product-fixture.ts`，
+    它没有 `/boards/{slug}/follow` 这条桩，而那个文件不在我的作用域）。所以这一轮的验收走的是**组件级用例**
+    （真组件 + 真渲染 + 记账断言），不是截图；出图这一步需要 Lead 或出图脚手架先给 follow 补一条桩。
