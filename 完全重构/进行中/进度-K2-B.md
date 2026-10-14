@@ -51,3 +51,21 @@
 3. 与另一个 agent 撞过三次：`forum/internal/forum/{dto,map,topics,issues,handler}.go`、
    `web/src/routes/topic.tsx`、`web/src/devroom/pages/15-admin/screens/review.tsx` 都是**别人的在途文件**，
    本轮一个字节都没碰（`pnpm typecheck`/`pnpm lint` 现存的那几条 error 全在它们里面）。
+
+## 收工验收（全量）
+
+- 后端：`go test ./... -count=1` → **34 个包全 ok**（forum 139.6s / media 96.8s / user 57.8s /
+  app 53.1s —— app 的 e2e 会真跑迁移，所以 **0030 被真的 apply 过**）；
+  `gofmt -l .` **空**；`go vet ./...` **0**。
+- 前端：`pnpm typecheck` 我的文件 0 错、`pnpm lint` 我的文件 0 错、`npx vitest run` **36 文件 184 用例全绿**；
+  `gate:size` / `gate:urls` / `gate:tokens` / `gate:controls` 全过。
+  仓库里现存的 1 条 typecheck 错与 1 条 lint 错都在 `web/src/routes/topic.tsx`（别人的在途文件）。
+- 进程：出图的 dev server（5261）已按 PID 收回，端口已释放；出图脚本自己起的 Chrome 由脚本
+  `proc.kill()` 关掉。
+
+## 一条已知限制（没做，留给下一个人定）
+
+分区封面（`boards.cover_hash`）**不吃引用计数**：图片是走 `POST /me/cover` 传上来的（那一行 refcount=1），
+PATCH 上来之后论坛域既没 +1 也没在换图时 −1 —— 所以它不会被 `image:gc` 收走（正好不会裂图），
+代价是「换掉的旧分区封面」会永远留在盘上。要收口就得让 forum 域调 `media.IncRefTx/DecRefTx`
+（d5-content-交接 §118 那张时机表本来就要求这样），而那是跨域接线，不在这轮范围里。
