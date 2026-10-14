@@ -68,7 +68,28 @@
   - 下一步：F2 出图（同第 1 步的下一步）。
   - 阻塞：无
 
-- [ ] F2 dev 里入口是否显眼可点、不遮挡内容（1440 / 390 出图）
+- [x] 第 3 步：F2 dev 里的入口显眼可点、不遮挡内容（1440 / 390 出图）—— **发现并修掉一处遮挡**
+  - 做了什么：出图看实物。图上量到 390 视口下入口是 **144×40 的胶囊、落在 [230,844]**，而页脚
+    （`app/shell.tsx:123-129`，`py-6` + 一行字，高 73px）正是 **y=827 起** —— 它压在页脚
+    「SC2clud · 星际争霸战役社区」上。浮层不给页面留位，只能让自己别盖住东西：给 `dev-entry.tsx` 的 `className`
+    加 `max-sm:bottom-20 max-sm:right-3 max-sm:px-3 max-sm:py-2 max-sm:text-xs`（**没有新令牌、没有手写控件**）。
+    出图台：`shots/wfi-shot.mjs`（**新文件**，端口 5239/9243 是 W-FI 的编号；服务的是 `web/dist`
+    的 dev 制品 —— 产品页上才有这个入口，preview 入口不渲染 `DevEntry`）。
+  - 证据：`node shots/wfi-shot.mjs entry`（先 `VITE_DEVROOM=1 pnpm build` + DevRoom 并入 `dist/devroom/`）→
+    修前 390：`rect:[230,844,144,40]`（页脚自 827 起，压住站点名）；
+    修后 390：`rect:[258,788,120,32] insideViewport:true hitTest:true`（120×32 ≥ 最小点按尺寸，且整块在页脚之上）；
+    1440：`rect:[1280,844,144,40] hitTest:true`（页脚文字居中，不重叠）。
+    `hitTest`/`hitTag` 是 `document.elementFromPoint` 的实测值，为 `A.fixed bottom-4 right-4 z-50 …` 本身
+    —— 证明**可点、没被盖住**，不是"看着像能点"。控制台问题：无。
+    图（gitignore，存在本机）：`shots/wfi/f2-entry-home.png`（1440）、`f2-entry-home-390.png`（390，修后）、
+    `f2-entry-home-1440-strip.png`（右下角放大条，看得清压没压页脚）。
+  - 下一步：I1 把 `inline={false}` 收口（`src/ui/comment/comment-actions.tsx`、`src/ui/rich/markdown-editor.tsx`、
+    `src/ui/rich/image-uploader.tsx`、`src/ui/message/notice-settings.tsx` + `11-profile` 的「关注 / 发私信」），
+    出图台用 `node shots/wfi-shot.mjs inline`（走 `/devroom/?page=08-comments|09-rich|10-messages`）。
+  - 阻塞：无
+
+- [ ] F2（已完成，见上）
+- [ ] I1 `inline={false}` 统一收口
 - [ ] I1 `inline={false}` 统一收口（comment-actions / markdown-editor / image-uploader / notice-settings + 11-profile 的「关注/发私信」）
 - [ ] I2 `GRID` 三处收一处（routes/home.tsx、routes/board.tsx、devroom/pages/14-home/index.tsx）
 - [ ] I3 `Empty`（routes/_parts/state.tsx）与 `EmptyState`（14-home/states.tsx）收一份
