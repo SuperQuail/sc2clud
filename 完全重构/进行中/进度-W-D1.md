@@ -52,6 +52,27 @@
     整表**静默**返回空列表（这一条差点被我当成「筛选写错了」查半天）；
     ② `topics.last_reply_at` 在迁移里是 NOT NULL **无 DEFAULT**（`now()` 只在 ent 侧），
     原生 SQL 造数据必须显式给值。
-  - 下一步：C6 —— `POST /admin/users/batch`（`forum/internal/auth/admin_batch.go`，逐条调
-    `BanUser` / `ActivateUser` / `SetUserRole`，每条自己的事务 + 自己的审计；一个事务全回滚是不许的）。
+  - 下一步：C6 —— `POST /admin/users/batch`。
+  - 阻塞：无
+
+- [x] 第 3 步：C6 —— `POST /admin/users/batch`（逐条返回成功失败）
+  - 做了什么：新增 `forum/internal/auth/admin_batch.go`（`BatchUsers` + `BatchItemResult`/`BatchUsersResult`）、
+    `admin_batch_test.go`；`handler.go` 加 `POST /users/batch` 与 `adminBatchUsers`。
+    四个动作 `ban/unban/activate/set_role` **全部转发到单条端点的同一套实现**
+    （`BanUser`/`ActivateUser`/`SetUserRole`），不复制语义 —— 所以 `guardLastSuper`、
+    `role.assign` 的权限判定、幂等性与审计在批量路径上逐字相同。
+  - 证据（**先红后绿**）：路由没挂时 `go test ./internal/auth/ -count=1 -run TestBatchUsers -v` →
+    `admin_batch_test.go:87: 游客必须是 401，实际 404` + `HTTPEnvelope ... 实际 404`；挂上后八条全 PASS，
+    整包 `go test ./internal/auth/... -count=1` → `ok forum/internal/auth 54.6s` + `TEST_EXIT=0`。
+    八条用例：401/403 守卫、五个包级 400（空 ids / 非法 action / 无 action / 超 100 / 无身份）、
+    HTTP 包络 `{total,succeeded,failed,items[{id,ok,error{code,message}}]}` + 落库断言、
+    **4 条里成功 2 失败 2 且顺序与请求一致**（不存在 + 非 uuid 各一条，失败不拖垮后面的）、
+    最后一名超管不能被批量停用（错误码 `admin.last_super`）、
+    `set_role` 对只有 `user.ban` 的 admin 逐条 403 而换成超管就成功、批量激活幂等 + 两行审计、unban 反向。
+  - 一个刻意的取舍（写下来免得被当 bug）：**缺 `role_id` 是逐条失败而不是整批 400**。
+    理由：同一批里可能混着别的动作，整批 400 会把本来能做的也挡掉；而「这一条不成立」
+    正是 items[] 要表达的东西。整批 400 只留给「这次请求本身不成立」的四种（空/超限/非法动作/无身份）。
+  - 下一步：C3 —— `GET /admin/diagnostics`（`forum/internal/auth/admin_diagnostics.go` +
+    `handler.go` 的 `a.GET("/diagnostics", svc.Perm(authz.PermSiteSetting), ...)`；
+    `cfg.HTTP.Debug == false` 时返回 **404 common.not_found**，不是空 200）。
   - 阻塞：无

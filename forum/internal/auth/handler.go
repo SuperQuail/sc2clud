@@ -58,6 +58,8 @@ func (h *Handler) Register(rg *gin.RouterGroup) {
 	// 用户管理（C1）：读路径同样挂 user.ban —— 它返回邮箱、三根状态轴、处罚与追加权限，
 	// 与 /admin/roles 一族不是同一档信息（§5.8 归在「用户与权限」那一组）。
 	a.GET("/users", svc.Perm(authz.PermUserBan), h.adminListUsers)
+	// 批量在 /users/:id **之前**：gin 的静态段优先于参数段，但把顺序写对也让读的人不必去想这件事。
+	a.POST("/users/batch", svc.Perm(authz.PermUserBan), h.adminBatchUsers)
 	a.GET("/users/:id", svc.Perm(authz.PermUserBan), h.adminUserDetail)
 	a.GET("/roles", svc.Perm(authz.PermRoleEdit), h.adminListRoles)
 	a.GET("/permissions", svc.Perm(authz.PermRoleEdit), h.adminListPermissions)
@@ -413,6 +415,30 @@ func (h *Handler) adminListUsers(c *gin.Context) {
 		return
 	}
 	httpx.OKList(c, items, next)
+}
+
+// batchUsersReq 是 POST /admin/users/batch 的体（§5.1 定的形状）。
+type batchUsersReq struct {
+	IDs    []string `json:"ids" binding:"required"`
+	Action string   `json:"action" binding:"required"`
+	RoleID int64    `json:"role_id"`
+	Reason string   `json:"reason"`
+}
+
+func (h *Handler) adminBatchUsers(c *gin.Context) {
+	var req batchUsersReq
+	if err := httpx.Bind(c, &req); err != nil {
+		httpx.Fail(c, err)
+		return
+	}
+	out, err := h.svc.BatchUsers(c.Request.Context(), actorFrom(c), BatchUsersInput{
+		IDs: req.IDs, Action: req.Action, RoleID: req.RoleID, Reason: req.Reason, IP: ClientIP(c),
+	})
+	if err != nil {
+		httpx.Fail(c, err)
+		return
+	}
+	httpx.OK(c, out)
 }
 
 func (h *Handler) adminUserDetail(c *gin.Context) {
