@@ -27,6 +27,9 @@ func NewHandler(svc *Service, actor ActorFunc) *Handler {
 // Register 挂 /api/v1 下的路由。bodyLimit 传 nil 时沿用全局默认（拍板 §9.6：按路由设上限，
 // 不许全局一刀切——三个上传端点的上限是 64KiB / 2MiB / 512KiB）。
 func (h *Handler) Register(rg *gin.RouterGroup, requireLogin, perm func(...string) gin.HandlerFunc, bodyLimit func(int64) gin.HandlerFunc) {
+	// 非 uuid 的 {id} 直接进 SQL 会得到 PostgreSQL 22P02 → 500 common.internal（见 platform/httpx.ValidPathIDs）。
+	rg = rg.Group("", httpx.ValidPathIDs("id"))
+
 	limit := func(n int64) []gin.HandlerFunc {
 		if bodyLimit == nil {
 			return nil
