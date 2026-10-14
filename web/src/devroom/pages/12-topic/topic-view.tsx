@@ -95,6 +95,18 @@ export type TopicViewProps = {
 
   // —— 右栏后两格 ——
   channels: PaymentChannel[];
+  /** 作者的打赏提示文案（user_donation_settings.notice_text；后端没有「每渠道一句」这一列） */
+  channelNotice?: string;
+  /** 打赏位：作者本人不显示（后端拒绝自己给自己打赏） */
+  donateIsSelf?: boolean;
+  /** 「设置我的收款码」的去处（作者本人时那一格是入口） */
+  donateSettingsHref?: string;
+  onDonate?: (v: { channelId: string; amountCents: number }) => void;
+  donatePending?: boolean;
+  donateError?: string | null;
+  donateDone?: string | null;
+  donateLoginHref?: string;
+  donateLoggedIn?: boolean;
   issueCount: number;
   /** 反馈页的地址；还没有那一页时改给 onOpenFeedback（点一下有回执，不留 404 死链） */
   feedbackHref?: string;
@@ -152,6 +164,15 @@ export function TopicView({
   replyPrompt,
   commentsFallback,
   channels,
+  channelNotice,
+  donateIsSelf = false,
+  donateSettingsHref = '',
+  onDonate,
+  donatePending,
+  donateError,
+  donateDone,
+  donateLoginHref,
+  donateLoggedIn = false,
   issueCount,
   feedbackHref,
   issueHrefFor,
@@ -310,7 +331,18 @@ export function TopicView({
         >
           <BoardSummary board={board} composeHref={composeHref} onJoin={onJoin} />
           <AuthorCard author={author} profileHref={authorHref} />
-          <RewardPanel channels={channels} />
+          <RewardPanel
+            channels={channels}
+            notice={channelNotice}
+            isSelf={donateIsSelf}
+            settingsHref={donateSettingsHref}
+            onDonate={onDonate}
+            donationPending={donatePending}
+            donationError={donateError}
+            donationDone={donateDone}
+            loginHref={donateLoginHref}
+            loggedIn={donateLoggedIn}
+          />
           <IssueNudge
             variant='rail'
             issueCount={issueCount}

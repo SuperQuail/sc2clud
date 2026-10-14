@@ -20,10 +20,27 @@ export type PaymentChannel = {
   sort: number;
 };
 
-/** `GET /users/{handle}/channels`：作者开关关着时后端回**空数组**（不是 null）。 */
+/**
+ * 本人的收款码：`GET /me/payment-channels`（`media/handler.go:44`，**不分页**，包络是 `{data:[...]}`）。
+ * 与下面那条 `/users/{handle}/channels` 是两个端点，别混用：那条走 reward 域、要过 `show_channels` 闸、
+ * 给的是**别人能看到的**那一份；本人管理自己的码用它 —— 关掉展示开关后本人仍要能看见并删掉它们。
+ */
+export async function fetchMyChannels(signal?: AbortSignal): Promise<PaymentChannel[]> {
+  const out = await api<PaymentChannel[]>('me/payment-channels', { signal });
+  return Array.isArray(out) ? out : [];
+}
+
+/**
+ * `GET /users/{handle}/channels`：作者开关关着时后端回**空数组**（不是 null）。
+ *
+ * `Array.isArray` 这一层不是多余的：`apiPage` 只保证「取到了 payload.data」，
+ * 而**响应形状不是数组**（代理回了一段 HTML/对象、后端换了包络）时它会原样把对象交出来。
+ * 调用方立刻 `.map` 就是这个页面崩掉 —— 2026-10-14 settings.test 真抓到过一次（`rows.map is not a function`
+ * 把整页打成错误页），所以数组这一层在客户端收口，不在每个调用点重复写。
+ */
 export async function fetchUserChannels(handle: string, signal?: AbortSignal): Promise<PaymentChannel[]> {
   const p = await apiPage<PaymentChannel>('users/' + encodeURIComponent(handle) + '/channels', { signal });
-  return p.items;
+  return Array.isArray(p.items) ? p.items : [];
 }
 
 /**

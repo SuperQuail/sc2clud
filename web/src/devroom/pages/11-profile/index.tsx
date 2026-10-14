@@ -70,7 +70,7 @@ const FOLLOWING = ['陆战队员', '狂热者', '刺蛇', '虫后'];
 // 点开后**在这个格子里就地展开**（渠道 → 收款码 → 文案 → 登记），不跳转、也不是常驻红块。
 
 // 赞助入口拆到 sponsor-card.tsx（该文件超体量门禁），这里只 import 用它
-import { SPONSOR_CHANNELS, SponsorCard, readSelfView, type SponsorDemo } from './sponsor-card';
+import { SPONSOR_CHANNELS, SPONSOR_NOTICE, SponsorCard, readSelfView, type SponsorDemo } from './sponsor-card';
 
 export default function ProfilePage() {
   const [tab, setTab] = useState('posts');
@@ -299,7 +299,7 @@ export default function ProfilePage() {
             赞助放第一格：它是这个页面唯一的转化点（读完之后「想支持一下」的那一秒），
             徽章与关注的人是补充信息，晚一步看到不影响什么。 */}
         <aside className='flex flex-col gap-3'>
-          <SponsorCard isSelf={selfView.isSelf} channels={selfView.channels} />
+          <SponsorCard isSelf={selfView.isSelf} channels={selfView.channels} notice={SPONSOR_NOTICE} />
           <Island withoutPaddings>
             <div className='flex flex-col gap-3 p-4'>
               <span className='text-[12px] font-medium tracking-wide text-muted-foreground'>徽章</span>

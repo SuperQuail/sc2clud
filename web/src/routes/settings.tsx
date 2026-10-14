@@ -8,6 +8,7 @@ import { UserBadge } from '@/ui/user/user-badge';
 import { type UploadedImage } from '@/ui/rich/image-uploader';
 import { NoticeSettings, type SettingRow } from '@/ui/message/notice-settings';
 import { AccountPanel } from '@/devroom/pages/11-profile/account-panel';
+import { PaymentChannelsPanel } from '@/devroom/pages/11-profile/payment-channels';
 import { FormAlert } from '@/devroom/pages/16-auth/form-alert';
 import { appPath, routePath } from '@/lib/url';
 import { qk } from '@/lib/query/keys';
@@ -34,7 +35,8 @@ import { Empty, ErrorState, Loading } from './_parts/state';
 // （radio / toggle / tags）都不是文本框，塞不进去 —— 硬塞就是把一个表单拆成三块假控件。
 //
 // 封面**没接**：库里没有 users 封面列、也没有对应端点，所以这一屏上没有那颗按钮（不做点了没反应的入口）。
-// 收款码（/me/payment-channels）、登录设备列表（GET /me/sessions 有契约但本轮不排）同样没做，记进回报。
+// 收款码**已接**（2026-10-14，L1）：POST/GET/DELETE /me/payment-channels 在 media 域，
+// 整块在 @/devroom/pages/11-profile/payment-channels 里。登录设备列表（GET /me/sessions 有契约但本轮不排）仍未做。
 // 20 = users.nickname varchar(20) / auth.nicknameMaxLen（写死 32 会让 21-32 字的昵称在服务端被拒）
 const NICK_MAX = 20;
 const BIO_MAX = 200;
@@ -292,6 +294,10 @@ export function SettingsPage() {
           </>
         )}
       </section>
+
+      {/* 赞赏与收款码（L1）：原先这里只写了一句「本轮不排」的注释 —— 后端 13 条端点一直都有，
+          缺的是这一块客户端。整块在 payment-channels.tsx 里，设置页只负责摆它。 */}
+      <PaymentChannelsPanel />
     </div>
   );
 }

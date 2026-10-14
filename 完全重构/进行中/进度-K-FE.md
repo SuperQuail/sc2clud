@@ -29,6 +29,17 @@
   `POST /topics/{id}/images`，后者绑在 topic 上）—— **没有通用图片上传端点**，私信发图无通道可复用。
   且 `message.MessageDTO.body` 是 `varchar(2000)` 纯文本（`message/service.go:133` `TrimSpace` + 2000 rune 上限），
   附加图需要正文形状变更或附件表。等 K-BE 交「图片通道 + 正文形状」后再接。
+- **收款码的图对访客不可见（L1 的功能性缺口，前端无法补）**：`media/service.go:260` 写引用行时固定
+  `VisibilityPrivate`（=2），而 `canView`（`media/service.go:441-457`）只在**所有者 / 超管 / 持
+  `reward.verify`** 三种身份下放行。于是 `GET /users/{handle}/channels` 虽然给陌生人回了
+  `{"image":"/img/<hash>"}`，那个 `<hash>` 对**登录的无关用户与游客都不可见** →
+  `GET /img/<hash>` 回占位图（200 + no-store + `X-Img-Denied`），打赏面板上永远是一张占位图。
+  已有用例把这条行为钉住了：`forum/internal/media/media_test.go:246 TestFetchImageVisibility`
+  的「无关登录用户 / 游客 → allow=false」两格。
+  **要 K-BE 定口径**（前端两条都不需要改）：①打赏是「扫码转账」语义，收款码本就该对访客可见
+  → 写引用行时按渠道的展示开关选 `VisibilityLogin`/`VisibilityPublic`；或 ②保持私有，
+  则由 `GET /users/{handle}/channels` 出一个**一次性签名/代理**的取图地址（`/img` 那条读路径不变）。
+  在它落地之前，前端**不假装能扫**：图是 `<img src>` 原样引用，后端给什么就显示什么。
 
 ## 记录
 
@@ -49,8 +60,29 @@
     然后把 `web/src/routes/profile.tsx` 的 `SponsorCard` 与 `web/src/routes/topic.tsx` 的 `RewardPanel`
     接上真数据（两处现在分别写死 `channels={[]}` 与 `const channels = []`）。
   - 阻塞：**无**（本步只碰 `web/src/lib/api/**`）。
-    另记一条**与本人无关的既有红灯**（交接单 §3.2「不许整文件覆盖」的受害面已经修好一半，
-    但工作区里还有人没写完）：`pnpm typecheck` 现在报 2 个错，都在**别人作用域**的
-    `web/src/devroom/pages/15-admin/index.tsx(34,18)` 与 `web/src/routes/admin.tsx(49,3)`
-    （`TitlesScreenProps` 未供给，两文件都是 ` M` 在途状态，非我改动）。本条不会被我碰到；
-    另：`--filter` 不可用的情况下我用了 `pnpm lint` 与 `npx vitest run`，两者均绿。
+    另记一条**与本人无关的既有红灯**：`pnpm typecheck` 期间两度被**别人作用域**的在途文件打红
+    （先 `15-admin/index.tsx` + `routes/admin.tsx` 的 `TitlesScreenProps`，后 `routes/admin-screens.tsx` 的
+    `ESCALATION_ACTIONS`）—— 那些文件是 ` M` 在途状态，不是我改的；本轮收尾时它们已自行变绿。
+    本步结束时 `pnpm typecheck` 0 错、`pnpm lint` 0 错 20 警告、`npx vitest run` 30 文件 158 用例全绿。
+
+- [x] **L1 第 2 步：打赏整块接进真页面**（收款码上传/删除、可见性、打赏、我的打赏记录、两处入口接真数据）。
+  新增 `devroom/pages/11-profile/payment-channels.tsx`（设置页那一节）与
+  `devroom/pages/12-topic/donate-box.tsx`（**唯一一份**打赏面板，SponsorCard 与 RewardPanel 共用）；
+  重写 `sponsor-card.tsx` / `reward-panel.tsx` 为 prop 驱动并删掉 `disableReason` 逃生口；
+  接线 `routes/settings.tsx`、`routes/profile.tsx`、`routes/topic.tsx`。
+  - 证据：`npx vitest run` → `Test Files 31 passed (31) / Tests 162 passed (162)`（新增
+    `rewards.test.ts` 8 条 + `payment-channels.test.tsx` 4 条）。**三条新断言各证明过会红**：
+    ① 把 `createDonation` 路径写成 `'reward'` → 1 failed；
+    ② 去掉 `rows` 的 `Array.isArray` 兜底 → `settings.test.tsx` 2 failed + 页面刷 `TypeError: rows.map is not a function`；
+    ③ 面板原先请求的是 `/users//channels`（空 handle），测试当场 404 红 → 改成本人真端点 `GET /me/payment-channels`。
+    出图并**看图**（`web/scripts/shoot-kfe.ts`，图在 `shots/kfe/`，均含左下角 `MARKER-PRODUCT-…`）：
+    `profile-sponsor-open-1440`（登录+有码：¥5/10/30/100、金额框、「先填金额」）、
+    `profile-sponsor-filled-1440`（填 10 → 按钮变「我已完成 ¥10.00 的打赏」）、
+    `profile-sponsor-guest-1440`（未登录：看得到码，登记段换成「去登录」）、
+    `profile-sponsor-open-390`（窄屏整页，右栏掉到末尾不溢出）、`topic-reward-open-1440`（帖子右栏同一份）、
+    `settings-rewards-1440/390`（收款码 + 删除 + 渠道名 + 上传 + 两个开关 + 我的打赏记录「给 示范管理员 ¥10.00 待核验 撤回」）。
+  - 下一步：把 `完全重构/UI与后端对齐.md` 里第二节的「暂时隐藏」定位改掉（用户明说是文档定位错误），
+    并把本节已结的条目（申诉页、密码重置文案）同步成现状；然后做 **G5**（消息屏蔽词 WIP 标记，无代码改动）
+    与 **L7**（「已提交复审」真页面验证）。
+  - 阻塞：**L1 已做完**。另有两处**跨人依赖**记在下面的「阻塞」一节（media 的私信图片通道、
+    收款码图片对访客不可见 —— 后者要 K-BE 明确「重定向/可见性」口径，见该节末条）。

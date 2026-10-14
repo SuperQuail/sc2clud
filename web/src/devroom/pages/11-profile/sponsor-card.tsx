@@ -4,19 +4,20 @@
 import Button from '@jetbrains/ring-ui-built/components/button/button';
 import Island from '@jetbrains/ring-ui-built/components/island/island';
 import { useState } from 'react';
-import { Check, ChevronDown, ChevronUp, Coffee, QrCode } from 'lucide-react';
+import { ChevronDown, ChevronUp, Coffee } from 'lucide-react';
 import { icon16 } from '@/ui/icons';
-const SPONSOR_CHANNELS = [
-  { id: 'wechat', label: '微信', notice: '扫码后请在备注里写上你的昵称，作者好对上号。' },
-  { id: 'alipay', label: '支付宝', notice: '支付宝扫码，备注可以留空。' },
-  { id: 'afdian', label: '爱发电', notice: '爱发电支持一次性与按月两种，随你方便。' },
-];
+import { DonateBox } from '@/devroom/pages/12-topic/donate-box';
+import type { PaymentChannel } from '@/lib/api/rewards';
 
-// 看别人主页 / 看自己主页是两种情形（isSelf 由页面内的 mock 开关给）：
-//   别人 → 「赞助 TA」大按钮；自己 → 「设置我的收款码」（自己给自己打赏是荒谬的）。
+// 看别人主页 / 看自己主页是两种情形（真站里 isSelf 由「当前登录者 handle 是否等于 /u/{handle}」给）：
+//   别人 → 「赞助 TA」大按钮；自己 → 「设置我的收款码」（自己给自己打赏后端会 400）。
 // **没有收款码时整块不渲染**（用户 2026-10-13 定案，推翻了上一版「保留按钮 + 禁用」的判断）：
 //   看别人主页时那一格是打赏入口，对方没挂收款码就没得打赏，留着禁用按钮只是噪声；
 //   看自己主页时那一格是「设置我的收款码」入口，没有收款码才更需要它，所以照旧渲染。
+//
+// 2026-10-14（L1）：整块接真数据。删掉了 `disableReason` 那个逃生口 ——
+// 它存在的理由是「后端没有收款码列、没有 GET /users/{handle}/channels、没有 POST /rewards」，
+// 而这三样**后端一直都有**（media 域 + reward 域），缺的是前端客户端。逃生口留着只会掩盖漏接。
 type SponsorView = { heading: string; button: string; hint: string };
 const SPONSOR_VIEW: Record<'other' | 'self', SponsorView> = {
   other: {
@@ -31,19 +32,31 @@ const SPONSOR_VIEW: Record<'other' | 'self', SponsorView> = {
   },
 };
 
-// disableReason：**真站专用的逃生口**。房间里的数据是演示的，按钮总有点得动的结果；
-// 而真站若后端还没承载（users 没有收款码列、没有 GET /users/{handle}/channels、没有 POST /rewards），
-// 正确的做法不是画一颗点了没反应的按钮，也不是偷偷留一颗能点但什么都不会发生的按钮 ——
-// 传这个 prop 就把大按钮置灰 + 顶一行说明，页面上看不出「其实没接」。
-function SponsorCard({ isSelf, channels, disableReason }: SponsorDemo & { disableReason?: string }) {
+function SponsorCard({
+  isSelf,
+  channels,
+  notice,
+  settingsHref = '',
+  onDonate,
+  donationPending,
+  donationError,
+  donationDone,
+  loginHref,
+  loggedIn = false,
+}: SponsorDemo & {
+  /** 作者的提示文案（user_donation_settings.notice_text；后端没有「每渠道一句」这一列） */
+  notice?: string;
+  settingsHref?: string;
+  onDonate?: (v: { channelId: string; amountCents: number }) => void;
+  donationPending?: boolean;
+  donationError?: string | null;
+  donationDone?: string | null;
+  loginHref?: string;
+  loggedIn?: boolean;
+}) {
   const view = SPONSOR_VIEW[isSelf ? 'self' : 'other'];
   const [open, setOpen] = useState(false);
-  const [activeId, setActiveId] = useState(channels[0]?.id ?? '');
-  const [confirmed, setConfirmed] = useState(false);
-  const [settingsHit, setSettingsHit] = useState(false);
-  const active = channels.find((c) => c.id === activeId) ?? channels[0];
   // 别人的主页且没有收款码 → 整块不渲染（不是禁用按钮）。自己主页永远渲染。
-  // 提前 return 必须在所有 hook 之后，否则 hook 调用顺序会变（react-hooks/rules-of-hooks）。
   if (!isSelf && channels.length === 0) return null;
 
   return (
@@ -55,63 +68,33 @@ function SponsorCard({ isSelf, channels, disableReason }: SponsorDemo & { disabl
         <Button
           inline={false}
           primary
-          disabled={disableReason !== undefined}
-          title={disableReason}
-          aria-expanded={isSelf || disableReason ? undefined : open}
-          iconRight={!isSelf && !disableReason ? icon16(open ? ChevronUp : ChevronDown) : undefined}
-          onClick={() => (disableReason ? undefined : isSelf ? setSettingsHit(true) : setOpen((v) => !v))}
+          aria-expanded={isSelf ? undefined : open}
+          iconRight={!isSelf ? icon16(open ? ChevronUp : ChevronDown) : undefined}
+          onClick={() => (isSelf ? undefined : setOpen((v) => !v))}
+          href={isSelf ? settingsHref : undefined}
           className='!h-11 w-full !border-[var(--vivid-accent)] !bg-[var(--vivid-accent)] !text-[15px] !text-white'
         >
           <span className='inline-flex items-center gap-2'>
             <Coffee aria-hidden className='size-5' />
             {view.button}
-            {disableReason ? <span className='text-[12px]'>(未实现)</span> : null}
           </span>
         </Button>
-        <p className='text-[11px] leading-relaxed text-muted-foreground'>{disableReason ?? view.hint}</p>
+        <p className='text-[11px] leading-relaxed text-muted-foreground'>{view.hint}</p>
 
-        {isSelf ? (
-          settingsHit ? (
-            <p className='rounded-md bg-muted/50 px-2 py-2 text-[11px] leading-relaxed text-muted-foreground'>
-              已切到本页「设置」标签（mock）。真实页面会跳到个人设置的收款码分区。
-            </p>
-          ) : null
-        ) : open ? (
+        {isSelf ? null : open ? (
           <div className='flex flex-col gap-3 border-t border-border pt-3'>
-            <span className='flex flex-wrap items-center gap-1.5'>
-              {channels.map((c) => (
-                <Button key={c.id} ghost active={c.id === active?.id} onClick={() => setActiveId(c.id)}>
-                  {c.label}
-                </Button>
-              ))}
-            </span>
-
-            <span className='flex flex-col items-center gap-2'>
-              <span aria-hidden className='grid h-[132px] w-[132px] place-items-center rounded-md bg-muted ring-1 ring-border'>
-                <QrCode aria-hidden className='size-16 text-muted-foreground' />
-              </span>
-              <span className='inline-flex items-center gap-1 text-[11px] text-muted-foreground'>
-                <QrCode aria-hidden className='size-3' />
-                {active?.label}收款码 · 扫码或长按识别
-              </span>
-            </span>
-
-            <p className='rounded-md bg-muted/50 px-2 py-2 text-[11px] leading-relaxed text-muted-foreground'>{active?.notice}</p>
-
-            <Button
-              inline={false}
-              icon={confirmed ? icon16(Check) : undefined}
-              disabled={confirmed}
-              onClick={() => setConfirmed(true)}
-              className='w-full'
-            >
-              {confirmed ? '已登记，等作者核对' : '我已完成打赏'}
-            </Button>
-            {confirmed ? (
-              <p className='text-[11px] leading-relaxed text-muted-foreground'>
-                已生成一条 pending 申报（POST /api/v1/rewards），作者确认收款、管理员核验后才会出现在 TA 的主页收入里。
-              </p>
-            ) : null}
+            <DonateBox
+              channels={channels}
+              notice={notice}
+              isSelf={false}
+              settingsHref={settingsHref}
+              onDonate={onDonate ?? (() => undefined)}
+              pending={donationPending}
+              error={donationError}
+              done={donationDone}
+              loggedIn={loggedIn}
+              loginHref={loginHref}
+            />
           </div>
         ) : null}
       </div>
@@ -120,9 +103,18 @@ function SponsorCard({ isSelf, channels, disableReason }: SponsorDemo & { disabl
 }
 
 // ?sponsor=other|none|self|self-none —— 只影响 DevRoom 的演示态：看别人/看自己 × 有/无收款码。
-// 真实页面里 isSelf 由「当前登录者 handle 是否等于 /u/{handle}」决定，channels 来自
-// GET /api/v1/users/{handle}/channels（作者关掉展示开关时后端返回空数组）。
-type SponsorDemo = { isSelf: boolean; channels: Array<(typeof SPONSOR_CHANNELS)[number]> };
+// 字段名照 @/lib/api/rewards 的 PaymentChannel（image 是 /img/<hash>，不是设计稿的 qr_url）。
+// 房间里没有真图：`mock://` 这种 scheme 会被 imagePath 原样返回，在 <img> 上就是一格裂图，
+// 所以给一条真形状的地址（房间里本来也没有后端，它照样是坏图，但形状是真的）。
+const SPONSOR_CHANNELS: PaymentChannel[] = [
+  { id: 'wechat', label: '微信', image: '/img/roomdemo-wechat', sort: 0 },
+  { id: 'alipay', label: '支付宝', image: '/img/roomdemo-alipay', sort: 1 },
+  { id: 'afdian', label: '爱发电', image: '/img/roomdemo-afdian', sort: 2 },
+];
+const SPONSOR_NOTICE = '扫码后请在备注里写上你的昵称，作者好对上号；打赏是纯自愿的，不影响资源更新。';
+
+/** 房间的演示态（真站里 `isSelf` 来自会话、`channels` 来自接口，这个类型只用于房间）。 */
+type SponsorDemo = { isSelf: boolean; channels: PaymentChannel[] };
 
 // 默认**本人**：这一页现在的入口（头像上传、改密码、退出登录）只在本人态存在，
 // 初始落在「看别人」会让人以为它们没做。?sponsor=other|none 仍可切到别人态。
@@ -134,5 +126,5 @@ function readSelfView(): SponsorDemo {
   return { isSelf: true, channels: SPONSOR_CHANNELS };
 }
 
-export { SPONSOR_CHANNELS, SponsorCard, readSelfView };
+export { SPONSOR_CHANNELS, SPONSOR_NOTICE, SponsorCard, readSelfView };
 export type { SponsorDemo };

@@ -199,8 +199,13 @@ export function topicComments(): CommentData[] {
   ];
 }
 
-/** 收款码：真实值是 /img/<hash>；这里是页面内画的假二维码（见 payment-channel.tsx） */
+/** 收款码：字段名照 @/lib/api/rewards 的 PaymentChannel（`image` 是 /img/<hash>，不是设计稿的 qr_url）。
+ *  房间里没有真图，但**必须给一个真形状的地址** —— DonateBox 会过 imagePath 再当 src 用，
+ *  mock:// 这种 scheme 会被原样返回、在 <img> 上渲染成裂图。 */
 export const CHANNELS: TopicPageData['channels'] = [
-  { id: 'ch1', qr_url: 'mock://alipay', label: '支付宝', notice: '打赏是纯自愿的，不影响任何资源的更新节奏与下载权限。' },
-  { id: 'ch2', qr_url: 'mock://wechat', label: '微信', notice: '打赏后请点「我已完成打赏」登记，我在后台人工核对。' },
+  { id: 'ch1', label: '支付宝', image: '/img/roomdemo-alipay', sort: 0 },
+  { id: 'ch2', label: '微信', image: '/img/roomdemo-wechat', sort: 1 },
 ];
+
+/** 提示文案是用户设置里的一句（后端没有「每渠道一句」这一列）。 */
+export const CHANNEL_NOTICE = '打赏后请点「我已完成打赏」登记，我在后台人工核对；打赏是纯自愿的，不影响资源更新节奏。';

@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Link, useParams, useSearchParams } from 'react-router';
-import { useInfiniteQuery, useQuery } from '@tanstack/react-query';
+import { useInfiniteQuery, useMutation, useQuery } from '@tanstack/react-query';
 import Button from '@jetbrains/ring-ui-built/components/button/button';
 import Island from '@jetbrains/ring-ui-built/components/island/island';
 import { ControlsHeight } from '@jetbrains/ring-ui-built/components/global/controls-height';
@@ -16,7 +16,9 @@ import { assetUrl, appPath, routePath } from '@/lib/url';
 import { qk } from '@/lib/query/keys';
 import { can, useSession } from '@/lib/perms';
 import { fetchUserProfile, fetchUserTopics } from '@/lib/api/user';
-import { formatTime } from '@/lib/format';
+import { createDonation, fetchDonationSettings, fetchUserChannels } from '@/lib/api/rewards';
+import { formatCents, formatTime } from '@/lib/format';
+import { isApiError } from '@/lib/api/errors';
 import { toCardTopic } from './_parts/mappers';
 import { Empty, ErrorState, Loading } from './_parts/state';
 import { ReportPanel } from './_parts/report-panel';
@@ -62,13 +64,36 @@ export function ProfilePage() {
     getNextPageParam: (last) => last.next,
   });
 
+  // 是不是本人：接口**没有 is_self**（user.Profile 平铺，见文件头），由会话 handle 与路径比出来。
+  // 必须在下面那几个 useQuery 之前算：它们的 enabled 要用它。
+  const isSelf = session.session?.handle != null && session.session.handle === handle;
+
+  // 收款码（L1）：GET /users/{handle}/channels —— 作者关掉「展示收款码」时后端回**空数组**（不是 null）。
+  // 看自己时那一格是「设置我的收款码」入口，不依赖这个请求，所以本人态干脆不发。
+  const channels = useQuery({
+    queryKey: qk.userChannels(handle),
+    queryFn: ({ signal }) => fetchUserChannels(handle, signal),
+    enabled: handle !== '' && !isSelf,
+  });
+  // 提示文案只在看自己时取得到（GET /me/donation-settings）；别人的文案后端**没有公开读端点**，
+  // 所以看别人时不编 —— 编一句「打赏是自愿的」冒充作者的话，比不显示更糟。
+  const donationSettings = useQuery({
+    queryKey: qk.donationSettings(),
+    queryFn: ({ signal }) => fetchDonationSettings(signal),
+    enabled: isSelf,
+  });
+  // 打赏申报（POST /rewards）：**是登记，不是付款** —— 钱是扫码直接给作者的，站点不经手资金。
+  const donate = useMutation({
+    mutationFn: (v: { channelId: string; amountCents: number }) =>
+      createDonation({ to_handle: handle, amount_cents: v.amountCents, channel_id: v.channelId }),
+  });
+
   if (profile.isPending) return <Loading what='个人主页' />;
   if (profile.isError) {
     return <ErrorState what='个人主页' error={profile.error} onRetry={() => void profile.refetch()} />;
   }
 
   const u = profile.data;
-  const isSelf = session.session?.handle != null && session.session.handle === u.handle;
   const items = topics.data?.pages.flatMap((p) => p.items) ?? [];
   // 设计稿的四个统计里只有两个后端有：帖子 / 获赞；另加一个真实存在的等级。
   // **不画「回复」「关注者」** —— 后端没有这两个数，写上去只能显示「—」。
@@ -261,9 +286,10 @@ export function ProfilePage() {
         </div>
 
         {/* 右栏：徽章 → 赞助 → 关注的人。
-            赞助放在徽章下面一格：它是这个页面唯一的转化点（读完之后「想支持一下」的那一秒），
-            但**这一版还没接**（后端没有 users 的收款码列、也没有 GET /users/{handle}/channels 与 POST /rewards），
-            所以用 disableReason 标注清楚，不留一颗点了没反应的按钮。
+            赞助放在徽章下面一格：它是这个页面唯一的转化点（读完之后「想支持一下」的那一秒）。
+            **2026-10-14（L1）接的是真数据**：这一格原先传 `channels={[]}` + `disableReason`
+            （那时以为「后端没有收款码列、没有 GET /users/{handle}/channels、没有 POST /rewards」）——
+            三样后端一直都有，缺的是前端客户端，所以那个逃生口连同它的注释一起删了。
             「关注的人」**整格不做**：本产品没有关注关系（拍板 §8.3），后端也没有这个端点。 */}
         <aside className='flex flex-col gap-3'>
           {u.title || (isSelf && session.session?.role) ? (
@@ -276,12 +302,19 @@ export function ProfilePage() {
           ) : null}
           <SponsorCard
             isSelf={isSelf}
-            channels={[]}
-            disableReason={
-              isSelf
-                ? '收款码还没有后端承载（users 没有这一列、也没有写入端点），所以这一颗先不给点。'
-                : undefined
+            channels={channels.data ?? []}
+            notice={isSelf ? donationSettings.data?.notice_text : undefined}
+            settingsHref={appPath('settings#payment-channels')}
+            onDonate={(v: { channelId: string; amountCents: number }) => donate.mutate(v)}
+            donationPending={donate.isPending}
+            donationError={donate.isError ? (isApiError(donate.error) ? donate.error.message : '登记失败，请重试') : null}
+            donationDone={
+              donate.isSuccess
+                ? '已登记一笔 ¥' + formatCents(donate.data.amount_cents) + ' 的申报，等作者核对到账后会计入 TA 的主页。可以在「个人设置 → 我的打赏记录」里撤回。'
+                : null
             }
+            loggedIn={session.isLoggedIn}
+            loginHref={appPath('login?next=' + encodeURIComponent(routePath('u/' + handle)))}
           />
         </aside>
       </div>

@@ -66,6 +66,11 @@ const router = createMemoryRouter(
         { path: 'messages/:handle', lazy: () => import('@/routes/messages').then((m) => ({ Component: m.MessagesPage })) },
         { path: 'issues', lazy: () => import('@/routes/issues').then((m) => ({ Component: m.IssuesPage })) },
         { path: 't/:topicId', lazy: () => import('@/routes/topic').then((m) => ({ Component: m.TopicPage })) },
+        // 个人主页：右栏那一格打赏入口（SponsorCard）只在这一页出现 —— 2026-10-14 之前它挂不上这里，
+        // 于是「赞助卡到底长什么样」只能靠单测说。L1 接线后必须出图。
+        { path: 'u/:handle', lazy: () => import('@/routes/profile').then((m) => ({ Component: m.ProfilePage })) },
+        // 个人设置：这一屏 2026-10-14 起有「赞赏与收款码」一节（收款码上传/删除、可见性开关、我的打赏记录）
+        { path: 'settings', lazy: () => import('@/routes/settings').then((m) => ({ Component: m.SettingsPage })) },
         { path: 'notifications', lazy: () => import('@/routes/notifications').then((m) => ({ Component: m.NotificationsPage })) },
         // 管理后台（12 屏）：B8 的出图入口要把**真页面**也覆盖到，否则 /admin/* 永远出不了图
         { path: 'admin', lazy: () => import('@/routes/admin').then((m) => ({ Component: m.AdminIndex })) },

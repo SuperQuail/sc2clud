@@ -88,14 +88,12 @@ export type TopicAuthor = {
   joined_at: string;
 };
 
-/** GET /api/v1/users/{handle}/channels —— 收款码（作者侧开关关着时后端返回空数组） */
-export type PaymentChannel = {
-  id: string;
-  /** 后端只回 /img/<hash>，前端不接收任何凭据 */
-  qr_url: string;
-  label: string;
-  notice: string;
-};
+/** GET /api/v1/users/{handle}/channels 的形状在 @/lib/api/rewards（那里是契约的唯一一份）。
+ *  这里曾有一份本地声明，用的是设计稿的 `qr_url` + 每渠道 `notice` —— **后端两个都没有**：
+ *  图叫 `image`、提示是 `user_donation_settings.notice_text`（全局一句，不是每渠道一句）。 */
+import type { PaymentChannel } from '@/lib/api/rewards';
+
+export type { PaymentChannel };
 
 /** 本页自己记账用的两条（DevRoom 演示，不在后端契约里）：
  *  newCommentSeqs 是「发布」后新插进来的那几条的序号，用来把「最新」排序与新回复置顶做出来

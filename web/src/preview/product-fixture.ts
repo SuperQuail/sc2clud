@@ -243,6 +243,10 @@ export function fixtureFor(u: string, method: string): Reply | undefined {
   }
   // 收款码（L1）：形状照 media/dto.go 的 PaymentChannel（id / label / image / sort）。
   // 图还是坏图（预览服务没有 /img/*），但**形状是真的** —— 出图要看的是布局与文案，不是二维码像素。
+  // 个人主页的帖子列表：端点 /users/{handle}/topics 回的是 **TopicCardDTO**（含 author）。
+  // 少了 author 这一条，个人主页会当场 TypeError（toCardTopic 读 t.author.avatar_hash）——
+  // 2026-10-14 出图时真撞上过，页面变成一张「出错」错误页。桩的形状必须与 DTO 一样全。
+  if (p.includes('/api/v1/users/') && p.endsWith('/topics')) return { body: { data: TOPICS, next_cursor: null } };
   if (p.includes('/api/v1/users/') && p.endsWith('/channels')) {
     return { body: { data: [{ id: 'ch-1', label: '微信', image: '/img/preview-channel-1', sort: 0 }] } };
   }

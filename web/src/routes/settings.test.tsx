@@ -69,9 +69,14 @@ it('消息提醒四行来自后端：两档值域只有 all/none，改一行发�
   expect(screen.queryByText('仅关注的人')).toBeNull();
   expect(screen.getByText('@ 我的消息提醒')).toBeTruthy();
 
-  // 「点赞提醒」那一行的开关：打开它
-  const toggles = screen.getAllByRole('checkbox') as HTMLInputElement[];
-  const likeToggle = toggles.at(-1)!;
+  // 「点赞提醒」那一行的开关：打开它。
+  // **按文案找，不按序号**：原先写的是 `getAllByRole('checkbox').at(-1)` —— 那等于断言
+  // 「这一屏最后一个 checkbox 就是它」，而 2026-10-14 加的「赞赏与收款码」一节正好排在它后面，
+  // 于是这条用例静默地点了**另一个开关**、PUT 一次都没发（消息提醒这一块就再没人验了）。
+  const likeToggle = screen
+    .getByText('点赞提醒')
+    .closest('section')!
+    .querySelector<HTMLInputElement>('input[type=checkbox]')!;
   expect(likeToggle.checked).toBe(false);
   act(() => likeToggle.click());
 
