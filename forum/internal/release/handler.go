@@ -26,6 +26,9 @@ func NewHandler(svc *Service, actor ActorFunc) *Handler {
 //
 //	release.NewHandler(svc, authAdapter).Register(v1, requireLogin, perm)
 func (h *Handler) Register(rg *gin.RouterGroup, requireLogin, perm func(...string) gin.HandlerFunc) {
+	// 非 uuid 的 {id} 一律在进 service 之前挡成 400（见 platform/httpx.ValidPathIDs）。
+	rg = rg.Group("", httpx.ValidPathIDs("id"))
+
 	rg.GET("/launcher/latest", h.latest)
 	rg.GET("/launcher/releases", h.listReleases)
 	rg.GET("/launcher/assets/:id/go", h.goAsset)
