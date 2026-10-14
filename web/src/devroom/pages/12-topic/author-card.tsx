@@ -36,8 +36,11 @@ export function AuthorCard({ author, profileHref }: { author: TopicAuthor; profi
 
       <div className='flex flex-col gap-2'>
         <p className='text-[12px] leading-relaxed text-muted-foreground'>{author.bio}</p>
-        <span className='flex flex-wrap items-center gap-2'>
-          <TitleBadge title={author.title ?? { name: '无头衔' }} size='sm' />
+        {/* D17：这一行与头像/昵称/角色**同一条中轴**（原先左对齐，同一列里两种对齐）。
+            D16：没有头衔就**不画那一枚** —— 与另外四处（comment-item / topic-row / user-badge / profile-hero）
+            同一口径；原先写的是 `author.title ?? { name: '无头衔' }`，等于替人编了一个他没有的头衔。 */}
+        <span data-testid='author-title-row' className='flex flex-wrap items-center justify-center gap-2'>
+          {author.title ? <TitleBadge title={author.title} size='sm' /> : null}
           <span className='inline-flex items-center gap-1 text-[11px] text-muted-foreground'>
             <BadgeCheck aria-hidden className='size-3' />
             邮箱已验证
