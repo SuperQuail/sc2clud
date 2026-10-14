@@ -6,13 +6,20 @@ import { NoticeLayout } from '@/ui/message/notice-layout';
 import { NoticeList } from '@/ui/message/notice-list';
 import { NoticeRow } from '@/ui/message/notice-row';
 import { NoticeSettings, type SettingRow } from '@/ui/message/notice-settings';
-import { MessagesPanel } from './messages-panel';
-import { ProtoLink } from '@/devroom/room-links';
+import { UserAvatar } from '@/ui/user/avatar';
+import { MessagesPanel, plainText } from './messages-panel';
+import { PeerPicker } from './peer-picker';
+import { CONVERSATIONS, DIRECTORY, ME } from './mock';
+import type { Conversation, Peer } from './types';
+import { ProtoLink, roomHref } from '@/devroom/room-links';
 
 // DevRoom 10 · 信息中心（参考 B 站消息中心的结构）
 // **这一页只做组合**：控件在 src/ui/message/ 里，全是数据驱动的通用件（不认识「消息中心」这个业务）。
 // 所以这里的 mock 数据、导航项、设置项都放在页面里——换一个业务场景可以完全复用同一批控件。
 // 私信（一对一）是**两栏会话界面**，在同目录 messages-panel.tsx 里（左栏会话列表 + 右栏聊天区）。
+//
+// 2026-10-14：MessagesPanel 改成 **prop 驱动**（数据 / 动作 / 选人弹层都由宿主给），本页退化成它的一个宿主，
+// 真站（src/routes/messages.tsx）渲染同一个组件 —— mock 只在 `./mock` 里，组件里一份都没有。
 
 const NAV: NoticeNavItem[] = [
   { key: 'messages', label: '我的消息', icon: <MessageSquare aria-hidden className='size-4' /> },
@@ -28,7 +35,10 @@ export default function MessagesPage() {
   const [panel, setPanel] = useState(
     () => new URLSearchParams(window.location.search).get('panel') ?? 'messages',
   );
-  const [peer] = useState(() => new URLSearchParams(window.location.search).get('peer'));
+  const [peer, setPeer] = useState(() => new URLSearchParams(window.location.search).get('peer') ?? CONVERSATIONS[0]?.peer.handle ?? '');
+  const [picking, setPicking] = useState(false);
+  const [conversations, setConversations] = useState<Conversation[]>(CONVERSATIONS);
+
   // 设置项**逐字照后端真源**（forum/internal/notify/deps.go 的 NoticeSetting 四项 +
   // 迁移 0018 的 CHECK 值域），2026-10-14 按 0018 核对后改过两处：
   //   ① 删掉「关注的人」：拍板 §8.3 说本产品没有关注用户，reply_scope 的 CHECK 只有 all / none
@@ -69,6 +79,48 @@ export default function MessagesPage() {
     { key: 'like_alert', kind: 'toggle', title: '收到的赞', hint: '关掉后别人赞我不再提醒', value: likeAlert, onChange: setLikeAlert },
   ];
 
+  const current = conversations.find((c) => c.peer.handle === peer) ?? null;
+
+  /** 打开会话＝把它的未读清掉（真实 IM 的行为）；真站这一步是 POST /messages/{handle}/read */
+  function open(handle: string) {
+    setPeer(handle);
+    setConversations((prev) => prev.map((c) => (c.peer.handle === handle ? { ...c, unread: 0 } : c)));
+  }
+
+  function pick(p: Peer) {
+    setPicking(false);
+    setConversations((prev) =>
+      prev.some((c) => c.peer.handle === p.handle)
+        ? prev
+        : [{ peer: p, messages: [], summary: '还没有消息', lastAt: '刚刚', unread: 0 }, ...prev],
+    );
+    open(p.handle);
+  }
+
+  function send(payload: { json: string; html: string }) {
+    const text = plainText(payload.html);
+    if (!peer || !text) return;
+    setConversations((prev) => {
+      const next = prev.map((c) =>
+        c.peer.handle === peer
+          ? {
+              ...c,
+              messages: [
+                ...c.messages,
+                { id: 'local-' + Date.now(), from: 'me' as const, nickname: ME.nickname, avatar: ME.avatar, html: text, time: '刚刚' },
+              ],
+              summary: text.replace(/\n/g, ' ').slice(0, 24),
+              lastAt: '刚刚',
+              unread: 0,
+            }
+          : c,
+      );
+      // 刚说过话的会话排到最前（真实 IM 的行为）
+      const hit = next.find((c) => c.peer.handle === peer);
+      return hit ? [hit, ...next.filter((c) => c.peer.handle !== peer)] : next;
+    });
+  }
+
   // DevRoom 的导航条被限宽在 1100px；私信是「导航 + 会话列表 + 聊天区」的三列，自己放宽到 1280px 再居中
   // （只作用于本页这一段，不动共享布局）。
   return (
@@ -82,7 +134,31 @@ export default function MessagesPage() {
     <NoticeLayout
       nav={<NoticeNav items={NAV} value={panel} onChange={setPanel} title='消息中心' titleIcon={<Send aria-hidden className='size-4' />} />}
     >
-      {panel === 'messages' ? <MessagesPanel initialPeer={peer} /> : null}
+      {panel === 'messages' ? (
+        <MessagesPanel
+          conversations={conversations}
+          selectedHandle={peer}
+          messages={current?.messages ?? []}
+          onSelect={open}
+          onSend={send}
+          onOpenPicker={() => setPicking(true)}
+          picker={() => (picking ? <PeerPicker people={DIRECTORY} existing={conversations.map((c) => c.peer.handle)} onPick={pick} onClose={() => setPicking(false)} /> : null)}
+          headerActions={
+            current ? (
+              <span className='flex items-center gap-3'>
+                <a
+                  href={roomHref('11-profile')}
+                  className='flex items-center gap-2 rounded-[3px] px-1 py-0.5 outline-none hover:bg-muted focus-visible:ring-[3px] focus-visible:ring-ring/50'
+                  title={'查看 ' + current.peer.nickname + ' 的主页'}
+                >
+                  <UserAvatar name={current.peer.nickname} src={current.peer.avatar} size='sm' />
+                  <span className='text-[13px] text-muted-foreground'>@{current.peer.handle}</span>
+                </a>
+              </span>
+            ) : null
+          }
+        />
+      ) : null}
 
       {panel === 'replies' ? (
         <NoticeList title='回复我的' hint='共 2 条'>
