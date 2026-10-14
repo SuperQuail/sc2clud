@@ -129,10 +129,9 @@ func (s *Service) UpdateBoard(ctx context.Context, actor *authz.Actor, publicID 
 	if in.MinPostLevel != nil && *in.MinPostLevel < 0 {
 		return nil, invalid("min_post_level", "不能是负数")
 	}
-	if in.CoverHash != nil && *in.CoverHash == "" {
-		// 空串 = 清空封面。SetNillable 的 nil 才是「不动」，而这里拿到的是「显式给了空串」。
-		in.CoverHash = nil
-	}
+	// 空串 = 清空封面，**不折成 nil**：指针 nil 才是「没给这个字段」（见下面 if 的顺序）。
+	// 上一版在这里把它折成 nil，于是「只发 {\"cover_hash\":\"\"}」既跳过 SetCoverHash、
+	// 又不计入「有没有要改的字段」→ 400「没有要改的字段」，清空封面这条路根本走不通。
 	if in.Name == nil && in.Description == nil && in.Status == nil &&
 		in.ACLEnabled == nil && in.MinPostLevel == nil && in.CoverHash == nil {
 		return nil, invalid("_", "没有要改的字段")
@@ -175,7 +174,11 @@ func (s *Service) UpdateBoard(ctx context.Context, actor *authz.Actor, publicID 
 			changed["min_post_level"] = *in.MinPostLevel
 		}
 		if in.CoverHash != nil {
-			upd.SetCoverHash(*in.CoverHash)
+			if *in.CoverHash == "" {
+				upd.ClearCoverHash() // 空串 = 置 NULL（d3-forum：cover_hash 为空就是没有封面）
+			} else {
+				upd.SetCoverHash(*in.CoverHash)
+			}
 			changed["cover_hash"] = *in.CoverHash
 		}
 		if err := upd.Exec(ctx); err != nil {

@@ -212,6 +212,77 @@ func (h *harness) seedModerator(boardID, userID int64, expires *time.Time) {
 	}
 }
 
+// 封面：**「没给」与「清空」是两件事**（拍板 08 第二轮「壁纸替换」）。
+//
+// 上一版把空串折成 nil，于是「只发 {"cover_hash":""}」既跳过 SetCoverHash、
+// 又不计入「有没有要改的字段」→ 400「没有要改的字段」：清空封面这条路根本走不通，
+// 而屏上因此连按钮都不敢画（画一颗点了必 400 的按钮是最坏的一种「看着正常」）。
+func TestUpdateBoardCoverHashDistinguishesAbsentFromClear(t *testing.T) {
+	h := newHarness(t)
+	roleID := h.seedRole("user", false)
+	admin := h.boardAdmin(h.seedUser("mod", roleID, 1, true), roleID)
+	boardID := h.seedBoard("campaign", 0, false)
+	public := h.boardPublicID(boardID)
+	newHash := strings.Repeat("b", 64)
+	old := strings.Repeat("a", 64)
+	h.seedImage(newHash)
+	h.seedImage(old)
+	if _, err := h.pool.Exec(h.ctx, "UPDATE boards SET cover_hash = $1 WHERE id = $2", old, boardID); err != nil {
+		t.Fatal(err)
+	}
+
+	// ① 换一张：给了非空 hash 就写进去 —— 这是「替换」，与「清空」是两条不同的路
+	d, err := h.svc.UpdateBoard(h.ctx, admin, public, UpdateBoardInput{CoverHash: &newHash})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if d.CoverHash != newHash {
+		t.Fatalf("封面应当换成 %s，实际 %q", newHash, d.CoverHash)
+	}
+
+	// ② 只发空串就能清空（这条在旧行为下是 400「没有要改的字段」）
+	empty := ""
+	d, err = h.svc.UpdateBoard(h.ctx, admin, public, UpdateBoardInput{CoverHash: &empty})
+	if err != nil {
+		t.Fatalf("{\"cover_hash\":\"\"} 必须能清空封面，实际报错: %v", err)
+	}
+	if d.CoverHash != "" {
+		t.Fatalf("清空之后回执里的封面应当为空串，实际 %q", d.CoverHash)
+	}
+	// 回执是一层，库里是另一层：列必须真的成了 NULL（前端按「空串 = 没有封面」走占位块）
+	var inDB *string
+	if err := h.pool.QueryRow(h.ctx, "SELECT cover_hash FROM boards WHERE id = $1", boardID).Scan(&inDB); err != nil {
+		t.Fatal(err)
+	}
+	if inDB != nil {
+		t.Fatalf("清空之后 boards.cover_hash 必须是 NULL，实际 %q", *inDB)
+	}
+
+	// ③ **没给**这个字段才是「不动」：换个字段改，封面不能被顺手清掉
+	back := newHash
+	if _, err := h.svc.UpdateBoard(h.ctx, admin, public, UpdateBoardInput{CoverHash: &back}); err != nil {
+		t.Fatal(err)
+	}
+	name := "改个名"
+	d, err = h.svc.UpdateBoard(h.ctx, admin, public, UpdateBoardInput{Name: &name})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if d.CoverHash != newHash || d.Name != name {
+		t.Fatalf("只改名字时封面必须原样保留: cover=%q name=%q", d.CoverHash, d.Name)
+	}
+	// 审计里要有这次改动（「谁把封面撤了」是这类后台最常被追问的问题）
+	var detail string
+	if err := h.pool.QueryRow(h.ctx,
+		"SELECT detail::text FROM audit_logs WHERE action = $1 ORDER BY id DESC LIMIT 2",
+		AuditBoardUpdate).Scan(&detail); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(detail, "cover_hash") {
+		t.Fatalf("改名那一条审计的 after 里不该编出 cover_hash: %s", detail)
+	}
+}
+
 // ── 重排 ──────────────────────────────────────────────────────────
 
 func TestReorderBoards(t *testing.T) {
