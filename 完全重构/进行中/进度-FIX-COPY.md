@@ -56,3 +56,34 @@
     与我这三个文件同跑也绿 `3 passed (3) | 21 passed` → 是全量并发下的抖动，与 FIX-TOPIC 记的 10-messages 同一形态）。
   - 下一步：步骤3 出图 —— DevRoom `devroom.html` 的 13-issue 页 + 产品 `product.html?route=/issues`（1440 与 390），两张都要看。
   - 阻塞：无
+
+- [x] 步骤3：出图 —— DevRoom 13-issue 与产品 `/issues`，1440 与 390，**两张主图都看过**
+  - 证据（命令 + 输出关键行）：
+    · 起自己的预览服务：`cd web && node node_modules/vite/bin/vite.js --config vite.preview.config.ts --port 5301 --strictPort`
+      （5301 是我这一轮的号；收工已按端口属主 `Stop-Process` 掉该 PID，复查 `port 5301 released`）。
+    · 出图脚本 `shots/fix-copy/shot.mjs`（`/shots/` 在 .gitignore 里 —— 与 FIX-TOPIC 的 `shots/fix-topic/overlap.mjs` 同一处置），
+      `node shots/fix-copy/shot.mjs` → **失败 0 张**：
+      ```
+      OK devroom-13-issue-1440  1440x1150  字 1375  「汇报 Bug」x4  检索语法=true  标记=—
+      OK devroom-13-issue-390   390x1100   字 1375  「汇报 Bug」x4  检索语法=true  标记=—
+      OK product-issues-1440    1440x1150  字 504   「汇报 Bug」x2  检索语法=true  标记=MARKER-PRODUCT-LOGIN /issues?topic=tp-1
+      OK product-issues-390     390x1100   字 504   「汇报 Bug」x2  检索语法=true  标记=MARKER-PRODUCT-LOGIN /issues?topic=tp-1
+      OK product-issues-search-1440 1440x1150 字 609 「汇报 Bug」x2  检索语法=true  标记=MARKER-PRODUCT-LOGIN /issues?topic=tp-1
+      ```
+      每张图都**顺带跑了同一组断言**（不是只截图）：页面上有「汇报 Bug」、没有旧文案「报个 Bug」、
+      有「检索语法」那一行，且用户可见文字里没有 `@/ui/` `forum.` `author=` `Open / Closed` `待处理 Open` `?topic=`、没有 `**` 字面量；
+      产品页还要求那块 `MARKER-PRODUCT-LOGIN /issues?topic=tp-1` 在位（§5.4：读得到它才证明拍的是当前源码）。
+      （写脚本时踩到一次：`?topic=` 一直报红，根因是**预览浮层自己**写着 route —— 已先把它从可见文字里摘掉再判：浮层不是用户会看到的东西。）
+    · 我看到的（两张主图）：DevRoom 13-issue 四个入口是「汇报 Bug / 功能建议 / 难度建议 / 其他反馈」，
+      检索框下那行是「**检索语法**：is:open|closed · kind:bug|feature|difficulty|other · label:标签 · author:handle（…）」，
+      详情里状态开关写「开启中 / 当前：开启中（关掉就是已关闭）」；产品 `/issues?topic=tp-1` 与它**同一份版面**
+      （真壳 + 真顶栏 + 左下角 MARKER），空态那句已经是「状态开关（开启中 / 已关闭）、以及评论区」。
+      `product-issues-search-1440`（敲了 is:open）看到清理后的那段：「自由词与 is: / kind: / author: 都发给服务端筛 …（本站还没有标签功能）」。
+  - 收工验证：`pnpm typecheck` 0；`pnpm lint` 0 errors（17 warnings，仓库既有）；
+    `npx vitest run` → **`Test Files 51 passed (51) | Tests 252 passed (252)`**（前一次同一命令的 4 条红是别人的在途文件
+    `routes/profile.test.tsx`（FIX-TITLE）与 `routes/home.test.tsx` 的并发抖动 —— 现在两个文件都归零，本条已复测）。
+  - 顺带记一条**不属于本包**的观察（没改）：390 视口下那四个入口仍是 `grid-cols-4`，
+    文字被截成「汇报 B / 功能建 / 难度建」，两个入口**一模一样地截**（同源，不是分叉）——
+    要动版式才谈得上修，属 FIX-TOPIC/设计对齐的范围。
+  - 下一步：无（本包三条任务已完）。
+  - 阻塞：无
