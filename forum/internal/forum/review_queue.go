@@ -46,6 +46,10 @@ const (
 // AuditReviewAction 是人工判定的审计动作名（AI 那一侧是 topic.ai_hide）。
 const AuditReviewAction = "topic.review"
 
+// ReviewSourceManual 是 review_events.source / topics.review_source 的「人判的」那一值
+// （值域 ai|manual|trusted，0020）。**AI 见到 manual 直接返回**（d7 §1 铁律）。
+const ReviewSourceManual = "manual"
+
 const (
 	maxReviewNote = 500 // review_note 是 varchar(500)
 	maxReviewQ    = 100 // 队列搜索词上限（防 ILIKE 全表扫被滥用）
@@ -226,6 +230,14 @@ func (s *Service) ReviewTopic(ctx context.Context, actor *authz.Actor, publicID,
 			return ErrTopicNotFound
 		}
 		if err := pgsql.InsertReviewAudit(ctx, tx, actor.UserID, AuditReviewAction, publicID, detail, now); err != nil {
+			return err
+		}
+		// 判定历史（M4）：audit_logs 是操作流水，review_events 才是「这条主题被谁、
+		// 因为什么、判过几次」—— 后台审核屏要的就是后者。0021 还专门给 actor_id 补了索引。
+		// 与判定同事务：判定没落库就不该留下一条事件。
+		reviewerID := actor.UserID
+		if err := pgsql.InsertReviewEvent(ctx, tx, ref.ID, ReviewSourceManual, action, note,
+			&reviewerID, now); err != nil {
 			return err
 		}
 		// 放行必须重建搜索索引：indexTopic 对「未过审」的主题是**把索引行删掉**（app/tasks.go），

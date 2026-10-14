@@ -51,9 +51,20 @@
     `ReviewedAt *time.Time`，DTO 加 `reviewer`/`reviewed_at` 两个 json 字段。
   - 阻塞：无
 
-- [ ] M4 人工判定不落 review_events
-  - 证据：
-  - 下一步：
+- [x] M4 人工判定不落 review_events
+  - 证据：`pgsql/review_queue.go` 新增 `InsertReviewEvent`（trigger 恒 'manual'、source/verdict/reason/
+    actor_id/created_at；reason 截到 varchar(200)）+ `clipReason`；`forum/review_queue.go` 的
+    `ReviewTopic` 事务里在 `InsertReviewAudit` 之后调一次，并新增常量 `ReviewSourceManual`。
+    **会红的证明**：把那次调用临时换成 `_ = pgsql.InsertReviewEvent` →
+    `review_queue_test.go:428: 人工判定必须落 review_events（M4）: no rows in result set`；装回 → PASS。
+    新用例 `TestReviewTopicWritesReviewEvent` 钉住：判定前的 0 条、每次判定 +1、三列值、
+    actor_id = 审核员、被拒的判定不留事件（同事务）、500 字理由被截到 200 而不是 22001 回滚。
+    `go test ./internal/forum/ -run 'TestReviewTopicWritesReviewEvent|TestReviewQueue' -count=1` 5 条全 PASS；
+    `gofmt -l internal/forum/` 空、`go vet ./internal/forum/` 退出 0。
+  - 下一步：M5 —— `forum/internal/forum/review_queue.go` 的 `ReviewTopic` 里给
+    `queue.TypeNotifyReview` 的 payload 补 `"state"` 与 `"text"`（判定那一刻的快照）；
+    `forum/internal/notify/tasks.go` 的 `NotifyReview` 优先用 payload 里的快照，缺了才现读 topics
+    （`CreateNotifyInput` 加 `State`/`Text` 两个字段）；`notify/pgsql` 的 ReviewTarget 保留兜底。
   - 阻塞：无
 
 - [ ] M5 通知是消费时现读 topics 而不是判定时快照

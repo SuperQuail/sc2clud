@@ -397,3 +397,81 @@ func TestReviewQueueDTOCarriesReviewerAndVerdict(t *testing.T) {
 		t.Fatalf("reviewed_by 为空时 reviewer 必须是 nil（AI 判的没有审阅人），实际 %+v", it.Reviewer)
 	}
 }
+
+// D3（交接单 M4）：人工判定**不落 review_events** —— 0020 专门建了这张表、trigger 值域含 'manual'、
+// 0021 还给 actor_id 补了索引，而人工那侧只写 audit_logs。后台要靠它渲染「谁判的、判过几次」。
+func TestReviewTopicWritesReviewEvent(t *testing.T) {
+	h := newHarness(t)
+	roleID := h.seedRole("user", false)
+	h.seedBoard("campaign", 0, false)
+	authorID := h.seedUser("author", roleID, 1, false)
+	author := h.actor(authorID, roleID, authz.PermTopicCreate)
+	modID := h.seedUser("mod", roleID, 1, true)
+	mod := h.actor(modID, roleID, authz.PermPostReview)
+
+	d := h.mustTopic(author, CreateTopicInput{BoardSlug: "campaign", Title: "待审", ContentMD: "正文"})
+
+	// 还没判：一条事件都没有
+	if n := h.countRows(t, "SELECT count(*) FROM review_events WHERE topic_id = (SELECT id FROM topics WHERE public_id = $1)", d.ID); n != 0 {
+		t.Fatalf("判定之前不该有 review_events，实际 %d", n)
+	}
+
+	// 放行一条
+	if _, err := h.svc.ReviewTopic(h.ctx, mod, d.ID, ReviewApprove, ""); err != nil {
+		t.Fatal(err)
+	}
+	var trigger, source, verdict, reason string
+	var actorID *int64
+	if err := h.pool.QueryRow(h.ctx,
+		"SELECT trigger, source, verdict, reason, actor_id FROM review_events WHERE topic_id = (SELECT id FROM topics WHERE public_id = $1)",
+		d.ID).Scan(&trigger, &source, &verdict, &reason, &actorID); err != nil {
+		t.Fatalf("人工判定必须落 review_events（M4）: %v", err)
+	}
+	if trigger != "manual" || source != "manual" || verdict != ReviewApprove {
+		t.Fatalf("事件三列不对：trigger=%q source=%q verdict=%q", trigger, source, verdict)
+	}
+	if reason != "" {
+		t.Fatalf("放行没有理由，reason 应当是空串，实际 %q", reason)
+	}
+	if actorID == nil || *actorID != modID {
+		t.Fatalf("actor_id 应当是审核员 %d，实际 %v", modID, actorID)
+	}
+
+	// 改判一条：事件按次累加（这张表回答的是「判过几次」，不是当前状态）
+	if _, err := h.svc.ReviewTopic(h.ctx, mod, d.ID, ReviewReject, "来源不明"); err != nil {
+		t.Fatal(err)
+	}
+	if n := h.countRows(t, "SELECT count(*) FROM review_events WHERE topic_id = (SELECT id FROM topics WHERE public_id = $1)", d.ID); n != 2 {
+		t.Fatalf("两次判定应当有 2 条事件，实际 %d", n)
+	}
+	if err := h.pool.QueryRow(h.ctx,
+		"SELECT source, verdict, reason FROM review_events WHERE topic_id = (SELECT id FROM topics WHERE public_id = $1) ORDER BY id DESC LIMIT 1",
+		d.ID).Scan(&source, &verdict, &reason); err != nil {
+		t.Fatal(err)
+	}
+	if verdict != ReviewReject || reason != "来源不明" {
+		t.Fatalf("最后一条事件应当是 reject + 理由，实际 verdict=%q reason=%q", verdict, reason)
+	}
+
+	// 失败 / 冲突的判定不留事件（与判定同事务）
+	if _, err := h.svc.ReviewTopic(h.ctx, mod, d.ID, ReviewReject, "   "); err == nil {
+		t.Fatal("空理由的拒绝必须被拒")
+	}
+	if n := h.countRows(t, "SELECT count(*) FROM review_events WHERE topic_id = (SELECT id FROM topics WHERE public_id = $1)", d.ID); n != 2 {
+		t.Fatalf("被拒的判定不该留事件，实际 %d", n)
+	}
+
+	// 500 字的理由写不进 varchar(200) 的 reason：必须截断，不能因为 22001 把整条判定回滚
+	longNote := strings.Repeat("理", 500)
+	if _, err := h.svc.ReviewTopic(h.ctx, mod, d.ID, ReviewReject, longNote); err != nil {
+		t.Fatalf("500 字理由的判定不该失败（reason 要截到 200）: %v", err)
+	}
+	if err := h.pool.QueryRow(h.ctx,
+		"SELECT reason FROM review_events WHERE topic_id = (SELECT id FROM topics WHERE public_id = $1) ORDER BY id DESC LIMIT 1",
+		d.ID).Scan(&reason); err != nil {
+		t.Fatal(err)
+	}
+	if len([]rune(reason)) != 200 {
+		t.Fatalf("reason 应当截到 200 字，实际 %d", len([]rune(reason)))
+	}
+}

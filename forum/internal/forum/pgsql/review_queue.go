@@ -161,6 +161,37 @@ func SetTopicReview(ctx context.Context, tx Querier, topicID int64, state string
 	return int(n), err
 }
 
+// InsertReviewEvent 是人工判定落 review_events 的那一行（0020 §5.2）。
+//
+// 审计（audit_logs）与判定事件是两种东西，**都要**：
+// audit_logs 回答「谁在什么时候动了什么」（后台操作流水），
+// review_events 回答「这条主题被谁、因为什么、判过几次」—— 后者是判定历史，
+// 每判一次一条（AI 那一侧早已在写，见 aireview/sql.go 的 sqlInsertEvent）；
+// 少了它，后台设计稿的「谁判的、判过几次」只剩当前状态可读，改判历史全丢。
+//
+//   - trigger 恒为 'manual'：这条路径只可能是人在后台点的（值域 create|report|manual，0020）；
+//   - source 恒为 'manual'：不可覆盖的判定来源（d7 §1 铁律）；
+//   - verdict 就是动作 approve|reject（值域 approve|reject|review）；
+//   - categories / model / latency_ms 是 AI 那侧才有的，留默认值。
+func InsertReviewEvent(ctx context.Context, tx Querier, topicID int64, source, verdict, reason string,
+	actorID *int64, now time.Time) error {
+	return exec(ctx, tx,
+		"INSERT INTO review_events (topic_id, trigger, source, verdict, reason, actor_id, created_at) "+
+			"VALUES ($1, 'manual', $2, $3, $4, $5, $6)",
+		topicID, source, verdict, clipReason(reason), actorID, now.UTC())
+}
+
+// clipReason 是 reason 的 varchar(200) 硬上限（service 的 note 上限是 500，
+// 两列宽度不同：写不下要在**这里**截，否则整条判定会因 22001 回滚）。
+func clipReason(s string) string {
+	const max = 200
+	r := []rune(s)
+	if len(r) <= max {
+		return s
+	}
+	return string(r[:max])
+}
+
 // InsertReviewAudit 是人工判定的审计行。AI 那一侧走 aireview/sql.go 的 sqlInsertAudit，
 // 动作名不同（topic.review vs topic.ai_hide），表是同一张。
 // target_id 存**对外 id**：audit_logs.target_id 是 varchar，按 0003_authz 的约定存 public_id。
