@@ -4,7 +4,7 @@ import { roomHref } from '@/devroom/room-links';
 import type { CommentData } from '@/ui/comment/types';
 import { DESIGN_ACTION_NOTE, DesignActionNote } from './design-action';
 import { REPORT_REASON_LABEL } from './report-dialog';
-import { AUTHOR, BOARDS, BOARD_NAV, CANDIDATES, CHANNELS, MY_ACCOUNT, topicBody, topicComments } from './mock';
+import { AUTHOR, BOARDS, BOARD_NAV, CANDIDATES, CHANNELS, MY_ACCOUNT, TOPIC_CONTENT_MD, topicBody, topicComments } from './mock';
 import { ReviewStateDemoBar, type ReviewState } from './review-state';
 import { TopicView, type TopicReview } from './topic-view';
 import { TopicTaskShowcase } from './_task/showcase';
@@ -71,6 +71,8 @@ const TOPIC: TopicDetail = {
   kind: 'resource',
   title: '第三章「余烬」平衡性改动说明：菌毯推进速度与第 11 关调整',
   content_html: topicBody(),
+  // 正文真源：编辑弹层把它灌回 MarkdownEditor（房间的 topicBody 是手写 HTML，反推不回编辑器状态）
+  content_md: TOPIC_CONTENT_MD,
   author: AUTHOR,
   created_at: '2026-10-12 09:20',
   updated_at: '今天 11:04',
@@ -122,6 +124,9 @@ export default function TopicPage() {
   // 帖子的可变部分：标题 / 正文 / 最后编辑时间（编辑入口真的改它，不是只弹个框）
   const [title, setTitle] = useState(TOPIC.title);
   const [bodyHtml, setBodyHtml] = useState(TOPIC.content_html);
+  // 编辑器真源也要跟着状态走：编辑保存后 JSON 与 HTML 必须同时更新，
+  // 否则再打开一次编辑框会看到**上一次的正文**（保存成功但内容没变的假象）。
+  const [bodyMd, setBodyMd] = useState(TOPIC.content_md);
   const [updatedAt, setUpdatedAt] = useState(TOPIC.updated_at);
   // 点赞 / 收藏：两个可切换状态（真站是幂等 PUT/DELETE，这里是本地演示）
   const [liked, setLiked] = useState(TOPIC.viewer.liked);
@@ -155,7 +160,7 @@ export default function TopicPage() {
   // 于是「编辑」整颗按钮在房间里消失，编辑链路连同审核横幅的落点一起看不到（房间因此漏掉过一次验收）。
   const canEdit = ME_PERMS.includes('topic.edit.own');
 
-  const topic: TopicDetail = { ...TOPIC, title, content_html: bodyHtml, updated_at: updatedAt, reply_count: commentTotal };
+  const topic: TopicDetail = { ...TOPIC, title, content_md: bodyMd, content_html: bodyHtml, updated_at: updatedAt, reply_count: commentTotal };
   const review: TopicReview = {
     state: reviewState,
     pendingHuman,
@@ -240,9 +245,11 @@ export default function TopicPage() {
 
   /** 编辑保存：标题 / 正文 / 最后编辑时间就地变。未通过审核时**顺手把它送回审核队列**——
    *  rejected 的唯一出路就是「改完重新提交」（后端状态机没有 rejected → approved 这条边）。 */
-  function saveEdit(next: { title: string; text: string }) {
+  function saveEdit(next: { title: string; json: string; html: string }) {
     setTitle(next.title);
-    setBodyHtml(toHtml(next.text));
+    // 真源与展示一起换：JSON 给「再编辑一次」，HTML 给正文渲染（后端这两列也是同一次写入）
+    setBodyMd(next.json);
+    setBodyHtml(next.html);
     setUpdatedAt('刚刚');
     if (reviewState === 'rejected') {
       setReviewState('pending');
@@ -337,14 +344,6 @@ export default function TopicPage() {
   );
 }
 
-/** 存下来的正文是纯文本（段落之间空一行），渲染前转成后端 content_html 的样子（已清洗的富文本）。 */
-function toHtml(text: string): string {
-  return text
-    .split(/\n\s*\n/)
-    .map((p) => '<p>' + escapeHtml(p.replace(/\n/g, ' ')) + '</p>')
-    .join('');
-}
-
-function escapeHtml(s: string): string {
-  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-}
+// toHtml / escapeHtml 已删：它们服务的是「编辑框是纯文本框、正文是一段纯文本」的那个旧形态。
+// 现在编辑走 MarkdownEditor，HTML 由编辑器（$generateHtmlFromNodes）给，后端再清洗一遍 ——
+// 再留一份「纯文本 → HTML」的转换就是第二条会与它分叉的实现。

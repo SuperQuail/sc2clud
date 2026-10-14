@@ -77,7 +77,9 @@ export type TopicViewProps = {
   onToggleLike?: () => void;
   onToggleBookmark?: () => void;
   onCopyLink?: () => void;
-  onEdit?: (next: { title: string; text: string }) => void;
+  /** 编辑保存：三样一起给 —— 标题、正文真源（Lexical JSON，就是 PATCH 的 content_md）、
+   *  以及编辑器派生的 HTML（后端会再清洗一遍；房间直接拿它渲染） */
+  onEdit?: (next: { title: string; json: string; html: string }) => void;
   /** target = 被举报的回复；null = 帖子本身（真站要按它填 target_type / target_id） */
   onSubmitReport?: (reason: ReportReason, detail: string, target: { id: string; label: string } | null) => void;
   /** 本人已经举报过这篇帖子（后端是幂等的：重复举报回 200 + 既有那条） */
@@ -327,7 +329,9 @@ export function TopicView({
                 <Suspense fallback={<p className='text-[13px] text-muted-foreground'>正在打开编辑…</p>}>
                   <EditTopicDialog
                   title={topic.title}
-                  text={toText(topic.content_html)}
+                  contentMd={topic.content_md}
+                  candidates={candidates}
+                  onMentionQuery={onMentionQuery}
                   onSave={(next) => {
                     setLayer(null);
                     onEdit?.(next);
@@ -382,15 +386,6 @@ export function TopicView({
   );
 }
 
-/** 编辑弹层的初值：从 content_html 剥标签得到纯文本（块级标签的收尾当段落分隔）。 */
-export function toText(html: string): string {
-  return html
-    .replace(/<\/(p|h[1-6]|li|blockquote)>/g, '\n\n')
-    .replace(/<[^>]+>/g, '')
-    .replace(/&nbsp;/g, ' ')
-    .replace(/&amp;/g, '&')
-    .replace(/&lt;/g, '<')
-    .replace(/&gt;/g, '>')
-    .replace(/\n{3,}/g, '\n\n')
-    .trim();
-}
+// toText（把 content_html 剥成纯文本）已删：它服务的是「编辑框是纯文本框」的那个旧形态。
+// 编辑的初值现在是 content_md（EditorState JSON），从 HTML 反推既会丢提及的 userId
+// 与图片节点，也与「后端存的是 JSON」这个事实对不上（拍板 08 §第三轮 5）。

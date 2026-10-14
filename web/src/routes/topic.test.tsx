@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { expect, it, vi } from 'vitest';
 import { MemoryRouter, Route, Routes } from 'react-router';
 import { TopicPage, toMentionCandidates } from './topic';
@@ -234,11 +234,17 @@ it('B6：编辑保存发的 PATCH 带 content_md（后端凭它把 review_state 
   // 桩要跟着变，否则测的是「回执没变」这种谁都看不出来的东西。
   mocks.topic.current = { review_state: 'pending', review_note: null };
   fireEvent.click(dialog.querySelector('[data-testid=edit-save]')!);
-  // 不带 content_md 的 PATCH 不会重置审核态 —— 所以正文必须在体内；
-  // 正文由 content_html 剥标签得到（topic-view 的 toText），所以这里是「正文第一段。」
-  await waitFor(() =>
-    expect(mocks.updateTopic).toHaveBeenCalledWith(WIRE.id, { title: '改过的标题', content_md: '正文第一段。' }),
-  );
+  // 不带 content_md 的 PATCH 不会重置审核态 —— 所以正文必须在体内。
+  // 正文是**编辑器真源**（content_md 那一列就是 Lexical EditorState 的 JSON，与发帖页同一个字段），
+  // 不再是「从 content_html 剥标签得到的纯文本」——那条路会把提及与图片节点弄丢。
+  await waitFor(() => expect(mocks.updateTopic).toHaveBeenCalledTimes(1));
+  const [patchedId, patchedBody] = mocks.updateTopic.mock.calls[0]! as [string, { title: string; content_md: string }];
+  expect(patchedId).toBe(WIRE.id);
+  expect(patchedBody.title).toBe('改过的标题');
+  expect(JSON.parse(patchedBody.content_md)).toHaveProperty('root');
+  // WIRE.content_md 是「正文」（历史值，不是 JSON）：它必须**被保住**（toEditorState 包成最小文档），
+  // 而不是抛在用户脸上、也不是被清空
+  expect(patchedBody.content_md).toContain('正文');
   // B6 的那句实话：保存 = 重新提交审核，回执必须说出来（旧回执只会说「更新了」，作者不知道自己在重审）
   await waitFor(() => expect(screen.getAllByTestId('design-action-note')[0]!.textContent).toContain('已重新提交审核'));
   // L7：页头横幅也要说同一件事 —— 「正在审核中」这一档原先与**首次投稿**完全同形，
@@ -385,4 +391,27 @@ it('提及候选：敲 @ 之前不发查询，候选的 id 就是 mention: 里�
     { id: 7, handle: 'tangtian', nickname: '唐天', avatar: '/img/tang', level: 3, ambiguous: true },
   ]);
   expect(got).toEqual([{ id: '7', handle: 'tangtian', nickname: '唐天', avatar: '/img/tang', duplicate: true }]);
+});
+
+// 「已转人工」那一档（拍板 08 §第三轮 6）：pending 下面其实是两件事 ——「AI 正在自动检查，几十秒」
+// 与「已经在人工队列里，等一个人」。后端按 review_events **最新一条**判定算（forum/pgsql/topics.go），
+// 这里钉前端那一半：字段一到，横幅就说「已转人工」那一套文案。
+it('审核横幅：后端说已转人工时，文案换成「已转人工」而不是「正在自动检查」', async () => {
+  // 先把「自动检查」那一档拍下来当对照（WIRE 的 review_state=rejected，先切成待审）
+  mocks.topic.current = { review_state: 'pending', review_note: null };
+  renderPage();
+  await screen.findByTestId('topic-main');
+  expect(screen.getByTestId('review-banner').textContent).toContain('正在自动检查');
+
+  // 再喂一版「已转人工」（先把上一版从 DOM 里清掉，否则两次渲染的横幅都在文档里）
+  cleanup();
+  mocks.topic.current = { review_state: 'pending', review_note: null, review_pending_human: true };
+  renderPage();
+  await screen.findByTestId('topic-main');
+  const banner = screen.getByTestId('review-banner');
+  expect(banner.textContent).toContain('已转人工');
+  expect(banner.textContent).not.toContain('正在自动检查');
+  // 「谁在判」那一层也要说清（作者最想知道的是「还要等多久」）
+  expect(banner.textContent).toContain('1 个工作日内有结果');
+  mocks.topic.current = null;
 });

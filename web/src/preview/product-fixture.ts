@@ -39,7 +39,11 @@ const ME = {
 
 const SITE = { name: 'SC2clud', announcements: [], banner: null };
 
-const BOARD = { slug: 'custom-campaign', name: '自制战役' };
+// 分区（左栏那一行的计数就来自它）：字段名照 BoardDTO。
+// **计数不能是 0** —— 出图时左栏「0 帖子」与右栏「12 帖子」并排出现，一眼就看得出桩是坏的。
+const BOARD = { slug: 'custom-campaign', name: '自制战役', description: '玩家自制战役与地图。', cover: null, topic_count: 12, post_count: 130, today_count: 1 };
+/** 关注状态（follow.State 逐字形状）：值就地改，PUT/DELETE 之后那张图才看得出「已关注」。 */
+const FOLLOW = { target: 'board', slug: 'custom-campaign', following: false, follower_count: 128 };
 const BOARDS = [
   { slug: 'announcement', name: '公告', description: '站点公告与版本发布。', cover: null, topic_count: 6, post_count: 41, today_count: 1 },
   BOARD,
@@ -72,9 +76,33 @@ const TOPICS = [
   TOPIC('tp-3', '【转载】SC2 编辑器常见坑位整理（2024 版）', 'repost', USER('demo-marine', '陆战队员'), 7, '整理自社区帖，标注了原作者与出处。'),
 ];
 
+// 正文真源（Lexical EditorState 的 JSON，就是后端 content_md 那一列）：编辑弹层把它灌回
+// MarkdownEditor。**不能是 null** —— 那会拍到一个空编辑器，看不出「初值真的灌进去了」。
+// 这是后端存的那种形状（root → paragraph → text），不是手写的另一套。
+const TOPIC_MD = JSON.stringify({
+  root: {
+    children: [
+      '第三章「余烬」已经发布。这一版主要做三件事：隐藏结局线、菌毯铺速回调、以及读档后事件计时改为任务时间。',
+      '下载与提取码见右侧来源区；遇到问题请点下面的反馈入口。',
+    ].map((text) => ({
+      children: [{ detail: 0, format: 0, mode: 'normal', style: '', text, type: 'text', version: 1 }],
+      direction: 'ltr',
+      format: '',
+      indent: 0,
+      type: 'paragraph',
+      version: 1,
+    })),
+    direction: 'ltr',
+    format: '',
+    indent: 0,
+    type: 'root',
+    version: 1,
+  },
+});
+
 const TOPIC_DETAIL = {
   ...TOPICS[0],
-  content_md: null,
+  content_md: TOPIC_MD,
   content_html:
     '<p>第三章「余烬」已经发布。这一版主要做三件事：隐藏结局线、菌毯铺速回调、以及读档后事件计时改为任务时间。</p><p>下载与提取码见右侧来源区；遇到问题请点下面的反馈入口。</p>',
   updated_at: '2026-10-14T02:00:00Z',
@@ -140,6 +168,8 @@ function topicDetail(): typeof TOPIC_DETAIL {
     ...(saved.content_md ? { content_html: '<p>' + saved.content_md + '</p>' } : {}),
     // 保存过正文 = 后端把审核态打回了 pending（forum 的 ResetTopicReview，597c4ac）
     ...(saved.content_md ? { review_state: 'pending', review_note: null } : {}),
+    // 「已转人工」（拍板 08 §第三轮 6）：后端按 review_events 最新一条判定给这个字段
+    ...(review === 'pending_human' && !saved.content_md ? { review_state: 'pending', review_pending_human: true } : {}),
     ...(review === 'revision_requested' && !saved.content_md
       ? {
           review_state: 'revision_requested',
@@ -272,6 +302,14 @@ export function fixtureFor(u: string, method: string, body?: unknown): Reply | u
   }
   if (p.endsWith('/api/v1/site')) return { body: { data: SITE } };
   if (p.endsWith('/api/v1/boards')) return { body: { data: BOARDS } };
+  // 关注分区（拍板 08 §第三轮 1+2）：那一格「成员」与那颗「关注分区」按钮的真源。
+  // 数字必须是**真数**（不是 0）—— 出图要看的正是「它不再是恒 0」。
+  if (p.includes('/api/v1/boards/') && p.endsWith('/follow')) {
+    const on = method === 'PUT' ? true : method === 'DELETE' ? false : FOLLOW.following;
+    FOLLOW.following = on;
+    FOLLOW.follower_count += method === 'PUT' ? 1 : method === 'DELETE' ? -1 : 0;
+    return { body: { data: { ...FOLLOW } } };
+  }
   if (p.includes('/api/v1/topics/tp-1/sources/')) return { status: 302 };
   if (p.endsWith('/api/v1/topics/tp-1')) return { body: { data: topicDetail() } };
   if (p.endsWith('/api/v1/topics/tp-2')) return { body: { data: TOPIC_RESUBMITTED } };
@@ -303,8 +341,19 @@ export function fixtureFor(u: string, method: string, body?: unknown): Reply | u
     return { body: { data: NOTIFICATIONS[kind] ?? [], next_cursor: null } };
   }
   if (p.endsWith('/api/v1/search')) {
+    // 用户档的条目是 **user.SearchItem**（不是 UserBriefDTO）：id 是**数字 user id**
+    // （它要直接填进提及的 `mention:<id>`），另有 level 与 ambiguous（重名标记）。
+    // 这两条差别必须在这里照抄 —— 少了 id/handle，@提及候选插进正文的就是一个渲染不出来的提及。
     return url.searchParams.get('type') === 'users'
-      ? { body: { data: [USER('demo-admin', '示范管理员'), USER('demo-voidray', '虚空辉光舰')], next_cursor: null } }
+      ? {
+          body: {
+            data: [
+              { id: 12, handle: 'demo-admin', nickname: '示范管理员', avatar: null, level: 12, ambiguous: false },
+              { id: 44, handle: 'demo-voidray', nickname: '虚空辉光舰', avatar: null, level: 3, ambiguous: false },
+            ],
+            next_cursor: null,
+          },
+        }
       : { body: { data: TOPICS, next_cursor: null } };
   }
   // 收款码（L1）：形状照 media/dto.go 的 PaymentChannel（id / label / image / sort）。

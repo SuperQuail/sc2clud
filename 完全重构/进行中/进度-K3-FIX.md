@@ -68,3 +68,52 @@
     而 `topic-view.tsx` 现在传给弹层的是 `toText(topic.content_html)` —— 要改成传 `content_md`
     并把回执字段从 `text` 改成 `json`（`PATCH /topics/{id}` 的 `content_md` 就是它）。
   - 阻塞：无。
+- [x] §第三轮 5：编辑正文换成 `MarkdownEditor`（不再是纯文本框）
+  - 选了哪条路：**详情必须带上 `content_md`**（Lexical EditorState 的 JSON，后端字段名就是它）——
+    弹层把它灌进编辑器，改完把 `json` 原样发回 `PATCH /topics/{id}` 的 `content_md`（与发帖页同一个字段）。
+    原来那一路（`topic-view.tsx` 的 `toText(content_html)` 剥标签 → 纯文本 → `text`）会丢提及的 userId
+    与图片节点，而且与「后端存的是 JSON」这件事对不上。
+    做了：`12-topic/types.ts` 的 `TopicDetail` 增 `content_md`（真源）· `edit-dialog.tsx` 重写成
+    `MarkdownEditor`（标题仍 `Input`，保存回 `{title,json,html}`）· `topic-view.tsx` 改传 `contentMd` +
+    删掉死掉的 `toText` · `routes/topic.tsx` 的 `save` 发 `content_md: next.json` · 房间 `index.tsx` 同步维护
+    `bodyMd/bodyHtml` 两份状态（保存后**再开一次编辑框**要看到新正文）。
+  - **顺带修掉一条会抛在用户脸上的缺陷**：`MarkdownEditor` 的 InitialState 对坏 JSON 是直接抛的，
+    而 `content_md` 是历史列（老站迁过来的是 Markdown 纯文本）—— 真站上一次编辑就崩。
+    `edit-dialog.tsx` 的 `toEditorState` 只做两条：本来就是 EditorState 就原样用；否则把整段文本**保住**、
+    包成一个最小文档（`shortcut:` 已标注：纯文本只按段落折行，能认格式的是真源那份 JSON）。
+  - 证据：`topic-view.test.tsx` 那条改成查 `[contenteditable][data-placeholder]`（旧版这里是 textarea）+
+    断言回执 `json` 里含原文；`toEditorState` 单测两条（JSON 原样 / 纯文本不丢）。
+    `routes/topic.test.tsx` 的 B6 改成断言 PATCH 体里的 `content_md` **是 JSON 且含 WIRE 的正文**，
+    把 `save` 临时换回写死正文时实测红。全量 `npx vitest run` → **37 文件 / 189 用例绿**。
+- [x] §第三轮 6：`review_pending_human` 要能出来（**选了「按现有数据推」**）
+  - 选了哪条与为什么：**不加列、不改迁移**，判据取 `review_events` **最新一条判定的 verdict = 'review'`**
+    （d7 §1 状态机的第三种结论就是「AI 拿不准 → 人工队列」，而 `review_events` 已经逐次记下了它）。
+    为什么不加字段：那需要在 AI 判定、举报转人工、人工判定三条写路径上都记得维护一个布尔列
+    （任何一条漏写就永远错），而这条信息**已经完整存在**于事件表里。
+    **一个关键取舍**：判据是「最新一条」，不是「存在过 verdict=review」——后者在人工判完之后永远为真，
+    横幅会一直说「已转人工」。实测两种写法在当前用例上分得出高下（见证据）。
+    只在 `pending` 时有意义，所以前端那档文案只在 pending 分支读它；字段本身在非作者视角恒 false
+    （与 review_note 同一条口径：别人根本收不到 pending 的帖）。
+  - 做了什么：`pgsql/topics.go` 的 `TopicDetail` 加一条标量子查询 + `TopicDetailRow.ReviewPendingHuman`；
+    `dto.go` 加 `ReviewPendingHuman bool \`json:"review_pending_human"\``；`map.go` 里与正文那一支
+    用**同一对判据**（作者 / canSeePending）；`routes/topic.tsx` 的 `TopicWire` 与 `toReview` 接上（删掉 shortcut）。
+  - 证据：新用例 `TestTopicDetailReportsPendingHumanFromLatestReviewEvent`
+    （`forum/internal/forum/review_pending_human_test.go`）三段：没事件=false → verdict=review 后=true
+    （并断言 JSON 键 `review_pending_human`）→ 人工 approve 之后**回到 false**。
+    把 SQL 换成「存在过 verdict=review」后实测第三段红：`人工已经判过了，仍报 pendingHuman=true`。
+    前端新用例在 `pendingHuman: false` 的旧行为下实测红
+    （`expected '这篇正在审核中…正在自动检查…' to contain '已转人工'`）。
+- [x] 渲染验收（出图并看图）：`web/scripts/shoot-k3fix.ts`（CDP 直连 headless Chrome，端口 9444，自己起的自己关）
+  拍 8 张进 `shots/k3fix/`，**逐张看过**：`topic-default-1440`（成员 128 真数 + 角色徽标「管理员」）、
+  `topic-followed-1440`（已关注 + 成员 129）、`topic-default-390`（窄屏整页）、
+  `topic-mention-menu-1440`（@ 候选菜单里真有「示范管理员」一行）、`topic-edit-dialog-1440`（MarkdownEditor +
+  工具栏 + content_md 灌进来的两段正文）、`topic-edit-invalid-1440`（标题清空 → 「标题至少 4 个字」）、
+  `topic-edit-dialog-390`、`topic-pending-human-1440`（「已转人工审核」那一套文案）。
+  图里左下角有 `MARKER-PRODUCT-LOGIN /t/tp-1`（product.html 入口自己插的可见标记）——证明拍的是当前源码。
+  出图时另外修了桩的三处（都写进了注释）：`POST/PATCH` 的板计数不能是 0（左栏会显示「0 帖子」）、
+  `/search?type=users` 的条目必须是 **SearchItem**（数字 id + level + ambiguous，不是 UserBriefDTO）、
+  `current_md` 要有真内容（否则拍到的是空编辑器）。
+  - 下一步：本包 1–6 全部落地。§第三轮 7（图文帖配图可见性）与 8（`VisibilityLogin` 死档）属 media 域的
+    图文帖整块，不在本包作用域（见 08 拍板第三轮的最后两条）。
+  - 阻塞：`gofmt -l .` 收尾时若仍有 `internal/user/{service,pgsql/queries}.go`，那是 K2-B 在途（本包文件干净）；
+    `pnpm lint` 有 22 条**既有** warning（0 error），都不是本包引入。

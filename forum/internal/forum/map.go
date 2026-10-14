@@ -102,6 +102,10 @@ func (s *Service) topicDetailDTO(r pgsql.TopicDetailRow, sources []pgsql.SourceR
 	}
 	// review_note 只给作者看（拍板 §6）：别人连主题都看不到，所以这里只多一层保险。
 	d.ReviewNote = r.ReviewNote
+	// 「已转人工」同理只对**判的人与被判的人**有意义（拍板 08 §第三轮 6）：
+	// 读者收到的是 approved 的帖（pending 根本不下发），这一档对他们没有可行动的含义。
+	// 与上面的正文分支用同一对判据（归属 / canSeePending），免得两处各判一套。
+	d.ReviewPendingHuman = r.ReviewPendingHuman && (r.Author.ID == viewer || canSeePending)
 	return d
 }
 

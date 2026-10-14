@@ -305,6 +305,9 @@ type TopicDetailRow struct {
 	ContentMD      string
 	ContentHTML    string
 	ContentDeleted bool
+	// ReviewPendingHuman 是「这一轮审核已经转人工，人在判」（review_events 最新一条的
+	// verdict = 'review'）。拍板 08 §第三轮 6 要的那一档横幅文案就靠它。
+	ReviewPendingHuman bool
 }
 
 // TopicDetail 一条查询拿全：主题 + 作者 + 分区 + 我是否收藏 + 我的投票 + issue 未关闭数 + 1 楼正文。
@@ -323,6 +326,13 @@ func (s *Store) TopicDetail(ctx context.Context, publicID string, viewerID int64
        COALESCE((SELECT l.value FROM likes l
          WHERE l.user_id = $2 AND l.target_type = 'topic' AND l.target_id = t.id), 0),
        EXISTS (SELECT 1 FROM bookmarks bk WHERE bk.user_id = $2 AND bk.topic_id = t.id),
+       -- 是否已经转人工（拍板 08 §第三轮 6）：**取最新一条判定事件**的 verdict，
+       -- 不是「存在过 verdict=review」—— 一条帖先转人工、再被人工判过之后，
+       -- 「存在过」会永远为真（横幅就会在明明已经判完的帖上说「已转人工」）。
+       -- 最新一条 = 当前这一轮审核的结论；verdict 的值域见 ck_review_events_verdict。
+       COALESCE((SELECT ev.verdict = 'review' FROM review_events ev
+                  WHERE ev.topic_id = t.id
+                  ORDER BY ev.created_at DESC, ev.id DESC LIMIT 1), false),
        COALESCE(p.content_md, ''), COALESCE(p.content_html, ''), COALESCE(p.visibility <> 'normal', false)
   FROM topics t` + boardJoin + authorJoin + coverJoin + `
   JOIN roles r ON r.id = a.role_id
@@ -350,6 +360,7 @@ func (s *Store) TopicDetail(ctx context.Context, publicID string, viewerID int64
 			&r.BoardID, &r.BoardACL, &r.MinPostLevel, &r.ReviewNote, &r.ResourceStatus,
 			&roleKey, &roleName, &roleBadge,
 			&r.IssueOpenCount, &r.MyVote, &r.Bookmarked,
+			&r.ReviewPendingHuman,
 			&r.ContentMD, &r.ContentHTML, &r.ContentDeleted,
 		}
 		if err := rows.Scan(append(dest, extra...)...); err != nil {

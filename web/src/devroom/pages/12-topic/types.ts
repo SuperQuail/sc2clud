@@ -52,6 +52,10 @@ export type TopicDetail = {
   board: { slug: BoardSlug; name: string };
   kind: TopicKind;
   title: string;
+  /** 正文的**真源**：Lexical EditorState 的 JSON（后端字段名就是 content_md）。
+   *  编辑弹层要把它灌回 MarkdownEditor —— 从 content_html 反推不回编辑器状态
+   *  （会丢提及的 userId 与图片节点），所以详情必须带上它。 */
+  content_md: string;
   /** 后端已用 bluemonday 清洗过的富文本 */
   content_html: string;
   author: TopicAuthor;

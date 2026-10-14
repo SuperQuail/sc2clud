@@ -115,6 +115,39 @@ export const AUTHOR = {
   joined_at: '2024 年 3 月',
 };
 
+/** 正文的**真源**（后端字段名 content_md）：Lexical EditorState 的 JSON。
+ *  编辑弹层把它灌回 MarkdownEditor —— 房间这里只放一段能跑通往返的最小文档
+ *  （房间的 topicBody() 是手写 HTML，反推不成编辑器状态；真站拿到的是后端存的那一份 JSON）。 */
+export const TOPIC_CONTENT_MD = JSON.stringify({
+  root: {
+    children: [
+      {
+        children: [
+          {
+            detail: 0,
+            format: 0,
+            mode: 'normal',
+            style: '',
+            text: '第 11 关（菌毯推进那关）的菌毯扩散速度改成线性推进 + 上限封顶。',
+            type: 'text',
+            version: 1,
+          },
+        ],
+        direction: 'ltr',
+        format: '',
+        indent: 0,
+        type: 'paragraph',
+        version: 1,
+      },
+    ],
+    direction: 'ltr',
+    format: '',
+    indent: 0,
+    type: 'root',
+    version: 1,
+  },
+});
+
 /** 正文富文本：后端 content_html 的样子（外链、@提及、列表、引用、代码、折叠长段落都有） */
 export function topicBody(): string {
   return [

@@ -57,6 +57,8 @@ import { imageUrl, toComments } from './_parts/mappers';
  *  DTO 真名之后，本类型只剩这几个真没声明的。 */
 type TopicWire = {
   review_state?: string;
+  /** 这一轮审核是否已转人工（后端 review_events 最新一条判定 = review，拍板 08 §第三轮 6） */
+  review_pending_human?: boolean;
   review_note?: string | null;
   issue_open_count?: number;
   can_edit?: boolean;
@@ -207,8 +209,11 @@ export function TopicPage() {
   // 两件事是同一次请求。saved 只用来在回执里说实话，不参与渲染判断。
   const [saved, setSaved] = useState<'idle' | 'draft' | 'resubmitted'>('idle');
   const save = useMutation({
-    mutationFn: (next: { title: string; text: string }) =>
-      updateTopic(topicId, { title: next.title, content_md: next.text }),
+    // next.json 就是 PATCH 的 content_md —— **与发帖页同一个字段**（后端存的就是这份 EditorState JSON）。
+    // 正文不再从 content_html 剥标签：那条路会把提及与图片节点弄丢，而 PATCH 只要带 content_md
+    // 就会把 review_state 打回待审（forum 的 ResetTopicReview），所以发出去的内容必须是真的那一份。
+    mutationFn: (next: { title: string; json: string }) =>
+      updateTopic(topicId, { title: next.title, content_md: next.json }),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: qk.topic(topicId) });
       void queryClient.invalidateQueries({ queryKey: qk.posts(topicId) });
@@ -442,6 +447,8 @@ export function toDesignTopic(t: ApiTopicDetail, author: TopicAuthor): TopicDeta
     board: { slug: t.board.slug as BoardSlug, name: t.board.name },
     kind: t.kind,
     title: t.title,
+    // 正文真源（编辑弹层用）；后端字段名就是 content_md，缺了给空串（编辑器会是空文档）
+    content_md: t.content_md ?? '',
     content_html: t.content_html,
     author,
     created_at: formatTime(t.created_at),
@@ -467,8 +474,9 @@ export function toReview(t: ApiTopicDetail): TopicReview {
     state: (raw.review_state ?? 'approved') as TopicReview['state'],
     // L6：打回修改时那一份「最后过审版本」。**没有就不造假**（后端也只在第四态给）。
     revision: raw.revision_of ? { content_html: raw.revision_of.content_html, approved_at: raw.revision_of.approved_at } : null,
-    // shortcut: 后端没有 review_pending_human 这个字段（forum/dto.go 里没有），先恒 false =「正在自动检查」那一档
-    pendingHuman: false,
+    // 「已转人工」那一档：后端按 review_events 最新一条判定算（只有作者视角才有意义，读者恒 false）。
+    // 缺失时按 false 读 = 「正在自动检查」—— 那正是没有这条信息时该说的话。
+    pendingHuman: raw.review_pending_human ?? false,
     note: raw.review_note ?? null,
   };
 }

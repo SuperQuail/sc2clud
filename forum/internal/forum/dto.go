@@ -127,6 +127,16 @@ type TopicDetailDTO struct {
 	UpdatedAt   time.Time `json:"updated_at"`
 	ReviewState string    `json:"review_state"`
 	ReviewNote  *string   `json:"review_note"` // 只有作者看得到（拍板 §6）
+	// ReviewPendingHuman 是「这一轮审核已经转人工、人在判」（拍板 08 §第三轮 6）：
+	// review_events 最新一条判定的 verdict = 'review'（d7 §1：拿不准 / 调用失败 → 人工队列）。
+	//
+	// 为什么要有这一档：pending 一个值下面其实是两件事 ——「AI 正在自动检查，几十秒」与
+	// 「已经在人工队列里，等一个人」。作者唯一能看到的线索就是这句话，而少了它，
+	// 界面上只能两档都写成「正在审核中」（横幅那句「已转人工」的落点因此一直是空的）。
+	//
+	// **只在作者（与审核员）视角下有意义**：读者根本收不到 pending 的帖子（后端过滤），
+	// 而这条信息对他们没有任何可行动的含义。非作者视角恒 false。
+	ReviewPendingHuman bool `json:"review_pending_human"`
 	// PendingDraft 说的是「你手上的 content_md 是不是还没过审的那一版」（拍板 08 第二轮 · 6.2）。
 	// **读者恒 false**：他们没有待审槽，拿到的 content_md 就是线上那一版。
 	// 为什么要有：作者改完正文回待审之后，界面上「这是草稿」与「这是线上那一版」在
