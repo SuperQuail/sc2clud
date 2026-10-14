@@ -37,3 +37,13 @@
   - 下一步：`routes/issues.tsx` 的评论提交（`onComment` → `createIssueComment` 的 `body_md`）
     是同一根因的最后一处；断言写在网络替身上（fetch 桩 + 假编辑器）。
   - 阻塞：无
+
+- [x] 反馈评论（`routes/issues.tsx` 的 `onComment`）：`body_md` 过 `editorJsonToMarkdown`（三处收口）
+  - 证据：先红 `npx vitest run src/routes/issues.test.tsx -t '上行（反馈评论）'` →
+    `AssertionError: expected '{"root":{"children":[…' to be '补充：换存档也一样。'`
+    （Received 就是那段 EditorState JSON）；改完 `npx vitest run src/routes/issues*.test.tsx` = `14 passed`（3 个文件，
+    含 FIX-TOPIC 的 D6/D7 那份，没有回退）。
+    · 替身照后端行为写：POST 存下 `body_md`，评论区接口回的就是它的渲染结果，所以「页面里看到的是正文本身」也一并断言了。
+    顺带把 fetch 桩的回调扩成 `(url, method, body)`（原先只看 url，POST 与 GET 同路径分不开）。
+  - 下一步：收工验证 —— 全量 `npx vitest run` + 出图（`web/scripts/cdp-shot.ts`）。
+  - 阻塞：无

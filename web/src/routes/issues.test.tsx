@@ -18,15 +18,18 @@ afterEach(() => {
 
 type Reply = { status?: number; body?: unknown };
 
-/** 网络边界：记下每次请求的 url / method / body，供「开关真的发了 PATCH」这类断言用。 */
-function mockApi(byUrl: (url: string) => Reply | undefined) {
+/** 网络边界：记下每次请求的 url / method / body，供「开关真的发了 PATCH」这类断言用。
+ *  回调多给 method 与 body：替身要能**照后端行为写**（POST 存下什么，GET 就渲染什么）。 */
+function mockApi(byUrl: (url: string, method: string, body: unknown) => Reply | undefined) {
   const calls: Array<{ url: string; method: string; body: unknown }> = [];
   vi.stubGlobal(
     'fetch',
     vi.fn(async (url: string | URL | Request, init?: RequestInit) => {
       const u = String(url);
-      calls.push({ url: u, method: init?.method ?? 'GET', body: init?.body === undefined ? undefined : JSON.parse(String(init.body)) });
-      const reply = byUrl(u) ?? { status: 404, body: { error: { code: 'common.not_found', message: '没有这个接口：' + u } } };
+      const method = init?.method ?? 'GET';
+      const body = init?.body === undefined ? undefined : JSON.parse(String(init.body));
+      calls.push({ url: u, method, body });
+      const reply = byUrl(u, method, body) ?? { status: 404, body: { error: { code: 'common.not_found', message: '没有这个接口：' + u } } };
       return new Response(reply.body === undefined ? null : JSON.stringify(reply.body), {
         status: reply.status ?? 200,
         headers: { 'content-type': 'application/json' },
@@ -35,6 +38,52 @@ function mockApi(byUrl: (url: string) => Reply | undefined) {
   );
   return calls;
 }
+
+// 上行正文（缺陷清单 D6 的同一条根因）：编辑器给的是 EditorState JSON，而后端 body_md 收的是 **Markdown**
+// （forum 的 render 过 goldmark → bluemonday 渲染成 body_html）。把 JSON 当 Markdown 发上去，
+// 库里存的就是那串 JSON，反馈详情里显示的就是它。
+// 编辑器换成假的：Lexical 在 jsdom 里收不到真实输入（实测 fireEvent.input 不产生 onChange），
+// 测它等于测库；假件照真契约报数（onChange 的两份是 EditorState JSON + HTML）。
+const EDITOR_JSON = JSON.stringify({
+  root: {
+    children: [
+      {
+        children: [{ detail: 0, format: 0, mode: 'normal', style: '', text: '补充：换存档也一样。', type: 'text', version: 1 }],
+        direction: 'ltr',
+        format: '',
+        indent: 0,
+        type: 'paragraph',
+        version: 1,
+      },
+    ],
+    direction: 'ltr',
+    format: '',
+    indent: 0,
+    type: 'root',
+    version: 1,
+  },
+});
+vi.mock('@/ui/rich/markdown-editor', async () => {
+  const [{ default: Input }, React] = await Promise.all([
+    import('@jetbrains/ring-ui-built/components/input/input'),
+    import('react'),
+  ]);
+  return {
+    MarkdownEditor: ({ onChange }: { onChange: (json: string, html: string) => void }) => {
+      const [typed, setTyped] = React.useState('');
+      return (
+        <Input
+          label='假编辑器（测试注入）'
+          value={typed}
+          onChange={(e) => {
+            setTyped(e.target.value);
+            onChange(e.target.value, '<p>不管</p>');
+          }}
+        />
+      );
+    },
+  };
+});
 
 const ME = { handle: 'demo-marine', nickname: '陆战队员', perms: ['topic.create'], is_super: false, email_verified: true };
 
@@ -157,6 +206,44 @@ describe('问题反馈页（真端点）', () => {
       const down = calls.find((c) => c.url.includes('/issue-comments/c-1/vote') && c.method === 'PUT');
       expect(down?.body).toEqual({ value: -1 });
     });
+  });
+
+  // D6 的同一条根因（反馈评论）：编辑器给的是 EditorState JSON，后端 issue_comments.body_md 收的是 Markdown。
+  // 替身**照后端行为写**：POST 存下 body_md，评论区接口回的就是它的渲染结果 ——
+  // 旧测试拿手写 HTML 当 body_html，所以「发上去的是不是 JSON」它根本看不见。
+  it('上行（反馈评论）：POST /issues/{id}/comments 的 body_md 是 Markdown，不是 EditorState JSON', async () => {
+    let stored = '';
+    const calls = mockApi((u, method, body) => {
+      if (u.includes('/api/v1/me')) return { body: { data: ME } };
+      // 更长的路径先判（与 issueRoutes 同一条规矩）：POST 收下正文，GET 回它的渲染结果
+      if (u.includes('/issues/i-128/comments') && method === 'POST') {
+        stored = (body as { body_md: string }).body_md;
+        return { body: { data: { ...COMMENT, id: 'c-9', body_html: '<p>' + stored + '</p>' } } };
+      }
+      // 还没发过评论时，服务端手上就是那条种子评论（别把它的正文冲掉，否则红的是这条替身自己）
+      if (u.includes('/issues/i-128/comments')) {
+        return { body: { data: [stored === '' ? COMMENT : { ...COMMENT, body_html: '<p>' + stored + '</p>' }], next_cursor: null } };
+      }
+      if (u.includes('/topics/tp-1/issues')) return { body: { data: [ISSUE], next_cursor: null } };
+      if (u.includes('/issue-comments/c-1/replies')) return { body: { data: [REPLY] } };
+      if (u.includes('/issues/i-128')) return { body: { data: { ...ISSUE, body_html: '<p>复现：读档后事件不触发。</p>' } } };
+      return undefined;
+    });
+    renderIssues('/issues?topic=tp-1');
+    fireEvent.click(await screen.findByRole('button', { name: /^打开反馈 #128/ }));
+    await screen.findByText('确认是 bug，下个补丁修。');
+
+    fireEvent.change(await screen.findByLabelText('假编辑器（测试注入）'), { target: { value: EDITOR_JSON } });
+    fireEvent.click(screen.getByTestId('reply-publish'));
+
+    await waitFor(() => expect(calls.some((c) => c.method === 'POST')).toBe(true));
+    const post = calls.find((c) => c.method === 'POST')!;
+    expect(post.url).toContain('/api/v1/issues/i-128/comments');
+    expect((post.body as { body_md: string }).body_md).toBe('补充：换存档也一样。');
+    expect(JSON.stringify(post.body)).not.toContain('"root"');
+    // 评论区重新取回来的就是存下的那一份的渲染结果：页面上看到正文本身，整页里没有 JSON 的形状
+    await waitFor(() => expect(screen.getByText('补充：换存档也一样。')).toBeTruthy());
+    expect(document.body.textContent ?? '').not.toContain('"root"');
   });
 
   // J3（拍板）：踩数是**按身份下发**的 —— 普通用户 / 游客拿到的 IssueCommentDTO 里**没有**

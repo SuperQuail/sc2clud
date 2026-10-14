@@ -433,7 +433,9 @@ export function IssuesPage({
                 candidates={toMentionCandidates(mentions.data ?? [])}
                 onMentionQuery={setMentionQuery}
                 onSetStatus={(next) => toggle.mutate(next)}
-                onComment={(parentId, body) => comment.mutate({ parentId, body: body.json })}
+                // D6 的同一条根因：编辑器给的是 EditorState JSON，**上行前换成 Markdown** ——
+                // 后端 issue_comments.body_md 那一列过 goldmark → bluemonday 渲染成 body_html。
+                onComment={(parentId, body) => comment.mutate({ parentId, body: editorJsonToMarkdown(body.json) })}
                 // on = 已经在同向投过 -> 这一次是取消（CommentList 的约定与帖子页一致）
                 onVote={(id, value) => voteComment.mutate({ id, value })}
                 onClose={() => setSelectedId(null)}
