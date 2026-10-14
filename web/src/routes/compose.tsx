@@ -8,6 +8,7 @@ import { ControlsHeight } from '@jetbrains/ring-ui-built/components/global/contr
 import { Eye, EyeOff, Lock } from 'lucide-react';
 import { icon16 } from '@/ui/icons';
 import { MarkdownEditor } from '@/ui/rich/markdown-editor';
+import { editorJsonToMarkdown } from '@/ui/rich/editor-json-to-markdown';
 import { FormAlert } from '@/devroom/pages/16-auth/form-alert';
 import { PreviewPane } from '@/devroom/pages/18-compose/preview-pane';
 import { SourceEditor } from '@/devroom/pages/18-compose/source-editor';
@@ -99,10 +100,15 @@ export function ComposePage() {
   const boardName = (boards.data ?? []).find((b) => b.slug === board)?.name ?? '';
 
   const submit = useMutation({
-    mutationFn: () =>
-      editing
-        ? updateTopic(editId, { title: title.trim(), content_md: doc.json })
-        : createTopic({ board, kind, title: title.trim(), content_md: doc.json }),
+    mutationFn: () => {
+      // 上行的是 **Markdown**：后端 content_md 那一列过 goldmark → bluemonday 渲染成 content_html，
+      // 把编辑器的 EditorState JSON 直接当 Markdown 发上去，库里存的就是那串 JSON（缺陷清单 D6）。
+      // 发帖与编辑走同一条换算 —— 两处各写一份就会各自漂移（FIX-TOPIC 在反馈页已经踩过这个形状）。
+      const content_md = editorJsonToMarkdown(doc.json);
+      return editing
+        ? updateTopic(editId, { title: title.trim(), content_md })
+        : createTopic({ board, kind, title: title.trim(), content_md });
+    },
     onSuccess: (t) => void navigate(routePath('t/' + encodeURIComponent(t.id)), { replace: true }),
   });
 

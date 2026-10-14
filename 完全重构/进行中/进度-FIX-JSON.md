@@ -13,3 +13,15 @@
   - 下一步：`routes/compose.tsx` 的 `submit`（createTopic / updateTopic）把 `doc.json` 过
     `editorJsonToMarkdown`；断言加在 `compose.test.tsx`，替身照后端行为写（存什么渲染什么）。
   - 阻塞：无
+
+- [x] 发帖 / 编辑正文（`routes/compose.tsx`）：两条路共用同一行 `editorJsonToMarkdown(doc.json)`
+  - 证据：先红 `npx vitest run src/routes/compose.test.tsx` →
+    `AssertionError: expected '{"root":{"children":[…' to be '走到第二波就卡关。'`（发帖 POST 与编辑 PATCH 两条各红一次，
+    `Tests 2 failed | 3 passed`）；改完 `Tests 5 passed`（原有 3 条不动）。
+    断言：`content_md === '走到第二波就卡关。'` 且 `JSON.stringify(body)` 不含 `"root"`。
+    替身照后端行为写：记下每次请求的 url/method/body（原先的 mockApi 不记，看不出上行长什么样）。
+    编辑器在 jsdom 里收不到真实输入（实测 `fireEvent.input` 不产生 onChange），
+    所以这一份按 D6 的办法注入假编辑器（它照真契约报 EditorState JSON + HTML）。
+  - 下一步：`routes/topic.tsx` 的 `reply`（createPost）与 `save`（updateTopic）过同一个函数；
+    `topic.test.tsx` 的 B6 那条现在断言 `JSON.parse(content_md)).toHaveProperty('root')`（正是缺陷本身），要翻过来。
+  - 阻塞：无

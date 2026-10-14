@@ -4,6 +4,41 @@ import { afterEach, expect, it, vi } from 'vitest';
 import { Providers } from '@/app/providers';
 import { ComposePage } from './compose';
 
+// 上行正文（缺陷清单 D6 的同一条根因）：编辑器给宿主的是 EditorState JSON，而后端 content_md 那一列收的是
+// **Markdown**（forum 的 render 过 goldmark → bluemonday 渲染成 content_html）。把 JSON 当 Markdown 发上去，
+// 库里存的就是那串 JSON，别人打开看到的就是它。
+//
+// 这一份把编辑器换成假的：Lexical 在 jsdom 里收不到真实输入（实测 fireEvent.input 不产生 onChange），
+// 测它等于测库 —— 与 issues.new-issue.test.tsx 对 NewIssuePanel 的 Editor 注入同一个理由。
+// 假件照真编辑器的契约报数：onChange 给的那两份是 **EditorState JSON + HTML**。
+const EDITOR_JSON = JSON.stringify({
+  root: {
+    children: [
+      {
+        children: [{ detail: 0, format: 0, mode: 'normal', style: '', text: '走到第二波就卡关。', type: 'text', version: 1 }],
+        direction: 'ltr',
+        format: '',
+        indent: 0,
+        type: 'paragraph',
+        version: 1,
+      },
+    ],
+    direction: 'ltr',
+    format: '',
+    indent: 0,
+    type: 'root',
+    version: 1,
+  },
+});
+vi.mock('@/ui/rich/markdown-editor', async () => {
+  const { default: Input } = await import('@jetbrains/ring-ui-built/components/input/input');
+  return {
+    MarkdownEditor: ({ onChange }: { onChange: (json: string, html: string) => void }) => (
+      <Input label='假编辑器（测试注入）' onChange={(e) => onChange(e.target.value, '<p>不管</p>')} />
+    ),
+  };
+});
+
 // 真页面（routes/compose.tsx）用**设计稿的件**：这里只换网络边界，断言那几件真的进了 DOM，
 // 而且用的是**服务端真实的字段**（sources[] 的 provider / extraction_code / upkeep，不是照 mock 猜的）。
 // 2026-10-14 用户要求：发帖页与 devroom/pages/18-compose 一致，并补下载来源编辑器。
@@ -12,17 +47,22 @@ afterEach(() => {
 });
 
 type Reply = { status?: number; body?: unknown };
+/** 网络替身：顺带记下每次请求（url / method / body）——「上行的那一份长什么样」只能从这里看。 */
 function mockApi(byPath: (url: string) => Reply) {
+  const calls: Array<{ url: string; method: string; body: unknown }> = [];
   vi.stubGlobal(
     'fetch',
-    vi.fn(async (url: string | URL | Request) => {
-      const reply = byPath(String(url));
+    vi.fn(async (url: string | URL | Request, init?: RequestInit) => {
+      const u = String(url);
+      calls.push({ url: u, method: init?.method ?? 'GET', body: init?.body === undefined ? undefined : JSON.parse(String(init.body)) });
+      const reply = byPath(u);
       return new Response(reply.body === undefined ? null : JSON.stringify(reply.body), {
         status: reply.status ?? 200,
         headers: { 'content-type': 'application/json' },
       });
     }),
   );
+  return calls;
 }
 
 const ME = {
@@ -122,6 +162,40 @@ it('编辑资源帖：SourceEditor 用的是服务端那份 sources（真字段�
   // 编辑态：按钮说的是「保存修改」，标题已从接口回填
   expect(screen.getByTestId('compose-submit').textContent).toContain('保存修改');
   expect((screen.getByTestId('compose-title') as HTMLInputElement).value).toBe('第三章「余烬」发布');
+});
+
+// D6 的同一条根因，影响面最大的两处：**发帖**与**编辑正文**。
+// 断言的是「请求体里的正文字段是 Markdown、且不含 "root"」（旧行为：编辑器 JSON 原样上行）。
+it('上行（发帖）：POST /topics 的 content_md 是 Markdown，不是 EditorState JSON', async () => {
+  const calls = mockApi((url) => (url.includes('/me') ? { body: ME } : url.includes('/topics') ? { body: TOPIC } : { body: BOARDS }));
+  renderCompose('/new?board=custom-campaign');
+  fireEvent.change(await screen.findByTestId('compose-title'), { target: { value: '第二章卡关记录' } });
+  fireEvent.change(screen.getByLabelText('假编辑器（测试注入）'), { target: { value: EDITOR_JSON } });
+  // 三项齐了才点得动（分区来自 ?board=，标题与正文刚填完）——不先等这一下，红了也说不清是为什么
+  await waitFor(() => expect(screen.queryByTestId('compose-missing')).toBeNull());
+  fireEvent.click(screen.getByTestId('compose-submit'));
+
+  await waitFor(() => expect(calls.some((c) => c.method === 'POST')).toBe(true));
+  const post = calls.find((c) => c.method === 'POST')!;
+  expect(post.url).toContain('/api/v1/topics');
+  expect((post.body as { content_md: string }).content_md).toBe('走到第二波就卡关。');
+  expect(JSON.stringify(post.body)).not.toContain('"root"');
+});
+
+it('上行（编辑正文）：PATCH /topics/{id} 的 content_md 也是 Markdown', async () => {
+  const calls = mockApi((url) => (url.includes('/me') ? { body: ME } : url.includes('/topics/tp-1') ? { body: TOPIC } : { body: BOARDS }));
+  renderCompose('/new?edit=tp-1');
+  // 等回填落定（标题来自接口），确认这一屏真的是「编辑已发出去的帖子」
+  await waitFor(() => expect((screen.getByTestId('compose-title') as HTMLInputElement).value).toBe('第三章「余烬」发布'));
+  fireEvent.change(screen.getByLabelText('假编辑器（测试注入）'), { target: { value: EDITOR_JSON } });
+  await waitFor(() => expect(screen.queryByTestId('compose-missing')).toBeNull());
+  fireEvent.click(screen.getByTestId('compose-submit'));
+
+  await waitFor(() => expect(calls.some((c) => c.method === 'PATCH')).toBe(true));
+  const patch = calls.find((c) => c.method === 'PATCH')!;
+  expect(patch.url).toContain('/api/v1/topics/tp-1');
+  expect((patch.body as { content_md: string }).content_md).toBe('走到第二波就卡关。');
+  expect(JSON.stringify(patch.body)).not.toContain('"root"');
 });
 
 it('编辑非资源帖：不画来源编辑器，但说清为什么（后端 forum.not_resource）', async () => {
