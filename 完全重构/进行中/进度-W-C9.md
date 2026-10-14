@@ -11,6 +11,17 @@ rg = rg.Group("", httpx.ValidPathIDs("id"))
 
 ## 步骤
 
+- [x] report 挂闸 + 会红用例
+  - 做了什么：`report.Register` 第一行加 `rg = rg.Group("", httpx.ValidPathIDs("id"))`；
+    本域 {id} 一条：`PATCH /admin/reports/{id}`（`/admin/reports/batch` 是静态段）。新增 `report/pathguard_test.go`。
+  - 证据：**先红**（没挂闸）`go test ./internal/report/ -run TestNonUUIDPathIDIsBadRequest -v` →
+    `pathguard_test.go:38: 非 uuid 的路径 id 必须是 400，实际 404：{"error":{"code":"common.not_found","message":"内容不存在"...}}`；
+    挂闸后 `go test ./internal/report/ -count=1` → `ok forum/internal/report 23.029s`（整包）。
+  - 下一步：site —— `forum/internal/site/handler.go` 的 `Register` 第一行加同一行
+    （本域 {id} 三条：`POST /banners/{id}/dismiss`、`PATCH /admin/announcements/{id}`、
+    `PATCH /admin/banners/{id}`），用例打 `POST /api/v1/banners/not-a-uuid/dismiss`。
+  - 阻塞：无
+
 - [x] title 挂闸 + 会红用例
   - 做了什么：`title.Register` 第一行加 `rg = rg.Group("", httpx.ValidPathIDs("id"))`；
     本域 {id} 两条：`PATCH /admin/titles/{id}`、`POST|DELETE /admin/users/{id}/titles/{titleId}`。

@@ -27,6 +27,9 @@ func NewHandler(svc *Service, actor ActorFunc) *Handler {
 //	report.NewHandler(svc, auth.FromGin).Register(v1, authSvc.RequireLogin, authSvc.Perm, ratelimitMW)
 func (h *Handler) Register(rg *gin.RouterGroup, requireLogin func() gin.HandlerFunc,
 	perm func(...string) gin.HandlerFunc, limit func(string, gin.HandlerFunc) gin.HandlerFunc) {
+	// 非 uuid 的 {id} 一律在进 service 之前挡成 400（见 platform/httpx.ValidPathIDs）。
+	rg = rg.Group("", httpx.ValidPathIDs("id"))
+
 	rg.POST("/reports", requireLogin(), limit("report:create", h.create))
 
 	me := rg.Group("/me", requireLogin())
