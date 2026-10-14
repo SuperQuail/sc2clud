@@ -4,7 +4,7 @@ import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tansta
 import Button from '@jetbrains/ring-ui-built/components/button/button';
 import Island from '@jetbrains/ring-ui-built/components/island/island';
 import { ControlsHeight } from '@jetbrains/ring-ui-built/components/global/controls-height';
-import { FolderOpen, Flag, MessageSquare, Star } from 'lucide-react';
+import { FolderOpen, Flag, MessageSquare, Star, UserPlus } from 'lucide-react';
 import { icon16 } from '@/ui/icons';
 import { TitleBadge } from '@/ui/user/title-badge';
 import { RoleBadge } from '@/ui/user/role-badge';
@@ -19,6 +19,7 @@ import { qk } from '@/lib/query/keys';
 import { can, useSession } from '@/lib/perms';
 import { clearCover, fetchUserProfile, fetchUserTopics, uploadAvatar, uploadCover } from '@/lib/api/user';
 import { equipTitle, fetchUserTitles } from '@/lib/api/title';
+import { fetchUserFollow, followUser, unfollowUser } from '@/lib/api/follow';
 import { createDonation, fetchDonationSettings, fetchUserChannels } from '@/lib/api/rewards';
 import { formatCents, formatTime } from '@/lib/format';
 import { isApiError } from '@/lib/api/errors';
@@ -86,6 +87,19 @@ export function ProfilePage() {
     queryFn: ({ signal }) => fetchDonationSettings(signal),
     enabled: isSelf,
   });
+  // 关注这个人（D19）：PUT/DELETE /users/{handle}/follow 后端一直在（K-REL 的 L5），前端此前**零调用**。
+  // 看自己时连请求都不发（后端也会拒）；**态以服务端回执为准** —— 回执写回缓存，不本地翻转
+  // （关注/取关都是幂等的，回执里的 following 就是真值）。
+  const follow = useQuery({
+    queryKey: qk.followUser(handle),
+    queryFn: ({ signal }) => fetchUserFollow(handle, signal),
+    enabled: handle !== '' && !isSelf && session.isLoggedIn,
+  });
+  const followToggle = useMutation({
+    mutationFn: (next: boolean) => (next ? followUser(handle) : unfollowUser(handle)),
+    onSuccess: (st) => queryClient.setQueryData(qk.followUser(handle), st),
+  });
+
   // 头衔（D18）：本人的头衔可点开下拉（佩戴 / 不佩戴）。清单来自 GET /users/{handle}/titles
   // ——**只有本人**才发这个请求：下拉只对本人有意义，别人的主页那一枚是纯展示（hero 没拿到 options 就不包触发器）。
   const titles = useQuery({
@@ -192,8 +206,33 @@ export function ProfilePage() {
               </Button>
             ) : (
               <>
-                {/* 关注**没有端点**（PUT /users/{handle}/block 是拉黑，不是关注），所以不画「关注」——
-                    一颗点了没反应的按钮比没有这颗按钮更糟。 */}
+                {/* 关注（D19）：登录态是开关（态来自 GET/PUT/DELETE /users/{handle}/follow 的回执），
+                    未登录那颗是去登录的链接 —— 原来这里写的是「关注没有端点，所以不画」，那句话
+                    在 L5 之后就是假话了（端点在，缺的只是调用方）。 */}
+                {session.isLoggedIn ? (
+                  <Button
+                    data-testid='profile-follow'
+                    inline={false}
+                    height={ControlsHeight.S}
+                    icon={icon16(UserPlus)}
+                    primary={!follow.data?.following}
+                    active={follow.data?.following}
+                    loader={followToggle.isPending}
+                    onClick={() => followToggle.mutate(!(follow.data?.following ?? false))}
+                  >
+                    {follow.data?.following ? '已关注' : '关注'}
+                  </Button>
+                ) : (
+                  <Button
+                    data-testid='profile-follow'
+                    inline={false}
+                    height={ControlsHeight.S}
+                    icon={icon16(UserPlus)}
+                    href={appPath('login?next=' + encodeURIComponent(routePath('u/' + handle)))}
+                  >
+                    登录后关注
+                  </Button>
+                )}
                 <Button
                   inline={false}
                   height={ControlsHeight.S}

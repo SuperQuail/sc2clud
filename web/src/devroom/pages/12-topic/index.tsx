@@ -142,6 +142,8 @@ export default function TopicPage() {
   // 分区内导航的选中项：房间里不真的筛（房间只有这一页），但**选中态要能动**，
   // 否则这一栏在房间里是个死控件，评审看不到它的选中样式。
   const [nav, setNav] = useState('all');
+  // 关注作者（D19）：房间口径 = 本地状态（真站调 PUT/DELETE /users/{handle}/follow，态以回执为准）
+  const [followingAuthor, setFollowingAuthor] = useState(false);
   // 回执（?receipt=design 是给截图用的初值）
   const [receipt, setReceipt] = useState<string | null>(() => (params.get('receipt') === 'design' ? DESIGN_ACTION_NOTE : null));
 
@@ -299,6 +301,12 @@ export default function TopicPage() {
         composeHref={appPath('?page=18-compose&board=' + BOARD.slug)}
         authorHref={roomHref('11-profile')}
         author={AUTHOR}
+        // ?loggedOut=1 → 未登录那一档（那颗按钮变成去登录的引导）；登录态是本地开关
+        authorFollow={
+          params.get('loggedOut') === '1'
+            ? { following: false, onToggle: () => {}, loginHref: roomHref('16-auth') }
+            : { following: followingAuthor, onToggle: () => setFollowingAuthor((v) => !v) }
+        }
         topic={topic}
         review={review}
         canEdit={canEdit}

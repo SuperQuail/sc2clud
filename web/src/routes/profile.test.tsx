@@ -46,10 +46,10 @@ const ME = {
 };
 
 /** user.Profile 是**平铺的**（forum/internal/user/service.go:52-68），title 只给佩戴中的那一个。 */
-const profile = (title: unknown) => ({
+const profile = (title: unknown, handle = 'demo-admin') => ({
   data: {
     id: 'u1',
-    handle: 'demo-admin',
+    handle,
     nickname: '示范管理员',
     avatar: '',
     avatar_small: '',
@@ -91,12 +91,28 @@ function renderProfile(handle: string) {
   );
 }
 
-function stubProfile(me: boolean) {
-  mockApi((path) => {
+/**
+ * 主页的桩：`handle` 是被看的那个人（默认 = 会话里那个人 = 本人主页）。
+ * `following` 是**关注态的真源**，PUT / DELETE 之后它会变 —— 「态以服务端回执为准」这条断言
+ * 只有在桩跟着变的时候才有意义（回执不动，本地翻转也能骗过断言）。
+ */
+function stubProfile(opts: { me?: boolean; handle?: string; following?: boolean } = {}) {
+  const handle = opts.handle ?? 'demo-admin';
+  const me = opts.me !== false;
+  let following = opts.following ?? false;
+  mockApi((path, method) => {
     if (path.endsWith('/api/v1/me')) return { body: me ? ME : { data: null } };
-    if (path.endsWith('/api/v1/users/demo-admin/titles')) return { body: TITLES };
-    if (path.endsWith('/api/v1/users/demo-admin/topics')) return { body: { data: [], next_cursor: null } };
-    if (path.endsWith('/api/v1/users/demo-admin')) return { body: profile(CURRENT) };
+    // follow.State（forum/internal/follow/types.go）：target / handle / following / follower_count
+    if (path === '/api/v1/users/' + handle + '/follow') {
+      // GET 只是**读**当前态（改它就不是「读」了）；PUT/DELETE 才是幂等的两端
+      if (method === 'PUT') following = true;
+      if (method === 'DELETE') following = false;
+      return { body: { data: { target: 'user', handle, following, follower_count: following ? 128 : 127 } } };
+    }
+    if (path.endsWith('/api/v1/users/' + handle + '/titles')) return { body: TITLES };
+    if (path.endsWith('/api/v1/users/' + handle + '/topics')) return { body: { data: [], next_cursor: null } };
+    if (path.endsWith('/api/v1/users/' + handle + '/channels')) return { body: { data: [] } };
+    if (path.endsWith('/api/v1/users/' + handle)) return { body: profile(CURRENT, handle) };
     if (path.endsWith('/api/v1/me/donation-settings')) {
       return { body: { data: { show_channels: true, records_public: false, notice_visible: true, notice_text: '' } } };
     }
@@ -106,7 +122,7 @@ function stubProfile(me: boolean) {
 
 // D18：本人主页的头衔**可点**，点开是「我持有的头衔 + 不佩戴」，选完调 PUT /me/title。
 it('D18：本人点头衔 → 下拉（持有的头衔 + 不佩戴）→ 选中即 PUT /me/title', async () => {
-  stubProfile(true);
+  stubProfile({});
   renderProfile('demo-admin');
   // hero 上的头衔就是那枚普通徽标（常态看不出可交互），点击才展开
   await screen.findByTestId('dropdown-trigger');
@@ -125,7 +141,7 @@ it('D18：本人点头衔 → 下拉（持有的头衔 + 不佩戴）→ 选中�
 
 // 「不佩戴」= title_id 空串（后端 title.Equip："" 就 ClearEquippedTitleID）
 it('D18：选「不佩戴」发的是空 title_id', async () => {
-  stubProfile(true);
+  stubProfile({});
   renderProfile('demo-admin');
   fireEvent.click(await screen.findByTestId('dropdown-trigger'));
   await screen.findByTestId('dropdown-content');
@@ -135,11 +151,50 @@ it('D18：选「不佩戴」发的是空 title_id', async () => {
 
 // 别人主页：只显示、不可点 —— 连下拉触发器都不该存在（不是「点了没反应」）
 it('D18：别人主页的头衔不可点（没有下拉触发器）', async () => {
-  stubProfile(false);
+  stubProfile({ me: false });
   renderProfile('demo-admin');
   // 这一页头衔出现两次（hero 的身份行 + 右栏「徽章」格），所以用 findAll —— 哪一处都不该变成下拉
   await screen.findAllByText('执政官');
   expect(screen.queryByTestId('dropdown-trigger')).toBeNull();
+});
+
+// D19：关注**用户**（后端 PUT/DELETE /users/{handle}/follow 一直在，前端此前零调用）。
+// 态以服务端回执为准：桩会随 PUT/DELETE 变，所以「按钮上的字」只能来自回执，不能是本地翻转。
+it('D19：别人主页有「关注」；点了 PUT /users/{handle}/follow，按钮按回执变「已关注」', async () => {
+  stubProfile({ handle: 'demo-voidray' });
+  renderProfile('demo-voidray');
+  fireEvent.click(await screen.findByRole('button', { name: '关注' }));
+  await waitFor(() => {
+    expect(calls.some((c) => c.method === 'PUT' && c.url.endsWith('/api/v1/users/demo-voidray/follow'))).toBe(true);
+  });
+  await screen.findByRole('button', { name: '已关注' });
+});
+
+// 已关注的再点一次 = 取关（DELETE，同一颗按钮）。幂等两端都在后端，前端只发对动词。
+it('D19：已关注再点 → DELETE /users/{handle}/follow，回执说 false 就变回「关注」', async () => {
+  stubProfile({ handle: 'demo-voidray', following: true });
+  renderProfile('demo-voidray');
+  fireEvent.click(await screen.findByRole('button', { name: '已关注' }));
+  await waitFor(() => {
+    expect(calls.some((c) => c.method === 'DELETE' && c.url.endsWith('/api/v1/users/demo-voidray/follow'))).toBe(true);
+  });
+  await screen.findByRole('button', { name: '关注' });
+});
+
+it('D19：自己看自己不显示关注（连一颗带「关注」字样的按钮都没有）', async () => {
+  stubProfile({});
+  renderProfile('demo-admin');
+  // 本人主页的动作是「账号设置」（Ring 的 Button 带 href 就渲染成链接）；
+  // 这一页有两处（hero 的动作 + 底部「不能发帖」提示里的那个），所以用 findAll
+  await screen.findAllByRole('link', { name: '账号设置' });
+  expect(screen.queryByRole('button', { name: /关注/ })).toBeNull();
+});
+
+it('D19：未登录看到的是去登录的引导（不是一颗点了没反应的按钮）', async () => {
+  stubProfile({ me: false, handle: 'demo-voidray' });
+  renderProfile('demo-voidray');
+  const link = await screen.findByRole('link', { name: '登录后关注' });
+  expect(link.getAttribute('href') ?? '').toContain('login');
 });
 
 // 没有头衔且是本人：不显示假占位（接 D16 的口径）

@@ -36,3 +36,25 @@
     保持纯展示（同一页同一个动作不做两个入口）。
   - 下一步：D19 用户关注（作者卡 + 个人主页，`PUT/DELETE /users/{handle}/follow`）。
   - 阻塞：无
+
+- [x] D19：关注**用户**（后端 `PUT/DELETE /users/{handle}/follow` 与 `GET .../follow` 一直在，前端此前零调用）
+  - 证据：先红 —— `npx vitest run src/routes/profile.test.tsx src/devroom/pages/12-topic/author-card.test.tsx`
+    `Tests 7 failed | 8 passed`（7 条全是 `Unable to find role="button"/"link" …`：两处都还没有那颗按钮）；
+    改完 **15 passed**（两文件），其中：点「关注」→ `PUT /api/v1/users/demo-voidray/follow` 且按钮按**回执**变「已关注」、
+    再点 → `DELETE .../follow` 且回执 false 就变回「关注」、**自己看自己**没有任何带「关注」字样的按钮、
+    未登录是「登录后关注」的链接（href 含 login）。全量 `npx vitest run` = `Test Files 51 passed / Tests 252 passed`。
+    · 契约照 `forum/internal/follow/{handler,types}.go`：`State{target,slug?,handle?,following,follower_count}`，
+    三条端点（GET/PUT/DELETE）回**同一份** State；关注与取关都幂等。
+    · 落点四处：`author-card.tsx`（`follow?: AuthorFollow` 三态 props）→ `topic-view.tsx` 透传 `authorFollow`；
+    `routes/profile.tsx`（GET follow 查询 + PUT/DELETE mutation，`onSuccess` 把**回执写回缓存**，不本地翻转）；
+    两个房间页各接成本地状态。
+    · 图（都看过）：`shots/fix-title/d19-author-follow-1440.png`（作者卡「关注」）、`d19-author-followed-1440.png`（→「已关注」）、
+    `d19-author-follow-loggedout-1440.png`（→「登录后关注」）、`d19-profile-follow-1440.png` / `d19-profile-followed-1440.png`（房间主页）、
+    `d19-profile-follow-product-1440.png` / `d19-profile-followed-product-1440.png` / `d19-profile-follow-guest-product-1440.png`
+    （**产品页** /u/demo-admin，含 MARKER-PRODUCT-*）。
+    · 顺手订正一处**假话注释**：`routes/profile.tsx` 原来写「关注没有端点（PUT /users/{handle}/block 是拉黑），所以不画」
+    —— L5 之后端点在、缺的只是调用方。
+  - 下一步：**唯一没接上的一处**是 `routes/topic.tsx` 的作者卡（那个文件是 FIX-JSON 的作用域，我按纪律没碰）：
+    加一条 `fetchUserFollow` 查询 + `followUser/unfollowUser` mutation，把 `authorFollow` 传给 `TopicView` 即可
+    （样板逐字照 `routes/profile.tsx`）；已把这段发给 Lead。
+  - 阻塞：无（上面那处是交接，不是阻塞：View 侧三态与出图都已就绪）

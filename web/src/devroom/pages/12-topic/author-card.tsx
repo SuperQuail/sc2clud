@@ -1,4 +1,6 @@
 import type { ReactNode } from 'react';
+import Button from '@jetbrains/ring-ui-built/components/button/button';
+import { ControlsHeight } from '@jetbrains/ring-ui-built/components/global/controls-height';
 import { BadgeCheck, CalendarDays, Heart, Star, UserRound } from 'lucide-react';
 import { UserBadge } from '@/ui/user/user-badge';
 import { TitleBadge } from '@/ui/user/title-badge';
@@ -9,7 +11,29 @@ import type { TopicAuthor } from './types';
 // 由 UserBadge stacked 一次拼好），等级条是唯一自绘的部分——Ring 的 ProgressBar 在这里
 // 拿不到我们要的细高度与圆角，所以用令牌画的 div，没有新控件。
 // 主页链接由宿主给（房间指 11-profile，真站指 /u/<handle>）：组件不认识路由。
-export function AuthorCard({ author, profileHref }: { author: TopicAuthor; profileHref: string }) {
+//
+// D19 关注作者：**三态全部由宿主判**，组件不认会话、不认路由、也不自己翻转状态 ——
+//   · 自己看自己 → 不传 follow（那一颗不画）；
+//   · 未登录    → 传 loginHref（那颗变成去登录的链接，而不是点了没反应的按钮）；
+//   · 登录      → 传 following + onToggle；**态以服务端回执为准**（点了等宿主把回执喂回来）。
+export type AuthorFollow = {
+  following: boolean;
+  onToggle: () => void;
+  /** 请求在途（后端是幂等的，不需要禁用，只要看得见） */
+  pending?: boolean;
+  /** 传了 = 未登录：按钮换成这颗去登录的链接 */
+  loginHref?: string;
+};
+
+export function AuthorCard({
+  author,
+  profileHref,
+  follow,
+}: {
+  author: TopicAuthor;
+  profileHref: string;
+  follow?: AuthorFollow;
+}) {
   const pct = Math.round((author.exp / author.exp_max) * 100);
   return (
     <section className='flex flex-col gap-3 rounded-lg border border-border bg-card p-4'>
@@ -89,6 +113,31 @@ export function AuthorCard({ author, profileHref }: { author: TopicAuthor; profi
           查看主页
         </a>
       </p>
+
+      {/* 关注作者（D19）：单独一行、占满卡片宽 —— 248px 的栏里塞进上面那一行会挤成三个小件。
+          未登录时是链接（引导登录），登录后是开关；**「已关注」这三个字来自服务端回执**。 */}
+      {follow ? (
+        <div className='flex'>
+          {follow.loginHref ? (
+            <Button data-testid='author-follow' inline={false} height={ControlsHeight.S} href={follow.loginHref} className='w-full'>
+              登录后关注
+            </Button>
+          ) : (
+            <Button
+              data-testid='author-follow'
+              inline={false}
+              height={ControlsHeight.S}
+              primary={!follow.following}
+              active={follow.following}
+              loader={follow.pending}
+              onClick={follow.onToggle}
+              className='w-full'
+            >
+              {follow.following ? '已关注' : '关注'}
+            </Button>
+          )}
+        </div>
+      ) : null}
     </section>
   );
 }

@@ -106,6 +106,9 @@ export default function ProfilePage() {
   const cover = coverPath ? assetUrl(coverPath) : assetUrl('starcraft/sc2-battle.webp');
   // 佩戴中的头衔 id（"" = 不佩戴）；hero 上那枚徽标读它，下拉换的就是它
   const [equippedTitle, setEquippedTitle] = useState('ti-1');
+  // 关注**这个人**（D19）：房间口径 = 本地状态。三态与真站同一套判据 ——
+  // 自己看自己不画、未登录画去登录的引导、登录后是开关（真站的态取自 PUT/DELETE 的回执）。
+  const [following, setFollowing] = useState(false);
   const [visibility, setVisibility] = useState('public');
   const [showTitle, setShowTitle] = useState(true);
   // G5：屏蔽词**不实现**（拍板），所以这里没有 setter —— 见下面那一行的 onAdd/onRemove 为什么是空的。
@@ -241,7 +244,30 @@ export default function ProfilePage() {
         // 房间里上传器在「设置」标签，所以这里点一下是「切过去并就地打开文件框」。
         actions={
           <>
-            <Button primary inline={false} height={ControlsHeight.S} icon={icon16(UserPlus)}>关注</Button>
+            {selfView.isSelf ? null : loggedOut ? (
+              <Button
+                data-testid='room-follow'
+                ghost
+                inline={false}
+                height={ControlsHeight.S}
+                icon={icon16(UserPlus)}
+                href={roomHref('16-auth')}
+              >
+                登录后关注
+              </Button>
+            ) : (
+              <Button
+                data-testid='room-follow'
+                primary={!following}
+                active={following}
+                inline={false}
+                height={ControlsHeight.S}
+                icon={icon16(UserPlus)}
+                onClick={() => setFollowing((v) => !v)}
+              >
+                {following ? '已关注' : '关注'}
+              </Button>
+            )}
             <Button ghost inline={false} height={ControlsHeight.S} icon={icon16(MessageSquare)}>发私信</Button>
             <Button ghost inline={false} height={ControlsHeight.S} icon={icon16(MoreHorizontal)} aria-label='更多操作' />
           </>

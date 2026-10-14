@@ -6,7 +6,7 @@ import type { MentionCandidate } from '@/ui/comment/mention-types';
 import type { ReportReason } from '@/lib/api/forum';
 import { TopicTaskTabs, type TopicTaskTab } from './_task/task-tabs';
 import type { IssueKind } from './_task/types';
-import { AuthorCard } from './author-card';
+import { AuthorCard, type AuthorFollow } from './author-card';
 import { BoardSummary } from './board-summary';
 import { IssueNudge } from './issue-nudge';
 import { LeftRail } from './left-rail';
@@ -64,6 +64,9 @@ export type TopicViewProps = {
   onJoin?: () => void;
   authorHref: string;
   author: TopicAuthor;
+  /** 关注作者（D19）：三态由宿主给（自己看自己不传 / 未登录给 loginHref / 登录给 following+onToggle）。
+   *  真站接的是 PUT/DELETE /users/{handle}/follow，房间接本地状态。 */
+  authorFollow?: AuthorFollow;
 
   // —— 帖子 ——
   topic: TopicDetail;
@@ -152,6 +155,7 @@ export function TopicView({
   onJoin,
   authorHref,
   author,
+  authorFollow,
   topic,
   review,
   canEdit,
@@ -364,7 +368,7 @@ export function TopicView({
           className='flex min-w-0 flex-col gap-4 md:col-start-2 md:row-span-2 md:row-start-1 xl:sticky xl:top-4 xl:w-[248px] xl:shrink-0'
         >
           <BoardSummary board={board} composeHref={composeHref} onJoin={onJoin} />
-          <AuthorCard author={author} profileHref={authorHref} />
+          <AuthorCard author={author} profileHref={authorHref} follow={authorFollow} />
           <RewardPanel
             channels={channels}
             notice={channelNotice}

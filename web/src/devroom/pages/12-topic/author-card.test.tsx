@@ -1,5 +1,5 @@
-import { render, screen } from '@testing-library/react';
-import { expect, it } from 'vitest';
+import { fireEvent, render, screen } from '@testing-library/react';
+import { expect, it, vi } from 'vitest';
 import { AuthorCard } from './author-card';
 import type { TopicAuthor } from './types';
 
@@ -37,4 +37,38 @@ it('D16：有头衔时照画', () => {
 it('D17：头衔那一行与头像/昵称/角色同一条中轴（居中）', () => {
   render(<AuthorCard author={AUTHOR} profileHref='/u/demo-admin' />);
   expect(screen.getByTestId('author-title-row').className).toContain('justify-center');
+});
+
+// D19：关注作者。三态**全部由宿主判**（组件不自己认路由、不自己认会话）：
+//   自己看自己 → 不给 follow 这个 prop（不画）；未登录 → 给 loginHref（引导登录）；登录 → 给 following + onToggle。
+// 「态以服务端回执为准」在这一层的含义是：按钮上那个「已关注」是**喂进来的**，组件自己不翻转。
+it('D19：作者卡的关注按钮点了回调（态不自己翻，等宿主拿回执喂回来）', () => {
+  const onToggle = vi.fn();
+  render(<AuthorCard author={AUTHOR} profileHref='/u/demo-admin' follow={{ following: false, onToggle }} />);
+  fireEvent.click(screen.getByRole('button', { name: '关注' }));
+  expect(onToggle).toHaveBeenCalledTimes(1);
+  // 还是「关注」：组件没有本地翻转
+  expect(screen.getByRole('button', { name: '关注' })).toBeTruthy();
+});
+
+it('D19：已关注由回执给（following=true 就画「已关注」）', () => {
+  render(<AuthorCard author={AUTHOR} profileHref='/u/demo-admin' follow={{ following: true, onToggle: () => {} }} />);
+  expect(screen.getByRole('button', { name: '已关注' })).toBeTruthy();
+});
+
+it('D19：未登录 → 关注那颗是去登录的链接（引导登录）', () => {
+  render(
+    <AuthorCard
+      author={AUTHOR}
+      profileHref='/u/demo-admin'
+      follow={{ following: false, onToggle: () => {}, loginHref: '/login?next=/u/demo-admin' }}
+    />,
+  );
+  const link = screen.getByRole('link', { name: '登录后关注' });
+  expect(link.getAttribute('href')).toBe('/login?next=/u/demo-admin');
+});
+
+it('D19：自己看自己（宿主不传 follow）→ 一颗关注按钮都没有', () => {
+  render(<AuthorCard author={AUTHOR} profileHref='/u/demo-admin' />);
+  expect(screen.queryByRole('button', { name: /关注/ })).toBeNull();
 });

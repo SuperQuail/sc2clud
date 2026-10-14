@@ -50,6 +50,8 @@ const COVER = (hash: string) => ({ cover_hash: hash });
 const BOARD = { slug: 'custom-campaign', name: '自制战役', description: '玩家自制战役与地图。', ...COVER('509bb743ef85b654fc1b7efe2e8019e32757eac72bfe38077f9efc5bf5712c80'), topic_count: 12, post_count: 130, today_count: 1 };
 /** 关注状态（follow.State 逐字形状）：值就地改，PUT/DELETE 之后那张图才看得出「已关注」。 */
 const FOLLOW = { target: 'board', slug: 'custom-campaign', following: false, follower_count: 128 };
+/** 关注**用户**（D19，同一个 follow.State 形状）：作者卡与个人主页那颗按钮的真源。 */
+const USER_FOLLOW = { target: 'user', handle: 'demo-admin', following: false, follower_count: 64 };
 const BOARDS = [
   { slug: 'announcement', name: '公告', description: '站点公告与版本发布。', ...COVER('e70ef0760eb4de0bc8ef07e13cb49d720d3d9ade4457911d582013d753392e9d'), topic_count: 6, post_count: 41, today_count: 1 },
   BOARD,
@@ -318,6 +320,26 @@ export function fixtureFor(u: string, method: string, body?: unknown): Reply | u
     FOLLOW.follower_count += method === 'PUT' ? 1 : method === 'DELETE' ? -1 : 0;
     return { body: { data: { ...FOLLOW } } };
   }
+  // 关注用户（D19）：与分区那条同一个 State，PUT/DELETE 之后**值跟着变** —— 出图要看的正是「态来自回执」
+  if (p.includes('/api/v1/users/') && p.endsWith('/follow')) {
+    USER_FOLLOW.following = method === 'PUT' ? true : method === 'DELETE' ? false : USER_FOLLOW.following;
+    USER_FOLLOW.follower_count += method === 'PUT' ? 1 : method === 'DELETE' ? -1 : 0;
+    return { body: { data: { ...USER_FOLLOW } } };
+  }
+  // 某人**持有**的头衔（title.UserTitlesDTO）：本人主页那个下拉的清单在那儿，跑产品页出图时不能 404
+  if (p.includes('/api/v1/users/') && p.endsWith('/titles')) {
+    return {
+      body: {
+        data: {
+          items: [
+            { id: 'ti-1', key: 'consul', name: '执政官', color: '#2563eb', description: '', archived_at: null },
+            { id: 'ti-2', key: 'champion', name: '首席设计师', color: '#16a34a', description: '', archived_at: null },
+          ],
+          equipped_id: 'ti-1',
+        },
+      },
+    };
+  }
   if (p.includes('/api/v1/topics/tp-1/sources/')) return { status: 302 };
   if (p.endsWith('/api/v1/topics/tp-1')) return { body: { data: topicDetail() } };
   if (p.endsWith('/api/v1/topics/tp-2')) return { body: { data: TOPIC_RESUBMITTED } };
@@ -402,7 +424,9 @@ export function fixtureFor(u: string, method: string, body?: unknown): Reply | u
           topic_count: 86,
           like_received: 12480,
           joined_at: '2024-03-02T00:00:00Z',
-          title: null,
+          // 头衔默认给 null：D16 的产品页取证就是靠「作者没有头衔时那一枚不能编出来」。
+          // ?title=1 才给一个 —— D18「本人主页点头衔换佩戴」的产品页对照图要它。
+          title: new URLSearchParams(location.search).get('title') === '1' ? { name: '执政官', color: '#2563eb' } : null,
           // 个人主页封面（0030）：桩数据里设一张，出图才看得见「更换封面 + 清空封面」两态
           cover: '/img/' + COVER_HASH,
         },
