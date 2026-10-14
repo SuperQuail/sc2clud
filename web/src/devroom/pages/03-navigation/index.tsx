@@ -23,14 +23,18 @@ import { BoardRail, type BoardSummary, type RailLink } from './board-rail';
 /**
  * 数据形状照后端 BoardDTO（forum/internal/forum/dto.go:38）：**cover_hash 是裸哈希**。
  *
- * 真站现在五个分区的 cover_hash **全是空串**（迁移时老站的 section_covers 本来就是 0 行）——
- * 所以「有封面」那一行在房间里借一张站内素材当 URL（静态预览服务没有 /img/{hash} 这条读口），
- * 只为把这一态画出来。产品页走的是同一条渲染路径，只是 hash 来自后端。
+ * 下面五个 hash 是**真值**：`forum board-covers` 把 完全重构/迁移素材/board-covers.json 里的图标
+ * 写进图片存储与 images 表之后，boards.cover_hash 就是它们（= 文件内容的 sha256）。
+ * 房间与产品页渲染同一条路径（`/img/<hash>`）；房间是静态服务、没有那条读口，所以出图脚本
+ * 用一条 Service Worker 把 `/img/*` 转到真后端 —— 不是「借一张站内素材当占位」。
+ *
+ * 最后一行（皇帝区）**故意留空**：它是「没有封面」那一档，画的是首字 + slug 色相的稳定占位。
  */
 const DEMO_BOARDS: BoardSummary[] = [
-  { slug: 'announcement', name: '公告', cover_hash: assetUrl('starcraft/nav-announcement.webp'), description: '版本发布、维护窗口与规则变动', topic_count: 4 },
-  { slug: 'vanilla-mod', name: '原版战役 mod', cover_hash: '', description: '不改剧情、只改体验：平衡、AI、画面与手感', topic_count: 5 },
-  { slug: 'custom-campaign', name: '自制战役', cover_hash: '', description: '玩家自制战役与地图', topic_count: 10 },
+  // 与 web/src/preview/product-fixture.ts 的 COVER(...) 是同一组值；换图标就要两边一起换。
+  { slug: 'announcement', name: '公告', cover_hash: 'e70ef0760eb4de0bc8ef07e13cb49d720d3d9ade4457911d582013d753392e9d', description: '版本发布、维护窗口与规则变动', topic_count: 4 },
+  { slug: 'vanilla-mod', name: '原版战役 mod', cover_hash: '3e585f10269d74597977cd559d954dcb2bf325e0fdeecb104fc3d22e714fcd25', description: '不改剧情、只改体验：平衡、AI、画面与手感', topic_count: 5 },
+  { slug: 'custom-campaign', name: '自制战役', cover_hash: '509bb743ef85b654fc1b7efe2e8019e32757eac72bfe38077f9efc5bf5712c80', description: '玩家自制战役与地图', topic_count: 10 },
   { slug: 'emperor', name: '皇帝区', cover_hash: '', description: '', topic_count: 0 },
 ];
 

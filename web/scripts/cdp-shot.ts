@@ -113,10 +113,15 @@ class Cdp {
   }
 
   async shot(path: string): Promise<void> {
+    // CDP 的 Page.captureScreenshot 把 PNG 放在 result.data（base64），**不是** Runtime.evaluate 那种
+    // result.value —— 这里曾经按 .value 读，于是每一张图都是 0 字节而脚本照样打印 OK
+    // （2026-10-14 MIG-ART 实测：0 字节的「成功」出图比没有出图更糟）。
     const { result } = await this.send('Page.captureScreenshot', { format: 'png' });
+    const b64 = typeof result?.data === 'string' ? result.data : '';
+    if (!b64) throw new Error('截图没拿到数据（result.data 为空）：' + path);
     mkdirSync(dirname(path), { recursive: true });
-    writeFileSync(path, Buffer.from(String(result?.value ?? ''), 'base64'));
-    console.log('OK   ' + path);
+    writeFileSync(path, Buffer.from(b64, 'base64'));
+    console.log('OK   ' + path + ' (' + Buffer.from(b64, 'base64').length + ' 字节)');
   }
 }
 

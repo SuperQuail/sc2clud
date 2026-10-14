@@ -41,14 +41,22 @@ const SITE = { name: 'SC2clud', announcements: [], banner: null };
 
 // 分区（左栏那一行的计数就来自它）：字段名照 BoardDTO。
 // **计数不能是 0** —— 出图时左栏「0 帖子」与右栏「12 帖子」并排出现，一眼就看得出桩是坏的。
-const BOARD = { slug: 'custom-campaign', name: '自制战役', description: '玩家自制战役与地图。', cover: null, topic_count: 12, post_count: 130, today_count: 1 };
+//
+// cover_hash 用的是**真实导入的**五个分区图标（完全重构/迁移素材/board-covers.json 的 sha256，
+// 由 forum board-covers 写进 boards.cover_hash）。MIG-ART 2026-10-14 改：原来这里是 `cover: null` ——
+// 字段名根本不存在于 BoardDTO（真名是 cover_hash，forum/dto.go:43），于是产品预览左栏永远是首字占位，
+// 「有封面时真的画图」那条分支在出图里一次都没出现过。
+const COVER = (hash: string) => ({ cover_hash: hash });
+const BOARD = { slug: 'custom-campaign', name: '自制战役', description: '玩家自制战役与地图。', ...COVER('509bb743ef85b654fc1b7efe2e8019e32757eac72bfe38077f9efc5bf5712c80'), topic_count: 12, post_count: 130, today_count: 1 };
 /** 关注状态（follow.State 逐字形状）：值就地改，PUT/DELETE 之后那张图才看得出「已关注」。 */
 const FOLLOW = { target: 'board', slug: 'custom-campaign', following: false, follower_count: 128 };
 const BOARDS = [
-  { slug: 'announcement', name: '公告', description: '站点公告与版本发布。', cover: null, topic_count: 6, post_count: 41, today_count: 1 },
+  { slug: 'announcement', name: '公告', description: '站点公告与版本发布。', ...COVER('e70ef0760eb4de0bc8ef07e13cb49d720d3d9ade4457911d582013d753392e9d'), topic_count: 6, post_count: 41, today_count: 1 },
   BOARD,
-  { slug: 'tool-dev', name: '工具与开发', description: '编辑器、触发器、数据表。', cover: null, topic_count: 23, post_count: 180, today_count: 3 },
-  { slug: 'emperor', name: '皇帝区', description: '需要权限的分区。', cover: null, topic_count: 3, post_count: 12, today_count: 0 },
+  { slug: 'vanilla-mod', name: '原版战役 mod', description: '不改剧情、只改体验。', ...COVER('3e585f10269d74597977cd559d954dcb2bf325e0fdeecb104fc3d22e714fcd25'), topic_count: 5, post_count: 33, today_count: 0 },
+  { slug: 'tool-player', name: '工具（玩家）', description: '给玩家用的工具。', ...COVER('fd1a41d9fb359eebdfb7ecde7be05c73ea7f85655b14e9acd7ec4c55b478a1b8'), topic_count: 9, post_count: 74, today_count: 1 },
+  { slug: 'tool-dev', name: '工具（开发者）', description: '编辑器、触发器、数据表。', ...COVER('70162fcf4099dbcf103063ac5845b1692fd580e579b1f6e194bdfe7594a836cf'), topic_count: 23, post_count: 180, today_count: 3 },
+  { slug: 'emperor', name: '皇帝区', description: '需要权限的分区。', ...COVER(''), topic_count: 3, post_count: 12, today_count: 0 },
 ];
 
 const TOPIC = (id: string, title: string, kind: string, author: unknown, replies: number, excerpt: string) => ({
