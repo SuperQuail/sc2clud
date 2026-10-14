@@ -631,10 +631,13 @@ func TestBlindConcurrentReviews(t *testing.T) {
 // B. 编辑帖子正文（全部经 HTTP：真实路由 + 绑定 + 包络）
 // ============================================================
 
-// B1 PATCH /topics/{id} 带 content_md 必须 200，并且主题回到待审（从公开流消失）。
+// B1 PATCH /topics/{id} 带 content_md 必须 200，而且**不动线上那一份**（06.2 之后的口径）：
+// 改动进待审槽（topic_revisions.pending_md），帖子仍在公开流里，放行时才替换。
 //
-// 旧行为下会红：ResetTopicReview 此前写的是 topics 表**不存在**的两列
-// （ai_reviewed / ai_review_note）—— PATCH 带 content_md 必然 500、整个事务回滚。
+// 这条用例的来路：它原本钉的是「改过正文必须回 pending」——那是 06.2 之前的口径，
+// 而它最初要证明的是「PATCH 带 content_md 不再 500」（ResetTopicReview 曾经写 topics 表里
+// 不存在的两列，整条事务回滚）。现在两种情形由 06.2 的语义接管：从没过审的帖仍回 pending
+// （UpdateTopic 的 n == 0 那一支），已经发布的帖留在 approved —— 后者才是这条用例现在钉的。
 func TestBlindEditContentViaHTTPResetsReview(t *testing.T) {
 	a := newBlindAPI(t)
 	ac, id := a.blindTopic("b1")
@@ -655,42 +658,41 @@ func TestBlindEditContentViaHTTPResetsReview(t *testing.T) {
 		t.Fatalf("PATCH 应当回 {data:{...}}，实际 %s", w.Body.String())
 	}
 
-	// 回到待审
-	if s := a.state(id); s != "pending" {
-		t.Fatalf("改过正文必须回到 pending，实际 %q", s)
+	// 06.2（编辑不动原帖、通过再替换）：**读者的那一份一个字没动**，
+	// 改动进待审槽，帖子留在公开流里 —— 用户要的正是「线上仍是最后一个过审版本」。
+	if s := a.state(id); s != "approved" {
+		t.Fatalf("已发布的帖改正文不该回 pending（那会让读者看不到它），实际 %q", s)
 	}
-	// 四列一起清（不能留着上一版内容的判定）
-	var source, note, by string
-	var at *string
+	var body, pending string
 	if err := a.h.pool.QueryRow(a.h.ctx,
-		"SELECT COALESCE(review_source,''), COALESCE(review_note,''), COALESCE(reviewed_by::text,''), reviewed_at::text FROM topics WHERE public_id = $1",
-		id).Scan(&source, &note, &by, &at); err != nil {
+		"SELECT p.content_md, COALESCE(rv.pending_md, '') FROM posts p JOIN topics t ON t.id = p.topic_id LEFT JOIN topic_revisions rv ON rv.topic_id = t.id WHERE t.public_id = $1 AND p.floor = 1",
+		id).Scan(&body, &pending); err != nil {
 		t.Fatal(err)
 	}
-	if source != "" || note != "" || by != "" || at != nil {
-		t.Fatalf("回到待审必须清掉上一版判定：source=%q note=%q by=%q at=%v", source, note, by, at)
+	if body != "第一版正文" {
+		t.Fatalf("编辑不动原帖：线上仍是过审那一版，实际 %q", body)
 	}
-	// 1 楼正文真的换了
-	var body string
-	if err := a.h.pool.QueryRow(a.h.ctx,
-		"SELECT content_md FROM posts p JOIN topics t ON t.id = p.topic_id WHERE t.public_id = $1 AND p.floor = 1", id).Scan(&body); err != nil {
-		t.Fatal(err)
+	if pending != "第二版正文" {
+		t.Fatalf("改动应进待审槽，实际 %q", pending)
 	}
-	if body != "第二版正文" {
-		t.Fatalf("1 楼正文应当被替换，实际 %q", body)
-	}
-	// 内容变了 → 从公开流消失，等复审
-	if got := a.feedIDs(); len(got) != 0 {
-		t.Fatalf("回到待审后不该还在公开流，实际 %v", got)
+	if got := a.feedIDs(); len(got) != 1 {
+		t.Fatalf("线上那一版还在，公开流应当仍有 1 条，实际 %v", got)
 	}
 
-	// 复审放行 → 又可见
+	// 放行 = 替换：草稿换上台，公开流里读到的是新正文。
 	a.as(ac.mod)
 	if w := a.review(id, `{"action":"approve"}`); w.Code != http.StatusOK {
 		t.Fatalf("复审放行失败: %d %s", w.Code, w.Body.String())
 	}
+	if err := a.h.pool.QueryRow(a.h.ctx,
+		"SELECT p.content_md FROM posts p JOIN topics t ON t.id = p.topic_id WHERE t.public_id = $1 AND p.floor = 1", id).Scan(&body); err != nil {
+		t.Fatal(err)
+	}
+	if body != "第二版正文" {
+		t.Fatalf("放行后才替换线上正文，实际 %q", body)
+	}
 	if got := a.feedIDs(); len(got) != 1 {
-		t.Fatalf("复审放行后公开流应当有 1 条，实际 %v", got)
+		t.Fatalf("放行后公开流应当有 1 条，实际 %v", got)
 	}
 }
 

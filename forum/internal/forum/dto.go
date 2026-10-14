@@ -115,9 +115,15 @@ type TopicDetailDTO struct {
 	UpdatedAt   time.Time `json:"updated_at"`
 	ReviewState string    `json:"review_state"`
 	ReviewNote  *string   `json:"review_note"` // 只有作者看得到（拍板 §6）
-	// RevisionOf 是**最后一个过审版本**（拍板 08 · L6）：只在打回修改（revision_requested）
-	// 且库里确实有快照时非空。作者改的是新内容（content_md 是新的），而页面要能显示
-	// 「上一版过审长什么样」—— 少了它，作者只能凭 review_note 猜该改哪里。
+	// PendingDraft 说的是「你手上的 content_md 是不是还没过审的那一版」（拍板 08 第二轮 · 6.2）。
+	// **读者恒 false**：他们没有待审槽，拿到的 content_md 就是线上那一版。
+	// 为什么要有：作者改完正文回待审之后，界面上「这是草稿」与「这是线上那一版」在
+	// content_md 里长得一模一样，而这两种情况下页面要说的话完全不同（前者「待审中」，
+	// 后者「你已经改完了」）。
+	PendingDraft bool `json:"pending_draft"`
+	// RevisionOf 是**最后一个过审版本**，也就是读者此刻正在看的那一份（拍板 08 · L6 + 6.2）：
+	// 有尚未过审的改动（PendingDraft）时才非空。作者改的是新内容（content_md 是新的），
+	// 而页面要能显示「上一版过审长什么样」—— 少了它，作者只能凭 review_note 猜该改哪里。
 	RevisionOf *TopicRevisionDTO `json:"revision_of"`
 	CanEdit    bool              `json:"can_edit"`
 	CanReply   bool              `json:"can_reply"`
@@ -125,7 +131,7 @@ type TopicDetailDTO struct {
 	Sources    []SourceDTO       `json:"sources"`
 }
 
-// TopicRevisionDTO 是「最后过审版本」的正文（迁移 0028 的 topic_revisions）。
+// TopicRevisionDTO 是「最后过审版本」的正文（迁移 0028/0029 的 topic_revisions）。
 // 两列与 TopicDetailDTO 的正文同名：前端可以把整块内容直接换掉。
 type TopicRevisionDTO struct {
 	ContentMD   string    `json:"content_md"`
@@ -212,6 +218,16 @@ type IssueDetailDTO struct {
 type IssuePage struct {
 	Items      []IssueDTO
 	NextCursor string
+}
+
+// IssueKindDTO 是「Issue 类型」的一个取值（GET /issues/kinds，拍板 08 · J6）。
+//
+// 为什么带 name 而不只是 key：值域是**数据驱动**的（issue_kinds 表），
+// 而 name 是给人看的标签。前端若自己拿 key 拼中文，就等于在代码里又写了一份值域
+// —— 加一类仍然要发版，正是 J6 要避免的那件事。
+type IssueKindDTO struct {
+	Key  string `json:"key"`
+	Name string `json:"name"`
 }
 
 // IssueCommentDTO 是 Issue 评论。

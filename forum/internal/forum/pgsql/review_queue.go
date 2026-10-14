@@ -33,7 +33,10 @@ const reviewQueueFrom = `
       FROM review_events e WHERE e.topic_id = t.id
      ORDER BY e.created_at DESC, e.id DESC LIMIT 1
   ) ev ON true
-  LEFT JOIN users r ON r.id = ev.actor_id`
+  LEFT JOIN users r ON r.id = ev.actor_id
+  -- 待审版本只为一件事存在：'draft' 那一档要能筛出「有未过审改动」的帖（06.2）。
+  -- 一帖一行的 uq_topic_revisions_topic 保证这个 JOIN 不会放大行数。
+  LEFT JOIN topic_revisions rv ON rv.topic_id = t.id`
 
 // ReviewQueueRow 是队列的一行：一屏要能判断「这是什么、谁写的、AI 说了什么」。
 type ReviewQueueRow struct {
@@ -102,13 +105,18 @@ func scanReviewQueueRow(rows *sql.Rows, r *ReviewQueueRow) error {
 // (review_state, created_at DESC, id DESC) WHERE review_state <> 'approved'（0004）。
 // 所以只允许查非 approved 的档 —— 查 approved 用不上这个索引，而「看已通过的」不是队列要做的事。
 // 排序键 (created_at, id) 与索引逐字对齐；游标用 pageCursor 的哨兵，WHERE 里的行比较永远在。
+//
+// **'draft' 是唯一的例外**（拍板 08 第二轮 · 6.2）：「已经发布的帖子改了一版、改动等着替换上线」
+// 仍然是 review_state='approved'（读者要能继续看到线上那一版），所以它不在那个部分索引里。
+// 这一档是全表条件，但它不在主路径上（默认档是 pending）—— 索引照样吃掉另外几档。
 func (s *Store) ReviewQueue(ctx context.Context, state, boardSlug, q string,
 	cursorT time.Time, cursorID int64, limit int) ([]ReviewQueueRow, error) {
 	out := make([]ReviewQueueRow, 0, limit)
 	err := s.query(ctx, sqlJoin(
 		"SELECT "+reviewQueueColumns+reviewQueueFrom,
 		" WHERE t.visibility <> 'deleted'",
-		"   AND ($1 = 'all' OR t.review_state = $1)",
+		"   AND (($1 = 'draft' AND t.review_state = 'approved' AND rv.pending_md IS NOT NULL)",
+		"        OR ($1 <> 'draft' AND ($1 = 'all' OR t.review_state = $1)))",
 		"   AND ($2 = '' OR b.slug = $2)",
 		"   AND ($3 = '' OR t.title ILIKE '%' || $3 || '%'",
 		"                OR a.username ILIKE '%' || $3 || '%'",
@@ -146,7 +154,8 @@ func (s *Store) ReviewQueueItem(ctx context.Context, topicID int64) (*ReviewQueu
 //   - $3 传 nil 表示「通过且不写理由」——review_note 被清空，上一版的拒绝理由不该留着；
 //   - reviewed_by/reviewed_at 是 notify:review 取「审核人是谁」的唯一来源（notify/tasks.go:126）。
 func SetTopicReview(ctx context.Context, tx Querier, topicID int64, state string, note *string,
-	reviewerID int64, unhide bool, expectState string, expectUpdatedAt *time.Time, now time.Time) (int, error) {
+	reviewerID int64, unhide bool, expectState string, expectUpdatedAt *time.Time,
+	alsoUpdatedAt *time.Time, now time.Time) (int, error) {
 	n, err := rowsAffected(ctx, tx, sqlJoin(
 		"UPDATE topics",
 		"   SET review_state  = $2,",
@@ -160,7 +169,10 @@ func SetTopicReview(ctx context.Context, tx Querier, topicID int64, state string
 		// 队列里消失、作者收到「通过」通知、帖子在首页/分区/搜索/主页全看不到，前端又只看
 		// review_state（连横幅都没有）—— 一个谁也修不回来的死状态。
 		"       visibility    = CASE WHEN $6::boolean THEN 'normal' ELSE visibility END,",
-		"       updated_at    = $5",
+		// $5 是判定时刻；$9 是**内容的版本号**。放行一份草稿时它必须与线上正文一起刷新
+		// （promotePendingRevision 写 posts 用的是同一个时刻）——否则下一次读到的 updated_at
+		// 停在「草稿写下的时刻」，而内容已经是新的一版，expected_updated_at 那道闸就形同虚设。
+		"       updated_at    = COALESCE($9::timestamptz, $5)",
 		// $7 只判「我读到的那一版」：作者在管理员点通过之前改了正文（PATCH 带 content_md 会回
 		// pending 并换内容），这次判定就不该落到新内容上 —— 影响 0 行，service 换冲突错。
 		// $8 是**内容的版本**。只比 review_state 不够：作者在审核员看队列之后改了正文时，
@@ -168,7 +180,7 @@ func SetTopicReview(ctx context.Context, tx Querier, topicID int64, state string
 		// 没人看过的内容。版本不符 → 0 行 → service 换冲突错，让审核员刷新重判。
 		" WHERE id = $1 AND visibility <> 'deleted' AND review_state = $7",
 		"   AND ($8::timestamptz IS NULL OR updated_at = $8)",
-	), topicID, state, note, reviewerID, now.UTC(), unhide, expectState, expectUpdatedAt)
+	), topicID, state, note, reviewerID, now.UTC(), unhide, expectState, expectUpdatedAt, alsoUpdatedAt)
 	return int(n), err
 }
 
@@ -193,13 +205,13 @@ func InsertReviewEvent(ctx context.Context, tx Querier, topicID int64, source, v
 		topicID, source, verdict, clipReason(reason), actorID, now.UTC())
 }
 
-// SnapshotApprovedRevision 在「1 楼被批准发布」的那一刻把它的正文快照成「最后过审版本」
-// （拍板 08 · L6；表在迁移 0028）。
+// SnapshotApprovedRevision 在「1 楼被批准发布」的那一刻把它的正文快照成**线上版本**
+// （拍板 08 · L6；表在迁移 0028/0029）。
 //
 // **先插后查**：正文此刻在库里就是被批准的那一份，所以直接从 posts 取。
-// **NOT EXISTS** 而不是 ON CONFLICT：快照是幂等的，而且不能覆盖更早的那一份 ——
-// 同一个 approved 版本被再批一次时，要留住的是**最早**成为「过审版本」的那次，
-// 覆盖会让 approved_at 说谎（那是「这份内容什么时候被批准」的时间戳）。
+// **NOT EXISTS** 而不是 ON CONFLICT：同样的内容被再批一次时不该动已有那一行 ——
+// approved_at 说的是「这份内容什么时候被批准」，覆盖会让那个时间戳说谎
+// （那是幂等路径，不是新内容；新内容走 PromotePendingRevision）。
 // 一帖一份由 uq_topic_revisions_topic 兜底。
 func SnapshotApprovedRevision(ctx context.Context, tx Querier, topicID, approverID int64, now time.Time) error {
 	return exec(ctx, tx, snapshotRevisionSQL, topicID, approverID, now.UTC())
@@ -208,6 +220,7 @@ func SnapshotApprovedRevision(ctx context.Context, tx Querier, topicID, approver
 // HasApprovedRevision 回答「这一帖有没有过审版本」。service 用它决定**要不要**写快照，
 // 而不是只比 review_state：一条 pending 的新帖被第一次批准时，它此前没有过审内容 ——
 // 那种情况下写快照会把「还没审过的正文」记成历史（见 forum/review_queue.go 的说明）。
+// 同一个判据也是「待审版本存哪里」的开关（SavePendingRevision）。
 func (s *Store) HasApprovedRevision(ctx context.Context, q Querier, topicID int64) (bool, error) {
 	var ok bool
 	err := queryOneQ(ctx, q, "SELECT EXISTS (SELECT 1 FROM topic_revisions WHERE topic_id = $1)",
@@ -224,13 +237,123 @@ SELECT p.topic_id, p.id, p.content_md, p.content_html, $2, $3, $3, $3
  WHERE p.topic_id = $1 AND p.floor = 1
    AND NOT EXISTS (SELECT 1 FROM topic_revisions r WHERE r.topic_id = $1)`
 
-// ApprovedRevision 读「最后过审版本」（没有就是 nil）：打回期间作者看到的那一份。
+// ---- 待审版本（拍板 08 第二轮 · 6.2：编辑不动原帖、通过再替换）----
+
+// SavePendingRevision 把作者改完的 1 楼正文存成**待审版本**，而不是覆盖线上那一份。
+// 返回有多少行进了待审槽：0 = 这条主题**从来没有过线上内容**（见 live 参数）。
+//
+// live 是调用方给的**前置条件**：「这条主题此刻有没有一份线上内容」。
+// 不能拿「topic_revisions 里有没有行」当判据 —— 一条直接过审的帖（trusted / 持 post.review
+// 的作者发的）**没有快照行，但它有线上内容**：那时改动必须进待审槽，否则读者立刻看到新正文。
+//
+// 所以两件事一起做：
+//   - 有待审槽（有行）→ 覆盖它（作者改第二遍稿时，读者看到的仍是线上那一版）；
+//   - 没有行但 live → 建一行：content_* 从 posts **当前**那一份抄（那就是线上版本），
+//     pending_* 放这次改动。**它不能沿用首次批准不写快照的规矩**（见 review_queue.go）：
+//     那条规矩只针对「有没有过审内容」这个读口，而这里需要一个待审槽。
+func (s *Store) SavePendingRevision(ctx context.Context, tx Querier, topicID int64, md, html string,
+	live bool, now time.Time) (int, error) {
+	at := now.UTC()
+	n, err := rowsAffected(ctx, tx, `
+UPDATE topic_revisions
+   SET pending_md = $2, pending_html = $3, pending_at = $4, updated_at = $4
+ WHERE topic_id = $1`, topicID, md, html, at)
+	if err != nil {
+		return int(n), err
+	}
+	if n == 0 && live {
+		ins, err := rowsAffected(ctx, tx, `
+INSERT INTO topic_revisions (topic_id, post_id, content_md, content_html, pending_md, pending_html, pending_at, created_at, updated_at)
+SELECT p.topic_id, p.id, p.content_md, p.content_html, $2, $3, $4, $4, $4
+  FROM posts p
+ WHERE p.topic_id = $1 AND p.floor = 1
+   AND NOT EXISTS (SELECT 1 FROM topic_revisions r WHERE r.topic_id = $1)`,
+			topicID, md, html, at)
+		n = ins
+		if err != nil {
+			return int(n), err
+		}
+	}
+	// **topics.updated_at 是内容的版本号**，作者改了稿它就要动 —— 否则审核员手上那一版的
+	// 版本号与库里一样，放行时 expected_updated_at 校验放它过去，批的却是更新过的草稿。
+	// （线上正文、摘要、last_reply_at 都不动：改稿不该把帖子顶上首页，也不该换读者看到的摘要。）
+	if n > 0 {
+		return int(n), exec(ctx, tx, "UPDATE topics SET updated_at = $2 WHERE id = $1", topicID, at)
+	}
+	return int(n), nil
+}
+
+// PromotePendingRevision 是「审核通过后才替换」的那一步：待审版本成为新的线上版本。
+//
+//   - posts（floor=1）换正文 —— 这是读者看到的唯一来源，也是「替换」这个词的落点；
+//   - topics.excerpt 一起换：摘要与正文同源（pgsql/topics.go 的 SetTopicExcerpt 是另一条
+//     路径的同一个约定），只换正文会让列表页的摘要停在上一版；
+//   - 快照行同步换成同一份内容（content_md/html + approved_at），待审三列清空 ——
+//     「线上版本」与 posts 必须逐字相同，否则下一次打回时作者看到的「最后过审版本」是旧的；
+//   - 没有快照行（从没过审的主题）则插一份：这一份**刚刚**被批准，approved_at 说的就是现在。
+//
+// 内容由调用方给（不是从 posts 读）：此刻 posts 里还是**旧**的线上正文，而新的那一份
+// 是作者写在 pending 里的。所以调用的顺序必须是「先 Promote 再 SnapshotApprovedRevision」，
+// 后者读 posts（已是新版）而 NOT EXISTS 会让它跳过 —— 两份内容因此在同一次判定里对齐。
+func (s *Store) PromotePendingRevision(ctx context.Context, tx Querier, topicID, approverID int64,
+	md, html, excerpt string, now time.Time) error {
+	at := now.UTC()
+	if err := exec(ctx, tx,
+		"UPDATE posts SET content_md = $2, content_html = $3, updated_at = $4 WHERE topic_id = $1 AND floor = 1",
+		topicID, md, html, at); err != nil {
+		return err
+	}
+	if err := SetTopicExcerpt(ctx, tx, topicID, excerpt, at); err != nil {
+		return err
+	}
+	if err := exec(ctx, tx, `
+UPDATE topic_revisions
+   SET content_md = $2, content_html = $3, approved_by = $4, approved_at = $5,
+       pending_md = NULL, pending_html = NULL, pending_at = NULL, updated_at = $5
+ WHERE topic_id = $1`, topicID, md, html, approverID, at); err != nil {
+		return err
+	}
+	return exec(ctx, tx, `
+INSERT INTO topic_revisions
+  (topic_id, post_id, content_md, content_html, approved_by, approved_at, created_at, updated_at)
+SELECT p.topic_id, p.id, $2, $3, $4, $5, $5, $5
+  FROM posts p
+ WHERE p.topic_id = $1 AND p.floor = 1
+   AND NOT EXISTS (SELECT 1 FROM topic_revisions r WHERE r.topic_id = $1)`,
+		topicID, md, html, approverID, at)
+}
+
+// PendingRevision 读待审版本（没有那一行 / 没有待审内容都返回 nil）。
+// 正文由 service 侧决定给谁看：**只有作者**（map.go 的 topicDetailDTO）。
+func (s *Store) PendingRevision(ctx context.Context, topicID int64) (*PendingRevisionRow, error) {
+	var r PendingRevisionRow
+	err := s.queryOne(ctx,
+		"SELECT pending_md FROM topic_revisions WHERE topic_id = $1 AND pending_md IS NOT NULL",
+		[]any{topicID}, func(rows *sql.Rows) error { return rows.Scan(&r.ContentMD) })
+	if err == ErrNoRows {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	return &r, nil
+}
+
+// PendingRevisionRow 只带正文：待审版本不需要 approved_at（它还没被批准），
+// 而「什么时候写的」由 topics.updated_at 与 pending_at 各自服务不同的读者，详情页不用。
+type PendingRevisionRow struct {
+	ContentMD string
+}
+
+// ApprovedRevision 读线上版本（没有那一行就是 nil）：打回期间作者拿它当参照。
+// HasPending 回答「作者手上有没有还没过审的改动」—— 没有它，界面会把
+// 「读的是线上那一版」说成「你有一个待审草稿」（forum/map.go 的 TopicRevisionDTO.PendingDraft）。
 func (s *Store) ApprovedRevision(ctx context.Context, topicID int64) (*ApprovedRevisionRow, error) {
 	var r ApprovedRevisionRow
 	err := s.queryOne(ctx,
-		"SELECT content_md, content_html, approved_at FROM topic_revisions WHERE topic_id = $1",
+		"SELECT content_md, content_html, approved_at, pending_md IS NOT NULL FROM topic_revisions WHERE topic_id = $1",
 		[]any{topicID}, func(rows *sql.Rows) error {
-			return rows.Scan(&r.ContentMD, &r.ContentHTML, &r.ApprovedAt)
+			return rows.Scan(&r.ContentMD, &r.ContentHTML, &r.ApprovedAt, &r.HasPending)
 		})
 	if err == ErrNoRows {
 		return nil, nil
@@ -241,11 +364,13 @@ func (s *Store) ApprovedRevision(ctx context.Context, topicID int64) (*ApprovedR
 	return &r, nil
 }
 
-// ApprovedRevisionRow 是 topic_revisions 的一行（内容三列与 posts 逐字同名）。
+// ApprovedRevisionRow 是「线上版本」那一行（内容两列与 posts 逐字同名）。
+// HasPending 与内容三列同源同行 —— 分开查就会拿到「内容 A 的、草稿态 B 的」。
 type ApprovedRevisionRow struct {
 	ContentMD   string
 	ContentHTML string
 	ApprovedAt  time.Time
+	HasPending  bool
 }
 
 // clipReason 是 reason 的 varchar(200) 硬上限（service 的 note 上限是 500，

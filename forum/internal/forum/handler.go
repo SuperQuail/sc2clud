@@ -66,6 +66,10 @@ func (h *Handler) Register(rg *gin.RouterGroup, requireLogin gin.HandlerFunc, pe
 	read.GET("/topics/:id/posts", h.listPosts)
 	read.GET("/topics/:id/issues", h.listTopicIssues)
 	read.GET("/issues", h.listIssues)
+	// 类型值域（拍板 08 · J6 的落地缺口：Service.IssueKinds 一直有实现却没挂路由，
+	// 于是前端只能写死四类）。**游客可读**：新建入口与筛选下拉在未登录时也要画得出来。
+	// 注册在 /issues/:id 之前只是让读的人看见顺序，gin 的静态段本来就优先于通配段。
+	read.GET("/issues/kinds", h.listIssueKinds)
 	read.GET("/issues/:id", h.getIssue)
 	read.GET("/issues/:id/comments", h.listIssueComments)
 	read.GET("/posts/:id/replies", h.listReplies)
@@ -632,6 +636,17 @@ func (h *Handler) listIssuesAt(c *gin.Context, topicPublicID string) {
 		return
 	}
 	httpx.OKList(c, page.Items, page.NextCursor)
+}
+
+// listIssueKinds 是 GET /issues/kinds：值域的唯一来源（issue_kinds 表）。
+// 返回 { data: [...] }（httpx.OKList 的列表形状，与其它列表一致，前端 apiList 直接吃）。
+func (h *Handler) listIssueKinds(c *gin.Context) {
+	out, err := h.svc.IssueKinds(c.Request.Context())
+	if err != nil {
+		httpx.Fail(c, err)
+		return
+	}
+	httpx.OKList(c, out, "")
 }
 
 func (h *Handler) getIssue(c *gin.Context) {

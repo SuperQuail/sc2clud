@@ -117,8 +117,19 @@ func (s *Service) ListIssues(ctx context.Context, actor *authz.Actor, in ListIss
 // IssueKinds 是当前可用的 Issue 类型值域（拍板 08 · J6）。
 // 前端用它渲染「新建 Issue」的四个入口与筛选下拉 —— **值域只有这一处**，
 // 所以加一类之后界面不需要发版（它读的是端点，不是常量表）。
-func (s *Service) IssueKinds(ctx context.Context) ([]string, error) {
-	return s.repo.IssueKinds(ctx)
+//
+// **游客可读**：新建入口与筛选下拉在未登录时也要画得出来（能点之后才要求登录）。
+// 值域不是敏感信息 —— 一条探测口都不算（它就在发帖页的四个按钮上）。
+func (s *Service) IssueKinds(ctx context.Context) ([]IssueKindDTO, error) {
+	rows, err := s.repo.IssueKinds(ctx)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]IssueKindDTO, 0, len(rows))
+	for _, r := range rows {
+		out = append(out, IssueKindDTO{Key: r.Key, Name: r.Name})
+	}
+	return out, nil
 }
 
 // issueCursorRef 与 SQL 的 ORDER BY 逐字同源：sort=comments 时没有游标（首页专用）。
@@ -483,5 +494,9 @@ func (s *Service) invalidKind(ctx context.Context) error {
 	if err != nil || len(kinds) == 0 {
 		return invalid("kind", "不是当前可用的 Issue 类型")
 	}
-	return invalid("kind", "只能是 "+strings.Join(kinds, " / "))
+	keys := make([]string, 0, len(kinds))
+	for _, k := range kinds {
+		keys = append(keys, k.Key)
+	}
+	return invalid("kind", "只能是 "+strings.Join(keys, " / "))
 }

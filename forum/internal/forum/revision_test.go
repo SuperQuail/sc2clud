@@ -35,7 +35,8 @@ func TestRevisionRequestedKeepsOnlyAuthorAndShowsApprovedVersion(t *testing.T) {
 		t.Fatalf("放行后状态应为 approved，实际 %s", item.ReviewState)
 	}
 
-	// ② 作者改正文 V2：ResetTopicReview 把主题送回 pending（这是「内容变了要复审」的老规矩）
+	// ② 作者改正文 V2：**06.2 之后帖子不被打回**（线上仍是 V1，读者照看），
+	//    改动进待审槽，状态停在 approved —— 打回的是改动，不是帖子。
 	if err := h.svc.UpdateTopic(h.ctx, author, d.ID, UpdateTopicInput{ContentMD: ptrStr("V2")}); err != nil {
 		t.Fatal(err)
 	}
@@ -43,11 +44,16 @@ func TestRevisionRequestedKeepsOnlyAuthorAndShowsApprovedVersion(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if pending.ReviewState != "pending" {
-		t.Fatalf("改完正文应回 pending，实际 %s", pending.ReviewState)
+	if pending.ReviewState != "approved" {
+		t.Fatalf("改一份已发布帖的正文不该把帖子打回待审（读者还得看得到），实际 %s", pending.ReviewState)
 	}
-	if pending.RevisionOf != nil {
-		t.Fatalf("pending 不该带 revision_of（那是打回态的东西）: %+v", pending.RevisionOf)
+	// 06.2 之后 pending 态的作者视图**带** revision_of：作者手上是改动（V2），
+	// 参照物是读者此刻正在看的那一份（V1）。旧行为下两边是同一份（改动直接写 posts）。
+	if pending.PendingDraft != true {
+		t.Fatal("作者手上这一版是还没过审的改动，pending_draft 应为 true")
+	}
+	if pending.RevisionOf == nil || pending.RevisionOf.ContentMD != "V1" {
+		t.Fatalf("pending 期间应给出线上那一版（V1）当参照，实际 %+v", pending.RevisionOf)
 	}
 
 	// ③ 打回修改：独立状态，不是 rejected
@@ -110,30 +116,23 @@ func TestRevisionRequestedKeepsOnlyAuthorAndShowsApprovedVersion(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if resubmitted.ReviewState != "pending" {
-		t.Fatalf("改完正文应回 pending，实际 %s", resubmitted.ReviewState)
+	if resubmitted.ReviewState != ReviewStateRevisionRequested {
+		t.Fatalf("改完正文不该把帖子从打回态放出去（要等人重新判），实际 %s", resubmitted.ReviewState)
 	}
 	if resubmitted.ContentMD != "V3" {
 		t.Fatalf("作者看到的应是自己刚改的 V3，实际 %q", resubmitted.ContentMD)
 	}
-	if resubmitted.RevisionOf != nil {
-		t.Fatal("回到 pending 之后不该再挂 revision_of")
+	// 线上那一份仍是 V1（改动从来没写进 posts），所以参照物是 V1 而不是刚改的 V3。
+	if resubmitted.RevisionOf == nil || resubmitted.RevisionOf.ContentMD != "V1" {
+		t.Fatalf("回到 pending 后参照物应仍是线上那一版 V1，实际 %+v", resubmitted.RevisionOf)
 	}
 
-	// ⑧ 放行 V3：这一份成为新的「最后过审版本」；作者再被别的管理员打回时，
-	// 作者看到的过审版本必须是 V3。
-	//
-	// 快照是**写下就固定**的（HasApprovedRevision + NOT EXISTS，见 revision_snapshot_test.go），
-	// 所以「上一份过审版本被新的一版取代」这件事在这里只能手动造：
-	// 把库里那份内容换成 V3，模拟「V3 已经是最后一次过审的内容」。
-	// 这不是在测造假数据 —— 判据只有一条：**revision_of 读的就是库里的那一份，而不是别处推导的**。
+	// ⑧ 放行 V3：**通过再替换**（06.2）—— 线上的快照换成 V3，所有人看到的都是它。
 	if _, err := h.svc.ReviewTopic(h.ctx, author, d.ID, ReviewApprove, ""); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := h.pool.Exec(h.ctx, `
-UPDATE topic_revisions r SET content_md = 'V3', content_html = '<p>V3</p>'
-  FROM topics t WHERE t.id = r.topic_id AND t.public_id = $1`, d.ID); err != nil {
-		t.Fatal(err)
+	if got := h.revisionMD(t, d.ID); got != "V3" {
+		t.Fatalf("放行应把线上版本换成作者改的那一版（V3），实际 %q", got)
 	}
 	public, err := h.svc.TopicDetail(h.ctx, other, d.ID)
 	if err != nil {
@@ -142,6 +141,11 @@ UPDATE topic_revisions r SET content_md = 'V3', content_html = '<p>V3</p>'
 	if public.ContentMD != "V3" {
 		t.Fatalf("过审之后所有人看到的都是这一版，实际 %q", public.ContentMD)
 	}
+	// 再改一版并打回：作者手上是 V4，而他看到的「最后过审版本」必须是**刚刚上台的那一版 V3**。
+	// （06.2 之前这里只能靠一句 SQL 手动模拟「上一份被新的一版取代」；现在它是真发生的事。）
+	if err := h.svc.UpdateTopic(h.ctx, author, d.ID, UpdateTopicInput{ContentMD: ptrStr("V4")}); err != nil {
+		t.Fatal(err)
+	}
 	if _, err := h.svc.ReviewTopic(h.ctx, author, d.ID, ReviewRequestRevision, "再改一处"); err != nil {
 		t.Fatal(err)
 	}
@@ -149,8 +153,15 @@ UPDATE topic_revisions r SET content_md = 'V3', content_html = '<p>V3</p>'
 	if err != nil {
 		t.Fatal(err)
 	}
+	if again.ContentMD != "V4" {
+		t.Fatalf("作者看到的应是手上这一版 V4，实际 %q", again.ContentMD)
+	}
 	if again.RevisionOf == nil || again.RevisionOf.ContentMD != "V3" {
-		t.Fatalf("第二次打回时，过审版本应更新为 V3，实际 %+v", again.RevisionOf)
+		t.Fatalf("revision_of 必须是刚刚过审的那一份 V3，实际 %+v", again.RevisionOf)
+	}
+	// 而线上（posts）仍是 V3 —— 打回的是改动，不是帖子。
+	if got := h.postMD(t, d.ID); got != "V3" {
+		t.Fatalf("打回期间线上仍是 V3，实际 %q", got)
 	}
 	// 而别人**看不到它**（拍板 08 · L6：打回期间只有作者可见）。
 	// 这一条在「已经有最后一个过审版本」之后仍然成立 —— 可见性看的是 review_state，

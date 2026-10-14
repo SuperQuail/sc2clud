@@ -35,10 +35,22 @@ func (s *Service) topicCard(r pgsql.TopicRow) TopicCardDTO {
 	return d
 }
 
-// topicDetailDTO 把详情行拼成响应。rev 是「最后过审版本」（拍板 08 · L6），
-// 只在打回修改那一态且库里确有快照时非 nil；viewerID 用来判「这次读的是不是作者本人」。
+// topicDetailDTO 把详情行拼成响应。**「谁在什么时候看到哪一版」全部在这一处**
+// （拍板 08 第二轮 · 6.2：编辑不动原帖、通过再替换）：
+//
+//	rev   最后过审版本（topic_revisions.content_md），也就是线上那一份。nil = 从没过审。
+//	draft 作者手上还没过审的那一版（pending_md）。nil = 没有待审改动。
+//
+// 三种读者 × 三个版本：
+//
+//	读者（游客 / 别人） 永远拿到 posts 的正文 = 线上那一版。它只在**放行**那一刻变，
+//	                    所以「读者看不到未过审的改动」不是前端藏，是后端根本不下发。
+//	作者本人            有待审改动时拿到 draft（content_md），revision_of 给出线上那一版
+//	                    当参照；没有改动时两边逐字相同。
+//	审核员（canSeePending） 与作者同支：他要判的就是这份改动（队列里只能看到摘要）。
+//	                    队列本身走另一条 DTO（ReviewQueueItemDTO + review_note），不经过这里。
 func (s *Service) topicDetailDTO(r pgsql.TopicDetailRow, sources []pgsql.SourceRow,
-	rev *pgsql.ApprovedRevisionRow) TopicDetailDTO {
+	viewer int64, canSeePending bool, rev *pgsql.ApprovedRevisionRow, draft *string) TopicDetailDTO {
 	d := TopicDetailDTO{
 		ID: r.PublicID, Kind: r.Kind, Title: r.Title, Excerpt: r.Excerpt,
 		Board:  BoardRefDTO{Slug: r.BoardSlug, Name: r.BoardName},
@@ -66,14 +78,18 @@ func (s *Service) topicDetailDTO(r pgsql.TopicDetailRow, sources []pgsql.SourceR
 	if d.ContentDeleted {
 		d.ContentMD, d.ContentHTML = "", deletedHTML
 	}
-	if rev != nil {
-		// 正文是**作者手上正在改的那一版**（content_md），revision_of 额外给出上一份过审的内容。
-		//
-		// 为什么不在这里「替别人换成过审版本」：打回期间**只有作者看得见**这条主题
-		// （可见性谓词就是 approved OR author_id = viewer，别人拿到的是 404），
-		// 所以那一支没有可观测行为 —— 写了也测不到，属于死代码（L6 的用例专门钉了 404 那条）。
-		// 真正需要「别人看到过审版本」的是**审核队列**（另一条 DTO + 另一条可见性），
-		// 它读的是 review_note 与正文，与这里无关。
+	// 作者看到自己手上那一版：**只换正文，不换 RevisionOf** ——
+	// 「最后一个过审版本」这句话在有待审改动时才成立（没有它，revision_of 会与 content_md 重复）。
+	//
+	// **只有作者**吃这一支（判据是归属，不是权限点）：读者拿到的是 posts 里那一份，
+	// 也就是最后一个过审版本 —— 这是 06.2 的全部要点，漏了这句注释下的那行 if，
+	// 未过审的改动就对所有人可见了。
+	if draft != nil && (r.Author.ID == viewer || canSeePending) {
+		d.ContentMD = *draft
+		d.PendingDraft = true
+	}
+	if rev != nil && rev.HasPending {
+		// 有草稿时才给参照物：这一版是拿 posts 里那一份快照出来的，也就是读者正在看的那一份。
 		d.RevisionOf = &TopicRevisionDTO{
 			ContentMD: rev.ContentMD, ContentHTML: rev.ContentHTML, ApprovedAt: rev.ApprovedAt.UTC(),
 		}

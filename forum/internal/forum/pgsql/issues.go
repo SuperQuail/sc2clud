@@ -267,18 +267,29 @@ func (s *Store) IssueKindExists(ctx context.Context, q Querier, kind string) (bo
 
 // IssueKinds 是当前可用的类型值域（列表筛选与前端入口都用它）。
 // 排序键是 sort: 数值小的在前，同值按 key 稳定 —— 有稳定顺序前端才能做深链预设。
-func (s *Store) IssueKinds(ctx context.Context) ([]string, error) {
-	var out []string
-	err := s.query(ctx, "SELECT key FROM issue_kinds WHERE archived = false ORDER BY sort, key",
+//
+// 带 name 一起返回（拍板 08 · J6 的落地缺口）：前端要画的是「Bug 汇报 / 功能建议 / …」，
+// 而 key 只是机器名。让前端自己拿 key 拼中文标签，等于**在代码里再写一份值域** ——
+// 加一类就又要发一次版，正好是 J6 要避免的那件事。
+func (s *Store) IssueKinds(ctx context.Context) ([]IssueKindRow, error) {
+	var out []IssueKindRow
+	err := s.query(ctx, "SELECT key, name, sort FROM issue_kinds WHERE archived = false ORDER BY sort, key",
 		nil, func(rows *sql.Rows) error {
-			var k string
-			if err := rows.Scan(&k); err != nil {
+			var k IssueKindRow
+			if err := rows.Scan(&k.Key, &k.Name, &k.Sort); err != nil {
 				return err
 			}
 			out = append(out, k)
 			return nil
 		})
 	return out, err
+}
+
+// IssueKindRow 是 issue_kinds 的一行（列表筛选只要 Key，新建入口还要 Name）。
+type IssueKindRow struct {
+	Key  string
+	Name string
+	Sort int
 }
 
 // IssueIDByClientToken 是幂等回查（§4.3 的同一套办法）。

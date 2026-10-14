@@ -28,10 +28,15 @@ import (
 
 // 队列档位。**没有 approved**：它不是队列要做的事，而且部分索引的谓词是
 // review_state <> 'approved'，查它用不上索引（等于全表扫）。
+//
+// **draft 是 06.2 加的那一档**（唯一一个 review_state='approved' 的档）：
+// 「线上还挂着旧版、改动等着替换上线」。用户要的是「编辑不动原帖、通过再替换」，
+// 而这一步替换必须有人能批 —— 少了这一档，发布过的帖子改完就**永远上不了台**。
 const (
 	ReviewQueuePending  = "pending"
 	ReviewQueueRejected = "rejected"
 	ReviewQueueAll      = "all"
+	ReviewQueueDraft    = "draft"
 )
 
 // 判定动作。
@@ -73,6 +78,8 @@ var (
 	reviewQueueStates = map[string]bool{
 		ReviewQueuePending: true, ReviewQueueRejected: true,
 		ReviewStateRevisionRequested: true, ReviewQueueAll: true,
+		// 待替换上线的那一档（06.2）：批准了它 = 把改动换上线上。
+		ReviewQueueDraft: true,
 	}
 	reviewQueueActions = map[string]bool{ReviewApprove: true, ReviewReject: true, ReviewRequestRevision: true}
 )
@@ -134,7 +141,7 @@ func (s *Service) ListReviewQueue(ctx context.Context, actor *authz.Actor, in Re
 		state = ReviewQueuePending
 	}
 	if !reviewQueueStates[state] {
-		return nil, invalid("state", "只能是 pending / rejected / revision_requested / all")
+		return nil, invalid("state", "只能是 pending / rejected / revision_requested / draft / all")
 	}
 	q := strings.TrimSpace(in.Q)
 	if len([]rune(q)) > maxReviewQ {
@@ -219,6 +226,17 @@ func (s *Service) ReviewTopic(ctx context.Context, actor *authz.Actor, publicID,
 		return nil, err
 	}
 
+	// 待审版本读在事务**之外**（下面判定时用它的内容替换线上正文）。
+	// 它读的是同一个事务开始前的快照：作者在这之后、行锁之前又改一版的话，
+	// 被放行的是审核员看到的那一版，而作者的新草稿会被这次放行覆盖掉
+	// （shortcut: 判定与改稿并发时不重读待审槽，真需要时在行锁之后加一次 SELECT ... FOR UPDATE）。
+	pendingMD := ""
+	if pending, err := s.repo.PendingRevision(ctx, ref.ID); err != nil {
+		return nil, err
+	} else if pending != nil {
+		pendingMD = pending.ContentMD
+	}
+
 	err = db.WithTx(ctx, s.db, func(tx *ent.Tx) error {
 		// 判定必须基于**刚读到的那个状态**做。作者可能在上面那次无锁读之后改了正文
 		// （PATCH 带 content_md → ResetTopicReview 打回 pending），那时把新内容写成 approved
@@ -239,8 +257,14 @@ func (s *Service) ReviewTopic(ctx context.Context, actor *authz.Actor, publicID,
 		if len(expectedUpdatedAt) > 0 && !expectedUpdatedAt[0].IsZero() {
 			expect = &expectedUpdatedAt[0]
 		}
+		// 放行一份**草稿**时，线上正文会被换成草稿的内容，而版本号必须跟着换到同一个时刻：
+		// 判定的时刻由 service 说了算（PromotePendingRevision 用的也是它）。
+		var alsoUpdatedAt *time.Time
+		if action == ReviewApprove && pendingMD != "" {
+			alsoUpdatedAt = &now
+		}
 		n, err := pgsql.SetTopicReview(ctx, tx, ref.ID, state, notePtr, actor.UserID,
-			action == ReviewApprove, locked.ReviewState, expect, now)
+			action == ReviewApprove, locked.ReviewState, expect, alsoUpdatedAt, now)
 		if err != nil {
 			return err
 		}
@@ -269,17 +293,31 @@ func (s *Service) ReviewTopic(ctx context.Context, actor *authz.Actor, publicID,
 			&reviewerID, now); err != nil {
 			return err
 		}
-		// 「最后过审版本」（拍板 08 · L6）：放行一个**此前过审过**的主题时，把 1 楼正文快照下来。
+		// 「通过再替换」（拍板 08 第二轮 · 6.2）：作者改的正文一直存在待审槽里（UpdateTopic），
+		// 线上那一份在 posts 里没动过 —— **放行这一刻才把它换上去**，换完清空待审槽。
 		//
-		// 两个条件都是必需的，少一个都会让「最后过审版本」变成假话：
-		//   · 上一态就是 approved（ref.ReviewState）—— 一条 pending 的新帖第一次被批准时，
-		//     它此前没有任何过审内容，而 1 楼正文就在这次批准之后的库里：写一份「还没审过的正文」
-		//     进 topic_revisions，作者在 revision_of 里会看到一份从没被批准过的内容。
-		//   · 还没有快照（HasApprovedRevision）—— 快照一旦写下就固定了，重复批准不该覆盖它
-		//     （approved_at 说的是「这份内容什么时候被批准」，覆盖会让那个时间戳说谎）。
-		//
-		// 于是「作者改完 → 复审通过 → 再被打回」这条路上，revision_of 永远是**上一份真过审的**内容。
-		if action == ReviewApprove && ref.ReviewState == "approved" {
+		// 先 Promote 再 Snapshot 的顺序不能反：Promote 把 posts 换成新版并同步快照行，
+		// 而 SnapshotApprovedRevision 读的是 posts、且 NOT EXISTS（已有行时它什么都不做）。
+		if action == ReviewApprove && pendingMD != "" {
+			html, plain, err := s.render(pendingMD)
+			if err != nil {
+				return err
+			}
+			if err := s.repo.PromotePendingRevision(ctx, tx, ref.ID, actor.UserID, pendingMD, html,
+				clipExcerpt(plain), now); err != nil {
+				return err
+			}
+		} else if action == ReviewApprove && locked.ReviewState == "approved" {
+			// 走这条路 = 作者在打回后**没改正文**，或者这是一次重复批准。此时 1 楼正文
+			// 就是被批准的那一份，快照下来即可。
+			//
+			// 两个条件都是必需的，少一个都会让「最后过审版本」变成假话：
+			//   · 上一态就是 approved（locked.ReviewState，**行锁下重读的那一版**）——
+			//     一条 pending 的新帖第一次被批准时，它此前没有任何过审内容，而 1 楼正文就在
+			//     这次批准之后的库里：写一份「还没审过的正文」进 topic_revisions，
+			//     作者在 revision_of 里会看到一份从没被批准过的内容。
+			//   · 还没有快照（HasApprovedRevision）—— 快照一旦写下就不该被同内容覆盖
+			//     （approved_at 说的是「这份内容什么时候被批准」，覆盖会让那个时间戳说谎）。
 			has, err := s.repo.HasApprovedRevision(ctx, tx, ref.ID)
 			if err != nil {
 				return err

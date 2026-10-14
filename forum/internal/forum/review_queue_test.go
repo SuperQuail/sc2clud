@@ -222,7 +222,9 @@ func TestSetTopicReviewRejectsStaleState(t *testing.T) {
 	}
 	err := h.dbTx(func(tx *ent.Tx) error {
 		// 版本传 nil = 只校验状态（本条钉的是状态守卫；版本守卫见 TestReviewConflictOnEditedVersion）
-		n, err := pgsql.SetTopicReview(h.ctx, tx, id, "approved", nil, authorID, true, "rejected", nil, h.clk.Now())
+		// 版本传 nil = 只校验状态（本条钉的是状态守卫；版本守卫见 TestReviewConflictOnEditedVersion）；
+		// 最后那个 nil 是「放行草稿时才给的 updated_at 覆盖」，这条路径上没有草稿。
+		n, err := pgsql.SetTopicReview(h.ctx, tx, id, "approved", nil, authorID, true, "rejected", nil, nil, h.clk.Now())
 		if err != nil {
 			return err
 		}
@@ -292,7 +294,9 @@ func TestEditBodyResetsReview(t *testing.T) {
 
 	d := h.mustTopic(author, CreateTopicInput{BoardSlug: "campaign", Title: "t", ContentMD: "第一版"})
 
-	// 先由审核员放行，再改正文：改完必须回到 pending（复审由「内容变了」触发）
+	// 先由审核员放行，再改正文。06.2 之后这条路径分两种情形，各自的规矩不同：
+	//   · 从没过审的帖（pending / rejected）→ 回 pending，正文直接写 posts；
+	//   · 已经发布的帖 → **不动线上那一份**，改动进待审槽（下面 ② 那一半）。
 	mod := h.actor(h.seedUser("mod", roleID, 1, true), roleID, authz.PermPostReview)
 	if _, err := h.svc.ReviewTopic(h.ctx, mod, d.ID, ReviewApprove, ""); err != nil {
 		t.Fatal(err)
@@ -306,16 +310,41 @@ func TestEditBodyResetsReview(t *testing.T) {
 	if err := h.pool.QueryRow(h.ctx, "SELECT review_state FROM topics WHERE public_id = $1", d.ID).Scan(&resetState); err != nil {
 		t.Fatal(err)
 	}
-	if resetState != "pending" {
-		t.Fatalf("改过正文应当回到 pending，实际 %q", resetState)
+	if resetState != "approved" {
+		t.Fatalf("已发布帖的改动不该把帖子打回待审（读者要能继续看线上那一版），实际 %q", resetState)
+	}
+	if got := h.postMD(t, d.ID); got != "第一版" {
+		t.Fatalf("编辑不动原帖：线上仍是过审那一版，实际 %q", got)
+	}
+	if got := h.pendingMD(t, d.ID); got != body {
+		t.Fatalf("改动应进待审槽，实际 %q", got)
 	}
 
-	// 四列一起清：不能留着上一版的判定来源与理由，否则会被读成对新内容的结论
+	// ② 从没过审的帖仍然走老路：回 pending，正文直接写 posts（别人本来就看不到它）。
+	other := h.mustTopic(author, CreateTopicInput{BoardSlug: "campaign", Title: "draft2", ContentMD: "草稿一"})
+	if err := h.svc.UpdateTopic(h.ctx, author, other.ID, UpdateTopicInput{ContentMD: ptrStr("草稿二")}); err != nil {
+		t.Fatal(err)
+	}
+	if err := h.pool.QueryRow(h.ctx, "SELECT review_state FROM topics WHERE public_id = $1", other.ID).Scan(&resetState); err != nil {
+		t.Fatal(err)
+	}
+	if resetState != "pending" {
+		t.Fatalf("从没过审的帖改正文应回 pending，实际 %q", resetState)
+	}
+	if got := h.postMD(t, other.ID); got != "草稿二" {
+		t.Fatalf("没过审的帖改正文直接写 posts（那是作者自己的内容），实际 %q", got)
+	}
+	if n := h.countRevisions(t, other.ID); n != 0 {
+		t.Fatalf("从没过审的帖不该建待审槽，实际 %d 行", n)
+	}
+
+	// ③ 四列一起清：不能留着上一版的判定来源与理由，否则会被读成对新内容的结论。
+	//    这一条只在「回 pending」那一支成立（pending 的含义就是「这份内容还没有任何判定」）。
 	var source, note, by string
 	var at *string
 	if err := h.pool.QueryRow(h.ctx,
 		"SELECT COALESCE(review_source,''), COALESCE(review_note,''), COALESCE(reviewed_by::text,''), reviewed_at::text FROM topics WHERE public_id = $1",
-		d.ID).Scan(&source, &note, &by, &at); err != nil {
+		other.ID).Scan(&source, &note, &by, &at); err != nil {
 		t.Fatal(err)
 	}
 	if source != "" || note != "" || by != "" || at != nil {

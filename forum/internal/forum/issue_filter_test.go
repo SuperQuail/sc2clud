@@ -1,7 +1,13 @@
 package forum
 
 import (
+	"encoding/json"
+	"net/http"
+	"net/http/httptest"
+	"strings"
 	"testing"
+
+	"github.com/gin-gonic/gin"
 
 	"forum/internal/authz"
 )
@@ -28,7 +34,7 @@ func TestIssueKindIsDataDriven(t *testing.T) {
 	for _, want := range []string{"bug", "feature", "difficulty", "other"} {
 		found := false
 		for _, k := range kinds {
-			if k == want {
+			if k.Key == want {
 				found = true
 			}
 		}
@@ -69,6 +75,68 @@ func TestIssueKindIsDataDriven(t *testing.T) {
 	}
 	_, err = h.svc.CreateIssue(h.ctx, author, topic.ID, CreateIssueInput{Kind: "balance", Title: "x", BodyMD: "y"})
 	assertCode(t, err, "common.invalid_input")
+}
+
+// J6 的**落地缺口**（收尾对照表 §8.1）：Service.IssueKinds 一直有实现却没挂路由，
+// 于是前端只能写死四类 —— 与 J6「值域数据驱动、加一类不用发版」正好相反。
+//
+// 这条用例钉两件事：
+//  1. **路由存在且游客可读**（新建入口与筛选下拉在未登录时也要画得出来）；
+//  2. 每个取值**带 name**：前端不该拿 key 自己拼中文（那等于在代码里再写一份值域）。
+//
+// 旧行为下它会红：GET /api/v1/issues/kinds 落进 /issues/:id 那条通配路由 →
+// "kinds" 不是 uuid → 400（正是「有 Service 没路由」的形态）。
+func TestIssueKindsRouteIsPublicAndCarriesNames(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	h := newHarness(t)
+	h.setupTopic(t)
+
+	api := NewHandler(h.svc, func(c *gin.Context) *authz.Actor {
+		if v, ok := c.Get(principalKey); ok {
+			return v.(*authz.Actor)
+		}
+		return nil // 不设身份 = 游客
+	})
+	r := gin.New()
+	api.Register(r.Group("/api/v1"), func(c *gin.Context) { c.Next() }, func(string) gin.HandlerFunc {
+		return func(c *gin.Context) { c.Next() }
+	})
+
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/api/v1/issues/kinds", nil))
+	if w.Code != http.StatusOK {
+		t.Fatalf("游客读类型值域应 200（这条路由此前根本不存在），实际 %d: %s", w.Code, w.Body.String())
+	}
+	var got struct {
+		Data []struct {
+			Key  string `json:"key"`
+			Name string `json:"name"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &got); err != nil {
+		t.Fatal(err)
+	}
+	want := map[string]string{"bug": "Bug 汇报", "feature": "功能建议", "difficulty": "难度建议", "other": "其他"}
+	if len(got.Data) != len(want) {
+		t.Fatalf("当前应有四类，实际 %d 条: %s", len(got.Data), w.Body.String())
+	}
+	for _, k := range got.Data {
+		if want[k.Key] != k.Name {
+			t.Fatalf("取值 %s 的 name 应是 %q，实际 %q（前端要靠它渲染，不该自己拼中文）",
+				k.Key, want[k.Key], k.Name)
+		}
+	}
+
+	// 加一类 = 插一行，路由立刻多给出它 —— 这条才是 J6 真正要的「不用发版」。
+	if _, err := h.pool.Exec(h.ctx,
+		"INSERT INTO issue_kinds (key, name, sort) VALUES ('balance', '平衡性', 9)"); err != nil {
+		t.Fatal(err)
+	}
+	w = httptest.NewRecorder()
+	r.ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/api/v1/issues/kinds", nil))
+	if w.Code != http.StatusOK || !strings.Contains(w.Body.String(), "平衡性") {
+		t.Fatalf("新加的类型应当立刻出现在值域里（%d）: %s", w.Code, w.Body.String())
+	}
 }
 
 // J8（拍板 08）：能关 Issue 的人 = 作者 / 版主 / 管理员及以上 / **Issue 发布者**。

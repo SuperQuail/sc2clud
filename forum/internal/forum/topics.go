@@ -244,17 +244,26 @@ func (s *Service) TopicDetail(ctx context.Context, actor *authz.Actor, publicID 
 	if err != nil {
 		return nil, err
 	}
-	// 「最后过审版本」（拍板 08 · L6）：只有涉及打回时才需要它，所以**只在那一态查**
-	// （打回修改是少数路径，别让每一次详情页读都多一条查询）。
-	// 读不到快照是正常情况：一条从没被批准过的帖不会有过审版本（nil = 字段不出现在响应里）。
-	var rev *pgsql.ApprovedRevisionRow
-	if row.ReviewState == ReviewStateRevisionRequested {
-		rev, err = s.repo.ApprovedRevision(ctx, row.ID)
+	// 正文的三个版本（拍板 08 第二轮 · 6.2）：线上那一份在 row.ContentMD（posts），
+	// 作者手上那一版在 pending_md（topic_revisions）。一条查询就够 —— 它同时给出
+	// 「有没有待审版本」与「最后一个过审版本长什么样」，而这两件事必须同源（同一次读）。
+	//
+	// 读不到快照是正常情况（从没被批准过的帖）：那时没有待审槽，也没有 revision_of。
+	rev, err := s.repo.ApprovedRevision(ctx, row.ID)
+	if err != nil {
+		return nil, err
+	}
+	var draft *string
+	if rev != nil && rev.HasPending {
+		pending, err := s.repo.PendingRevision(ctx, row.ID)
 		if err != nil {
 			return nil, err
 		}
+		if pending != nil {
+			draft = &pending.ContentMD
+		}
 	}
-	d := s.topicDetailDTO(*row, sources, rev)
+	d := s.topicDetailDTO(*row, sources, viewerID(actor), canReview(actor), rev, draft)
 	return &d, nil
 }
 
@@ -480,21 +489,48 @@ func (s *Service) UpdateTopic(ctx context.Context, actor *authz.Actor, publicID 
 			return apperr.ErrForbidden
 		}
 		if in.ContentMD != nil {
-			postID, err := s.firstPostID(ctx, ref.ID)
+			// **编辑不动原帖**（拍板 08 第二轮 · 6.2）：这条主题有线上内容的话，它就在 posts 里，
+			// 作者改的这一版只进待审槽（topic_revisions.pending_md）—— 读者看到的仍是最后一个
+			// 过审版本，作者自己看到的是手上这一版（map.go 的 topicDetailDTO）。
+			//
+			// 「有没有线上内容」看的是 review_state 而不是「有没有快照行」：一条直接过审的帖
+			// （trusted 或持 post.review 的作者发的）没有快照行，但它的正文就在公开流里 ——
+			// 拿快照行当判据的话，那种帖一改就让读者看到了未过审的新正文（这道闸正是要拦的）。
+			// revision_requested 也算「有线上内容」：打回的是改动，帖子本身仍是发布态。
+			live := ref.ReviewState == "approved" || ref.ReviewState == ReviewStateRevisionRequested
+			n, err := s.repo.SavePendingRevision(ctx, tx, ref.ID, *in.ContentMD, html, live, now)
 			if err != nil {
 				return err
 			}
-			if err := pgsql.UpdatePostContent(ctx, tx, postID, *in.ContentMD, html, now); err != nil {
-				return err
+			if n == 0 {
+				// 从没过审（pending / rejected 的新帖）：正文本来就是作者自己的内容，
+				// 别人看不到它，照老路写 posts。
+				postID, err := s.firstPostID(ctx, ref.ID)
+				if err != nil {
+					return err
+				}
+				if err := pgsql.UpdatePostContent(ctx, tx, postID, *in.ContentMD, html, now); err != nil {
+					return err
+				}
 			}
+			// 摘要与正文同源：作者自己列表里的摘要也是他刚写的那一份
+			// ——**别人的列表里看不到它**（列表谓词只放 review_state='approved'，放行时摘要会被一起替换）。
 			if err := pgsql.SetTopicExcerpt(ctx, tx, ref.ID, excerpt, now); err != nil {
 				return err
 			}
 			// **改过正文就回待审**（老站的流程）：作者改完要重新过一遍审核，AI 也重新看一次。
 			// 只改标题/分区不算内容变更 —— 那是分类问题，不该让一篇正常帖子掉出可见状态。
 			// 谁改都重置：管理端改正文同样是「内容变了」。
-			if err := pgsql.ResetTopicReview(ctx, tx, ref.ID, now); err != nil {
-				return err
+			//
+			// 06.2 之后**只在没有线上内容时重置**（n == 0 那一支）：一条已经发布的帖，
+			// 它待审的是**改动**而不是帖子 —— 把主题打回 pending 就等于「读者看不到这篇了」，
+			// 与「编辑不动原帖、线上仍是最后一个过审版本」正好相反（06.2 的用例钉的就是这条）。
+			// 有待审版本时审核队列靠 review_events 的判定记录与 updated_at 版本号工作，
+			// 不靠 review_state；放行时 PromotePendingRevision 会把改动换上台。
+			if n == 0 {
+				if err := pgsql.ResetTopicReview(ctx, tx, ref.ID, now); err != nil {
+					return err
+				}
 			}
 		}
 		// resource → 非 resource：删掉它的下载源，否则留下挂错地方的源（§4.5）。
