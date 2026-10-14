@@ -297,7 +297,7 @@ func (s *Service) DetachTopicImage(ctx context.Context, actor *authz.Actor, in D
 	})
 }
 
-// AddPaymentChannel：每用户 ≤5，行锁串行化；引用行的可见性是 public（L1，见下面那行）。
+// AddPaymentChannel：每用户 ≤5，行锁串行化；引用行的档位是登录可见 + 渠道展示开关（L1，见下面那段）。
 func (s *Service) AddPaymentChannel(ctx context.Context, actor *authz.Actor, in AddPaymentChannelInput) (*PaymentChannel, error) {
 	if err := requireActive(actor); err != nil {
 		return nil, err
@@ -320,15 +320,15 @@ func (s *Service) AddPaymentChannel(ctx context.Context, actor *authz.Actor, in 
 		if n >= maxPaymentChannels {
 			return ErrLimitReached.WithMsg(fmt.Sprintf("最多只能添加 %d 个收款码", maxPaymentChannels))
 		}
-		// L1（拍板第二轮）：收款码是**给人扫的**图 —— 扫码付款不需要账号，所以陌生人（登录的无关用户）
-		// 与游客都必须真拿到它。旧口径把它写死成 private，canView 只放行所有者 / 超管 / 持 reward.verify，
-		// 于是打赏面板上永远是一张占位图（扫不出码）。
-		// **要不要对外展示这个码**由作者侧的 show_channels 开关管（reward 域的列表闸：关着就回空数组），
-		// 不是把图本身锁上 —— 先上传码、之后再打开展示开关是常规顺序，档位跟着开关走的话那一步就漏了。
-		// 代价：知道 hash 的人都能取图；hash 不可猜，且它本来就是给打赏者看的（老站 AGENTS §9 同一结论）。
-		// shortcut: 不做每渠道的可见性列，作者要更细的控制时再给 payment_channels 加一列。
+		// L1（拍板第二/三轮，用户两次强调「按渠道显示、不许偏移」）：档位是**老站那一档登录可见**
+		// （site/.../pages_profile.rs 的 set_blob_visibility(..., 1)），**不是在上传那一刻定死**的 ——
+		// canView 读作者侧的渠道展示开关（user_donation_settings.show_channels），在**读路径上**调档：
+		//   开关开 → 登录用户与游客都真拿得到（打赏面板要能扫，扫码付款不需要账号）；
+		//   开关关 → 拿不到（占位图）—— 渠道列表本来也回空数组，没有别的合法入口。
+		// 写死 public（K2-A 上一轮的做法，已被用户判为偏移）会让档位与开关脱钩：
+		// 作者关掉展示之后，图仍然对全站可读。
 		owner := actor.UserID
-		if _, err := refTx(ctx, tx, string(hsh), size, mime, w, h, VisibilityPublic, &owner); err != nil {
+		if _, err := refTx(ctx, tx, string(hsh), size, mime, w, h, VisibilityLogin, &owner); err != nil {
 			return err
 		}
 		newID, err := idgen.NewPublicID()
@@ -402,7 +402,7 @@ func (s *Service) FetchImage(ctx context.Context, actor *authz.Actor, hash strin
 		return nil, ErrNotFound
 	}
 	rel := hash[:2] + "/" + hash[2:4] + "/" + hash
-	if !canView(actor, meta) {
+	if !s.canView(ctx, actor, meta) {
 		return &ImageResponse{Mime: "image/png", Size: int64(len(placeholderPNG)), Placeholder: placeholderPNG}, nil
 	}
 	resp := &ImageResponse{Mime: meta.Mime, Size: meta.Size, Path: rel, Cache: true}
@@ -510,12 +510,23 @@ func mapStoreErr(err error) error {
 }
 
 // canView 是**唯一**一份可见性判定（d5 §3.4）。
-func canView(actor *authz.Actor, img *imageRow) bool {
+//
+// 收款码那一档（VisibilityLogin）是唯一的例外，L1 拍板「按渠道显示」：
+//
+//	· 作者本人 / 超管照旧拿得到（设置页要预览自己的码）；
+//	· 其余人（含**游客**）由作者的渠道展示开关决定 —— 开着就放行，关着就是占位图。
+//
+// 调档发生在**读路径**上，所以档位在上传之后仍然可以调整（同一张码不用重传）。
+// 多出来的那一次库读只在「有主的图」这一支上发生（头像 / 封面 / 配图都在这一支），不引入新依赖。
+func (s *Service) canView(ctx context.Context, actor *authz.Actor, img *imageRow) bool {
 	switch img.Visibility {
 	case VisibilityPublic:
 		return true
 	case VisibilityLogin:
-		return actor != nil && actor.UserID != 0
+		if actor != nil && (actor.IsSuper || (img.OwnerID != nil && *img.OwnerID == actor.UserID)) {
+			return true
+		}
+		return s.channelDisplayed(ctx, img)
 	case VisibilityPrivate:
 		if actor == nil || actor.UserID == 0 {
 			return false
@@ -526,6 +537,21 @@ func canView(actor *authz.Actor, img *imageRow) bool {
 		return img.OwnerID != nil && *img.OwnerID == actor.UserID
 	}
 	return false
+}
+
+// channelDisplayed 回答「这张登录可见的图，它的作者开着渠道展示开关吗」。
+// 不是收款码的图（将来别人写别的 login 档图）由调用方按原档位办，这里不替它们做主。
+func (s *Service) channelDisplayed(ctx context.Context, img *imageRow) bool {
+	if img.OwnerID == nil {
+		return false
+	}
+	ok, err := channelImageWithDisplayOn(ctx, s.db, img.Hash, *img.OwnerID)
+	if err != nil {
+		// 库出错时按**不放行**处理：可见性是信任边界，宁可给占位图也不越权直出。
+		s.log.Error("读收款码展示开关失败，按不可见处理", "hash", img.Hash, "err", err.Error())
+		return false
+	}
+	return ok
 }
 
 // sanitizeLabel 去控制字符并截到 32 字符（payment_channels.label varchar(32)）。

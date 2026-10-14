@@ -216,6 +216,26 @@ RETURNING image_hash`, []any{publicID, userID}, &hash)
 	return hash, nil
 }
 
+// channelImageWithDisplayOn 是「按渠道显示」那一条闸（L1 拍板第二/三轮）：
+// 这张 hash 是**这个作者**的收款码，并且他开着展示开关（渠道列表也才回得了这一行）。
+//
+// 为什么读 reward 域的表：这是「收款码能不能对外展示」的唯一真源，写在 reward 域
+// （user_donation_settings.show_channels，0011 的 DEFAULT false 与老站一致）。media 只 READ 它，不写。
+// 行不存在 = 从没设置过 = 默认关（与迁移的 DEFAULT 一致），所以用 EXISTS 而不是再查一次值。
+func channelImageWithDisplayOn(ctx context.Context, q sqlExec, hash string, ownerID int64) (bool, error) {
+	var ok bool
+	err := row1(ctx, q, `
+SELECT EXISTS (
+  SELECT 1 FROM payment_channels pc
+    JOIN user_donation_settings s ON s.user_id = pc.user_id
+   WHERE pc.image_hash = $1 AND pc.user_id = $2 AND s.show_channels)
+		`, []any{hash, ownerID}, &ok)
+	if err != nil {
+		return false, fmt.Errorf("media: read channel display switch for %s: %w", hash, err)
+	}
+	return ok, nil
+}
+
 // readUserImageTx 读 users 上某一根图片列的旧 hash 并锁住用户行：换图要先知道旧值才能 −1。
 // 不用 UPDATE ... RETURNING 的子查询——它读到的是新值，不是 OLD。
 func readUserImageTx(ctx context.Context, q sqlExec, col string, userID int64) (string, error) {

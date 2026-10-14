@@ -219,6 +219,14 @@ func (h *harness) newTopic(author user, visibility string) (string, int64) {
 	return pid.String(), id
 }
 
+// mustExec 造状态用（开关、审核态这类由别人写的列）。
+func (h *harness) mustExec(query string, args ...any) {
+	h.t.Helper()
+	if _, err := h.pool.Exec(h.ctx, query, args...); err != nil {
+		h.t.Fatalf("执行 %q: %v", query, err)
+	}
+}
+
 func (h *harness) scalar(query string, args ...any) int64 {
 	h.t.Helper()
 	var n int64
