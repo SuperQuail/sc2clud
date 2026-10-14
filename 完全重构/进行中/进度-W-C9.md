@@ -11,6 +11,20 @@ rg = rg.Group("", httpx.ValidPathIDs("id"))
 
 ## 步骤
 
+- [x] site 挂闸 + 会红用例
+  - 做了什么：`site.Register` 第一行加 `rg = rg.Group("", httpx.ValidPathIDs("id"))`；
+    本域 {id} 三条：`POST /banners/{id}/dismiss`、`PATCH /admin/announcements/{id}`、
+    `PATCH /admin/banners/{id}`。新增 `site/pathguard_test.go`。
+  - 证据：**先红**（没挂闸）`go test ./internal/site/ -run TestNonUUIDPathIDIsBadRequest -v` →
+    `pathguard_test.go:33: 非 uuid 的路径 id 必须是 400，实际 404：{"error":{"code":"common.not_found","message":"内容不存在"...}}`；
+    挂闸后 `go test ./internal/site/ -count=1` → `ok forum/internal/site 18.791s`（整包）。
+  - 下一步：reward —— `forum/internal/reward/handler.go` 的 `Register` 第一行加同一行
+    （本域 {id} 两条：`DELETE /rewards/{id}`、`POST /admin/rewards/{id}/verify`）。
+    **这个域要换一种证法**：service 的 `parsePublicID` 早就返回同一个 400（code/status/fields 与闸一致），
+    所以「打非 uuid 断言 400」挂闸前就是绿的；用例改成拿 nil `*Service` 的 handler，
+    断言非 uuid 在进 handler 之前就被挡成 400（挂闸前 → 调 nil service panic）。
+  - 阻塞：无
+
 - [x] report 挂闸 + 会红用例
   - 做了什么：`report.Register` 第一行加 `rg = rg.Group("", httpx.ValidPathIDs("id"))`；
     本域 {id} 一条：`PATCH /admin/reports/{id}`（`/admin/reports/batch` 是静态段）。新增 `report/pathguard_test.go`。

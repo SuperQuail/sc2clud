@@ -31,6 +31,9 @@ func NewHandler(svc *Service, actor ActorFunc) *Handler {
 //
 //	site.NewHandler(svc, auth.FromGin).Register(v1, authSvc.RequireLogin, authSvc.Perm)
 func (h *Handler) Register(rg *gin.RouterGroup, requireLogin func() gin.HandlerFunc, perm func(...string) gin.HandlerFunc) {
+	// 非 uuid 的 {id} 一律在进 service 之前挡成 400（见 platform/httpx.ValidPathIDs）。
+	rg = rg.Group("", httpx.ValidPathIDs("id"))
+
 	rg.GET("/site", h.site)
 	rg.POST("/banners/:id/dismiss", requireLogin(), h.dismiss)
 	rg.POST("/markdown/preview", requireLogin(), httpx.BodyLimit(maxPreviewBody), h.preview)
