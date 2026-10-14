@@ -48,3 +48,17 @@
   - 下一步：落「老站硬编码 vs 新站」对照表（PostSection 五 slug+中文 label+发帖权限 / ResourceProvider 八家 /
     site_texts 13 键 / 默认头像池 / 公告区发帖门槛），把已迁/待迁/不迁与理由写进 `完全重构/数据迁移审计.md`。
   - 阻塞：无。
+- [x] 第3步：老站硬编码清单逐条对照（已迁 / 待迁 / 不迁 + 理由）落进审计
+  - 做了什么：`完全重构/数据迁移审计.md` 新增 §6（原 §6 复现顺延为 §7），九条硬编码逐条对照，
+    每条给出**新站的真源文件**（能当场打开核实）：PostSection 五 slug+中文 label+发帖权限、
+    分区图标→分区映射、ResourceProvider 八家网盘、site_texts 13 键、默认头像池、公告区发帖门槛，
+    另加三条（GitHub 镜像模板 / 老审核状态机 / 新增的三档来源）。
+    关键结论：**公告区发帖门槛「部分已迁」**——等级门槛与 board_acls 都在，但「只有管理员能发」
+    这半句在新站仍是假的（三条路 + 取舍写清，本次不动，等拍板）；**site_texts 13 键**逐键给了落点，
+    并更正了「AI 配置新站没有」这句旧措辞（`ai_config` 表与四个 admin 端点都在）。
+  - 证据：文档 §6.1–§6.6；`site/crates/sc2clud-core/src/resource.rs` 的 label 与 `seed_data.go` 的
+    `seedBoardRows` 逐格对照（两个 label 差一个「用」字，已写明）；来源词表三处同源
+    （`ck_topic_sources_provider` / `forum/sources.go` / `web/src/devroom/pages/18-compose/source-form.ts`）。
+  - 下一步：收尾自查（`gofmt -l .` + `go vet ./...` + 改过的包 `go test -count=1`），
+    把 §6.2 的实测数写进进度；关掉本轮的进程（19399 的 forum run、24817 的嵌入式 pg、5299 的预览服务）。
+  - 阻塞：无。
