@@ -50,3 +50,42 @@
   - 证据：`node scripts/check-size.ts` → `检查 290 个文件，超限 1 个，登记 1 个` + `文件体量门禁通过`（唯一超限的是**别人的** `routes/messages.tsx 646 行`，且在 PENDING 里登记过）；`& .\web\scripts\shoot-admin.ps1`（12 屏）→ 全部 `OK`、`失败 0 张`。
   - 下一步：等 W-D1 的 `GET /admin/users` 落地后把 `routes/admin/users.tsx` 的筛选参数按真 DTO 复核一遍（他现在写的是 `q/status/role/activated/email_verified` 两个布尔，我的客户端已按这个形状写好）；`boards` / `diagnostics` 两屏等 C2 / C3 的端点，落地后按同样形状补容器即可（屏本身还是 mock 版，需要一起改成 prop 驱动）。
   - 阻塞：`GET /admin/users`（C1）· `/admin/boards*`（C2）· `GET /admin/diagnostics`（C3）仍未落地 → `users` 屏如实显示 404、`boards`/`diagnostics` 渲染 `PendingScreen`（图上明写缺哪条端点）。**没有拿示例数据兜底。**
+
+## 收工状态（2026-10-14）
+
+**做完了 10 屏**（合同要求的「每屏一个提交」）：users（等端点，见下）· review · reports · rewards · roles · titles · mail · settings · audit · ai。
+**12 屏的取数容器与路由接线全部就位**；`boards` / `diagnostics` 两屏仍渲染 `PendingScreen`（端点未落地）。
+**两条纪律的落点**：`AdminShell`（面包屑 + 当前管理员卡 + 权限明细）已是唯一的后台骨架；
+`ConfirmDialog` / `DangerAction` 在 users（封号/解封）、review（拒绝）、reports（驳回）、rewards（拒绝）、
+titles（归档）、mail（删除）、roles（清空矩阵）、ai（换密钥）八处都是唯一入口，**理由必填 + 二次确认**。
+
+### 验收证据（本轮最后跑的一次）
+- `cd web && npx tsc --noEmit`：我的文件 **0 错**（唯一一条在别人的 `scripts/shoot-kfe.ts`，未跟踪的在途文件）。
+- `cd web && npx vitest run`：`Test Files 32 passed (32) / Tests 164 passed (164)`。
+- `cd web && node scripts/check-size.ts`：`检查 290 个文件，超限 1 个，登记 1 个` + `文件体量门禁通过`（唯一超限的是**别人的** `routes/messages.tsx`，在 PENDING 里）。
+- `cd web && node scripts/check-budget.ts`：`首屏 JS 148.7 KB / 150.0 KB`、`首屏 CSS 37.4 KB / 40.0 KB`、`最大路由 chunk 96.0 KB / 120.0 KB`、`产物体积门禁通过`。**注意首屏只剩 1.3 KB 余量**（不是我这一块造成的：/admin/* 是路由级 lazy）。
+- `& .\web\scripts\shoot-admin.ps1`（12 屏）：全部 `OK`、`失败 0 张`，产物在 `shots/wd2/`（仓库外层的 shots 已 gitignore）。
+- 看过的图（**每张都带左下角 `MARKER-ADMIN /admin/<屏>`**，证明拍的是当前源码）：`review-1440`、`reports-1440`、`rewards-1440`、`roles-1440`、`titles-1440`、`mail-1440`、`settings-1440`、`audit-1440`、`ai-1440`、`users-404`（真 404 态）、`boards-1440`（PendingScreen）、`diagnostics-1440`、`permission-denied`（**非默认态**：无 `audit.view` 的普通成员进 /admin/audit → 403 并写明缺哪个点）、`review-390`（窄屏）。
+- 后端：**没有碰 `forum/**` 一行**，所以不需要跑 Go 测试。
+
+### 出图入口（B8 的延伸）
+`/admin/*` 不在 `product.html` 的 route 表里，而那个文件是共享写入点 —— 所以后台**自己一个入口**：
+`web/admin.html` + `src/preview/admin-preview.tsx`（真壳 + 真路由 + 真屏）+ `src/preview/admin-fixtures.ts`（桩，
+**故意不给 /admin/users、/admin/boards*、/admin/diagnostics，让图上看得见真实的 404**）。
+`web/vite.preview.config.ts` 的 `rollupOptions.input` 里加了 `admin: 'admin.html'`。
+**后来 `product.tsx` 的 route 表也加了 `/admin` 与 `/admin/*`**（见 fdd7f3b），所以
+`product.html?route=/admin/review&asAdmin=1` 现在同样能出后台的图 —— 两条路都通。
+
+### 留给下一个人的三件事（按价值排序）
+1. **`GET /admin/users` 一落地就接 users 屏**：屏已经 prop 驱动改完、容器在 `routes/admin/users.tsx`，
+   缺的只是端点。**筛选参数按真 DTO 复核一遍**：W-D1 的 `auth/pgsql/admin_users.go` 用的是
+   `q / status / role / activated(bool) / email_verified(bool)`，而 `activated` 与 `email_verified` 是
+   **两根独立的轴** —— 我的客户端已按这个形状写好（`lib/api/admin-types.ts` 的 `AdminUserFilter`），
+   但 `AdminUser` 那个类型是**按 C1 的验收清单推的**，端点落地后必须逐字段复核（类型上有 `shortcut:` 注释标了）。
+2. **`boards` / `diagnostics` 两屏**：C2 的 `/admin/boards` 整组**已经在工作区落地了**（W-D1 的
+   `forum/internal/forum/admin_boards*.go`），`GET /admin/diagnostics`（C3）还没有。补法是照本轮的形状：
+   把 `screens/boards.tsx` 改成 prop 驱动 + 在 `routes/admin/` 加一个容器文件 + 在 `admin.tsx` 的映射表里
+   把 `PendingScreen('boards')` 换成容器。
+3. **侧栏的 badge 还是 mock 数字**（`nav.ts` 里 users 的 12 / review 的 4 / reports 的 3 / rewards 的 4）：
+   真实件数要逐屏查一次，而现在屏自己的调用方才知道。**我特意没改**：那会往 `nav.ts` 塞进「谁来填」的问题，
+   而它不在本轮范围。
