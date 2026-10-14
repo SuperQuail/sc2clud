@@ -11,6 +11,15 @@ package app
 // shortcut: topics / posts 靠 client_token 幂等，**改这里的文案不会更新已存在的行**
 // （token 命中即返回原行）。要让新文案生效：删掉那一行再跑 seed。
 
+import (
+	"context"
+	"errors"
+	"fmt"
+	"strings"
+
+	"github.com/jackc/pgx/v5/pgxpool"
+)
+
 type seedBoard struct{ slug, name, description string }
 
 // 顺序即 boards.sort（升序展示）。
@@ -18,8 +27,11 @@ var seedBoardRows = []seedBoard{
 	{"announcement", "公告", "版本发布、维护窗口与规则变动只在这里发；讨论请到对应分区。"},
 	{"vanilla-mod", "原版战役 mod", "不改剧情、只改体验：平衡、AI、画面与手感。"},
 	{"custom-campaign", "自制战役", "玩家自制战役与地图：发布、试玩反馈、卡关求助都在这里。"},
-	{"tool-player", "工具（玩家）", "给玩家用的工具：启动器、存档管理、汉化与画质补丁。"},
-	{"tool-dev", "工具（开发者）", "给作者用的工具：数据编辑器辅助、脚本库、打包与发布流水线。"},
+	// 这两行的中文名逐字照老站 sections.label（第三轮拍板 §1c）：`tool_player` = 工具（玩家用）、
+	// `tool_dev` = 工具（开发者用）。老站的 PostSection::label() 是死代码，页面上那五个名字来自
+	// sections 表 —— 所以「哪个是原文」的判据是**库里的 label**，不是枚举里的字面量。
+	{"tool-player", "工具（玩家用）", "给玩家用的工具：启动器、存档管理、汉化与画质补丁。"},
+	{"tool-dev", "工具（开发者用）", "给作者用的工具：数据编辑器辅助、脚本库、打包与发布流水线。"},
 }
 
 type seedUser struct {
@@ -673,4 +685,89 @@ Windows 10 及以上。源码在帖子里，介意的话可以自己编译。`,
 			{"demo-drone", "第二关有个 NPC 的台词漏翻了，还是英文。", 100, -1},
 		},
 	},
+}
+
+// ── 公告区的发言权：老站 sections.post_min_role='admin'（第三轮拍板 §1c）────────────────
+//
+// 老站真源：site/crates/sc2clud-core/src/resource.rs 的 PostSection::Announcement.required_permission()
+// == ManageUsers（管理员及以上）；数据侧 sections.post_min_role='admin' + reply_min_role='member'。
+// 新站只有**等级**门槛 min_post_level/min_reply_level，表达不了角色，所以只能落在 board_acls。
+//
+// 为什么是 ACL 白名单，而不是另外两条（数据迁移审计 §6.5 的三条路）：
+//
+//	· ② 给 boards 加一列 min_post_role：新站一人一个基线角色、角色之间**没有继承**
+//	  （0017 四个内置角色 parent_id 全 NULL），「admin 及以上」照样要列两行 —— 加一列不能让这条规则少写一个字，
+//	  只是把它放到第二个地方（多一处要同步的真源），还要动 schema 与 ent；
+//	· ③ 接受一档 + 写进产品说明：零成本，但「公告区只有管理员能发」这句话在真站上就是假的；
+//	· ① 的代价（acl_enabled=true 是白名单制，回复也一起被管住）**正好与老站同形**：
+//	  老站公告区 reply_min_role='member'，所以每个内置角色都要有行 —— 回帖那一档一个字都不收紧。
+//
+// 幂等靠「读现状 → 与目标比对 → 只改不一致的」：跑第二遍 changed=0，不写 updated_at、不长行。
+// **生产也要跑这一步**（现有库的分区是运营数据，只跑 migrate 不会长出新行）：命令是 `forum seed`。
+func seedAnnouncementACL(ctx context.Context, pool *pgxpool.Pool) (int, error) {
+	// 目标 = 四个内置角色的发帖权；回复权一律放开（老站 reply_min_role 恒为 member）。
+	// 老站没有自定义角色这条数据（user_groups 只有 emperor 一条，已按审计 §5.4 处理），
+	// 所以自定义角色按「名字带管理员语义的才发得了」收敛 —— 新站自己的口径，改就改这一条。
+	canPost := map[string]bool{"admin": true, "superadmin": true, "user": false, "creator": false}
+	roles, err := pool.Query(ctx, "SELECT id, key, name FROM roles")
+	if err != nil {
+		return 0, fmt.Errorf("seed: 读角色: %w", err)
+	}
+	defer roles.Close()
+	type row struct {
+		id      int64
+		key     string
+		canPost bool
+	}
+	var want []row
+	for roles.Next() {
+		var id int64
+		var key, name string
+		if err := roles.Scan(&id, &key, &name); err != nil {
+			return 0, fmt.Errorf("seed: 读角色行: %w", err)
+		}
+		p, builtin := canPost[key]
+		if !builtin {
+			p = strings.Contains(name, "管理员")
+		}
+		want = append(want, row{id: id, key: key, canPost: p})
+	}
+	if err := roles.Err(); err != nil {
+		return 0, fmt.Errorf("seed: 遍历角色: %w", err)
+	}
+	if len(want) == 0 {
+		return 0, errors.New("seed: roles 表是空的（0017_seed_authz 没跑？）")
+	}
+
+	var boardID int64
+	var aclEnabled bool
+	if err := pool.QueryRow(ctx,
+		"SELECT id, acl_enabled FROM boards WHERE slug = 'announcement'").Scan(&boardID, &aclEnabled); err != nil {
+		return 0, fmt.Errorf("seed: 读公告区（先跑 seedBoards）: %w", err)
+	}
+
+	changed := 0
+	for _, r := range want {
+		// board_acls 没有 ent 实体（它是纯规则表），所以这一处走原生 SQL —— 与 appeal.go 同一口径。
+		tag, err := pool.Exec(ctx, `
+			INSERT INTO board_acls (board_id, role_id, can_post, can_reply)
+			VALUES ($1, $2, $3, true)
+			ON CONFLICT (board_id, role_id) DO UPDATE
+			   SET can_post = EXCLUDED.can_post, can_reply = true, updated_at = now()
+			 WHERE board_acls.can_post IS DISTINCT FROM EXCLUDED.can_post
+			    OR board_acls.can_reply IS DISTINCT FROM true`,
+			boardID, r.id, r.canPost)
+		if err != nil {
+			return 0, fmt.Errorf("seed: 公告区 ACL（角色 %s）: %w", r.key, err)
+		}
+		changed += int(tag.RowsAffected())
+	}
+	if !aclEnabled {
+		if _, err := pool.Exec(ctx,
+			"UPDATE boards SET acl_enabled = true, updated_at = now() WHERE id = $1", boardID); err != nil {
+			return 0, fmt.Errorf("seed: 开公告区 ACL: %w", err)
+		}
+		changed++
+	}
+	return changed, nil
 }

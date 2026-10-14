@@ -73,6 +73,10 @@ func Seed(ctx context.Context, cfg *config.Config) error {
 	if err := seedBoards(ctx, in.DB, base); err != nil {
 		return err
 	}
+	aclChanged, err := seedAnnouncementACL(ctx, in.Pool)
+	if err != nil {
+		return err
+	}
 	accounts, err := seedUsers(ctx, in.DB, base)
 	if err != nil {
 		return err
@@ -84,8 +88,8 @@ func Seed(ctx context.Context, cfg *config.Config) error {
 	if err := assertNoDuplicateTokens(ctx, in.DB); err != nil {
 		return err
 	}
-	fmt.Printf("seed: ok, boards=%d users=%d topics=%d posts=%d\n",
-		len(seedBoardRows), len(accounts), topics, posts)
+	fmt.Printf("seed: ok, boards=%d users=%d topics=%d posts=%d announcement_acl_changed=%d\n",
+		len(seedBoardRows), len(accounts), topics, posts, aclChanged)
 	return nil
 }
 
