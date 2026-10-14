@@ -6,7 +6,9 @@ import { Search, X } from 'lucide-react';
 import { icon16 } from '@/ui/icons';
 import { UserBadge } from '@/ui/user/user-badge';
 import { TopicRow, type TopicRowData } from '@/ui/topic/topic-row';
-import { CompactRowSkeleton, EmptyState } from '../14-home/states';
+import { CompactRowSkeleton } from '../14-home/states';
+// 空态的唯一实现在 @/ui/state/empty（14-home/states.tsx 里那份 EmptyState 已删）
+import { Empty } from '@/ui/state/empty';
 import { SEARCH_SCOPE, type SearchUser } from './data';
 
 // 搜索面板（全站的搜索体验唯一实现）。
@@ -129,7 +131,7 @@ export function SearchPanel(props: SearchPanelProps) {
 
       {state === 'ready' && rows.length === 0 ? (
         <span data-testid='search-empty' className='contents'>
-        <EmptyState
+        <Empty
           title={tab === 'topics' ? '没有匹配的帖子' : '没有匹配的用户'}
           hint={
             tab === 'topics'

@@ -111,10 +111,40 @@
 
 - [ ] I1（已完成，见上）
 - [ ] I1 `inline={false}` 统一收口（comment-actions / markdown-editor / image-uploader / notice-settings + 11-profile 的「关注/发私信」）
-- [ ] I2 `GRID` 三处收一处（routes/home.tsx、routes/board.tsx、devroom/pages/14-home/index.tsx）
-- [ ] I3 `Empty`（routes/_parts/state.tsx）与 `EmptyState`（14-home/states.tsx）收一份
-- [ ] I4 `CompactTopicRow` 未登记 → 统一到 `@/ui/topic/topic-row` 或正式登记（二选一并说明）
-- [ ] I5 `lib/api/forum.ts` 的 `Topic` 改用 DTO 真名，删 `mappers.ts` / `topic.tsx` 两处局部类型 + `as`
-- [ ] I7 `mappers.ts` 过期注释（说缺 excerpt）
-- [ ] I8 `15-admin/admin-map.md` 说 AI 审核「不做」但代码挂着 ai 屏 → 改成实话
-- [ ] B7 `me.tsx` 换不换 `IconTabs`：1440/390 两张图后定，不换就把理由写进 `设计对齐.md`
+- [x] I2 `GRID` 三处收一处 —— 见下面「第 5 步」
+- [x] I3 空态两份收一份（新建 `src/ui/state/empty.tsx`）—— 见「第 5 步」
+- [x] I4 `CompactTopicRow` **正式登记**（不统一到 topic-row，理由在「第 5 步」）
+- [x] I5 `Topic` 改用 DTO 真名，三处 `as` 全清 —— 见「第 5 步」
+- [x] I7 `mappers.ts` 的过期注释删掉 —— 见「第 5 步」
+- [x] I8 `admin-map.md` 13.10 改成实话 + 小计改口径 —— 见「第 5 步」
+- [x] B7 **不换** `IconTabs`，理由进了 `设计对齐.md` §4 —— 见「第 6 步」
+
+- [x] 第 5 步：I2/I3/I4/I5/I7/I8 六条小账一次收口
+  - 做了什么：**I2** `GRID` 三处逐字相同 → 收进 `routes/_parts/state.tsx`（首页/分区页/房间都用它；原先靠注释互相提醒「要与另一页一致」，那种约定没有落点）；
+    **I3** 空态两份 → 新建 `src/ui/state/empty.tsx`（两边都不欠对方人情，谁都能 import），`_parts/state.tsx` 改成转出（8 个产品路由 import 一行没动），
+    `14-home/states.tsx` 那份 `EmptyState` 删掉、两个调用点改用 `Empty`；
+    **I4** `CompactTopicRow` 正式登记（与 `square-topic-card` 同款「待提升为 src/ui」的例外），并把 `topic-row` 条目的口径改成「全站**主题行**的唯一实现，但它不是信息流本身」；
+    **I5** `lib/api/forum.ts` 的 `Topic` 改用 DTO 真名（`cover_hash` / `featured` / `avatar_hash` / `avatar_small_hash`），删 `mappers.ts` 的 `TopicCardRaw`、`topic.tsx` 的 `TopicWire` 里两行、`issues.tsx` 的 `as`；
+    夹具跟着改真名（`app.test.tsx` / `compose.test.tsx` / `product-fixture.ts` 的 `featured_at` / `cover` / `avatar`）；
+    **I7** `mappers.ts` 那句「excerpt 是列表项缺的字段」删掉（`TopicCardDTO.Excerpt` 早就有，`forum/internal/forum/dto.go:45`）；
+    **I8** `admin-map.md` 13.10 从「**不做**：方案没有 AI 审核模块」改成实话（d7 已落地、四个端点、`nav.ts`/`index.tsx`/`routes/admin.tsx` 都挂着 ai 屏），小计从「做 12 / 不做 2」改成「做 13 / 不做 1」+ 一句口径提醒。
+  - 证据：I5 的效果是**会红**的证明：删掉局部类型后 `tsc` 立刻炸出真名不匹配（`Property 'avatar' does not exist on type 'TopicAuthorSummary'`、`'raw' is declared but never read`、`Type 'string | null' is not assignable to type 'string'`），
+    逐个改完 → `pnpm typecheck` 无输出。测试：`npx vitest run src/routes/topic.test.ts src/routes/topic.test.tsx src/devroom/pages/14-home` → **3 文件 19 用例全过**
+    （`topic.test.ts` 里就有「`featured` 为 true」那条，正是 I5 的回归点）。出图：`shots/wfi/i23-devroom-home.png` —— 14-home 的卡片栅格仍是 4 列、空态仍是虚线框 +「这个分区还没有帖子」，
+    I2/I3 是**纯结构搬家**（类名与结构逐字没动），图与前一轮同级。
+  - 下一步：B7（第 6 步）。
+  - 阻塞：`pnpm gate:size` 现在红在 `routes/admin-screens.tsx` **690 行未登记** —— 那是**别人的在途文件**（不在我的作用域，我不动它）；`routes/messages.tsx` 642 行已登记。
+    我名下最大的两个是 `routes/issues.tsx` 493 行、`routes/topic.tsx` 463 行，都没超 500。
+
+- [x] 第 6 步：B7 `me.tsx` 换不换 `IconTabs` —— **不换**，理由写进 `完全重构/进行中/设计对齐.md` §4（新增一节）
+  - 做了什么：先看实物再定。生产预览入口 `product.html` 只挂 5 条路由（`/`、`messages`、`issues`、`t/:id`、`notifications`），**`/me` 出不了图**；
+    所以两边实物是：`routes/me.tsx:67-81` 的两个 ghost Button（`height S`、**没有图标**、标签「我的收藏 / 我的举报」）
+    与 `shots/wfi/i1-profile-settings.png` / `b7-icon-tabs-1440.png` 里的真 `IconTabs`。三条不换的理由，第一条是**实测**：
+    ① `IconTabs` 的 `h-12`（48px 口袋高度）被 Ring 未分层的 CSS 压住 —— 实测 `icon-tab-posts` 是 **28×111 / font 14px**，而 `/me` 现在是 24px，
+    所以「套上去只是更大更响」这个前设不成立（它甚至更矮），换了也换不来视觉收益；
+    ② 契约对不上：`IconTabs` 的 `items[].icon` 必填、`count` 可选，而收藏/举报**没有图标语义**，条数只有当前分页的 `items.length`（要显示就得编个假总数）；
+    ③ 语义不同：`registry.ts` 的 `icon-tabs` 条目自己写着是「大号分区导航」（个人主页），`/me` 是两个平级列表的切换，且 `routes/profile.tsx` 已在用 `IconTabs`，并存无冲突。
+  - 证据：`node shots/wfi-shot.mjs b7` → `b7-me-1440` 的 bodyText 与首页**逐字相同**（说明 `product.html` 没有 `/me` 这条路由，那张图**不作数**，已在设计对齐里写明）；
+    `b7-icon-tabs-1440.png` / `b7-icon-tabs-390.png` 出的是 11-profile 的 `IconTabs` 实物；高度/字号来自 `node shots/wfi-shot.mjs inline` 的 `measure [data-testid=icon-tab-posts]`。
+  - 下一步：交接单 §4.I 里**我名下的**条目已全部落地（I1–I5、I7、I8 + B7）；I6/I9/I10/I11 不在这次派单里。
+  - 阻塞：无

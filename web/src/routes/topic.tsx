@@ -24,14 +24,14 @@ import {
   type TopicSource as ApiSource,
 } from '@/lib/api/forum';
 import { fetchUserProfile, type UserProfile } from '@/lib/api/user';
-import { formatTime } from '@/lib/format';
+import { createDonation, fetchUserChannels } from '@/lib/api/rewards';
+import { formatCents, formatTime } from '@/lib/format';
 import { DesignActionNote } from '@/devroom/pages/12-topic/design-action';
 import { TopicView, type TopicReview } from '@/devroom/pages/12-topic/topic-view';
 import type {
   Board,
   BoardNav,
   BoardSlug,
-  PaymentChannel,
   TopicAuthor,
   TopicDetail,
   TopicSource,
@@ -50,16 +50,15 @@ import { imageUrl, toComments } from './_parts/mappers';
 // 为什么要有 ②：设计件吃的是「展示用的形状」（时间已是展示串、来源已归一），接口给的是线格式；
 // 两侧都不该为了对方改签名 —— 转换只在这一层（与 _parts/mappers.ts 同一个理由）。
 
-/** 后端详情里 lib/api/forum.ts 的 TopicDetail **还没声明**的字段（照 forum/internal/forum/dto.go 抄）。
- *  那一层是别人的在途写作用域，所以这里只声明本页真正用到的几个，改完就删（与 mappers 的 TopicCardRaw 同款处理）。 */
+/** 后端详情里 lib/api/forum.ts 的 TopicDetail **还没声明**的审核/反馈态字段（照 forum/internal/forum/dto.go 抄）。
+ *  头像与 cover 原先也在这张表里（当年 lib/api/forum 还停在设计稿的名字上）—— 2026-10-14 那边改成
+ *  DTO 真名之后，本类型只剩这几个真没声明的。 */
 type TopicWire = {
   review_state?: string;
   review_note?: string | null;
   issue_open_count?: number;
   can_edit?: boolean;
   can_reply?: boolean;
-  /** 头像：后端 forum 的 UserBriefDTO 回的是**裸哈希** avatar_hash，前端类型里却写的 avatar */
-  author: { avatar_hash?: string | null };
 };
 
 /** 分区内导航：后端只有 kind 这一个筛选（featured / announcement 两个筛选没有端点，routes/board.tsx 同一处缺口），
@@ -109,6 +108,20 @@ export function TopicPage() {
     queryFn: ({ signal }) => fetchUserProfile(authorHandle, signal),
     enabled: authorHandle !== '',
     staleTime: 60_000,
+  });
+
+  // 打赏（L1）：右栏那一格的收款码来自 GET /users/{handle}/channels（reward 域）。
+  // 作者关掉「展示收款码」时后端回**空数组** —— 那时展开是「作者还没开启收款码」，不是一块假区域。
+  const authorChannels = useQuery({
+    queryKey: qk.userChannels(authorHandle),
+    queryFn: ({ signal }) => fetchUserChannels(authorHandle, signal),
+    enabled: authorHandle !== '',
+    staleTime: 60_000,
+  });
+  // 打赏申报（POST /rewards）：这是**登记**不是付款 —— 钱扫码直接给作者，站点不经手资金。
+  const donate = useMutation({
+    mutationFn: (v: { channelId: string; amountCents: number }) =>
+      createDonation({ to_handle: authorHandle, amount_cents: v.amountCents, channel_id: v.channelId, post_id: topicId }),
   });
 
   // ---- 动作 ----
@@ -207,9 +220,6 @@ export function TopicPage() {
     hint: '',
   };
   const designAuthor = toDesignAuthor(t, ap);
-  // shortcut: GET /users/{handle}/channels 存在（reward 域），但 lib/api 还没有它的函数 —— 没接就恒空，
-  //   赞助面板照常渲染（展开后是「作者还没开启收款码」那句话，不是一块假装有码的区域）。
-  const channels: PaymentChannel[] = [];
   const review = toReview(t);
   // 回执要说实话：改过正文之后，帖子是「已重新提交、正在重审」，还是只是被保存了？
   //   reset：这次保存把 rejected 打回了 pending（服务端事实，不是推断——见上面 ResetTopicReview）。
@@ -317,7 +327,24 @@ export function TopicPage() {
           </p>
         )
       }
-      channels={channels}
+      channels={authorChannels.data ?? []}
+      // 打赏（L1）：收款码来自 GET /users/{handle}/channels（作者关掉展示开关时后端回空数组）。
+      // 作者本人看不到打赏位（后端拒绝自己给自己打赏）；**没有登录的人**看得到码、看得到「去登录」
+      // —— 扫码付款本来就不需要账号，只有「登记申报」才要。
+      donateIsSelf={t.author.handle === me.handle}
+      donateSettingsHref={appPath('settings#payment-channels')}
+      onDonate={(v: { channelId: string; amountCents: number }) =>
+        donate.mutate({ channelId: v.channelId, amountCents: v.amountCents })
+      }
+      donatePending={donate.isPending}
+      donateError={donate.isError ? (isApiError(donate.error) ? donate.error.message : '登记失败，请重试') : null}
+      donateDone={
+        donate.isSuccess
+          ? '已登记一笔 ¥' + formatCents(donate.data.amount_cents) + ' 的申报，等作者核对到账后会计入 TA 的主页。'
+          : null
+      }
+      donateLoggedIn={loggedIn}
+      donateLoginHref={appPath('login?next=' + encodeURIComponent(routePath('t/' + t.id)))}
       issueCount={wire.issue_open_count ?? 0}
       // 反馈页已经上线（/issues，router.tsx:59），所以四个入口是**真链接**而不是回执：
       //   kind 交给页面预设反馈类型，topic 限定列表范围与新建落点（issues.tsx:114-115）。
@@ -334,12 +361,11 @@ export function TopicPage() {
  *  两处字段名都是**实测**的：论坛的 UserBriefDTO 回 avatar_hash（裸哈希），
  *  用户域 user.Profile 回的是平铺的 level/exp/exp_max/topic_count/like_received/joined_at/title。 */
 export function toDesignAuthor(t: ApiTopicDetail, ap?: UserProfile): TopicAuthor {
-  const raw = t as ApiTopicDetail & TopicWire;
   return {
     handle: t.author.handle,
     nickname: t.author.nickname,
-    // 裸哈希没有 URL，统一走 mappers.imageUrl 拼 /img/<hash>
-    avatar: imageUrl(raw.author.avatar_hash) ?? t.author.avatar ?? '',
+    // 裸哈希没有 URL，统一走 mappers.imageUrl 拼 /img/<hash>；没有哈希就是空串（UserAvatar 自己回落首字母）
+    avatar: imageUrl(t.author.avatar_hash) ?? '',
     // shortcut: 主题详情不回角色；要显示角色徽标得让 forum 的 UserBriefDTO 带上 role
     role: t.author.role ?? null,
     title: ap?.title ?? t.author.title ?? null,
@@ -369,8 +395,8 @@ export function toDesignTopic(t: ApiTopicDetail, author: TopicAuthor): TopicDeta
     view_count: t.view_count,
     bookmark_count: 0,
     pinned: t.pinned,
-    // 详情响应用 featured（列表项才叫 featured_at）——两个都认，别把精华标记丢了
-    featured: t.featured ?? t.featured_at != null,
+    // 详情与列表项都叫 featured（TopicCardDTO.Featured 是 bool）
+    featured: t.featured,
     locked: t.locked ?? false,
     sources: (t.sources ?? []).map(toDesignSource),
     images: t.images ?? [],

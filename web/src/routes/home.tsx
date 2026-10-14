@@ -21,7 +21,7 @@ import { KIND_TAG, TOPIC_KIND_LABEL } from '@/devroom/pages/14-home/topic-kind';
 import type { SearchState, SearchTab } from '@/devroom/pages/19-search/search-panel';
 
 import { BoardRail, ComposeButton, PageHeader } from './_parts/layout';
-import { Empty, ErrorState } from './_parts/state';
+import { Empty, ErrorState, GRID } from './_parts/state';
 import { toCardTopic } from './_parts/mappers';
 
 // 首页信息流（契约：GET /topics + GET /boards）。**公开首屏，不做代码分割**（前端方案 §6）。
@@ -46,11 +46,6 @@ function SearchPanelSkeleton() {
     </div>
   );
 }
-
-const GRID = {
-  card: 'grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4',
-  compact: 'flex flex-col gap-0.5',
-} as const;
 
 type View = keyof typeof GRID;
 

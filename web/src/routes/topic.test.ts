@@ -73,7 +73,7 @@ it('详情 → 设计件：正文、时间、精华、审核态、我的三态�
   // 时间线格式是 RFC3339 → 展示串（不是原样塞进去）
   expect(t.created_at).not.toBe(WIRE.created_at);
   expect(t.created_at.length).toBeGreaterThan(0);
-  // 详情用 featured（列表项才叫 featured_at）——按 featured_at 读会永远为 false，精华标就丢了
+  // 详情与列表项都叫 featured（bool）——照设计稿读 featured_at 会永远为 false，精华标就丢了
   expect(t.featured).toBe(true);
   expect(t.pinned).toBe(true);
   expect(t.viewer).toEqual({ liked: true, bookmarked: false, following: false });

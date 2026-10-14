@@ -56,11 +56,12 @@ const TOPIC = (id: string, title: string, kind: string, author: unknown, replies
   reply_count: replies,
   like_count: 42,
   view_count: 1893,
-  featured_at: null,
+  // 字段名照后端 TopicCardDTO：精华是 bool（不是设计稿的 featured_at 时间戳）
+  featured: false,
   pinned: false,
   created_at: '2026-10-12T09:20:00Z',
   last_reply_at: '2026-10-14T02:00:00Z',
-  cover: null,
+  cover_hash: null,
   excerpt,
   viewer: { liked: false, bookmarked: false },
 });
@@ -240,7 +241,28 @@ export function fixtureFor(u: string, method: string): Reply | undefined {
       ? { body: { data: [USER('demo-admin', '示范管理员'), USER('demo-voidray', '虚空辉光舰')], next_cursor: null } }
       : { body: { data: TOPICS, next_cursor: null } };
   }
-  if (p.includes('/api/v1/users/') && p.endsWith('/channels')) return { body: { data: [] } };
+  // 收款码（L1）：形状照 media/dto.go 的 PaymentChannel（id / label / image / sort）。
+  // 图还是坏图（预览服务没有 /img/*），但**形状是真的** —— 出图要看的是布局与文案，不是二维码像素。
+  if (p.includes('/api/v1/users/') && p.endsWith('/channels')) {
+    return { body: { data: [{ id: 'ch-1', label: '微信', image: '/img/preview-channel-1', sort: 0 }] } };
+  }
+  // 赞赏设置与我的申报（L1）：字段名照 reward/dto.go 的 DonationSettings / DonationPage。
+  if (p.endsWith('/api/v1/me/donation-settings')) {
+    return { body: { data: { show_channels: true, records_public: false, notice_visible: true, notice_text: '扫码后请在备注里写昵称，我好对上号。' } } };
+  }
+  if (p.endsWith('/api/v1/me/payment-channels')) {
+    return { body: { data: [{ id: 'ch-1', label: '微信', image: '/img/preview-channel-1', sort: 0 }] } };
+  }
+  if (p.endsWith('/api/v1/me/rewards')) {
+    return {
+      body: {
+        data: [
+          { id: 'd-1', amount_cents: 1000, txn_id: '', state: 'pending', note: '', post_id: '', channel_id: 'ch-1', recipient: { handle: 'demo-admin', nickname: '示范管理员', avatar: '' }, created_at: '2026-10-14T02:00:00Z' },
+        ],
+        next_cursor: null,
+      },
+    };
+  }
   if (p.includes('/api/v1/users/')) {
     return {
       body: {

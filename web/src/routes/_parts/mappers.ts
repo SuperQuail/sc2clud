@@ -12,41 +12,27 @@ export function imageUrl(hash?: string | null): string | null {
   return hash ? BASE + 'img/' + hash : null;
 }
 
-/**
- * 列表项里**按后端 DTO 命名**的那几个字段（forum/internal/forum/dto.go 的 TopicCardDTO / UserBriefDTO）。
- *
- * shortcut: `@/lib/api/forum` 的 Topic 类型还停在设计稿的名字上（cover / featured_at / author.avatar），
- * 而线上返回的是 cover_hash / featured / avatar_hash —— 2026-10-14 实测 /dev/api/v1/topics。
- * 那边是**别人的在途写作用域**，改完这里就删掉本类型与下面那行 `as`。
- */
-type TopicCardRaw = {
-  cover_hash?: string | null;
-  author: { avatar_hash?: string | null; avatar_small_hash?: string | null };
-  featured?: boolean;
-};
-
-/** 后端 DTO 的列表项 → 卡片族的 Topic（cover / avatar 在这一步换算成可直接用的 URL）。 */
+/** 后端 DTO 的列表项 → 卡片族的 Topic（裸哈希在这一步换算成可直接用的 URL）。
+ *  两边的字段名都是真的（ApiTopic 照 TopicCardDTO 抄），所以**没有局部类型、没有 `as`**（2026-10-14 收口）。 */
 export function toCardTopic(t: ApiTopic): Topic {
-  const raw = t as ApiTopic & TopicCardRaw;
   return {
     id: t.id,
     board: t.board,
     kind: t.kind as ApiKind,
     title: t.title,
-    // excerpt 是列表项缺的字段（已作后端需求变动挂账）：拿不到就空着，**不拉全文再截断**
-    excerpt: t.excerpt ?? '',
+    excerpt: t.excerpt,
     author: {
       ...t.author,
-      avatar: imageUrl(raw.author.avatar_hash) ?? t.author.avatar ?? null,
+      avatar: imageUrl(t.author.avatar_hash),
     },
     reply_count: t.reply_count,
     like_count: t.like_count,
     view_count: t.view_count,
     created_at: t.created_at,
     last_reply_at: t.last_reply_at ?? t.created_at,
-    cover: imageUrl(raw.cover_hash) ?? t.cover ?? null,
+    cover: imageUrl(t.cover_hash),
     pinned: t.pinned,
-    featured: raw.featured === true,
+    featured: t.featured,
   };
 }
 
@@ -56,7 +42,7 @@ export function toComments(posts: Post[]): CommentData[] {
   // 与列表同一个坑，所以同一个换算：imageUrl(hash)。
   const toComment = (p: Post): CommentData => ({
     id: p.id,
-    author: { ...p.author, avatar: imageUrl((p.author as TopicCardRaw['author']).avatar_hash) ?? p.author.avatar ?? null },
+    author: { ...p.author, avatar: imageUrl(p.author.avatar_hash) },
     body: p.content_html,
     createdAt: p.created_at,
     likes: p.like_count,

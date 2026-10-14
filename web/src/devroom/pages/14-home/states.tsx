@@ -1,9 +1,7 @@
-import { SearchX } from 'lucide-react';
-import type { ReactNode } from 'react';
-import { cn } from '@/lib/utils';
-
 // 三态（骨架 / 空 / 到底）：**纯展示件**，交互由页面给（见 index.tsx）。
 // 为什么自建：Ring UI 没有骨架与空状态（前端方案 §7.2 明确「骨架与空状态自建」）。
+// **空态 2026-10-14 收口**：原先这里的 EmptyState 与 routes/_parts/state.tsx 的 Empty 类名逐字相同，
+// 现在两者都是 @/ui/state/empty 的 Empty（这里不再有第二份实现）。
 
 /** 方卡片骨架：刷子的块与真卡片同尺寸，数据回来时不跳版。 */
 export function SquareCardSkeleton() {
@@ -32,18 +30,6 @@ export function CompactRowSkeleton() {
         <span className='h-4 w-2/5 animate-pulse rounded-sm bg-muted' />
         <span className='h-3 w-4/5 animate-pulse rounded-sm bg-muted' />
       </span>
-    </div>
-  );
-}
-
-/** 空态：说清「为什么空」+ 给一条出路（清掉筛选）。 */
-export function EmptyState({ title, hint, action, className }: { title: string; hint: string; action?: ReactNode; className?: string }) {
-  return (
-    <div className={cn('flex flex-col items-center gap-2 rounded-lg border border-dashed border-border px-6 py-14 text-center', className)}>
-      <SearchX aria-hidden className='size-7 text-muted-foreground' />
-      <span className='text-[15px] text-foreground'>{title}</span>
-      <span className='max-w-[46ch] text-[13px] leading-relaxed text-muted-foreground'>{hint}</span>
-      {action ? <span className='pt-1'>{action}</span> : null}
     </div>
   );
 }

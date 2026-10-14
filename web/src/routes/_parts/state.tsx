@@ -1,9 +1,21 @@
-import type { ReactNode } from 'react';
 import Button from '@jetbrains/ring-ui-built/components/button/button';
 import LoaderInline from '@jetbrains/ring-ui-built/components/loader-inline/loader-inline';
-import { CircleAlert, Lock, SearchX, ServerCrash } from 'lucide-react';
+import { CircleAlert, Lock, ServerCrash } from 'lucide-react';
 import { isApiError } from '@/lib/api/errors';
 import { cn } from '@/lib/utils';
+import { Empty } from '@/ui/state/empty';
+
+// 空态的唯一实现在 @/ui/state/empty（DevRoom 的 14-home 也在用它）——这里只做转出，
+// 让 8 个产品路由继续 import { Empty } from './_parts/state' 而不用动。
+export { Empty };
+
+// 信息流两种视图的栅格：首页与分区页**必须逐字相同**（列数断点不一致，两页来回切会看到卡片跳宽窄）。
+// 2026-10-14 收口：原先 routes/home.tsx、routes/board.tsx、devroom/pages/14-home/index.tsx 各有一份逐字相同的
+// 定义，靠注释互相提醒「要与另一页一致」—— 那种约定没有落点，第三次改就会漏一处。
+export const GRID = {
+  card: 'grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4',
+  compact: 'flex flex-col gap-0.5',
+} as const;
 
 // 每页三态的**唯一实现**（上线设计 P2 决策 5：加载 / 空 / 错误必须有，不许白屏）。
 // 为什么收在一处：DevRoom 吃过「一页缺一个态就是一片白」的亏，而页面越多越会有人漏掉某一态。
@@ -19,35 +31,6 @@ export function Loading({ what = '内容', className }: { what?: string; classNa
     >
       <LoaderInline />
       正在加载{what}…
-    </div>
-  );
-}
-
-/** 空态：说清「为什么空」+ 一条出路（没有出路也要说清原因）。 */
-export function Empty({
-  title,
-  hint,
-  action,
-  icon: Icon = SearchX,
-  className,
-}: {
-  title: string;
-  hint?: ReactNode;
-  action?: ReactNode;
-  icon?: typeof SearchX;
-  className?: string;
-}) {
-  return (
-    <div
-      className={cn(
-        'flex flex-col items-center gap-2 rounded-lg border border-dashed border-border px-6 py-14 text-center',
-        className,
-      )}
-    >
-      <Icon aria-hidden className='size-7 text-muted-foreground' />
-      <span className='text-[15px] text-foreground'>{title}</span>
-      {hint ? <span className='max-w-[46ch] text-[13px] leading-relaxed text-muted-foreground'>{hint}</span> : null}
-      {action ? <span className='pt-1'>{action}</span> : null}
     </div>
   );
 }

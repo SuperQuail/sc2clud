@@ -59,8 +59,8 @@ function parseKind(v: string | null): IssueKind | undefined {
 /** UserBriefDTO（forum/dto.go:12-17）→ 用户件的 UserSummary。
  *  头像字段是**裸哈希** avatar_hash，不过 imageUrl 换算的话头像全是首字母占位（与 mappers.ts 同一个坑）。 */
 function toUser(u: TopicAuthorSummary): UserSummary {
-  const raw = u as TopicAuthorSummary & { avatar_hash?: string | null };
-  return { handle: u.handle, nickname: u.nickname, avatar: imageUrl(raw.avatar_hash) ?? u.avatar ?? null, role: u.role ?? null, title: u.title ?? null };
+  // avatar_hash 现在就在 TopicAuthorSummary 上（照 DTO 抄），不用再 as 一层
+  return { handle: u.handle, nickname: u.nickname, avatar: imageUrl(u.avatar_hash), role: u.role ?? null, title: u.title ?? null };
 }
 
 /** IssueDTO → W1 的 IssueSummary。**两处必换算**（设计稿的便利命名 vs 后端契约）：

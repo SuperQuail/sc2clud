@@ -173,7 +173,19 @@ export const VERIFIED: VerifiedControl[] = [
   { name: 'notice-composer', path: '@/ui/message/notice-composer', page: '10-messages', verifiedOn: '2026-10-12', props: ['见组件注释：全部为数据驱动的通用 props'], notes: ['输入区：复用 MarkdownEditor(compact) + Ring Button'] },
   { name: 'notice-settings', path: '@/ui/message/notice-settings', page: '10-messages', verifiedOn: '2026-10-12', props: ['见组件注释：全部为数据驱动的通用 props'], notes: ['设置面板：模式驱动的 rows（radio/toggle/tags）'] },
   { name: 'notice-layout', path: '@/ui/message/notice-layout', page: '10-messages', verifiedOn: '2026-10-12', props: ['见组件注释：全部为数据驱动的通用 props'], notes: ['两栏骨架：nav + children'] },
-  { name: 'topic-row', path: '@/ui/topic/topic-row', page: '11-profile', verifiedOn: '2026-10-12', props: ['topic: TopicRowData（id/title/tags/author/replies/views/lastReplyAt）'], notes: ['全站主题列表的唯一实现（分区页/搜索页/个人主页共用）；样板间里那份局部件应替换为它。'] },
+  { name: 'topic-row', path: '@/ui/topic/topic-row', page: '11-profile', verifiedOn: '2026-10-12',
+    props: ['topic: TopicRowData（id/title/tags/author/replies/views/lastReplyAt）'],
+    notes: [
+      '**全站「主题行」的唯一实现**：搜索结果（19-search）、个人主页与 /me（me.tsx / profile.tsx）都用它，别再写第二份。',
+      '**它不是信息流本身**：首页与分区页的列表有两种视图（卡片 / 紧凑），走的是 square-topic-card 与 compact-topic-row 两个族件 —— 那是「帖子卡片/行」的版式，不是「主题行」这个件。2026-10-14 澄清：此前 registry 只说「唯一实现」，读起来像信息流也该用它，实际两回事。',
+    ] },
+  { name: 'compact-topic-row', path: '@/devroom/pages/14-home/topic-compact-row', page: '14-home', verifiedOn: '2026-10-14',
+    props: ['topic: Topic（14-home 的展示形状，已由 mappers.toCardTopic 换算）/ href?（链接由调用方给，组件不认识路由）'],
+    notes: [
+      '**信息流的紧凑视图（?view=compact）**：routes/home.tsx 与 routes/board.tsx 都在用它。',
+      '**待提升为 src/ui**（与 square-topic-card 同款处理）：现在是**登记在册的例外**，不是漏登记的重复实现 —— 版式出自 设计需求-分区页 §B2（参考 Discord 消息列表），与 TopicRow 的「表格式主题行」不是同一个东西：不画分割线、只留回复/赞/浏览三个数、置顶与精华用小标记、摘要两行截断。',
+      '2026-10-14 二选一的结论：**不统一到 topic-row**（那会把信息流改成另一种版式，等于偷偷改设计稿），改为正式登记 + 写明提升目标。',
+    ] },
   {
     name: 'password-field',
     path: '@/ui/password-field',

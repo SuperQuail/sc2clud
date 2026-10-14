@@ -45,7 +45,7 @@ const TOPIC = {
     reply_count: 0,
     like_count: 0,
     view_count: 0,
-    featured_at: null,
+    featured: false,
     pinned: false,
     created_at: '2026-10-12T01:20:00Z',
     last_reply_at: null,

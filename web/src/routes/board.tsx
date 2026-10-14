@@ -1,5 +1,5 @@
 import { Link, useParams, useSearchParams } from 'react-router';
-import { useInfiniteQuery, useQuery } from '@tanstack/react-query';
+import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import Button from '@jetbrains/ring-ui-built/components/button/button';
 import ButtonSet from '@jetbrains/ring-ui-built/components/button-set/button-set';
 import { ControlsHeight } from '@jetbrains/ring-ui-built/components/global/controls-height';
@@ -7,14 +7,16 @@ import { appPath, routePath } from '@/lib/url';
 import { qk } from '@/lib/query/keys';
 import { PAGE_LIMIT } from '@/lib/api/paging';
 import { fetchBoard, fetchTopics, type Topic as ApiTopic } from '@/lib/api/forum';
-import { ArrowLeft, LayoutGrid, List } from 'lucide-react';
+import { fetchBoardFollow, followBoard, unfollowBoard } from '@/lib/api/follow';
+import { useSession } from '@/lib/perms';
+import { ArrowLeft, LayoutGrid, List, Star, UserPlus } from 'lucide-react';
 import { icon16 } from '@/ui/icons';
 import { cn } from '@/lib/utils';
 import { CompactTopicRow } from '@/devroom/pages/14-home/topic-compact-row';
 import { SquareTopicCard } from '@/devroom/pages/14-home/topic-square-card';
 import { ListEnd, SquareCardSkeleton } from '@/devroom/pages/14-home/states';
 import { BoardRail, ComposeButton, PageHeader } from './_parts/layout';
-import { Empty, ErrorState } from './_parts/state';
+import { Empty, ErrorState, GRID } from './_parts/state';
 import { toCardTopic } from './_parts/mappers';
 
 // 分区页（契约：GET /boards/{slug} + GET /topics?board=<slug>）。
@@ -32,17 +34,25 @@ const KINDS = [
   { key: 'repost', label: '转载' },
 ] as const;
 
-// 与首页同一份定义（14-home/index.tsx 的 GRID）：两页的列宽断点必须一致
-const GRID = {
-  card: 'grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4',
-  compact: 'flex flex-col gap-0.5',
-} as const;
-
 export function BoardPage() {
   const { slug = '' } = useParams();
   const [params, setParams] = useSearchParams();
+  const qc = useQueryClient();
+  const session = useSession();
   const kind = params.get('kind') ?? '';
   const view = params.get('view') === 'compact' ? 'compact' : 'card';
+  // 关注（L5）：**未登录也能读**（following 恒 false、关注数照给）—— 那格「关注」不是登录用户专属信息。
+  // 关注/取关是幂等的，回执就是同一份 State，所以成功之后直接写进缓存，不回读一次。
+  const follow = useQuery({
+    queryKey: qk.followBoard(slug),
+    queryFn: ({ signal }) => fetchBoardFollow(slug, signal),
+    enabled: slug !== '',
+    staleTime: 60_000,
+  });
+  const toggleFollow = useMutation({
+    mutationFn: (on: boolean) => (on ? followBoard(slug) : unfollowBoard(slug)),
+    onSuccess: (state) => qc.setQueryData(qk.followBoard(slug), state),
+  });
   const board = useQuery({
     queryKey: qk.board(slug),
     queryFn: ({ signal }) => fetchBoard(slug, signal),
@@ -89,11 +99,30 @@ export function BoardPage() {
                 <span className='tabular-nums'>
                   {board.data.topic_count} 帖子
                   {board.data.today_count != null ? ' · 今日 ' + board.data.today_count : ''}
+                  {/* 「关注数」这一格以前是假 0（后端 BoardDTO 没有 member_count，见进度-K-REL）：
+                      现在它来自 GET /boards/{slug}/follow 的 follower_count（真数，现算不落列）。 */}
+                  {follow.data ? ' · ' + follow.data.follower_count + ' 关注' : ''}
                 </span>
               </span>
             ) : undefined
           }
-          actions={<ComposeButton board={slug} />}
+          actions={
+            <span className='flex items-center gap-2'>
+              <Button
+                data-testid='board-follow'
+                inline={false}
+                height={ControlsHeight.M}
+                primary={!follow.data?.following}
+                icon={icon16(follow.data?.following ? Star : UserPlus)}
+                disabled={!session.isLoggedIn || follow.isPending || toggleFollow.isPending}
+                loader={toggleFollow.isPending}
+                onClick={() => toggleFollow.mutate(!follow.data?.following)}
+              >
+                {follow.data?.following ? '已关注' : '关注分区'}
+              </Button>
+              <ComposeButton board={slug} />
+            </span>
+          }
         />
 
         {/* 分区信息拿不到：就地说明 + 重试，不把下面的列表一起拖死 */}

@@ -9,7 +9,11 @@ import { UserAvatar } from '@/ui/user/avatar';
 import { Username } from '@/ui/user/username';
 import { CompactTopicRow } from './topic-compact-row';
 import { SquareTopicCard } from './topic-square-card';
-import { CompactRowSkeleton, EmptyState, ListEnd, SquareCardSkeleton } from './states';
+import { CompactRowSkeleton, ListEnd, SquareCardSkeleton } from './states';
+// 空态与信息流栅格都收口在 @/ui/state/empty 与 @/routes/_parts/state（2026-10-14 去重）——
+// 房间里这份 states.tsx 只留骨架与到底文案，不再有第二份空态 / 第二份 GRID。
+import { Empty } from '@/ui/state/empty';
+import { GRID } from '@/routes/_parts/state';
 import { BOARDS, SORTS, TOPICS, filterByBoard, type SortKey, type Topic } from './mock';
 import { appPath } from '@/lib/url';
 import { roomHref } from '@/devroom/room-links';
@@ -21,11 +25,6 @@ import { roomHref } from '@/devroom/room-links';
 // 一屏 ≥4 张的口径：**项宽响应式**（Tailwind 的 sm/lg/xl 断点）——1280 视口 → xl → 4 列。
 // 本页在 DevRoom 里只占内容区（1440 视口下内容区 1060px，四列各 256px）；
 // 产品站 1280–1440 这一档是「贴吧式常驻左栏」，信息流拿到的宽度更小，所以卡片走 w-full 由栅格定宽。
-const GRID: Record<View, string> = {
-  card: 'grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4',
-  compact: 'flex flex-col gap-0.5',
-};
-
 type View = 'card' | 'compact';
 
 // 分段控件的统一形态：**三组（分区筛选 / 排序 / 视图）同一套** —— 无框 + 选中态一眼看得出来。
@@ -166,7 +165,7 @@ export default function HomePage() {
       </div>
 
       {matched.length === 0 ? (
-        <EmptyState
+        <Empty
           title='这个分区还没有帖子'
           hint={'当前筛选：' + boardLabel + '。换一个分区，或者成为第一个发帖的人。'}
           action={
@@ -252,7 +251,7 @@ export default function HomePage() {
             </li>
           </ul>
           <div className='flex flex-col gap-2'>
-            <EmptyState
+            <Empty
               title='这个分区还没有帖子'
               hint='空态文案与上面的真空态共用同一个件；这里只是把两种态同屏摆出来。'
               action={<Button onClick={() => setEmptyCase(true)}>看空态（把列表清空）</Button>}

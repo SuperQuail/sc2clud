@@ -35,37 +35,50 @@ export type BoardDetail = Board & {
   acl_enabled?: boolean;
 };
 
-/** 列表项里的作者（§21.3 的 author 只有三字段，详情页才展开） */
+/** 列表项里的作者 —— 字段名照 UserBriefDTO（forum/internal/forum/dto.go:12）：头像是**裸哈希**。 */
 export type TopicAuthorSummary = {
   handle: string;
   nickname: string;
-  avatar?: string | null;
+  /** 裸哈希，字节走 GET /img/<hash>（用 @/routes/_parts/mappers 的 imageUrl 拼）。
+   *  两根头像列在 SQL 里就回落过 default_avatar_hash，所以这里拿到的是「有就用」。 */
+  avatar_hash?: string | null;
+  avatar_small_hash?: string | null;
   role?: { key: string; name: string } | null;
   title?: { name: string; color?: string | null } | null;
 };
 
-/** GET /api/v1/topics 的列表项（§21.3 逐字） */
+/**
+ * GET /api/v1/topics 的列表项 —— **字段名逐字照 TopicCardDTO**（forum/internal/forum/dto.go:41）。
+ *
+ * 2026-10-14 收口：这个类型原先停在设计稿的名字上（cover / featured_at / author.avatar），
+ * 线上返回的却是 cover_hash / featured / avatar_hash（实测 /dev/api/v1/topics），
+ * 于是 routes/_parts/mappers.ts 与 routes/topic.tsx 各自声明一份局部类型 + `as` 兜着。
+ * 现在声明里就是真名字，那两处局部类型都删了 —— 读代码的人不用再猜哪个名字是真的。
+ *
+ * 注意 cover_hash / avatar_hash 都是**裸哈希**，URL 由 mappers 的 imageUrl 拼。
+ * excerpt 后端**早就有**（TopicCardDTO.Excerpt），别再照 §21.3 说它缺。
+ */
 export type Topic = {
   id: string;
   board: BoardRef;
   kind: TopicKind;
   title: string;
+  /** 摘要，列表项自带（TopicCardDTO.Excerpt） */
+  excerpt: string;
   author: TopicAuthorSummary;
   reply_count: number;
   like_count: number;
   view_count: number;
-  featured_at: string | null;
   pinned: boolean;
+  /** 精华：DTO 给的是 bool（不是设计稿的 featured_at 时间戳） */
+  featured: boolean;
+  locked?: boolean;
+  cover_hash?: string | null;
+  cover_width?: number;
+  cover_height?: number;
   created_at: string;
   last_reply_at: string | null;
-  cover?: string | null;
   viewer?: { liked: boolean; bookmarked: boolean };
-  /**
-   * 摘要。**§21.3 的列表项没有这个字段**（卡片与紧凑列表都要它）——
-   * 已作为后端需求变动挂着（完全重构/界面施工-后端需求变动.md §4.1「列表项补 excerpt」）。
-   * 后端补上之前：列表页拿不到就退化成不显示摘要，不做「前端拉全文再截断」那件事（那会把正文拖进列表响应）。
-   */
-  excerpt?: string | null;
 };
 
 /** GET /api/v1/topics/{id} 的详情：列表项之上再加正文、来源、图与展开的作者 */
