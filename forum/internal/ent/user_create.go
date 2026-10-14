@@ -111,6 +111,20 @@ func (_c *UserCreate) SetNillableAvatarSmallHash(v *string) *UserCreate {
 	return _c
 }
 
+// SetCoverHash sets the "cover_hash" field.
+func (_c *UserCreate) SetCoverHash(v string) *UserCreate {
+	_c.mutation.SetCoverHash(v)
+	return _c
+}
+
+// SetNillableCoverHash sets the "cover_hash" field if the given value is not nil.
+func (_c *UserCreate) SetNillableCoverHash(v *string) *UserCreate {
+	if v != nil {
+		_c.SetCoverHash(*v)
+	}
+	return _c
+}
+
 // SetDefaultAvatarHash sets the "default_avatar_hash" field.
 func (_c *UserCreate) SetDefaultAvatarHash(v string) *UserCreate {
 	_c.mutation.SetDefaultAvatarHash(v)
@@ -639,6 +653,11 @@ func (_c *UserCreate) check() error {
 			return &ValidationError{Name: "avatar_small_hash", err: fmt.Errorf(`ent: validator failed for field "User.avatar_small_hash": %w`, err)}
 		}
 	}
+	if v, ok := _c.mutation.CoverHash(); ok {
+		if err := user.CoverHashValidator(v); err != nil {
+			return &ValidationError{Name: "cover_hash", err: fmt.Errorf(`ent: validator failed for field "User.cover_hash": %w`, err)}
+		}
+	}
 	if v, ok := _c.mutation.DefaultAvatarHash(); ok {
 		if err := user.DefaultAvatarHashValidator(v); err != nil {
 			return &ValidationError{Name: "default_avatar_hash", err: fmt.Errorf(`ent: validator failed for field "User.default_avatar_hash": %w`, err)}
@@ -727,6 +746,10 @@ func (_c *UserCreate) createSpec() (*User, *sqlgraph.CreateSpec) {
 	if value, ok := _c.mutation.AvatarSmallHash(); ok {
 		_spec.SetField(user.FieldAvatarSmallHash, field.TypeString, value)
 		_node.AvatarSmallHash = &value
+	}
+	if value, ok := _c.mutation.CoverHash(); ok {
+		_spec.SetField(user.FieldCoverHash, field.TypeString, value)
+		_node.CoverHash = &value
 	}
 	if value, ok := _c.mutation.DefaultAvatarHash(); ok {
 		_spec.SetField(user.FieldDefaultAvatarHash, field.TypeString, value)

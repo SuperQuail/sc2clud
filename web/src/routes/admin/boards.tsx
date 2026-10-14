@@ -13,6 +13,7 @@ import {
   reorderBoards,
   revokeBoardModerator,
   updateBoard,
+  uploadBoardCover,
 } from '@/lib/api/admin';
 import type {
   AdminACLItem,
@@ -70,6 +71,18 @@ export function BoardsScreenContainer() {
     },
     onError: (e) => setReceipt('保存失败：' + (errorLine(e) ?? '')),
   });
+  // 换封面：**两步**（拍板 08 第二轮「壁纸替换」）—— 先把图传上图片通道拿 hash，再 PATCH 分区。
+  // 第一步失败就什么都不改（不会把分区指到一张不存在的图上）；第二步失败由既有的保存错误行说清。
+  const cover = useMutation({
+    mutationFn: (v: { id: string; file: Blob }) =>
+      uploadBoardCover(v.file).then((up) => updateBoard(v.id, { cover_hash: up.hash })),
+    onSuccess: (next) => {
+      setReceipt('封面已换（图片通道拿到 hash 后 PATCH 上来，cover_hash=' + next.cover_hash.slice(0, 8) + '…）');
+      void qc.setQueryData<AdminBoard[]>(qk.adminBoards(), (old) => old?.map((b) => (b.id === next.id ? next : b)));
+      setSavedAt((n) => n + 1);
+    },
+    onError: (e) => setReceipt('换封面失败：' + (errorLine(e) ?? '')),
+  });
   const create = useMutation({
     mutationFn: createBoard,
     onSuccess: (b) => { setBoardId(b.id); afterWrite('已新建分区 /' + b.slug + '（slug 建后不可改）'); },
@@ -97,7 +110,7 @@ export function BoardsScreenContainer() {
     onError: (e) => setReceipt('免职失败：' + (errorLine(e) ?? '')),
   });
 
-  const busy = save.isPending || create.isPending || move.isPending || grant.isPending || revoke.isPending;
+  const busy = save.isPending || create.isPending || move.isPending || grant.isPending || revoke.isPending || cover.isPending;
   const err = list.error ?? acl.error ?? mods.error;
 
   return (
@@ -113,6 +126,8 @@ export function BoardsScreenContainer() {
       onSave={(patch) => { if (board) save.mutate({ id: board.id, patch }); }}
       saving={save.isPending}
       savedAt={savedAt}
+      onUploadCover={(file) => { if (board) cover.mutate({ id: board.id, file }); }}
+      coverUploading={cover.isPending}
       onMove={(ids) => move.mutate(ids)}
       reordering={move.isPending}
       roles={roles.data ?? []}

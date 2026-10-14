@@ -36335,6 +36335,7 @@ type UserMutation struct {
 	bio                        *string
 	avatar_hash                *string
 	avatar_small_hash          *string
+	cover_hash                 *string
 	default_avatar_hash        *string
 	status                     *string
 	email_verified_at          *time.Time
@@ -36857,6 +36858,55 @@ func (m *UserMutation) AvatarSmallHashCleared() bool {
 func (m *UserMutation) ResetAvatarSmallHash() {
 	m.avatar_small_hash = nil
 	delete(m.clearedFields, user.FieldAvatarSmallHash)
+}
+
+// SetCoverHash sets the "cover_hash" field.
+func (m *UserMutation) SetCoverHash(s string) {
+	m.cover_hash = &s
+}
+
+// CoverHash returns the value of the "cover_hash" field in the mutation.
+func (m *UserMutation) CoverHash() (r string, exists bool) {
+	v := m.cover_hash
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldCoverHash returns the old "cover_hash" field's value of the User entity.
+// If the User object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *UserMutation) OldCoverHash(ctx context.Context) (v *string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldCoverHash is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldCoverHash requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldCoverHash: %w", err)
+	}
+	return oldValue.CoverHash, nil
+}
+
+// ClearCoverHash clears the value of the "cover_hash" field.
+func (m *UserMutation) ClearCoverHash() {
+	m.cover_hash = nil
+	m.clearedFields[user.FieldCoverHash] = struct{}{}
+}
+
+// CoverHashCleared returns if the "cover_hash" field was cleared in this mutation.
+func (m *UserMutation) CoverHashCleared() bool {
+	_, ok := m.clearedFields[user.FieldCoverHash]
+	return ok
+}
+
+// ResetCoverHash resets all changes to the "cover_hash" field.
+func (m *UserMutation) ResetCoverHash() {
+	m.cover_hash = nil
+	delete(m.clearedFields, user.FieldCoverHash)
 }
 
 // SetDefaultAvatarHash sets the "default_avatar_hash" field.
@@ -38312,7 +38362,7 @@ func (m *UserMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *UserMutation) Fields() []string {
-	fields := make([]string, 0, 20)
+	fields := make([]string, 0, 21)
 	if m.public_id != nil {
 		fields = append(fields, user.FieldPublicID)
 	}
@@ -38339,6 +38389,9 @@ func (m *UserMutation) Fields() []string {
 	}
 	if m.avatar_small_hash != nil {
 		fields = append(fields, user.FieldAvatarSmallHash)
+	}
+	if m.cover_hash != nil {
+		fields = append(fields, user.FieldCoverHash)
 	}
 	if m.default_avatar_hash != nil {
 		fields = append(fields, user.FieldDefaultAvatarHash)
@@ -38399,6 +38452,8 @@ func (m *UserMutation) Field(name string) (ent.Value, bool) {
 		return m.AvatarHash()
 	case user.FieldAvatarSmallHash:
 		return m.AvatarSmallHash()
+	case user.FieldCoverHash:
+		return m.CoverHash()
 	case user.FieldDefaultAvatarHash:
 		return m.DefaultAvatarHash()
 	case user.FieldStatus:
@@ -38448,6 +38503,8 @@ func (m *UserMutation) OldField(ctx context.Context, name string) (ent.Value, er
 		return m.OldAvatarHash(ctx)
 	case user.FieldAvatarSmallHash:
 		return m.OldAvatarSmallHash(ctx)
+	case user.FieldCoverHash:
+		return m.OldCoverHash(ctx)
 	case user.FieldDefaultAvatarHash:
 		return m.OldDefaultAvatarHash(ctx)
 	case user.FieldStatus:
@@ -38541,6 +38598,13 @@ func (m *UserMutation) SetField(name string, value ent.Value) error {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.SetAvatarSmallHash(v)
+		return nil
+	case user.FieldCoverHash:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetCoverHash(v)
 		return nil
 	case user.FieldDefaultAvatarHash:
 		v, ok := value.(string)
@@ -38682,6 +38746,9 @@ func (m *UserMutation) ClearedFields() []string {
 	if m.FieldCleared(user.FieldAvatarSmallHash) {
 		fields = append(fields, user.FieldAvatarSmallHash)
 	}
+	if m.FieldCleared(user.FieldCoverHash) {
+		fields = append(fields, user.FieldCoverHash)
+	}
 	if m.FieldCleared(user.FieldDefaultAvatarHash) {
 		fields = append(fields, user.FieldDefaultAvatarHash)
 	}
@@ -38716,6 +38783,9 @@ func (m *UserMutation) ClearField(name string) error {
 		return nil
 	case user.FieldAvatarSmallHash:
 		m.ClearAvatarSmallHash()
+		return nil
+	case user.FieldCoverHash:
+		m.ClearCoverHash()
 		return nil
 	case user.FieldDefaultAvatarHash:
 		m.ClearDefaultAvatarHash()
@@ -38766,6 +38836,9 @@ func (m *UserMutation) ResetField(name string) error {
 		return nil
 	case user.FieldAvatarSmallHash:
 		m.ResetAvatarSmallHash()
+		return nil
+	case user.FieldCoverHash:
+		m.ResetCoverHash()
 		return nil
 	case user.FieldDefaultAvatarHash:
 		m.ResetDefaultAvatarHash()

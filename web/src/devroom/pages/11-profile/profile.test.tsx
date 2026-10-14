@@ -31,8 +31,10 @@ it('看别人主页：这些入口一行都不出现（账号面板没有挂载�
     expect(screen.queryByTestId('password-save')).toBeNull();
     // 连上传控件本身都不在 DOM 里（这就是"一行都不出现"的硬证据）
     expect(container.querySelectorAll('input[type=file]').length).toBe(0);
-    // 「更换封面」仍在（看别人主页也有意义），说明不是整块hero挂了
-    expect(screen.getByTestId('change-cover')).toBeTruthy();
+    // 「更换封面」还在，但是**明确禁用**的（2026-10-14 拍板 08 第二轮：封面真的能换了，
+    // 所以那颗从"所有人可见的禁用占位"变成"本人可点 / 别人禁用"）；禁用而不是消失，
+    // 是为了让「整块 hero 挂了」与「这个动作对你没意义」两件事在页面上分得开。
+    expect(screen.getByTestId('change-cover')).toHaveProperty('disabled', true);
   });
 });
 

@@ -16,6 +16,8 @@ export type UserProfile = {
   /** /img/<hash>；**空串 = 没有头像**（不是 null），界面按空串回落首字占位 */
   avatar: string;
   avatar_small: string;
+  /** 个人主页封面/背景（0030 的 users.cover_hash）；**空串 = 没设过**，界面回落默认站内素材 */
+  cover: string;
   bio: string;
   /** normal | banned | deleted —— deleted 后端直接 404，所以页面见不到它 */
   status: string;
@@ -82,6 +84,21 @@ export function uploadAvatar(file: Blob): Promise<{ hash: string; url: string }>
 /** 移除头像（DELETE /me/avatar）：之后回落到站点默认头像池里分给这个人的那张。 */
 export function clearAvatar(): Promise<void> {
   return api<void>('me/avatar', { method: 'DELETE' });
+}
+
+/**
+ * 换个人主页封面 / 背景（POST /me/cover，字段名 file）—— 拍板 08 第二轮「壁纸替换」。
+ * 与头像同一条图片通道（media 域），上限是内容图那一档（2MiB）：封面是横幅，不是 64KiB 的头像。
+ */
+export function uploadCover(file: Blob): Promise<{ hash: string; url: string; width: number; height: number }> {
+  const form = new FormData();
+  form.append('file', file, 'cover.webp');
+  return api<{ hash: string; url: string; width: number; height: number }>('me/cover', { method: 'POST', body: form });
+}
+
+/** 清空封面（DELETE /me/cover）：主页回到默认站内素材（不是一片空白）。 */
+export function clearCover(): Promise<void> {
+  return api<void>('me/cover', { method: 'DELETE' });
 }
 
 export function fetchUserTopics(handle: string, q: PageQuery = {}, signal?: AbortSignal): Promise<Paged<Topic>> {

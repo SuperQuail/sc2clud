@@ -11,7 +11,9 @@ import { AVATAR_EDGE, AVATAR_MAX_BYTES, AVATAR_TARGET, COMPRESS_LABEL, formatByt
 // 图片上传控件（可复用）。**点选与拖拽共用同一条管线**（image-pipeline），所以限额与压缩只有一份规则。
 // 两种形态：
 //   list   —— 多图（默认上限 10）：按钮 + 原图开关 + 缩略图网格。发帖配图用。
-//   avatar —— 单图（强制 1 张）：圆形预览 + 更换/移除。**换头像、封面这类单图位用它**。
+//   avatar —— 单图（强制 1 张）：圆形预览 + 更换/移除。
+//   cover  —— 单图（强制 1 张）：16:9 预览 + 更换/移除。个人主页封面 / 分区封面用它
+//             （拍板 08 第二轮「壁纸替换」：这两处都必须是真能换、真能清的动作）。
 // 文件选择用隐藏的原生 input[type=file]（浏览器只允许这样选文件），触发按钮是 Ring Button。
 export type UploadedImage = {
   id: string;
@@ -40,7 +42,7 @@ export function ImageUploader({
 }: {
   images: UploadedImage[];
   onChange: (next: UploadedImage[]) => void;
-  variant?: 'list' | 'avatar';
+  variant?: 'list' | 'avatar' | 'cover';
   max?: number;
   /** 单个体积上限（默认按形态取：头像 10MB / 配图 20MB，见 image-pipeline） */
   maxSize?: number;
@@ -56,7 +58,9 @@ export function ImageUploader({
   /** 挂载后回传「打开文件选择」的句柄：页面别处的按钮可以代点（例：hero 上的「更换头像」） */
   onReady?: (api: { open: () => void } | null) => void;
 }) {
-  const limit = variant === 'avatar' ? 1 : max;
+  // 头像与封面都是「一个槽」：已有的那张是「现在这张」，再选一张是换掉它。
+  const single = variant !== 'list';
+  const limit = single ? 1 : max;
   const sizeLimit = maxSize ?? (variant === 'avatar' ? AVATAR_MAX_BYTES : POST_IMAGE_MAX_BYTES);
   const input = useRef<HTMLInputElement>(null);
   const [useOriginal, setUseOriginal] = useState(false);
@@ -65,7 +69,7 @@ export function ImageUploader({
 
   // 头像位只有**一个槽**：已有的那张是「现在这张」，再选一张是**换掉它**，不是「名额已满」。
   // （旧写法 used=images.length 会让头像位 free=0，换头像点了没反应 —— 房间里没人上传所以没暴露。）
-  const used = existingCount ?? (variant === 'avatar' ? 0 : images.length);
+  const used = existingCount ?? (single ? 0 : images.length);
   const { room } = planImages({ existing: used, max: limit });
 
   // 句柄只在挂载期有效（input 是同一个 DOM 节点）；卸载时收回，避免页面拿着已失效的引用去点
@@ -95,6 +99,7 @@ export function ImageUploader({
     setBusy(true);
     const out: UploadedImage[] = [];
     for (const f of usable.slice(0, free)) {
+      // 封面用默认长边（1600）：它是横幅，压到头像那一档就糊了；服务端上限 2MiB 够装
       const blob = await processImage(f, { ...opts, maxEdge: variant === 'avatar' ? AVATAR_EDGE : undefined, targetBytes: variant === 'avatar' ? AVATAR_TARGET : undefined });
       out.push({
         id: Math.random().toString(36).slice(2),
@@ -106,7 +111,7 @@ export function ImageUploader({
       });
     }
     setBusy(false);
-    onChange(variant === 'avatar' ? out.slice(0, 1) : [...images, ...out]);
+    onChange(single ? out.slice(0, 1) : [...images, ...out]);
     if (input.current) input.current.value = '';
   }
 
@@ -115,25 +120,34 @@ export function ImageUploader({
       ref={input}
       type='file'
       accept={IMAGE_ACCEPT}
-      multiple={variant === 'list'}
+      multiple={!single}
       className='hidden'
       onChange={(e) => void accept(e.target.files)}
     />
   );
 
-  if (variant === 'avatar') {
+  if (single) {
     const current = images[0];
+    const cover = variant === 'cover';
     return (
       <div className='flex items-center gap-4'>
         {fileInput}
         {current ? (
           <img
             src={imagePath(current.url)}
-            alt='已选头像'
-            width={72}
-            height={72}
-            className='size-18 rounded-full border border-border object-cover'
+            alt={cover ? '已选封面' : '已选头像'}
+            width={cover ? 160 : 72}
+            height={cover ? 90 : 72}
+            className={
+              cover
+                ? 'h-22 w-40 shrink-0 rounded-md border border-border object-cover'
+                : 'size-18 rounded-full border border-border object-cover'
+            }
           />
+        ) : cover ? (
+          <span className='flex h-22 w-40 shrink-0 items-center justify-center rounded-md border border-dashed border-border text-muted-foreground'>
+            <ImagePlus size={16} aria-hidden />
+          </span>
         ) : (
           <UserAvatar name='未设置' size='xl' />
         )}
@@ -160,7 +174,7 @@ export function ImageUploader({
             ) : null}
           </div>
           <span className='text-[11px] text-muted-foreground'>
-            建议正方形；{compress ? '自动压缩' : '保留原图'}，上限 1 张、{'≤' + formatBytes(sizeLimit)}
+            {cover ? '建议横幅（16:9 或更宽）' : '建议正方形'}；{compress ? '自动压缩' : '保留原图'}，上限 1 张、{'≤' + formatBytes(sizeLimit)}
           </span>
           {error ? <span className='text-[12px] text-destructive'>{error}</span> : null}
         </div>

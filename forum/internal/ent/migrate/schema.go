@@ -1851,6 +1851,7 @@ var (
 		{Name: "bio", Type: field.TypeString, Size: 200, Default: ""},
 		{Name: "avatar_hash", Type: field.TypeString, Nullable: true, Size: 64},
 		{Name: "avatar_small_hash", Type: field.TypeString, Nullable: true, Size: 64},
+		{Name: "cover_hash", Type: field.TypeString, Nullable: true, Size: 64},
 		{Name: "default_avatar_hash", Type: field.TypeString, Nullable: true, Size: 64},
 		{Name: "status", Type: field.TypeString, Size: 8, Default: "active"},
 		{Name: "email_verified_at", Type: field.TypeTime, Nullable: true},
@@ -1873,19 +1874,19 @@ var (
 		ForeignKeys: []*schema.ForeignKey{
 			{
 				Symbol:     "users_titles_equipped_by",
-				Columns:    []*schema.Column{UsersColumns[19]},
+				Columns:    []*schema.Column{UsersColumns[20]},
 				RefColumns: []*schema.Column{TitlesColumns[0]},
 				OnDelete:   schema.SetNull,
 			},
 			{
 				Symbol:     "users_roles_role",
-				Columns:    []*schema.Column{UsersColumns[20]},
+				Columns:    []*schema.Column{UsersColumns[21]},
 				RefColumns: []*schema.Column{RolesColumns[0]},
 				OnDelete:   schema.Restrict,
 			},
 			{
 				Symbol:     "users_titles_equipped_title",
-				Columns:    []*schema.Column{UsersColumns[21]},
+				Columns:    []*schema.Column{UsersColumns[22]},
 				RefColumns: []*schema.Column{TitlesColumns[0]},
 				OnDelete:   schema.SetNull,
 			},
@@ -1894,7 +1895,7 @@ var (
 			{
 				Name:    "idx_users_created_at",
 				Unique:  false,
-				Columns: []*schema.Column{UsersColumns[17], UsersColumns[0]},
+				Columns: []*schema.Column{UsersColumns[18], UsersColumns[0]},
 			},
 		},
 	}

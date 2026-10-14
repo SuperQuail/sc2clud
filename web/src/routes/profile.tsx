@@ -1,6 +1,6 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { Link, useParams, useSearchParams } from 'react-router';
-import { useInfiniteQuery, useMutation, useQuery } from '@tanstack/react-query';
+import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import Button from '@jetbrains/ring-ui-built/components/button/button';
 import Island from '@jetbrains/ring-ui-built/components/island/island';
 import { ControlsHeight } from '@jetbrains/ring-ui-built/components/global/controls-height';
@@ -11,11 +11,12 @@ import { RoleBadge } from '@/ui/user/role-badge';
 import { IconTabs, type IconTabItem } from '@/ui/nav/icon-tabs';
 import { TopicRow } from '@/ui/topic/topic-row';
 import { ProfileHero, type ProfileStat } from '@/devroom/pages/11-profile/profile-hero';
+import { CoverPicker, type CoverPickerHandle } from '@/ui/cover-picker';
 import { SponsorCard } from '@/devroom/pages/11-profile/sponsor-card';
 import { assetUrl, appPath, routePath } from '@/lib/url';
 import { qk } from '@/lib/query/keys';
 import { can, useSession } from '@/lib/perms';
-import { fetchUserProfile, fetchUserTopics } from '@/lib/api/user';
+import { clearCover, fetchUserProfile, fetchUserTopics, uploadCover } from '@/lib/api/user';
 import { createDonation, fetchDonationSettings, fetchUserChannels } from '@/lib/api/rewards';
 import { formatCents, formatTime } from '@/lib/format';
 import { isApiError } from '@/lib/api/errors';
@@ -43,6 +44,7 @@ import { ListEnd } from '@/devroom/pages/14-home/states';
 export function ProfilePage() {
   const { handle = '' } = useParams();
   const session = useSession();
+  const queryClient = useQueryClient();
   const [reporting, setReporting] = useState(false);
   // 标签页进 URL（与首页的 board / sort / view 同一条规则）：可分享、可后退、刷新不丢。
   const [params, setParams] = useSearchParams();
@@ -81,6 +83,19 @@ export function ProfilePage() {
     queryKey: qk.donationSettings(),
     queryFn: ({ signal }) => fetchDonationSettings(signal),
     enabled: isSelf,
+  });
+  // 封面（拍板 08 第二轮「壁纸替换」）：POST/DELETE /me/cover 落 users.cover_hash（0030）。
+  // **就地换**：hero 右上那颗「更换封面」打开这一格里的上传控件（不再往设置页跳），
+  // 选完即传，成功后 invalidate 这一页的资料查询 —— 新封面从服务端回来才算数。
+  // 弹层挂在页面根部、句柄给 hero 那颗按钮用（与 DevRoom 的 avatarApi 同一用法）
+  const coverApi = useRef<CoverPickerHandle | null>(null);
+  const coverSave = useMutation({
+    mutationFn: (file: Blob) => uploadCover(file),
+    onSuccess: () => void queryClient.invalidateQueries({ queryKey: qk.profile(handle) }),
+  });
+  const coverClear = useMutation({
+    mutationFn: () => clearCover(),
+    onSuccess: () => void queryClient.invalidateQueries({ queryKey: qk.profile(handle) }),
   });
   // 打赏申报（POST /rewards）：**是登记，不是付款** —— 钱是扫码直接给作者的，站点不经手资金。
   const donate = useMutation({
@@ -122,8 +137,12 @@ export function ProfilePage() {
   return (
     <div className='flex flex-col gap-4'>
       <ProfileHero
-        // 用户封面后端还没有端点（没有 users.cover 列），用站内素材；换成真封面要等 media 那条链路。
-        cover={assetUrl('starcraft/sc2-battle.webp')}
+        // 封面：本人设过就用 users.cover_hash 那张，没设过回落站内素材（与头像回落默认池同一口径）。
+        // 2026-10-14 之前这里恒为站内素材 —— 因为库里没有封面列、media 也没有封面通道（拍板 08 第二轮补齐）。
+        cover={u.cover ? assetUrl(u.cover) : assetUrl('starcraft/sc2-battle.webp')}
+        hasCover={u.cover !== ''}
+        // 本人可点；看别人主页时画一颗明确禁用的（禁用 + title 说清原因，而不是「点了没反应」）
+        onCoverPick={isSelf ? () => coverApi.current?.open() : null}
         nickname={u.nickname}
         handle={u.handle}
         joined={u.joined_at ? joinedText(u.joined_at) : undefined}
@@ -131,10 +150,8 @@ export function ProfilePage() {
         avatar={u.avatar || null}
         title={u.title}
         stats={stats}
-        // 设计稿（11-profile）的 hero 右上角是「更换头像 + 更换封面」一对。真站点**只有头像这一半**：
-        // POST/DELETE /me/avatar 都在，落点是设置页里那块真上传控件（压缩 → multipart → 刷会话）。
-        // 封面**没有任何后端承载**（users 没有封面列、也没有端点），所以这里不画那颗按钮 ——
-        // 画一颗点了没反应的假入口比缺一个入口更糟（见回报的缺口清单）。
+        // hero 右上角是「更换封面 + 更换头像」一对（2026-10-14 起封面也是真的了：0030 + /me/cover）。
+        // 头像的落点仍是设置页那块真上传控件；封面就地弹层（页根部的 CoverPicker）。
         topActions={
           isSelf ? (
             <span className='rounded-md bg-background/85 backdrop-blur-sm'>
@@ -185,6 +202,26 @@ export function ProfilePage() {
           </>
         }
       />
+
+      {/* 封面就地换：与 /settings 那处、后台分区屏那处**同一个弹层**（cover-picker.tsx）。
+          hero 右上那颗「更换封面」不弹它自己的窗口 —— 它只是通过句柄代点这里，入口只有一处代码。 */}
+      <CoverPicker
+        cover={u.cover ? assetUrl(u.cover) : null}
+        pending={coverSave.isPending}
+        label={u.cover ? '更换封面' : '加个封面'}
+        onPick={(file) => coverSave.mutate(file)}
+        onReady={(api) => { coverApi.current = api; }}
+        actions={u.cover ? (
+          <Button inline={false} height={ControlsHeight.S} disabled={coverClear.isPending} onClick={() => coverClear.mutate()}>
+            {coverClear.isPending ? '清除中…' : '清空封面'}
+          </Button>
+        ) : undefined}
+      />
+      {coverSave.isError || coverClear.isError ? (
+        <p role='alert' className='m-0 text-[12px] text-destructive'>
+          封面没能{coverClear.isError ? '清空' : '上传'}（{((coverClear.error ?? coverSave.error) as Error).message}）。
+        </p>
+      ) : null}
 
       {reporting ? (
         <ReportPanel

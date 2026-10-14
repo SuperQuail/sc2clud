@@ -23,6 +23,9 @@ import (
 //   - hash 为空时返回池子里分到的那张；池子为空返回空串（前端显示首字母占位）。
 type AvatarURL interface {
 	Avatar(ctx context.Context, userID int64, hash, smallHash, defaultHash string) (avatar, avatarSmall string)
+	// Cover 拼封面路径（users.cover_hash，0030）。与 Avatar 同一个实现者（media），
+	// 所以是**同一个接口里的第二个方法**而不是一个新接口：多一个接口就多一处接线要记得传。
+	Cover(hash string) string
 }
 
 // Config 是本模块的两个上限（设计 §4.3 的 user.* 段）。
@@ -56,6 +59,8 @@ type Profile struct {
 	Nickname     string     `json:"nickname"`
 	Avatar       string     `json:"avatar"`
 	AvatarSmall  string     `json:"avatar_small"`
+	// Cover 是个人主页的封面 / 背景（0030 的 users.cover_hash）。空串 = 没设过，前端走默认站内素材。
+	Cover        string     `json:"cover"`
 	Bio          string     `json:"bio"`
 	Status       string     `json:"status"`
 	Level        int        `json:"level"`
@@ -110,6 +115,7 @@ func (s *Service) GetProfile(ctx context.Context, handle string) (*Profile, erro
 	if s.avatars != nil {
 		p.Avatar, p.AvatarSmall = s.avatars.Avatar(ctx, row.ID,
 			deref(row.AvatarHash), deref(row.AvatarSmallHash), s.defaultAvatar(ctx, row.ID))
+		p.Cover = s.avatars.Cover(deref(row.CoverHash))
 	}
 	return p, nil
 }

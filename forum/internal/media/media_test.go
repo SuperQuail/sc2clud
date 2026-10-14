@@ -92,6 +92,73 @@ func TestClearAvatarIsIdempotent(t *testing.T) {
 	}
 }
 
+// 封面 / 背景（拍板 08 第二轮「壁纸替换」）：与头像同一套通道，但落在 users.cover_hash 上，
+// 而且**必须真的换得掉、也真的清得掉** —— 上一版这里整块不存在，主页那颗「更换封面」点了没有任何反应。
+func TestUploadAndClearCover(t *testing.T) {
+	h := newHarness(t)
+	alice := h.newUser("alice")
+	actor := h.actor(alice)
+
+	// 没设过时列是 NULL，clear 是幂等的 no-op
+	if err := h.svc.ClearCover(h.ctx, actor); err != nil {
+		t.Fatalf("没有封面时清除必须幂等: %v", err)
+	}
+	if n := h.scalar("SELECT count(*) FROM users WHERE id = $1 AND cover_hash IS NULL", alice.ID); n != 1 {
+		t.Fatal("没设过封面时 cover_hash 应当是 NULL")
+	}
+
+	first, err := h.svc.UploadCover(h.ctx, actor, media.UploadCoverInput{Body: pngBytes(t, 1200, 300, color.RGBA{R: 5, G: 5, B: 5, A: 255})})
+	if err != nil {
+		t.Fatalf("上传封面: %v", err)
+	}
+	if !first.Created || first.URL != "/img/"+first.Hash || first.Width != 1200 || first.Height != 300 {
+		t.Fatalf("第一次应当是新建并带尺寸: %+v", first)
+	}
+	if got := h.text("SELECT cover_hash FROM users WHERE id = $1", alice.ID); got != first.Hash {
+		t.Fatalf("users.cover_hash 没写对: %q", got)
+	}
+	// 同内容再传一次：不新建、不动列（与头像同一口径）
+	again, err := h.svc.UploadCover(h.ctx, actor, media.UploadCoverInput{Body: pngBytes(t, 1200, 300, color.RGBA{R: 5, G: 5, B: 5, A: 255})})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if again.Created || again.Hash != first.Hash {
+		t.Fatalf("同内容再传一次不该新建: %+v", again)
+	}
+	if n := h.scalar("SELECT refcount FROM images WHERE hash = $1", first.Hash); n != 1 {
+		t.Fatalf("refcount 应当是 1，实际 %d", n)
+	}
+
+	// 换一张：新的 +1、旧的 −1
+	second, err := h.svc.UploadCover(h.ctx, actor, media.UploadCoverInput{Body: pngBytes(t, 800, 200, color.RGBA{B: 5, A: 255})})
+	if err != nil {
+		t.Fatalf("换封面: %v", err)
+	}
+	if !second.Created || second.Hash == first.Hash {
+		t.Fatalf("换封面应当是新建: %+v", second)
+	}
+	if got := h.text("SELECT cover_hash FROM users WHERE id = $1", alice.ID); got != second.Hash {
+		t.Fatalf("换过之后列应当是新的: %q", got)
+	}
+	if n := h.scalar("SELECT refcount FROM images WHERE hash = $1", first.Hash); n != 0 {
+		t.Fatalf("旧封面应当归零，实际 %d", n)
+	}
+
+	// 清空：列回 NULL 且旧图归零（两次都清得掉 —— 幂等）
+	if err := h.svc.ClearCover(h.ctx, actor); err != nil {
+		t.Fatalf("清除封面: %v", err)
+	}
+	if n := h.scalar("SELECT count(*) FROM users WHERE id = $1 AND cover_hash IS NULL", alice.ID); n != 1 {
+		t.Fatal("清除之后 cover_hash 必须置空")
+	}
+	if n := h.scalar("SELECT refcount FROM images WHERE hash = $1", second.Hash); n != 0 {
+		t.Fatalf("清掉的封面应当归零，实际 %d", n)
+	}
+	if err := h.svc.ClearCover(h.ctx, actor); err != nil {
+		t.Fatalf("再清一次必须幂等: %v", err)
+	}
+}
+
 // 超限与格式：SVG 必须被拒（它可以内嵌脚本）；超上限给 media.too_large。
 func TestUploadRejectsBadAndTooLarge(t *testing.T) {
 	h := newHarness(t)

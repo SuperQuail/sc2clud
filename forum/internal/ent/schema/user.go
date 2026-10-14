@@ -30,6 +30,7 @@ import (
 //   - fk_users_avatar          FK (avatar_hash)       → images(hash) ON DELETE SET NULL
 //   - fk_users_avatar_small    FK (avatar_small_hash) → images(hash) ON DELETE SET NULL
 //   - fk_users_default_avatar  FK (default_avatar_hash) → images(hash) ON DELETE SET NULL
+//   - fk_users_cover           FK (cover_hash)        → images(hash) ON DELETE SET NULL（0030 加）
 //   - fk_users_equipped_title  FK (equipped_title_id) → titles(id) ON DELETE SET NULL
 //   - 五条纯外键索引 idx_users_role / idx_users_avatar / idx_users_avatar_small /
 //     idx_users_default_avatar / idx_users_equipped_title（数据库文档 §12 第 1 条的自检没有排除名单，不加就红）
@@ -63,6 +64,8 @@ func (User) Fields() []ent.Field {
 			Comment("sha256 hex；FK images(hash) ON DELETE SET NULL"),
 		field.String("avatar_small_hash").MaxLen(64).Optional().Nillable().
 			Comment("列表页缩略图；空则回落原图；FK images(hash) ON DELETE SET NULL"),
+		field.String("cover_hash").MaxLen(64).Optional().Nillable().
+			Comment("个人主页封面/背景（拍板 08 第二轮）；FK images(hash) ON DELETE SET NULL。列本身由 0030_users_cover_hash 的 ALTER 加"),
 		field.String("default_avatar_hash").MaxLen(64).Optional().Nillable().
 			Comment("默认头像池里分到的那张，注册时写一次、永不重算（拍板 §8.8 / U12）；FK images(hash) ON DELETE SET NULL。\n列本身由 0010_media 的 ALTER 加（0010_media.up.sql），不是 0002 建表的一部分"),
 		field.String("status").MaxLen(8).Default("active").

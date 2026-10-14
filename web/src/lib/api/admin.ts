@@ -128,6 +128,20 @@ export function updateBoard(id: string, b: UpdateBoardInput): Promise<AdminBoard
 }
 
 /** 重排：**必须给全部**分区的 id 且不重复 —— 少一个就会有分区留在原 sort 上与别人撞在一起。 */
+/**
+ * 换分区封面：先走**图片通道**（POST /me/cover，与个人主页封面同一条）拿到 hash，
+ * 再把它 PATCH 到 boards.cover_hash（见 routes/admin/boards.tsx 的 coverUpload）。
+ *
+ * 为什么不在 admin 域再开一个上传端点：那要复制一份 multipart 解析、体积闸门与内容哈希落盘，
+ * 而这两件事 media 域已经各有一份了（d5 §2.3）。09 收尾对照表 §3.8 那条「图片通道没做」现在可以划掉。
+ */
+export function uploadBoardCover(file: Blob): Promise<{ hash: string; url: string }> {
+  const form = new FormData();
+  form.append('file', file, 'board-cover.webp');
+  return api<{ hash: string; url: string }>('me/cover', { method: 'POST', body: form });
+}
+
+/** 重排：**必须给全部** 分区的 id 且不重复 —— 少一个就会有分区留在原 sort 上与别人撞在一起。 */
 export function reorderBoards(ids: string[]): Promise<void> {
   return api<void>('admin/boards/reorder', { method: 'POST', body: { ids } });
 }
@@ -178,7 +192,12 @@ export function fetchReviewQueue(f: ReviewQueueFilter, signal?: AbortSignal): Pr
 }
 
 
-export function reviewTopic(id: string, action: 'approve' | 'reject', note: string, expectedUpdatedAt: string): Promise<ReviewQueueItem> {
+/** 判定动作（forum/review_queue.go 的 reviewQueueActions）：
+ *  approve 放行（有草稿时 = 把改动替换上线）、reject 拒绝、request_revision 打回修改。
+ *  第四个状态 revision_requested 就是打回，与 rejected 是两档（拍板 08 · L6）。 */
+export type ReviewAction = 'approve' | 'reject' | 'request_revision';
+
+export function reviewTopic(id: string, action: ReviewAction, note: string, expectedUpdatedAt: string): Promise<ReviewQueueItem> {
   return api<ReviewQueueItem>('admin/topics/' + encodeURIComponent(id) + '/review', {
     method: 'POST',
     body: { action, note, expected_updated_at: expectedUpdatedAt },

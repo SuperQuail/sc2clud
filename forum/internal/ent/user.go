@@ -38,6 +38,8 @@ type User struct {
 	AvatarHash *string `json:"avatar_hash,omitempty"`
 	// 列表页缩略图；空则回落原图；FK images(hash) ON DELETE SET NULL
 	AvatarSmallHash *string `json:"avatar_small_hash,omitempty"`
+	// 个人主页封面/背景（拍板 08 第二轮）；FK images(hash) ON DELETE SET NULL。列本身由 0030_users_cover_hash 的 ALTER 加
+	CoverHash *string `json:"cover_hash,omitempty"`
 	// 默认头像池里分到的那张，注册时写一次、永不重算（拍板 §8.8 / U12）；FK images(hash) ON DELETE SET NULL。
 	// 列本身由 0010_media 的 ALTER 加（0010_media.up.sql），不是 0002 建表的一部分
 	DefaultAvatarHash *string `json:"default_avatar_hash,omitempty"`
@@ -286,7 +288,7 @@ func (*User) scanValues(columns []string) ([]any, error) {
 			values[i] = new(sql.NullBool)
 		case user.FieldID, user.FieldRoleID, user.FieldEquippedTitleID, user.FieldExp, user.FieldLevel:
 			values[i] = new(sql.NullInt64)
-		case user.FieldUsername, user.FieldEmail, user.FieldPasswordHash, user.FieldNickname, user.FieldBio, user.FieldAvatarHash, user.FieldAvatarSmallHash, user.FieldDefaultAvatarHash, user.FieldStatus:
+		case user.FieldUsername, user.FieldEmail, user.FieldPasswordHash, user.FieldNickname, user.FieldBio, user.FieldAvatarHash, user.FieldAvatarSmallHash, user.FieldCoverHash, user.FieldDefaultAvatarHash, user.FieldStatus:
 			values[i] = new(sql.NullString)
 		case user.FieldEmailVerifiedAt, user.FieldActivatedAt, user.FieldLastLoginAt, user.FieldCreatedAt, user.FieldUpdatedAt:
 			values[i] = new(sql.NullTime)
@@ -370,6 +372,13 @@ func (_m *User) assignValues(columns []string, values []any) error {
 			} else if value.Valid {
 				_m.AvatarSmallHash = new(string)
 				*_m.AvatarSmallHash = value.String
+			}
+		case user.FieldCoverHash:
+			if value, ok := values[i].(*sql.NullString); !ok {
+				return fmt.Errorf("unexpected type %T for field cover_hash", values[i])
+			} else if value.Valid {
+				_m.CoverHash = new(string)
+				*_m.CoverHash = value.String
 			}
 		case user.FieldDefaultAvatarHash:
 			if value, ok := values[i].(*sql.NullString); !ok {
@@ -603,6 +612,11 @@ func (_m *User) String() string {
 	builder.WriteString(", ")
 	if v := _m.AvatarSmallHash; v != nil {
 		builder.WriteString("avatar_small_hash=")
+		builder.WriteString(*v)
+	}
+	builder.WriteString(", ")
+	if v := _m.CoverHash; v != nil {
+		builder.WriteString("cover_hash=")
 		builder.WriteString(*v)
 	}
 	builder.WriteString(", ")

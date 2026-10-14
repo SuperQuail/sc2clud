@@ -150,6 +150,26 @@ func (_u *UserUpdate) ClearAvatarSmallHash() *UserUpdate {
 	return _u
 }
 
+// SetCoverHash sets the "cover_hash" field.
+func (_u *UserUpdate) SetCoverHash(v string) *UserUpdate {
+	_u.mutation.SetCoverHash(v)
+	return _u
+}
+
+// SetNillableCoverHash sets the "cover_hash" field if the given value is not nil.
+func (_u *UserUpdate) SetNillableCoverHash(v *string) *UserUpdate {
+	if v != nil {
+		_u.SetCoverHash(*v)
+	}
+	return _u
+}
+
+// ClearCoverHash clears the value of the "cover_hash" field.
+func (_u *UserUpdate) ClearCoverHash() *UserUpdate {
+	_u.mutation.ClearCoverHash()
+	return _u
+}
+
 // SetDefaultAvatarHash sets the "default_avatar_hash" field.
 func (_u *UserUpdate) SetDefaultAvatarHash(v string) *UserUpdate {
 	_u.mutation.SetDefaultAvatarHash(v)
@@ -992,6 +1012,11 @@ func (_u *UserUpdate) check() error {
 			return &ValidationError{Name: "avatar_small_hash", err: fmt.Errorf(`ent: validator failed for field "User.avatar_small_hash": %w`, err)}
 		}
 	}
+	if v, ok := _u.mutation.CoverHash(); ok {
+		if err := user.CoverHashValidator(v); err != nil {
+			return &ValidationError{Name: "cover_hash", err: fmt.Errorf(`ent: validator failed for field "User.cover_hash": %w`, err)}
+		}
+	}
 	if v, ok := _u.mutation.DefaultAvatarHash(); ok {
 		if err := user.DefaultAvatarHashValidator(v); err != nil {
 			return &ValidationError{Name: "default_avatar_hash", err: fmt.Errorf(`ent: validator failed for field "User.default_avatar_hash": %w`, err)}
@@ -1043,6 +1068,12 @@ func (_u *UserUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 	}
 	if _u.mutation.AvatarSmallHashCleared() {
 		_spec.ClearField(user.FieldAvatarSmallHash, field.TypeString)
+	}
+	if value, ok := _u.mutation.CoverHash(); ok {
+		_spec.SetField(user.FieldCoverHash, field.TypeString, value)
+	}
+	if _u.mutation.CoverHashCleared() {
+		_spec.ClearField(user.FieldCoverHash, field.TypeString)
 	}
 	if value, ok := _u.mutation.DefaultAvatarHash(); ok {
 		_spec.SetField(user.FieldDefaultAvatarHash, field.TypeString, value)
@@ -1997,6 +2028,26 @@ func (_u *UserUpdateOne) ClearAvatarSmallHash() *UserUpdateOne {
 	return _u
 }
 
+// SetCoverHash sets the "cover_hash" field.
+func (_u *UserUpdateOne) SetCoverHash(v string) *UserUpdateOne {
+	_u.mutation.SetCoverHash(v)
+	return _u
+}
+
+// SetNillableCoverHash sets the "cover_hash" field if the given value is not nil.
+func (_u *UserUpdateOne) SetNillableCoverHash(v *string) *UserUpdateOne {
+	if v != nil {
+		_u.SetCoverHash(*v)
+	}
+	return _u
+}
+
+// ClearCoverHash clears the value of the "cover_hash" field.
+func (_u *UserUpdateOne) ClearCoverHash() *UserUpdateOne {
+	_u.mutation.ClearCoverHash()
+	return _u
+}
+
 // SetDefaultAvatarHash sets the "default_avatar_hash" field.
 func (_u *UserUpdateOne) SetDefaultAvatarHash(v string) *UserUpdateOne {
 	_u.mutation.SetDefaultAvatarHash(v)
@@ -2852,6 +2903,11 @@ func (_u *UserUpdateOne) check() error {
 			return &ValidationError{Name: "avatar_small_hash", err: fmt.Errorf(`ent: validator failed for field "User.avatar_small_hash": %w`, err)}
 		}
 	}
+	if v, ok := _u.mutation.CoverHash(); ok {
+		if err := user.CoverHashValidator(v); err != nil {
+			return &ValidationError{Name: "cover_hash", err: fmt.Errorf(`ent: validator failed for field "User.cover_hash": %w`, err)}
+		}
+	}
 	if v, ok := _u.mutation.DefaultAvatarHash(); ok {
 		if err := user.DefaultAvatarHashValidator(v); err != nil {
 			return &ValidationError{Name: "default_avatar_hash", err: fmt.Errorf(`ent: validator failed for field "User.default_avatar_hash": %w`, err)}
@@ -2920,6 +2976,12 @@ func (_u *UserUpdateOne) sqlSave(ctx context.Context) (_node *User, err error) {
 	}
 	if _u.mutation.AvatarSmallHashCleared() {
 		_spec.ClearField(user.FieldAvatarSmallHash, field.TypeString)
+	}
+	if value, ok := _u.mutation.CoverHash(); ok {
+		_spec.SetField(user.FieldCoverHash, field.TypeString, value)
+	}
+	if _u.mutation.CoverHashCleared() {
+		_spec.ClearField(user.FieldCoverHash, field.TypeString)
 	}
 	if value, ok := _u.mutation.DefaultAvatarHash(); ok {
 		_spec.SetField(user.FieldDefaultAvatarHash, field.TypeString, value)

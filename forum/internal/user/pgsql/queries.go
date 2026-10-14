@@ -18,7 +18,7 @@ import (
 // like_received 只算该用户 status=normal 的帖子收到的赞（拍板 §2.2 / §3）。
 const ProfileSQL = `
 SELECT u.id, u.public_id, u.username, COALESCE(NULLIF(u.nickname, ''), u.username), u.bio,
-       u.avatar_hash, u.avatar_small_hash,
+       u.avatar_hash, u.avatar_small_hash, u.cover_hash,
        u.exp, u.level, u.status, u.created_at,
        t.name AS title_name, t.color AS title_color,
        COALESCE(tc.n, 0) AS topic_count,
@@ -59,6 +59,8 @@ type ProfileRow struct {
 	Bio             string
 	AvatarHash      *string
 	AvatarSmallHash *string
+	// CoverHash 是 0030 加的封面列（NULL = 没设过）。
+	CoverHash       *string
 	Exp             int
 	Level           int
 	Status          string
@@ -74,7 +76,7 @@ func Profile(ctx context.Context, q pgsql.Querier, handle string) (*ProfileRow, 
 	var r ProfileRow
 	err := pgsql.QueryRow(ctx, q, ProfileSQL, handle).Scan(
 		&r.ID, &r.PublicID, &r.Username, &r.Nickname, &r.Bio,
-		&r.AvatarHash, &r.AvatarSmallHash,
+		&r.AvatarHash, &r.AvatarSmallHash, &r.CoverHash,
 		&r.Exp, &r.Level, &r.Status, &r.CreatedAt,
 		&r.TitleName, &r.TitleColor,
 		&r.TopicCount, &r.LikeReceived,

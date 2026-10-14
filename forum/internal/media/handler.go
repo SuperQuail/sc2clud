@@ -40,6 +40,9 @@ func (h *Handler) Register(rg *gin.RouterGroup, requireLogin, perm func(...strin
 	me := rg.Group("/me", requireLogin())
 	me.POST("/avatar", append(limit(h.svc.cfg.AvatarMax+formSlack), h.uploadAvatar)...)
 	me.DELETE("/avatar", h.clearAvatar)
+	// 个人主页的封面 / 背景（拍板 08 第二轮「壁纸替换」）：与头像同一条图片通道，上限用内容图那一档
+	me.POST("/cover", append(limit(h.svc.cfg.PostMax+formSlack), h.uploadCover)...)
+	me.DELETE("/cover", h.clearCover)
 	me.POST("/payment-channels", append(limit(h.svc.cfg.PaymentMax+formSlack), h.addPaymentChannel)...)
 	me.GET("/payment-channels", h.listPaymentChannels)
 	me.DELETE("/payment-channels/:id", h.deletePaymentChannel)
@@ -116,6 +119,42 @@ func (h *Handler) clearAvatar(c *gin.Context) {
 		return
 	}
 	if err := h.svc.ClearAvatar(c.Request.Context(), actor); err != nil {
+		httpx.Fail(c, err)
+		return
+	}
+	httpx.NoContent(c)
+}
+
+func (h *Handler) uploadCover(c *gin.Context) {
+	actor, err := h.require(c)
+	if err != nil {
+		httpx.Fail(c, err)
+		return
+	}
+	body, err := readFormFile(c, "file", h.svc.cfg.PostMax+formSlack)
+	if err != nil {
+		httpx.Fail(c, err)
+		return
+	}
+	out, err := h.svc.UploadCover(c.Request.Context(), actor, UploadCoverInput{Body: body})
+	if err != nil {
+		httpx.Fail(c, err)
+		return
+	}
+	if out.Created {
+		httpx.Created(c, out)
+		return
+	}
+	httpx.OK(c, out)
+}
+
+func (h *Handler) clearCover(c *gin.Context) {
+	actor, err := h.require(c)
+	if err != nil {
+		httpx.Fail(c, err)
+		return
+	}
+	if err := h.svc.ClearCover(c.Request.Context(), actor); err != nil {
 		httpx.Fail(c, err)
 		return
 	}

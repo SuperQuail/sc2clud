@@ -32,6 +32,8 @@ const (
 	FieldAvatarHash = "avatar_hash"
 	// FieldAvatarSmallHash holds the string denoting the avatar_small_hash field in the database.
 	FieldAvatarSmallHash = "avatar_small_hash"
+	// FieldCoverHash holds the string denoting the cover_hash field in the database.
+	FieldCoverHash = "cover_hash"
 	// FieldDefaultAvatarHash holds the string denoting the default_avatar_hash field in the database.
 	FieldDefaultAvatarHash = "default_avatar_hash"
 	// FieldStatus holds the string denoting the status field in the database.
@@ -232,6 +234,7 @@ var Columns = []string{
 	FieldBio,
 	FieldAvatarHash,
 	FieldAvatarSmallHash,
+	FieldCoverHash,
 	FieldDefaultAvatarHash,
 	FieldStatus,
 	FieldEmailVerifiedAt,
@@ -281,6 +284,8 @@ var (
 	AvatarHashValidator func(string) error
 	// AvatarSmallHashValidator is a validator for the "avatar_small_hash" field. It is called by the builders before save.
 	AvatarSmallHashValidator func(string) error
+	// CoverHashValidator is a validator for the "cover_hash" field. It is called by the builders before save.
+	CoverHashValidator func(string) error
 	// DefaultAvatarHashValidator is a validator for the "default_avatar_hash" field. It is called by the builders before save.
 	DefaultAvatarHashValidator func(string) error
 	// DefaultStatus holds the default value on creation for the "status" field.
@@ -352,6 +357,11 @@ func ByAvatarHash(opts ...sql.OrderTermOption) OrderOption {
 // ByAvatarSmallHash orders the results by the avatar_small_hash field.
 func ByAvatarSmallHash(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldAvatarSmallHash, opts...).ToFunc()
+}
+
+// ByCoverHash orders the results by the cover_hash field.
+func ByCoverHash(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldCoverHash, opts...).ToFunc()
 }
 
 // ByDefaultAvatarHash orders the results by the default_avatar_hash field.

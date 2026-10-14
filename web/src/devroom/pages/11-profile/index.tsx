@@ -5,7 +5,7 @@ import Island from '@jetbrains/ring-ui-built/components/island/island';
 import ButtonSet from '@jetbrains/ring-ui-built/components/button-set/button-set';
 import Tag, { TagType } from '@jetbrains/ring-ui-built/components/tag/tag';
 import { useRef, useState } from 'react';
-import { FolderOpen, Heart, Image as ImageIcon, ImagePlus, MessageSquare, MoreHorizontal, Star, UserPlus, UserRound } from 'lucide-react';
+import { FolderOpen, Heart, ImagePlus, MessageSquare, MoreHorizontal, Star, UserPlus, UserRound } from 'lucide-react';
 import { assetUrl } from '@/lib/url';
 import { icon16 } from '@/ui/icons';
 import { UserAvatar } from '@/ui/user/avatar';
@@ -17,6 +17,7 @@ import { NoticeSettings, type SettingRow } from '@/ui/message/notice-settings';
 import { IconTabs, type IconTabItem } from '@/ui/nav/icon-tabs';
 import { roomHref } from '@/devroom/room-links';
 import { AccountPanel, type AvatarHandle } from './account-panel';
+import { CoverPicker, type CoverPickerHandle } from '@/ui/cover-picker';
 import { ProfileHero } from './profile-hero';
 
 // DevRoom 11 · 个人主页（带设置）
@@ -91,9 +92,11 @@ export default function ProfilePage() {
   const activeTab = !selfView.isSelf && tab === 'settings' ? 'posts' : tab;
   // 封面素材必须是**横构图**：原来用 starcraft/zerg.webp（64x64）拉到 1440x160 只能放大裁剪 → 一块糊色。
   // 现在默认 sc2-battle.webp（1200x953 插画）。
-  // **后端不支持自定义封面**（users 没有封面列、也没有上传端点），所以这一屏不给「点了能换」的假动作：
-  // 壁纸是这一张固定的，右上那颗入口保留形状但标成未实现（2026-10-14 用户要求：别在真站上放假入口）。
-  const cover = assetUrl('starcraft/sc2-battle.webp');
+  // 2026-10-14（拍板 08 第二轮）：封面**真的能换**了（users.cover_hash 0030 + POST/DELETE /me/cover），
+  // 所以右上那颗从「更换封面（未实现）」的禁用占位改成真入口：点了切到「设置」标签就地出预览
+  // （与头像那颗按钮同一条路 —— 房间的这一页是设计稿，选中即结果；真站在 profile.tsx 里弹层直传）。
+  const [coverPath, setCoverPath] = useState<string | null>(null);
+  const cover = coverPath ? assetUrl(coverPath) : assetUrl('starcraft/sc2-battle.webp');
   const [visibility, setVisibility] = useState('public');
   const [showTitle, setShowTitle] = useState(true);
   // G5：屏蔽词**不实现**（拍板），所以这里没有 setter —— 见下面那一行的 onAdd/onRemove 为什么是空的。
@@ -144,6 +147,12 @@ export default function ProfilePage() {
     setTab('settings');
     // 上传器此刻已经挂载（设置面板一直在渲染），ref 里就是它的句柄；open() 打开文件选择框
     avatarApi.current?.open();
+  };
+  // 封面入口：与头像同一条路（同一个标签、同一套「切过去 + 代点」）。
+  const coverApi = useRef<CoverPickerHandle | null>(null);
+  const pickCover = () => {
+    setTab('settings');
+    coverApi.current?.open();
   };
 
   return (
@@ -210,6 +219,10 @@ export default function ProfilePage() {
           { value: '86', label: '关注者' },
         ]}
         onAvatarPick={selfView.isSelf ? pickAvatar : undefined}
+        hasCover={coverPath !== null}
+        // 本人可点（切到设置标签、就地打开封面上传器）；看别人主页时画一颗**明确禁用**的 ——
+        // 换别人的封面既无意义也无权限，但入口的形状还在，读的人不会以为整块 hero 挂了。
+        onCoverPick={selfView.isSelf ? pickCover : null}
         topActions={
           <>
             {/* 「更换头像」的落点：上传器在「设置」标签里（那里有预览、移除与体积提示），
@@ -228,20 +241,6 @@ export default function ProfilePage() {
                 </Button>
               </span>
             ) : null}
-            {/* 封面入口**标注为未实现**：后端没有承载它的列与端点，所以这颗是 disabled 的，
-                名字里直接写出来 —— 房间里不留「点了没反应」的动作，也不假装它能用。 */}
-            <span className='rounded-md bg-background/85 backdrop-blur-sm'>
-              <Button
-                inline={false}
-                height={ControlsHeight.S}
-                data-testid='change-cover'
-                icon={icon16(ImageIcon)}
-                disabled
-                title='后端还没有用户封面列与上传端点，这一颗还没接'
-              >
-                更换封面（未实现）
-              </Button>
-            </span>
           </>
         }
         actions={
@@ -272,6 +271,19 @@ export default function ProfilePage() {
             selfView.isSelf ? (
               <div className='flex flex-col gap-4'>
                 <NoticeSettings rows={settings} />
+                {/* 封面：与头像同一个标签、同一档版式（房间口径 = 选中即结果，真站在 profile.tsx 里
+                    是弹层直传 POST /me/cover）。hero 右上那颗「更换封面」通过 coverApi 代点这里。 */}
+                <Island withoutPaddings>
+                  <div className='flex items-center justify-between gap-3 px-4 py-4'>
+                    <h3 className='m-0 text-[15px] font-medium text-foreground'>个人主页封面</h3>
+                    <CoverPicker
+                      cover={coverPath}
+                      label={coverPath ? '更换封面' : '加个封面'}
+                      onPick={(file) => setCoverPath(URL.createObjectURL(file))}
+                      onReady={(api) => { coverApi.current = api; }}
+                    />
+                  </div>
+                </Island>
                 <AccountPanel
                   avatar={avatar}
                   onAvatar={setAvatar}
@@ -281,6 +293,7 @@ export default function ProfilePage() {
                     // 这里留两个可观察结果：顶部出现「你已退出登录」，账号动作收起只剩「去登录」。
                     setLoggedOut(true);
                     avatarApi.current = null;
+                    coverApi.current = null;
                   }}
                   loggedOut={loggedOut}
                 />

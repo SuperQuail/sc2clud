@@ -30,8 +30,18 @@ export type ProfileHeroProps = {
   role?: UserRole | null;
   title?: UserTitle | null;
   stats?: ProfileStat[];
-  /** 顶栏右上角那一对动作（更换封面 / 更换头像）。真实站点还没有上传端点，所以由调用方决定画不画 */
+  /** 顶栏右上角那一对动作（更换封面 / 更换头像）。真实站点没有上传端点时调用方可以不画 */
   topActions?: ReactNode;
+  /** 封面当前是不是一张图（true = 画「更换封面」，false = 画「加个封面」）。 */
+  hasCover?: boolean;
+  /**
+   * 「更换封面」点了之后干什么。**不传就不画那颗按钮** ——
+   * 画一颗点了没反应的假入口比缺一个入口更糟（这正是用户报的「设置背景功能消失」的形态）。
+   * 传了 null 则画一颗**明确禁用**的（例：看别人的主页时，那个动作对你毫无意义）：
+   * 禁用 + title 说清原因，读的人不会以为它坏了。
+   * 真站的落点：弹层里的真上传控件（POST/DELETE /me/cover，见 profile.tsx）。
+   */
+  onCoverPick?: (() => void) | null;
   /** 头像右下角的上传入口（它只是「去设置里换头像」的落点）。**不传就不画** —— 产品路由还没有上传端点 */
   onAvatarPick?: () => void;
   /** 卡片右下角的动作组（关注 / 发私信 / 更多）—— 真实站点只放真能用的那几个 */
@@ -50,6 +60,8 @@ export function ProfileHero({
   title,
   stats = [],
   topActions,
+  hasCover = false,
+  onCoverPick,
   onAvatarPick,
   actions,
 }: ProfileHeroProps) {
@@ -86,7 +98,29 @@ export function ProfileHero({
       {/* 「更换封面」直接绝对定位在 hero 右上角（z-20）：放进内层 relative 时它会被上移的身份卡压住，
           只露出一角、点不到。按钮浮在壁纸上，原来没给底 —— 浅色下是深蓝字、深色下是浅蓝字，
           壁纸一浅（sc2-battle 的天空）就看不清，所以补一层卡片色 + 轻微模糊把它托起来。 */}
-      {topActions ? <span className='absolute right-3 top-3 z-20 flex items-center gap-2'>{topActions}</span> : null}
+      {(topActions || onCoverPick !== undefined) ? (
+        <span className='absolute right-3 top-3 z-20 flex items-center gap-2'>
+          {/* 「更换封面」由 **hero 自己**画（不走 topActions）：调用方只要给一个 onCoverPick，
+              就不会再出现「调用方忘了画这颗按钮 → 入口凭空消失」那种形态。
+              底用卡片色 + 轻微模糊把按钮托离壁纸（浅色壁纸上深蓝字看不清）。 */}
+          {onCoverPick !== undefined ? (
+            <span className='rounded-md bg-background/85 backdrop-blur-sm'>
+              <Button
+                inline={false}
+                height={ControlsHeight.S}
+                icon={icon16(ImagePlus)}
+                data-testid='change-cover'
+                disabled={onCoverPick === null}
+                title={onCoverPick === null ? '这是别人的主页，封面只有本人能换' : undefined}
+                onClick={onCoverPick ?? undefined}
+              >
+                {hasCover ? '更换封面' : '加个封面'}
+              </Button>
+            </span>
+          ) : null}
+          {topActions}
+        </span>
+      ) : null}
 
       {/* 身份卡：**从上到下的透明渐变**（用户 2026-10-13 定稿口径：
           「平均透明度 60% 透」= 卡片整高的**平均 alpha ≈ 0.4**；顶部最透、往下逐渐收紧、任何位置都不到实色；

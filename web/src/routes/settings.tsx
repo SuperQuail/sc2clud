@@ -8,6 +8,7 @@ import { UserBadge } from '@/ui/user/user-badge';
 import { type UploadedImage } from '@/ui/rich/image-uploader';
 import { NoticeSettings, type SettingRow } from '@/ui/message/notice-settings';
 import { AccountPanel } from '@/devroom/pages/11-profile/account-panel';
+import { CoverPicker } from '@/ui/cover-picker';
 import { PaymentChannelsPanel } from '@/devroom/pages/11-profile/payment-channels';
 import { FormAlert } from '@/devroom/pages/16-auth/form-alert';
 import { appPath, routePath } from '@/lib/url';
@@ -16,7 +17,7 @@ import { useSession } from '@/lib/perms';
 import { api } from '@/lib/api/client';
 import { isApiError } from '@/lib/api/errors';
 import { logout } from '@/lib/api/auth';
-import { clearAvatar, uploadAvatar } from '@/lib/api/user';
+import { clearAvatar, clearCover, fetchUserProfile, uploadAvatar, uploadCover } from '@/lib/api/user';
 // 类型与组件同名，所以按全站口径起别名（messages.tsx 也是这么写的）
 import {
   fetchNoticeSettings,
@@ -34,7 +35,9 @@ import { Empty, ErrorState, Loading } from './_parts/state';
 // 只有「资料」（昵称 / 简介）还是本页自己的表单：那两个框是文字 Input，\`NoticeSettings\` 的三种行
 // （radio / toggle / tags）都不是文本框，塞不进去 —— 硬塞就是把一个表单拆成三块假控件。
 //
-// 封面**没接**：库里没有 users 封面列、也没有对应端点，所以这一屏上没有那颗按钮（不做点了没反应的入口）。
+// 封面**已接**（2026-10-14 拍板 08 第二轮「壁纸替换」）：users.cover_hash（迁移 0030）+
+// POST/DELETE /me/cover（media 域）+ ProfileHero 右上那颗「更换封面」。读的是公开资料
+// （GET /users/{handle} 的 cover）而不是 /me —— /me 是会话快照，它不带封面这一列。
 // 收款码**已接**（2026-10-14，L1）：POST/GET/DELETE /me/payment-channels 在 media 域，
 // 整块在 @/devroom/pages/11-profile/payment-channels 里。登录设备列表（GET /me/sessions 有契约但本轮不排）仍未做。
 // 20 = users.nickname varchar(20) / auth.nicknameMaxLen（写死 32 会让 21-32 字的昵称在服务端被拒）
@@ -78,6 +81,22 @@ export function SettingsPage() {
       void queryClient.invalidateQueries({ queryKey: qk.me() });
     },
   });
+  // 封面（0030）：与头像同一条通道，但**读的是公开资料**（/me 是会话快照，不带 cover 这一列）——
+  // 查询键与主页同一个，所以换完封面主页那张图跟着变，不用等下一次进主页。
+  // handle 可能为空（还没登录）：那时 enabled=false，不发请求。
+  const contact = session.session?.handle ?? '';
+  const coverQuery = useQuery({
+    queryKey: qk.profile(contact),
+    queryFn: ({ signal }) => fetchUserProfile(contact, signal),
+    enabled: contact !== '',
+  });
+  const [pickedCover, setPickedCover] = useState<UploadedImage[]>([]);
+  const afterCover = () => {
+    setPickedCover([]);
+    void queryClient.invalidateQueries({ queryKey: qk.profile(contact) });
+  };
+  const saveCover = useMutation({ mutationFn: (file: Blob) => uploadCover(file), onSuccess: afterCover });
+  const removeCover = useMutation({ mutationFn: () => clearCover(), onSuccess: afterCover });
   const signOut = useMutation({
     mutationFn: () => logout(),
     onSuccess: () => queryClient.clear(),
@@ -236,6 +255,36 @@ export function SettingsPage() {
       {signOut.isError ? <FormAlert tone='error' title='退出失败' description={errorText(signOut.error)} /> : null}
       {saveAvatar.isError ? <FormAlert tone='error' title='没能上传头像' description={errorText(saveAvatar.error)} /> : null}
       {removeAvatar.isError ? <FormAlert tone='error' title='没能移除头像' description={errorText(removeAvatar.error)} /> : null}
+
+      {/* 个人主页的封面 / 背景（0030 + POST/DELETE /me/cover）：与头像同一条图片通道、同一套控件。
+          这一格在 /settings 里而不是只在主页上 —— 主页那颗「更换封面」是就地弹层（见 profile.tsx），
+          这里是同一个动作的另一条路（设置页是用户找「改资料」时会来的地方）。 */}
+      <section id='cover' className='flex flex-col gap-3 rounded-lg border border-border bg-card p-4'>
+        <span className='flex flex-wrap items-center justify-between gap-2'>
+          <h2 className='m-0 text-[15px] font-semibold text-foreground'>个人主页封面</h2>
+          {/* 与主页那颗「更换封面」是**同一个弹层**（cover-picker.tsx），所以两处的限额文案与
+              压缩口径不会各说一套。传上去就生效：读的是 GET /users/{handle} 的 cover。 */}
+          <CoverPicker
+            cover={pickedCover[0]?.url ?? coverQuery.data?.cover ?? null}
+            pending={saveCover.isPending}
+            label={coverQuery.data?.cover ? '更换封面' : '加个封面'}
+            onPick={(file) => { setPickedCover([]); saveCover.mutate(file); }}
+            // 「清空封面」= DELETE /me/cover：主页回到默认站内素材（不是一片空白）。
+            actions={coverQuery.data?.cover ? (
+              <Button inline={false} height={ControlsHeight.S} disabled={removeCover.isPending} onClick={() => removeCover.mutate()}>
+                {removeCover.isPending ? '清除中…' : '清空封面'}
+              </Button>
+            ) : (
+              <span className='text-[11px] text-muted-foreground'>现在用的是默认素材。</span>
+            )}
+          />
+        </span>
+        <span className='text-[11px] leading-relaxed text-muted-foreground'>
+          封面长在你的个人主页顶部；没设过时用站内默认素材。
+        </span>
+        {saveCover.isError ? <FormAlert tone='error' title='没能上传封面' description={errorText(saveCover.error)} /> : null}
+        {removeCover.isError ? <FormAlert tone='error' title='没能清空封面' description={errorText(removeCover.error)} /> : null}
+      </section>
 
       <section className='flex flex-col gap-3 rounded-lg border border-border bg-card p-4'>
         <h2 className='m-0 text-[15px] font-semibold text-foreground'>资料</h2>

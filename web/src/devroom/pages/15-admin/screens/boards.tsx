@@ -12,6 +12,7 @@ import type { AdminACLItem, AdminBoard, AdminModeratorItem, Role } from '@/lib/a
 import { DataTable } from '../data-table';
 import { ConfirmDialog, DangerAction } from '../confirm';
 import { DisabledReason, KV, Numbers, Panel, Pill, ScreenHead, Stat, StatRow } from '../bits';
+import { ImageUploader } from '@/ui/rich/image-uploader';
 import { BoardAclPanel } from './boards-acl';
 import { NewBoardDialog } from './boards-new';
 
@@ -49,6 +50,12 @@ export type BoardsScreenProps = {
    *  只认发号器：这期间管理员又敲了新字时，重置会把它冲掉 —— 所以重置只在刚保存成功那一下发生，
    *  而「又敲了新字」的那一次由宿主在下次保存时一并带走（不静默丢弃）。 */
   savedAt?: number;
+  /** 换封面：把选中的图片传上去（host 走 POST /me/cover 拿 hash，再 PATCH 本分区的 cover_hash）。
+   *  **选完即换**（不经过「保存 N 项改动」）：封面是一张图，让它先停在草稿里、
+   *  等管理员再点一次保存，等于给「点了没反应」留了一条路。 */
+  onUploadCover?: (file: Blob) => void;
+  /** 传封面的按钮现在是不是在传（禁用 + 文案） */
+  coverUploading?: boolean;
   onMove: (ids: string[]) => void;
   reordering?: boolean;
   /** 全站角色目录（GET /admin/roles）：ACL 矩阵的行就是它 */
@@ -79,7 +86,7 @@ export type AclField = 'can_post' | 'can_reply' | 'deny_post' | 'deny_reply';
 
 export function BoardsScreen({
   boards, loading = false, error = null, boardId, onSelect,
-  onSave, saving = false, savedAt = 0, onMove, reordering = false,
+  onSave, saving = false, savedAt = 0, onUploadCover, coverUploading = false, onMove, reordering = false,
   roles, acl, aclLoading = false, onAclSave, aclSaving = false,
   moderators, candidates, onGrantModerator, onRevokeModerator, onCreate, onSetStatus,
   canManage, busy = false, receipt,
@@ -112,6 +119,9 @@ export function BoardsScreen({
     if (d.status !== board.status) patch.status = d.status;
     if (d.acl_enabled !== board.acl_enabled) patch.acl_enabled = d.acl_enabled;
     if (d.min_post_level !== board.min_post_level) patch.min_post_level = d.min_post_level;
+    // 封面也是「改动过的字段」：空串 = 清空（后端 nil 才是「没给」，见 UpdateBoard 的注释）。
+    // 上一版这里没有这一行，所以就算屏上画出「清空封面」，点保存也不会把 cover_hash 发上去。
+    if (d.cover_hash !== board.cover_hash) patch.cover_hash = d.cover_hash;
   }
   const changed = Object.keys(patch);
 
@@ -258,18 +268,46 @@ export function BoardsScreen({
                   disabled={!canEdit}
                   onChange={(e) => setDraft({ ...d, min_post_level: Number(e.target.value.replace(/[^0-9]/g, '') || 0) })}
                 />
-                <div className='mt-1 flex items-start gap-2'>
-                  <span className='flex h-10 w-14 shrink-0 items-center justify-center overflow-hidden rounded-sm border border-border bg-muted'>
+                {/* 封面：**换与清都在这里**（拍板 08 第二轮「壁纸替换」）。
+                    上一版这一格只有一段说明 —— 不是控件坏了，是后端把空串折成 nil（清空必然 400），
+                    而上传通道也还没有，所以当时刻意不画按钮。0030 与那处修复之后两条路都通了。 */}
+                <div className='mt-1 flex items-start gap-3'>
+                  <span className='flex h-14 w-24 shrink-0 items-center justify-center overflow-hidden rounded-sm border border-border bg-muted'>
                     {d.cover_hash
-                      ? <img src={assetUrl('/img/' + d.cover_hash)} alt='' width={56} height={40} className='object-cover' />
+                      ? <img src={assetUrl('/img/' + d.cover_hash)} alt='' width={96} height={56} className='h-full w-full object-cover' />
                       : <ImageIcon size={16} aria-hidden />}
                   </span>
-                  {/* 没有「换封面」，也没有「清空封面」：上传通道后端还没有，而 cover_hash 传空串会被
-                      UpdateBoardInput 折成 nil（= 不动），所以清空这条路当前走不通 —— 两件事一起写在这里。 */}
-                  <span className='text-[11px] leading-relaxed text-muted-foreground'>
-                    cover_hash → /img/hash（nginx 直出）。当前只显示现状：没有上传端点（要换图得先走图片通道拿 hash 再 PATCH 上来），
-                    而且 cover_hash 传空串会被后端折成「不动」，所以这一屏也不画「清空封面」。
-                  </span>
+                  <div className='flex min-w-0 flex-col gap-1.5'>
+                    <span className='flex flex-wrap items-center gap-2'>
+                      {/* 没给 onUploadCover 时不画上传控件（房间那一页是设计稿，没有图片通道）——
+                          画的必须是一颗真能用的按钮，否则就是「点了没反应」。 */}
+                      {onUploadCover ? (
+                        <ImageUploader
+                          variant='cover'
+                          label={d.cover_hash ? '更换封面' : '加个封面'}
+                          compress
+                          images={[]}
+                          onChange={(list) => { const f = list[0]; if (f) onUploadCover(f.file); }}
+                        />
+                      ) : null}
+                      {d.cover_hash ? (
+                        <Button
+                          inline={false}
+                          height={ControlsHeight.S}
+                          disabled={!canEdit || busy}
+                          onClick={() => setDraft({ ...d, cover_hash: '' })}
+                        >
+                          清空封面
+                        </Button>
+                      ) : null}
+                      {d.cover_hash !== board.cover_hash ? <Pill tone='warn'>封面改动还没保存</Pill> : null}
+                    </span>
+                    <span className='text-[11px] leading-relaxed text-muted-foreground'>
+                      {coverUploading
+                        ? '正在上传封面…'
+                        : '换封面 = 先走图片通道拿 hash（POST /me/cover）再 PATCH 上来，选完即生效；清空 = 发 cover_hash:""（置 NULL），要按上面那颗保存。'}
+                    </span>
+                  </div>
                 </div>
                 <div className='mt-2 border-t border-border pt-2'>
                   <Numbers items={[

@@ -103,7 +103,7 @@ func (s *Service) UploadAvatar(ctx context.Context, actor *authz.Actor, in Uploa
 	}
 	created := false
 	err = db.WithTx(ctx, s.db, func(tx *ent.Tx) error {
-		old, err := readAvatarTx(ctx, tx, actor.UserID)
+		old, err := readUserImageTx(ctx, tx, "avatar_hash", actor.UserID)
 		if err != nil {
 			return err
 		}
@@ -120,7 +120,8 @@ func (s *Service) UploadAvatar(ctx context.Context, actor *authz.Actor, in Uploa
 				return err
 			}
 		}
-		return setAvatarTx(ctx, tx, actor.UserID, string(hsh))
+		newHash := string(hsh)
+		return setUserImageTx(ctx, tx, actor.UserID, "avatar_hash", &newHash, "avatar_small_hash")
 	})
 	if err != nil {
 		return nil, err
@@ -134,7 +135,7 @@ func (s *Service) ClearAvatar(ctx context.Context, actor *authz.Actor) error {
 		return err
 	}
 	return db.WithTx(ctx, s.db, func(tx *ent.Tx) error {
-		old, err := readAvatarTx(ctx, tx, actor.UserID)
+		old, err := readUserImageTx(ctx, tx, "avatar_hash", actor.UserID)
 		if err != nil {
 			return err
 		}
@@ -144,7 +145,70 @@ func (s *Service) ClearAvatar(ctx context.Context, actor *authz.Actor) error {
 		if err := decRefTx(ctx, tx, old); err != nil {
 			return err
 		}
-		return clearAvatarTx(ctx, tx, actor.UserID)
+		return setUserImageTx(ctx, tx, actor.UserID, "avatar_hash", nil, "avatar_small_hash")
+	})
+}
+
+// UploadCover 换个人主页封面 / 背景（拍板 08 第二轮「壁纸替换」）。
+//
+// 与 UploadAvatar **逐字同构**（读旧值 → 新图 +1 → 旧图 −1 → 写列），只差三件事：
+//
+//	· 列是 users.cover_hash（0030），没有小图列；
+//	· 上限用 PostMax（内容图那一档，2MiB）：封面是横幅，64KiB 的头像上限放不下；
+//	· 可见性是公开 —— 它长在个人主页上，给陌生人看的，私有会让主页永远只有占位图。
+func (s *Service) UploadCover(ctx context.Context, actor *authz.Actor, in UploadCoverInput) (*CoverResult, error) {
+	if err := requireActive(actor); err != nil {
+		return nil, err
+	}
+	hsh, size, mime, w, h, err := s.PutImage(ctx, actor, in.Body, s.cfg.PostMax)
+	if err != nil {
+		return nil, err
+	}
+	created := false
+	newHash := string(hsh)
+	err = db.WithTx(ctx, s.db, func(tx *ent.Tx) error {
+		old, err := readUserImageTx(ctx, tx, "cover_hash", actor.UserID)
+		if err != nil {
+			return err
+		}
+		if old == newHash {
+			return nil // 内容没变：不动引用计数，也不动列
+		}
+		created = true
+		owner := actor.UserID
+		if _, err := refTx(ctx, tx, newHash, size, mime, w, h, VisibilityPublic, &owner); err != nil {
+			return err
+		}
+		if old != "" {
+			if err := decRefTx(ctx, tx, old); err != nil {
+				return err
+			}
+		}
+		return setUserImageTx(ctx, tx, actor.UserID, "cover_hash", &newHash)
+	})
+	if err != nil {
+		return nil, err
+	}
+	return &CoverResult{Hash: newHash, URL: urlOf(newHash), Width: w, Height: h, Size: size, Created: created}, nil
+}
+
+// ClearCover 清掉封面列并给旧图 −1。没有封面时是 no-op（幂等）。
+func (s *Service) ClearCover(ctx context.Context, actor *authz.Actor) error {
+	if err := requireActive(actor); err != nil {
+		return err
+	}
+	return db.WithTx(ctx, s.db, func(tx *ent.Tx) error {
+		old, err := readUserImageTx(ctx, tx, "cover_hash", actor.UserID)
+		if err != nil {
+			return err
+		}
+		if old == "" {
+			return nil
+		}
+		if err := decRefTx(ctx, tx, old); err != nil {
+			return err
+		}
+		return setUserImageTx(ctx, tx, actor.UserID, "cover_hash", nil)
 	})
 }
 

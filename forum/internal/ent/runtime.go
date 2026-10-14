@@ -1046,34 +1046,38 @@ func init() {
 	userDescAvatarSmallHash := userFields[8].Descriptor()
 	// user.AvatarSmallHashValidator is a validator for the "avatar_small_hash" field. It is called by the builders before save.
 	user.AvatarSmallHashValidator = userDescAvatarSmallHash.Validators[0].(func(string) error)
+	// userDescCoverHash is the schema descriptor for cover_hash field.
+	userDescCoverHash := userFields[9].Descriptor()
+	// user.CoverHashValidator is a validator for the "cover_hash" field. It is called by the builders before save.
+	user.CoverHashValidator = userDescCoverHash.Validators[0].(func(string) error)
 	// userDescDefaultAvatarHash is the schema descriptor for default_avatar_hash field.
-	userDescDefaultAvatarHash := userFields[9].Descriptor()
+	userDescDefaultAvatarHash := userFields[10].Descriptor()
 	// user.DefaultAvatarHashValidator is a validator for the "default_avatar_hash" field. It is called by the builders before save.
 	user.DefaultAvatarHashValidator = userDescDefaultAvatarHash.Validators[0].(func(string) error)
 	// userDescStatus is the schema descriptor for status field.
-	userDescStatus := userFields[10].Descriptor()
+	userDescStatus := userFields[11].Descriptor()
 	// user.DefaultStatus holds the default value on creation for the status field.
 	user.DefaultStatus = userDescStatus.Default.(string)
 	// user.StatusValidator is a validator for the "status" field. It is called by the builders before save.
 	user.StatusValidator = userDescStatus.Validators[0].(func(string) error)
 	// userDescTrusted is the schema descriptor for trusted field.
-	userDescTrusted := userFields[13].Descriptor()
+	userDescTrusted := userFields[14].Descriptor()
 	// user.DefaultTrusted holds the default value on creation for the trusted field.
 	user.DefaultTrusted = userDescTrusted.Default.(bool)
 	// userDescExp is the schema descriptor for exp field.
-	userDescExp := userFields[15].Descriptor()
+	userDescExp := userFields[16].Descriptor()
 	// user.DefaultExp holds the default value on creation for the exp field.
 	user.DefaultExp = userDescExp.Default.(int)
 	// userDescLevel is the schema descriptor for level field.
-	userDescLevel := userFields[16].Descriptor()
+	userDescLevel := userFields[17].Descriptor()
 	// user.DefaultLevel holds the default value on creation for the level field.
 	user.DefaultLevel = userDescLevel.Default.(int)
 	// userDescCreatedAt is the schema descriptor for created_at field.
-	userDescCreatedAt := userFields[18].Descriptor()
+	userDescCreatedAt := userFields[19].Descriptor()
 	// user.DefaultCreatedAt holds the default value on creation for the created_at field.
 	user.DefaultCreatedAt = userDescCreatedAt.Default.(func() time.Time)
 	// userDescUpdatedAt is the schema descriptor for updated_at field.
-	userDescUpdatedAt := userFields[19].Descriptor()
+	userDescUpdatedAt := userFields[20].Descriptor()
 	// user.DefaultUpdatedAt holds the default value on creation for the updated_at field.
 	user.DefaultUpdatedAt = userDescUpdatedAt.Default.(func() time.Time)
 	// user.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.

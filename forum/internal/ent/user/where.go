@@ -101,6 +101,11 @@ func AvatarSmallHash(v string) predicate.User {
 	return predicate.User(sql.FieldEQ(FieldAvatarSmallHash, v))
 }
 
+// CoverHash applies equality check predicate on the "cover_hash" field. It's identical to CoverHashEQ.
+func CoverHash(v string) predicate.User {
+	return predicate.User(sql.FieldEQ(FieldCoverHash, v))
+}
+
 // DefaultAvatarHash applies equality check predicate on the "default_avatar_hash" field. It's identical to DefaultAvatarHashEQ.
 func DefaultAvatarHash(v string) predicate.User {
 	return predicate.User(sql.FieldEQ(FieldDefaultAvatarHash, v))
@@ -689,6 +694,81 @@ func AvatarSmallHashEqualFold(v string) predicate.User {
 // AvatarSmallHashContainsFold applies the ContainsFold predicate on the "avatar_small_hash" field.
 func AvatarSmallHashContainsFold(v string) predicate.User {
 	return predicate.User(sql.FieldContainsFold(FieldAvatarSmallHash, v))
+}
+
+// CoverHashEQ applies the EQ predicate on the "cover_hash" field.
+func CoverHashEQ(v string) predicate.User {
+	return predicate.User(sql.FieldEQ(FieldCoverHash, v))
+}
+
+// CoverHashNEQ applies the NEQ predicate on the "cover_hash" field.
+func CoverHashNEQ(v string) predicate.User {
+	return predicate.User(sql.FieldNEQ(FieldCoverHash, v))
+}
+
+// CoverHashIn applies the In predicate on the "cover_hash" field.
+func CoverHashIn(vs ...string) predicate.User {
+	return predicate.User(sql.FieldIn(FieldCoverHash, vs...))
+}
+
+// CoverHashNotIn applies the NotIn predicate on the "cover_hash" field.
+func CoverHashNotIn(vs ...string) predicate.User {
+	return predicate.User(sql.FieldNotIn(FieldCoverHash, vs...))
+}
+
+// CoverHashGT applies the GT predicate on the "cover_hash" field.
+func CoverHashGT(v string) predicate.User {
+	return predicate.User(sql.FieldGT(FieldCoverHash, v))
+}
+
+// CoverHashGTE applies the GTE predicate on the "cover_hash" field.
+func CoverHashGTE(v string) predicate.User {
+	return predicate.User(sql.FieldGTE(FieldCoverHash, v))
+}
+
+// CoverHashLT applies the LT predicate on the "cover_hash" field.
+func CoverHashLT(v string) predicate.User {
+	return predicate.User(sql.FieldLT(FieldCoverHash, v))
+}
+
+// CoverHashLTE applies the LTE predicate on the "cover_hash" field.
+func CoverHashLTE(v string) predicate.User {
+	return predicate.User(sql.FieldLTE(FieldCoverHash, v))
+}
+
+// CoverHashContains applies the Contains predicate on the "cover_hash" field.
+func CoverHashContains(v string) predicate.User {
+	return predicate.User(sql.FieldContains(FieldCoverHash, v))
+}
+
+// CoverHashHasPrefix applies the HasPrefix predicate on the "cover_hash" field.
+func CoverHashHasPrefix(v string) predicate.User {
+	return predicate.User(sql.FieldHasPrefix(FieldCoverHash, v))
+}
+
+// CoverHashHasSuffix applies the HasSuffix predicate on the "cover_hash" field.
+func CoverHashHasSuffix(v string) predicate.User {
+	return predicate.User(sql.FieldHasSuffix(FieldCoverHash, v))
+}
+
+// CoverHashIsNil applies the IsNil predicate on the "cover_hash" field.
+func CoverHashIsNil() predicate.User {
+	return predicate.User(sql.FieldIsNull(FieldCoverHash))
+}
+
+// CoverHashNotNil applies the NotNil predicate on the "cover_hash" field.
+func CoverHashNotNil() predicate.User {
+	return predicate.User(sql.FieldNotNull(FieldCoverHash))
+}
+
+// CoverHashEqualFold applies the EqualFold predicate on the "cover_hash" field.
+func CoverHashEqualFold(v string) predicate.User {
+	return predicate.User(sql.FieldEqualFold(FieldCoverHash, v))
+}
+
+// CoverHashContainsFold applies the ContainsFold predicate on the "cover_hash" field.
+func CoverHashContainsFold(v string) predicate.User {
+	return predicate.User(sql.FieldContainsFold(FieldCoverHash, v))
 }
 
 // DefaultAvatarHashEQ applies the EQ predicate on the "default_avatar_hash" field.

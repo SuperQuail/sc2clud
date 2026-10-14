@@ -19,6 +19,21 @@ type AvatarResult struct {
 	Created bool   `json:"created"`
 }
 
+// UploadCoverInput：Body 是**已经整块读进内存**的图片字节（上限用 PostMax：封面是横幅，不是头像）。
+type UploadCoverInput struct {
+	Body []byte
+}
+
+// CoverResult 与 AvatarResult 同形状（重复上传同一张图返回 200，Created=false）。
+type CoverResult struct {
+	Hash    string `json:"hash"`
+	URL     string `json:"url"`
+	Width   int    `json:"width"`
+	Height  int    `json:"height"`
+	Size    int64  `json:"size"`
+	Created bool   `json:"created"`
+}
+
 // AttachTopicImageInput：TopicPublicID 来自路径参数，Body 是已读进内存的图片字节。
 type AttachTopicImageInput struct {
 	TopicPublicID string

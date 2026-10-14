@@ -216,38 +216,36 @@ RETURNING image_hash`, []any{publicID, userID}, &hash)
 	return hash, nil
 }
 
-// readAvatarTx 读旧 hash 并锁住用户行：头像替换要先知道旧值才能 −1。
+// readUserImageTx 读 users 上某一根图片列的旧 hash 并锁住用户行：换图要先知道旧值才能 −1。
 // 不用 UPDATE ... RETURNING 的子查询——它读到的是新值，不是 OLD。
-func readAvatarTx(ctx context.Context, q sqlExec, userID int64) (string, error) {
+func readUserImageTx(ctx context.Context, q sqlExec, col string, userID int64) (string, error) {
 	var old *string
-	err := row1(ctx, q, "SELECT avatar_hash FROM users WHERE id = $1 FOR UPDATE", []any{userID}, &old)
+	err := row1(ctx, q, "SELECT "+col+" FROM users WHERE id = $1 FOR UPDATE", []any{userID}, &old)
 	if errors.Is(err, sql.ErrNoRows) {
 		return "", nil
 	}
 	if err != nil {
-		return "", fmt.Errorf("media: read avatar: %w", err)
+		return "", fmt.Errorf("media: read %s: %w", col, err)
 	}
 	return deref(old), nil
 }
 
-// setAvatarTx 写头像列（旧的 −1 由调用方在同一事务里先做）。
-func setAvatarTx(ctx context.Context, q sqlExec, userID int64, hash string) error {
-	_, err := q.ExecContext(ctx, `
-UPDATE users SET avatar_hash = $2, avatar_small_hash = NULL, updated_at = now()
- WHERE id = $1`, userID, hash)
-	if err != nil {
-		return fmt.Errorf("media: set avatar: %w", err)
+// setUserImageTx 写 users 上的图片列（旧的 −1 由调用方在同一事务里先做）。
+// hash 是 *string：nil = 置 NULL（清空），空串也当 NULL（列上「空 = 没有图」）。
+// more 是随主列一起置 NULL 的列（头像的 avatar_small_hash；封面没有）。
+func setUserImageTx(ctx context.Context, q sqlExec, userID int64, col string, hash *string, more ...string) error {
+	sets := col + " = NULLIF($2, '')"
+	for _, m := range more {
+		sets += ", " + m + " = NULL"
 	}
-	return nil
-}
-
-// clearAvatarTx 清掉头像两列。
-func clearAvatarTx(ctx context.Context, q sqlExec, userID int64) error {
-	_, err := q.ExecContext(ctx, `
-UPDATE users SET avatar_hash = NULL, avatar_small_hash = NULL, updated_at = now()
- WHERE id = $1`, userID)
+	var v any
+	if hash != nil {
+		v = *hash
+	}
+	_, err := q.ExecContext(ctx,
+		"UPDATE users SET "+sets+", updated_at = now() WHERE id = $1", userID, v)
 	if err != nil {
-		return fmt.Errorf("media: clear avatar: %w", err)
+		return fmt.Errorf("media: set %s: %w", col, err)
 	}
 	return nil
 }
