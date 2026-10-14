@@ -170,10 +170,45 @@ it('每条去处都由宿主给：发帖、作者主页、来源在 linked 时�
   expect(screen.getByRole('link', { name: /查看主页/ }).getAttribute('href')).toBe('/u/demo-admin');
   // 房间里没有转链端点：来源默认不可导航（不是一条会把人带出房间的死链）
   await screen.findByTestId('comment-total');
-  expect(screen.queryByRole('link', { name: /打开 百度网盘/ })).toBeNull();
+  expect(screen.queryByRole('link', { name: /百度网盘/ })).toBeNull();
   // linked=true 才是真链接（真站）
   rerender(<TopicView {...viewProps({ sourcesLinked: true })} />);
-  expect(screen.getByRole('link', { name: /打开 百度网盘/ }).getAttribute('href')).toBe(TOPIC.sources[0]!.go_path);
+  expect(screen.getByRole('link', { name: /百度网盘/ }).getAttribute('href')).toBe(TOPIC.sources[0]!.go_path);
+});
+
+// D4（2026-10-14 用户实测）：下载来源要**在正文上方**、紧凑一行、点它开新标签页。
+// 三条都是用「能证伪」的判据写的：DOM 顺序比位置 / 链接属性 / 行的形状（站点名 + 来源名 + 提取码同行）。
+it('D4：下载来源在正文上方，且整行是可新标签页打开的转链链接', async () => {
+  const { container } = render(<TopicView {...viewProps({ sourcesLinked: true })} />);
+  await screen.findByTestId('comment-total');
+
+  const link = screen.getByRole('link', { name: /百度网盘/ });
+  const body = container.querySelector('[data-testid=topic-main] .prose');
+  expect(body).toBeTruthy();
+  // ① 顺序：来源那一行必须排在正文之前（原来它在正文与评论区之间）。
+  //    用「来源标题 == FOLLOWING 正文」而不是拿 testid 找块：判据落在**用户看得见的位置关系**上。
+  const heading = screen.getByRole('heading', { name: /下载来源/ });
+  expect(heading.compareDocumentPosition(body!) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+
+  // ② 一行装下「图标 + 站点名 + 来源名 + 提取码」：站点名与来源名是同一个 <a> 里的两格
+  expect(link.textContent).toContain('第三章整合包');
+  expect(link.textContent).toContain('提取码');
+  expect(link.textContent).toContain('sc2c');
+  expect(link.getAttribute('href')).toBe(TOPIC.sources[0]!.go_path);
+  // ③ 当前页不许被带走（转链是服务端 302 到网盘）：新标签页 + noopener
+  expect(link.getAttribute('target')).toBe('_blank');
+  expect(link.getAttribute('rel')).toBe('noopener');
+});
+
+// D8（2026-10-14 用户实测）：帖子里两个发帖者都点不进主页 —— 私信/看 TA 的帖子整条测不了。
+it('D8：正文头部与右栏作者卡的头像/昵称都点得进 /u/<handle>', async () => {
+  const { container } = render(<TopicView {...viewProps()} />);
+  await screen.findByTestId('comment-total');
+  const cards = [...container.querySelectorAll('[data-testid=topic-main] a[href], [data-testid=topic-rail] a[href]')].filter(
+    (a) => a.getAttribute('href') === '/u/demo-admin' && a.textContent.includes('示范管理员'),
+  );
+  // 两处各一条（正文头部的作者行 + 右栏作者卡的头像/昵称），而不是只有底下一行「查看主页」
+  expect(cards.length).toBeGreaterThanOrEqual(2);
 });
 
 it('举报：弹层里先选事由才让提交，提交后把 target 一起交给宿主', async () => {

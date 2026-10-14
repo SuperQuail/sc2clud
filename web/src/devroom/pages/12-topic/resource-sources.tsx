@@ -34,8 +34,12 @@ function siteOf(s: TopicSource): { label: string; Icon: LucideIcon } {
   return SOURCE_SITE[key] ?? { ...SOURCE_SITE.other!, label: s.label };
 }
 
-// linked=true 时整个 logo 是 <a href={go_path}>：点下去由服务端计数后 302 到真实地址，前端不拼外链。
-// 房间（/dev/devroom/）没有这个端点，点它会走到房间外 —— 所以房间里传 false，渲染成不可导航的圆标。
+// 一行 = 站点图标 + 站点名 + 来源名 + 提取码 + 维护状态。
+// **为什么是紧凑一行而不是一排圆形 logo**（D4，2026-10-14 用户实测）：原来一列 116px 的方块阵占掉
+// 三行高度、还得让人先读懂控件；资源帖的读者要的是「点哪、提取码是多少」，一行就够。
+// 链接版（linked）整行是一个 <a href={go_path}>：点下去由服务端计数后 302 到真实地址，前端不拼外链；
+// **必须 target=_blank rel=noopener** —— 转链会把当前页带到网盘去，读者回来时帖子就没了（D4 第二条）。
+// 房间（/dev/devroom/）没有这个端点，点它会走到房间外 —— 所以房间里传 false，渲染成不可点的行（原因写在 title）。
 export function ResourceSources({ sources, linked = false }: { sources: TopicSource[]; linked?: boolean }) {
   if (sources.length === 0) {
     return (
@@ -48,74 +52,72 @@ export function ResourceSources({ sources, linked = false }: { sources: TopicSou
     );
   }
   return (
-    <section className='flex flex-col gap-2'>
+    <section data-testid='topic-sources' className='flex flex-col gap-2'>
       <h2 className='flex items-center gap-2 text-[13px] font-semibold text-foreground'>
         <CloudDownload aria-hidden className='size-4 text-muted-foreground' />
         下载来源
-        <span className='text-[12px] font-normal text-muted-foreground'>共 {sources.length} 个 · 点图标直接进网页</span>
+        <span className='text-[12px] font-normal text-muted-foreground'>共 {sources.length} 个 · 点名称新标签页打开</span>
       </h2>
-      <ul className='flex flex-wrap items-stretch gap-x-2 gap-y-3'>
+      <ul className='flex flex-col gap-1'>
         {sources.map((s) => (
-          <SourceTile key={s.id} source={s} linked={linked} />
+          <SourceRow key={s.id} source={s} linked={linked} />
         ))}
       </ul>
     </section>
   );
 }
 
-// 一列 = 圆形 logo + 站点名 + 弱化元信息（大小 / 维护状态 / 提取码）。
-// 整个 logo 就是一个 <a href={go_path}>：点下去由服务端计数后 302 到真实地址，前端不拼外链。
-// 站点名不放在圆里——中文站名比图标宽得多，塞进圆圈就只能缩到 9px。
-// 高度用上对齐（items-start + 内容贴底）：一列多一行提取码时，圆不会被顶下去。
-function SourceTile({ source, linked }: { source: TopicSource; linked: boolean }) {
+function SourceRow({ source, linked }: { source: TopicSource; linked: boolean }) {
   const site = siteOf(source);
   const { Icon } = site;
-  // 圆标的两种形态共用同一套 class：链接版是可聚焦的 <a>（带上 hover 与焦点环），
-  // 房间版是 aria-disabled 的 <span>，原因写在 title 里（盲审一号：不可点要说清为什么）。
-  const circle =
-    'grid size-11 shrink-0 place-items-center rounded-full bg-card text-muted-foreground outline-none ring-1 ring-border';
+  // 一行共用同一套 class：链接版是可聚焦的 <a>（带 hover 与焦点环），房间版是 aria-disabled 的行
+  const row =
+    'flex min-w-0 flex-1 items-center gap-2 rounded-md px-2 py-1.5 text-left ring-1 ring-border outline-none';
+  const inner = (
+    <>
+      <Icon aria-hidden className='size-4 shrink-0 text-muted-foreground' />
+      <span className='shrink-0 text-[12px] font-medium text-foreground'>{site.label}</span>
+      <span className='min-w-0 flex-1 truncate text-[12px] text-muted-foreground' title={source.label}>
+        {source.label}
+      </span>
+      {source.extraction_code ? (
+        <span className='inline-flex shrink-0 items-center gap-1 text-[11px] text-muted-foreground'>
+          <KeyRound aria-hidden className='size-3 shrink-0' />
+          提取码 <span className='font-mono tabular-nums text-foreground'>{source.extraction_code}</span>
+        </span>
+      ) : null}
+      <span className='hidden shrink-0 items-center gap-1 text-[11px] text-muted-foreground sm:inline-flex'>
+        {source.size}
+        <Middot />
+        <UpkeepFlag upkeep={source.upkeep} checkedAt={source.verified_at} />
+      </span>
+    </>
+  );
+  if (!linked) {
+    return (
+      <li
+        aria-disabled='true'
+        title={protoTitle('下载转链端点') + ' · ' + site.label + ' · ' + source.label}
+        className={row + ' cursor-not-allowed'}
+      >
+        {inner}
+        <span className='sr-only'>{'未做：打开 ' + site.label + '：' + source.label}</span>
+      </li>
+    );
+  }
   return (
-    <li className='flex w-[116px] flex-col items-center gap-1.5 text-center'>
-      {linked ? (
-        <a
-          href={source.go_path}
-          title={'打开 ' + site.label + '：' + source.label}
-          className={circle + ' hover:ring-primary focus-visible:ring-[3px] focus-visible:ring-ring/50'}
-        >
-          <Icon aria-hidden className='size-6' />
-          <span className='sr-only'>{'打开 ' + site.label + '：' + source.label}</span>
-        </a>
-      ) : (
-        <span
-          aria-disabled='true'
-          title={protoTitle('下载转链端点') + ' · ' + site.label + ' · ' + source.label}
-          className={circle + ' cursor-not-allowed'}
-        >
-          <Icon aria-hidden className='size-6' />
-          <span className='sr-only'>{'未做：打开 ' + site.label + '：' + source.label}</span>
-        </span>
-      )}
-      <span className='w-full truncate text-[12px] font-medium text-foreground' title={source.label}>
-        {site.label}
-      </span>
-      <span className='mt-auto flex w-full flex-col items-center text-[11px] leading-4 text-muted-foreground'>
-        <span className='inline-flex items-center gap-1 tabular-nums' title={'最后核对于 ' + source.verified_at}>
-          {source.size}
-          <Middot />
-          <UpkeepFlag upkeep={source.upkeep} checkedAt={source.verified_at} />
-        </span>
-        {/* 没有提取码的列也保留第二行（只是空着）：否则同一排里有的列两行、有的一行，圆就不齐 */}
-        <span className='flex h-4 items-center'>
-          {source.extraction_code ? (
-            <>
-              <KeyRound aria-hidden className='size-3 shrink-0' />
-              <span className='ml-1'>
-                提取码 <span className='font-mono tabular-nums text-foreground'>{source.extraction_code}</span>
-              </span>
-            </>
-          ) : null}
-        </span>
-      </span>
+    <li className='flex'>
+      <a
+        href={source.go_path}
+        // 新标签页：点下去是服务端 302 到网盘/GitHub，当前页不该被带走
+        target='_blank'
+        rel='noopener'
+        title={'在新标签页打开 ' + site.label + '：' + source.label}
+        className={row + ' hover:ring-primary focus-visible:ring-[3px] focus-visible:ring-ring/50'}
+      >
+        {inner}
+        <span className='sr-only'>{'（新标签页）打开 ' + site.label + '：' + source.label}</span>
+      </a>
     </li>
   );
 }

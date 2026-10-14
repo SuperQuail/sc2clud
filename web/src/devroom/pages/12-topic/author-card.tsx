@@ -14,16 +14,24 @@ export function AuthorCard({ author, profileHref }: { author: TopicAuthor; profi
   return (
     <section className='flex flex-col gap-3 rounded-lg border border-border bg-card p-4'>
       <div className='flex justify-center border-b border-border pb-3'>
-        {/* badges='below' 而不是 'after'：假名单里的昵称变长了（「示范管理员」「虚空辉光舰」），
-            inline 排法下昵称的可读宽度被角色/头衔徽标挤掉、会截成「示…」；
-            徽标换到名字下一行后昵称独占整行（截图发现的，不是猜的）。 */}
-        <UserBadge
-          user={{ handle: author.handle, nickname: author.nickname, avatar: author.avatar, role: author.role, title: author.title }}
-          layout='stacked'
-          size='xl'
-          showHandle
-          badges='below'
-        />
+        {/* D8：头像与昵称都能点进主页（原来整个右栏只有底下一行「查看主页」，
+            读者看着头像点不动）。链接由宿主给（房间指 11-profile，真站指 /u/<handle>）。 */}
+        <a
+          href={profileHref}
+          title={'查看 ' + author.nickname + ' 的主页'}
+          className='inline-flex rounded-[3px] outline-none hover:opacity-90 focus-visible:ring-[3px] focus-visible:ring-ring/50'
+        >
+          {/* badges='below' 而不是 'after'：假名单里的昵称变长了（「示范管理员」「虚空辉光舰」），
+              inline 排法下昵称的可读宽度被角色/头衔徽标挤掉、会截成「示…」；
+              徽标换到名字下一行后昵称独占整行（截图发现的，不是猜的）。 */}
+          <UserBadge
+            user={{ handle: author.handle, nickname: author.nickname, avatar: author.avatar, role: author.role, title: author.title }}
+            layout='stacked'
+            size='xl'
+            showHandle
+            badges='below'
+          />
+        </a>
       </div>
 
       <div className='flex flex-col gap-2'>

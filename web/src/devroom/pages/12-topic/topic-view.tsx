@@ -236,6 +236,7 @@ export function TopicView({
           <TopicMeta topic={topic} boardHref={boardHref(board.slug)} />
           <MainColumn
             topic={topic}
+            authorHref={authorHref}
             comments={comments}
             commentTotal={commentTotal}
             candidates={candidates}

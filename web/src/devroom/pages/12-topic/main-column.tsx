@@ -62,6 +62,7 @@ export function MainColumn({
   replyPrompt,
   commentsFallback,
   sourcesLinked = false,
+  authorHref,
 }: {
   topic: TopicDetail;
   comments: CommentData[];
@@ -121,6 +122,8 @@ export function MainColumn({
   commentsFallback?: ReactNode;
   /** 下载来源能不能点：房间没有转链端点，真站有 */
   sourcesLinked?: boolean;
+  /** 发帖者主页地址（D8：作者名与头像都要能点进去） */
+  authorHref: string;
 }) {
   return (
     <div className='flex flex-col gap-4 rounded-lg border border-border bg-card p-4 sm:p-5'>
@@ -146,22 +149,32 @@ export function MainColumn({
           revisionView={reviewRevision}
         />
         <div className='border-b border-border pb-3'>
-          <UserBadge
-            user={{ handle: topic.author.handle, nickname: topic.author.nickname, avatar: topic.author.avatar, role: topic.author.role, title: topic.author.title }}
-            size='md'
-            showHandle
-          />
+          {/* D8：头像与昵称**都能点进主页** —— 点不动就没法从帖子页走到某个人的主页，
+              私信/查看 TA 的帖子这些下游功能因此整条测不了。链接由宿主给（组件不认识路由）。 */}
+          <a
+            href={authorHref}
+            title={'查看 ' + topic.author.nickname + ' 的主页'}
+            className='inline-flex rounded-[3px] outline-none hover:opacity-90 focus-visible:ring-[3px] focus-visible:ring-ring/50'
+          >
+            <UserBadge
+              user={{ handle: topic.author.handle, nickname: topic.author.nickname, avatar: topic.author.avatar, role: topic.author.role, title: topic.author.title }}
+              size='md'
+              showHandle
+            />
+          </a>
         </div>
       </header>
 
-      <TopicBody contentHtml={topic.content_html} />
-
+      {/* 下载来源在正文**上方**（D4，2026-10-14 用户实测）：资源帖的读者第一件事就是「去哪下」，
+          滚到正文末尾才看到它等于没有。守护说明跟在来源后面（它说的是来源的维护状态）。 */}
       {topic.sources.length > 0 ? (
         <div className='flex flex-col gap-2'>
           <ResourceSources sources={topic.sources} linked={sourcesLinked} />
           <UpkeepNote updatedAt={topic.updated_at} />
         </div>
       ) : null}
+
+      <TopicBody contentHtml={topic.content_html} />
 
       {/* 正文末尾的反馈入口：正文与评论之间，读者读完正文正好接住。
           四类反馈按钮就在这里（普通用户不认识「Issue」，所以不给黑话入口）。 */}
