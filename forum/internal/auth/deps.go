@@ -50,6 +50,16 @@ type (
 		Allow(ctx context.Context, key string, limit int, window time.Duration) (ok bool, retryAfter time.Duration, err error)
 	}
 
+	// AvatarURL 由 media.Service 实现（与 user 域**同一个实现者**）：把 users.avatar_hash 的裸哈希
+	// 拼成前端可直接用的完整路径 /img/<hash>，没设过头像时回落到默认头像池 —— 与 GET /users/{handle} 逐字同形。
+	//
+	// 为什么 auth 需要它（2026-10-14 dev 实测 D2）：/me 原来直接下发列值（**裸 64 位 hash**），
+	// 前端补上站根前缀之后变成 /dev/<hash> → 404，症状是「**顶栏头像裂图而个人主页正常**」。
+	// 同一个头像在两个地方必须长得一样，所以两条路径走同一份实现。
+	AvatarURL interface {
+		Avatar(ctx context.Context, userID int64, hash, smallHash, defaultHash string) (avatar, avatarSmall string)
+	}
+
 	// Queue 是 platform/queue.Queue 的入队侧。任务类型常量在 platform/queue 一处定义。
 	Queue interface {
 		Enqueue(ctx context.Context, t queue.Task) error

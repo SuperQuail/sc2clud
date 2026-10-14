@@ -499,13 +499,20 @@ func (s *Service) Me(ctx context.Context, actor *authz.Actor) (*MeResult, error)
 	if err != nil {
 		return nil, err
 	}
+	// 走 media 拼 /img/<hash> 并回落默认头像池；没注入实现时留空串（前端显示首字母占位，不是裂图）。
+	var avatar, avatarSmall string
+	if s.avatars != nil {
+		avatar, avatarSmall = s.avatars.Avatar(ctx, u.ID, deref(u.AvatarHash), deref(u.AvatarSmallHash), "")
+	}
 	return &MeResult{
-		ID:            u.PublicID.String(),
-		Handle:        u.Username,
-		Nickname:      displayName(u.Nickname, u.Username),
-		Email:         u.Email,
-		Avatar:        deref(u.AvatarHash),
-		AvatarSmall:   deref(u.AvatarSmallHash),
+		ID:       u.PublicID.String(),
+		Handle:   u.Username,
+		Nickname: displayName(u.Nickname, u.Username),
+		Email:    u.Email,
+		// 头像**必须走 media 拼路径**（D2）：直接下发裸哈希会让前端拼成 /dev/<hash> → 裂图，
+		// 而个人主页那一份是 /img/<hash>。同一个头像在两处必须同形，所以与 user 域共用同一个实现。
+		Avatar:        avatar,
+		AvatarSmall:   avatarSmall,
 		Bio:           u.Bio,
 		Status:        u.Status,
 		EmailVerified: u.EmailVerifiedAt != nil,

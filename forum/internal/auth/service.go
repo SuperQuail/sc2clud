@@ -25,6 +25,7 @@ type Service struct {
 	captcha Captcha
 	limiter Limiter
 	queue   Queue
+	avatars AvatarURL
 
 	hash  *hasher
 	touch *toucher
@@ -44,6 +45,9 @@ type Deps struct {
 	Captcha Captcha
 	Limiter Limiter
 	Queue   Queue
+	// Avatars 由 media 填（D2：/me 的头像要与 /users/{handle} 同形）。nil 时不拼路径，
+	// 下发空串 —— 前端回落到首字母占位，而不是一张裂图。
+	Avatars AvatarURL
 	Log     *slog.Logger
 	// TouchFlush 是测试用的钩子：默认写库（设计 §6.5 的两条批量 UPDATE）。
 	TouchFlush func(ctx context.Context, pairs []TouchPair) error
@@ -71,6 +75,7 @@ func NewService(cfg *config.Config, dbc *ent.Client, clk clock.Clock, d Deps) (*
 	s := &Service{
 		cfg: cfg, db: dbc, clk: clk, log: log,
 		users: d.Users, mail: d.Mail, mailer: d.Mailer, captcha: d.Captcha,
+		avatars: d.Avatars,
 		limiter: d.Limiter, queue: d.Queue, hash: h, codes: newAttemptGuard(),
 		diag: d.Diagnostics,
 	}

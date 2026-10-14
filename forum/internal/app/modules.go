@@ -108,6 +108,8 @@ func newModules(ctx context.Context, cfg *config.Config, in *Infra) (*Modules, e
 	m.Auth, err = auth.NewService(cfg, in.DB, in.Clock, auth.Deps{
 		Users: m.User, Mail: m.Mail, Mailer: m.Mail, Captcha: m.Captcha,
 		Limiter: in.Limiter, Queue: in.Queue, Log: in.Log,
+		// 头像走与 user 域同一份实现（D2）。m.Media 在 100 行前已装配好。
+		Avatars: m.Media,
 	})
 	if err != nil {
 		return nil, err

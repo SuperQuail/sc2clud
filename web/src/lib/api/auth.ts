@@ -27,11 +27,22 @@ export type Session = {
 
 export type Captcha = { id: string; image_base64: string };
 
+/**
+ * 头像 URL 的唯一换算口。
+ *
+ * 契约是**站内绝对路径** `/img/<hash>`（与 GET /users/{handle} 同一份实现）。
+ * 但 `/me` 一度只下发**裸 64 位哈希**（D2，2026-10-14 dev 实测）：补上 base 之后变成 `/dev/<hash>` → 404，
+ * 症状是「顶栏头像裂图、而个人主页正常」——**同一个头像在两个地方长得不一样**。
+ * 后端已改成走 media 拼路径；这一层对两种形状都兜住：一个端点写错不该在界面上裂一张图。
+ */
+function avatarSrc(v: string): string {
+  return appPath(/^[0-9a-f]{64}$/i.test(v) ? 'img/' + v : v);
+}
+
 export async function fetchMe(signal?: AbortSignal): Promise<Session | null> {
   const s = await api<Session | null>('me', { signal });
-  // 后端给的 avatar 是**站内绝对路径**（/img/<hash>）。站点可能挂在 /dev/ 下，前端必须补上 base，
-  // 否则浏览器会去站外拿 /img/… → 顶栏头像 404（dev 上实测就是这个现象）。
-  return s && s.avatar ? { ...s, avatar: appPath(s.avatar) } : s;
+  // 站点可能挂在 /dev/ 下，前端必须补上 base，否则浏览器会去站外拿 /img/… → 顶栏头像 404。
+  return s && s.avatar ? { ...s, avatar: avatarSrc(s.avatar) } : s;
 }
 
 export function fetchCaptcha(signal?: AbortSignal): Promise<Captcha> {

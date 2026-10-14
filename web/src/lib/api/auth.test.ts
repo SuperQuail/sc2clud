@@ -19,7 +19,7 @@ afterEach(() => {
 // 这条用例是那份缺陷的可执行形态：**先红**。等后端把 /me 的 Avatar 交给 user.AvatarURL 拼成
 // `/img/<hash>`（与 /users/{handle} 用同一份实现、同样回落默认头像池）之后，它自动转绿。
 // 后半段同时钉住「不要重复补前缀」：已带 base 的值必须原样穿过。
-it('D2：/me 的头像下发必须是 /img/<hash>（裸哈希会让顶栏拼成 /dev/<hash> → 404）', async () => {
+it('D2：/me 的头像不许拼成 /dev/<hash>（裸哈希前端也要兜成 /img/<hash>）', async () => {
   // BASE 是模块加载时从 <base href> 读的，而缺陷只在 /dev/ 前缀下可见（生产 BASE=/ 时补不出来前缀），
   // 所以照 url.test.ts 的写法：先换 base、清模块，再动态 import。
   vi.resetModules();
@@ -27,8 +27,12 @@ it('D2：/me 的头像下发必须是 /img/<hash>（裸哈希会让顶栏拼成 
   const mod = await import('./auth');
   mockFetch([{ body: { data: { handle: 'Alenger', nickname: '爱兰琪尔', avatar: '8bec38b093bbc516c0de99f21466ede0d7cad56eddb1f5fabce3c475ec068604' } } }]);
   const now = await mod.fetchMe();
-  // 旧行为：裸哈希被 appPath 当成站点相对路径 → /dev/<64位hex>（真站 404）
-  expect(now?.avatar).not.toContain('8bec38b093bbc516c0de99f21466ede0d7cad56eddb1f5fabce3c475ec068604');
+  // 判据是**形状**不是「含不含哈希」：修好之后 URL 里当然有那个哈希，关键是它带 /img/ 前缀。
+  // 旧行为是 /dev/8bec38b0…（补了 base 但没补 /img/，浏览器按站点相对路径取 → 真站 404）。
+  // 两层都钉：后端该发 /img/<hash>（契约），前端对裸哈希也要兜住（一个端点写错不该在界面上裂一张图）。
+  const HASH = '8bec38b093bbc516c0de99f21466ede0d7cad56eddb1f5fabce3c475ec068604';
+  expect(now?.avatar).toBe('/dev/img/' + HASH);
+  expect(now?.avatar).not.toBe('/dev/' + HASH);
 
   // 后端**应该**下发的形状（= /users/{handle} 那一份：media 的 urlOf 拼过 /img/）
   mockFetch([{ body: { data: { handle: 'Alenger', nickname: '爱兰琪尔', avatar: '/img/8bec38b093bbc516c0de99f21466ede0d7cad56eddb1f5fabce3c475ec068604' } } }]);

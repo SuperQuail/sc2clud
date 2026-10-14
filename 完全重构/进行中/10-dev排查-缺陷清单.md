@@ -18,6 +18,20 @@
 改动流程固定为：**① 改 View → ② 在 DevRoom 页出图确认 → ③ 产品宿主跟着改（只改传参）→ ④ 产品页出图对照**。
 两个入口看同一页必须**逐像素一致**（除数据不同）。
 
+**§0.1 硬约束：View 里不许 `import` react-router**（FIX-IMG 2026-10-14 实测）。
+DevRoom **不在 `RouterProvider` 里**，View 一旦 import react-router（`useNavigate` / `Link` / `useSearchParams`）
+就在房间里整块抛 `Cannot destructure property 'basename' of 's.useContext(...)'` —— 而产品页正常，
+所以这类错误**只在房间暴露**（这正是"先在房间改"的价值）。
+**写法**：View 只收「链接注入器」这类纯 prop，落地件由宿主给 ——
+
+```tsx
+type LinkLike = (p: { href: string; children: ReactNode; className?: string }) => ReactNode;
+// View：<LinkLike href={...} />，缺省实现是普通 <a>
+// 宿主（产品）：link={(p) => <Link to={...} {...p} />}
+```
+
+已按这条落地的先例：`03-navigation/board-rail.tsx` 的 `link`、`10-messages/notice-center-view` 的同类注入。
+
 **违反这条的典型**（本轮要顺手收掉的）：`routes/topic.tsx` 546 行里混着版面、`routes/issues.tsx` 540 行同理；
 反例（做得对的）：`routes/topic.tsx` 的正文区、`10-messages` 的 `MessagesPanel`、`14-home` 的卡片族。
 
@@ -30,8 +44,8 @@
 | # | 现象 | 根因（待核 = 我推的） | 验收标准 |
 |---|---|---|---|
 | **D1** | 收款码选 1.3MB 的图：**直接拒绝**，且**同一句提示出现两次** | 待核：① 收款码的限额走的是 `maxSize`（0.5MB）而**没走压缩通道**（`image-pipeline` 的 compress/目标字节没接）；② 重复提示 = `image-uploader` 内部 `error` 与宿主 `onError` **各渲染了一次** | 1.3MB 的图**自动压缩后加进来**（不再直接拒）；任何提示**只出现一次**；断言两条 + 出图 |
-| **D2** | 个人主页头像能加载，**顶栏右上角头像裂图** | 待核：顶栏走 `session.session.avatar`，它与 `fetchMe` 补 base 的那条路径**不是同一份**（`shell.tsx` 用的是缓存里的原值 `/img/<hash>`，在 `/dev/` 下 404） | 顶栏头像与主页头像是同一个 URL；出图看顶栏 |
-| **D3** | 左侧分区列表**没有任何图片**；**非分区页面完全没有图片** | 待核：① 迁移没迁分区封面（`boards.cover_hash` 全空 → 数据问题，要补迁移/回填）；② `BoardRail` 本来就没渲染封面（设计稿 03-navigation 里有） | 分区列表显示封面（有数据时）；无数据时显示一个**稳定的占位**而不是空白；数据侧给回填脚本或明确「不迁」的结论 |
+| **D2** ✅已修 | 个人主页头像能加载，**顶栏右上角头像裂图** | **实测确认（不是渲染问题）**：两条 URL 来源不同 —— 主页走 `user.Profile.Avatar`（media 的 `urlOf()` 拼 `/img/<hash>`），而 `GET /me` 直接下发**裸 64 位 hash**（`auth/account.go:507-508`），前端补 base 后变成 `/dev/<hash>` → 404。`shell.tsx` 不需要改。 | 已修：**后端** `auth.Deps` 加 `AvatarURL` 端口并用它（与 user 域同一份 media 实现 + 默认头像池回落）；**前端** `fetchMe` 对裸哈希也兜成 `img/<hash>`。契约断言（`auth.test.ts`）7/7 绿 |
+| **D3** 渲染✅/数据❌ | 左侧分区列表**没有任何图片**；**非分区页面完全没有图片** | **口径已更正（FIX-IMG 实测，与我原来的推断相反）**：`GET /dev/api/v1/boards` 五个分区 `cover_hash` 全空，但「`数据迁移审计.md:504-513`」写着老站 `section_covers` **0 行**、`legacy-migration.sql` 的 boards INSERT 也没有该列 ⇒ **没有可回填的老数据，不是迁移漏了**。渲染侧已完成：`BoardRail` 拆成 View（`03-navigation/board-rail.tsx`，含封面位 + 首字兜底）+ 极薄宿主。 | 渲染已达标（无数据时是稳定占位、不是空白）。**要真封面只有一个办法（运维/管理动作）**：管理端「分区管理 → 换封面」逐区上传一次（链路已通：`POST /me/cover` → `PATCH /admin/boards/{id}`），素材在 `web/public/art/starcraft/nav-*.webp`。**不做也能上线** |
 
 ### 帖子内容页 / Issue
 
