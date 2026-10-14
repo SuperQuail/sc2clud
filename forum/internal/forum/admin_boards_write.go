@@ -13,6 +13,7 @@ import (
 	"forum/internal/platform/apperr"
 	"forum/internal/platform/db"
 	"forum/internal/platform/idgen"
+	"forum/internal/platform/image"
 )
 
 // 管理端分区的写路径（交接单 C2 / 界面需求 §5.10）。权限点一律 board.manage。
@@ -32,6 +33,25 @@ const (
 // 而管理端写路径有 5 处事务，收一个方法少写 5 遍参数。
 func (s *Service) withTx(ctx context.Context, fn func(tx *ent.Tx) error) error {
 	return db.WithTx(ctx, s.db, fn)
+}
+
+// incBoardCover / decBoardCover 是分区封面维护引用计数的两个薄壳（d5 §4.3）。
+//
+// deps.Media 为 nil 时不动作 —— 测试台与「只关心分区、不关心图片」的调用方不需要它；
+// 但**生产装配必须给**（app/modules.go），否则换掉的旧封面永远留在盘上：
+// GC 只收 refcount 归零的行，而论坛域挂了 hash 却不计数，那张图的行永远停在 1。
+func (s *Service) incBoardCover(ctx context.Context, tx *ent.Tx, hash string) error {
+	if s.deps.Media == nil {
+		return nil
+	}
+	return s.deps.Media.IncRefTx(ctx, tx, image.Hash(hash))
+}
+
+func (s *Service) decBoardCover(ctx context.Context, tx *ent.Tx, hash string) error {
+	if s.deps.Media == nil {
+		return nil
+	}
+	return s.deps.Media.DecRefTx(ctx, tx, image.Hash(hash))
 }
 
 // CreateBoard 建一个分区。
@@ -80,6 +100,12 @@ func (s *Service) CreateBoard(ctx context.Context, actor *authz.Actor, in Create
 			return err
 		}
 		createdID = b.ID
+		// 封面挂上去了 → 在同一事务里 +1（d5 §4.3：引用行在谁的表里，谁负责调 IncRefTx）。
+		if in.CoverHash != nil && *in.CoverHash != "" {
+			if err := s.incBoardCover(ctx, tx, *in.CoverHash); err != nil {
+				return err
+			}
+		}
 		// public_id 是迁移 0050 加的一列，ent 的 Board 实体里没有它（不重新生成 ent 代码：
 		// 管理端的读路径本来就全走本域的 pgsql）。这里读回它只为了写审计的目标 ID。
 		if err := pgsql.QueryRow(ctx, tx, "SELECT public_id::text FROM boards WHERE id = $1", b.ID).
@@ -174,10 +200,28 @@ func (s *Service) UpdateBoard(ctx context.Context, actor *authz.Actor, publicID 
 			changed["min_post_level"] = *in.MinPostLevel
 		}
 		if in.CoverHash != nil {
+			old := ""
+			if before.CoverHash != nil {
+				old = *before.CoverHash
+			}
 			if *in.CoverHash == "" {
 				upd.ClearCoverHash() // 空串 = 置 NULL（d3-forum：cover_hash 为空就是没有封面）
 			} else {
 				upd.SetCoverHash(*in.CoverHash)
+			}
+			// 引用计数跟着封面走（d5 §4.3）：换图 = 旧图 −1、新图 +1；清空 = 旧图 −1。
+			// **同一张图重复保存时不加减**（否则每保存一次就多欠一次，refcount 会漂到收不回去）。
+			if old != *in.CoverHash {
+				if old != "" {
+					if err := s.decBoardCover(ctx, tx, old); err != nil {
+						return err
+					}
+				}
+				if *in.CoverHash != "" {
+					if err := s.incBoardCover(ctx, tx, *in.CoverHash); err != nil {
+						return err
+					}
+				}
 			}
 			changed["cover_hash"] = *in.CoverHash
 		}

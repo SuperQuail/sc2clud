@@ -5,6 +5,7 @@ import (
 	"time"
 
 	ent "forum/internal/ent"
+	"forum/internal/platform/image"
 	"forum/internal/platform/queue"
 )
 
@@ -74,6 +75,17 @@ type UserBrief struct {
 	Status      string
 }
 
+// Media 由 media.Service 实现（d5 §4.3）：**引用计数只有这一个入口**，别的域不许自己写 images 的 SQL。
+//
+// 为什么分区封面必须走它（2026-10-14 补）：图片经 /me/cover 上传时那一行 refcount=1，
+// 而论坛域把 hash 挂到 boards.cover_hash 上时既没 +1、换图/清空时也没 −1 ——
+// 结果是**换掉的旧分区封面永远留在盘上**（GC 只收 refcount 归零的行，永远轮不到它）。
+// 注意传的是**裸 hash 字符串**（boards.cover_hash 存的就是它），不是图片 URL。
+type Media interface {
+	IncRefTx(ctx context.Context, tx *ent.Tx, h image.Hash) error
+	DecRefTx(ctx context.Context, tx *ent.Tx, h image.Hash) error
+}
+
 // Deps 是本域的全部外部依赖。app 层组装；测试里传假实现。
 type Deps struct {
 	Users   UserLookup
@@ -81,6 +93,7 @@ type Deps struct {
 	Queue   Queue
 	Counter Counter
 	Limit   Limiter
+	Media   Media
 	// TZ 是站点时区（D7）：分区列表的「今日」按它算零点。nil = 兜底 Asia/Shanghai。
 	// 由 app 层从 config 解析好传进来 —— 本域不 import config（域与配置解耦，测试好造）。
 	TZ *time.Location
