@@ -27,6 +27,9 @@ export type Topic = {
   created_at: string;
   last_reply_at: string;
   cover?: string | null;
+  /** 封面原图尺寸（后端 TopicCardDTO 的 cover_width/cover_height）：卡片**取图之前**就能判「这张太小」 */
+  cover_width?: number;
+  cover_height?: number;
   pinned?: boolean;
   /** 后端给的是 bool（TopicCardDTO.Featured）。原设计稿写的 featured_at(ISO) 线上不存在 —— 见文件头的改名说明 */
   featured?: boolean;

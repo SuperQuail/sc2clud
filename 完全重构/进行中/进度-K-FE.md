@@ -9,11 +9,11 @@
 ## 队列（照 08 的顺序，一条一提交）
 
 - [x] L1 打赏/赞助整块前端接线（收款码上传/删除、打赏、我的打赏记录、收款码可见性、SponsorCard/RewardPanel 接真数据）
-- [ ] L2 首页/分区页「最热」排序（**阻塞**：等 K-BE 交 `sort=hot` 与字段名）
+- [x] L2 首页「最热」排序（K-BE 交回契约后已接线：`sort=hot` 透传，游标由服务端算）
 - [ ] L6 作者侧「打回修改」横幅 + 「查看最后过审版本」入口（**阻塞**：等 K-BE 加第四态 + 最后过审版本字段）
-- [ ] J3 只显示点赞数；点踩数据按身份渲染（**阻塞**：等 K-BE 决定踩的下发口径）
-- [ ] J5 Issue 检索/筛选界面补全（**阻塞**：等 K-BE 的三个新字段）
-- [ ] J9 卡片用上 `cover_width`/`cover_height`（**阻塞**：等 K-BE 加字段）
+- [~] J3 踩的下发口径已按 K-BE 的 DTO 接上（不下发就看不见）；**把共享件 `ui/comment` 的 `dislikes` 改成可选要 Lead 授权**（冻结目录）
+- [x] J5 Issue 检索/筛选：`?q=` 发后端 + `?sort=old`（最早创建）+ 提示文案改实话
+- [x] J9 卡片用上 `cover_width`/`cover_height`（取图之前就判「太小」，不再闪糊图）
 - [~] L8 私信：Unicode 表情不被正文链路破坏**已做**（含会红用例）；发图片**阻塞**（media 没有通用图片上传端点）+ 图片按钮已改成禁用+原因
 - [x] L7 「已提交复审」反馈真页面验证（出图看过）+ G5 消息屏蔽词 WIP 标记
 - [x] L3 / L4 / L9 只写文档（AI 两套提示词 + temperature、Issue 标签表、搜索高亮/历史/热门词）→ `界面施工-后端需求变动.md §6.5`
@@ -26,7 +26,14 @@
 - **L2**：需要 K-BE 的 `sort=hot` + 新游标键；字段名要照它交的变更表。
 - **L6**：需要 `ck_topics_review_state` 加第四态（独立分类）与「最后过审版本」的存储/DTO 字段。
 - **J3**：需要 K-BE 决定踩数（`dislike_count`）对谁下发；**接口不下发就不显示**，不在前端藏。
-- **J5 / J9**：需要 K-BE 的 Issue 检索字段与 `cover_width`/`cover_height`。
+- **J5 / J9**：**已解除**（K-BE 已交付，前端已接线，见记录最后一条）。
+- **J6 的类型下拉还写死四类**：`forum/internal/forum/issues.go:120` 有 `Service.IssueKinds`，
+  但 `handler.go` **没有挂路由**（`GET /api/v1/issues/kinds` 不存在）—— 前端要「值域数据驱动」
+  就必须先有这个只读端点。等 K-BE 挂上。
+- **J3 的最后一格要 Lead 授权**：`web/src/ui/comment/**` 是冻结目录（不在我的文件作用域）。
+  现在 `CommentData.dislikes` 是必填 `number`，所以「后端不下发」这一路只能传 0 —— 用户看到的
+  结果是对的（那一格不显示数字），但**类型在说谎**：想让它如实，要把那个字段改成 `dislikes?: number`
+  并把 `CommentActions` 的 `{dislikes || ''}` 改成「只有 number 才渲染」。
 - **L8**：`forum/internal/media/handler.go` 只有三条上传端点（`/me/avatar`、`/me/payment-channels`、
   `POST /topics/{id}/images`，后者绑在 topic 上）—— **没有通用图片上传端点**，私信发图无通道可复用。
   且 `message.MessageDTO.body` 是 `varchar(2000)` 纯文本（`message/service.go:133` `TrimSpace` + 2000 rune 上限），
@@ -145,3 +152,35 @@
   - 下一步：**等 K-BE 交契约**（L2 / L6 / J3 / J5 / J9）与 media 的私信图片通道；交下来后照
     `完全重构/进行中/08-拍板记录.md` 对应那条直接接线，前端不需要新的论证。
   - 阻塞：同上。
+
+---
+
+- [x] **K-BE 交回契约后接线：L2 / J9 / J3 / J5**（一条提交；K-BE 的 `进度-K-BE.md` 把这几条标成「下一步：前端接线」）。
+  ① **L2 最热**：`routes/home.tsx` 的 `SORTS` 加回第三档 `{key:'hot', label:'最热'}`，
+     `lib/api/forum.ts` 的 `TopicFilter.sort` 值域补 `'hot'`。游标**不要前端管** —— K-BE 把它算好了
+     （`pgsql.hotScoreSQL` + `forum/cursor.go` 的 `hotCursor`），前端只透传 `sort` 与 `cursor`。
+  ② **J9 封面尺寸**：`devroom/pages/14-home/mock.ts` 的 `Topic` 加 `cover_width`/`cover_height`，
+     `routes/_parts/mappers.ts` 从 `TopicCardDTO` 带过来，`topic-parts.tsx` 的 `TopicCover`
+     改成**先看后端给的尺寸**再决定取不取图（原来只能先把小图拉下来、解码后量 `naturalWidth` 再回退，
+     中间会闪一张糊图）。
+  ③ **J3 踩的下发边界**：`lib/api/forum.ts` 与 `lib/api/issues.ts` 的 `dislike_count` 保持**可选**，
+     `routes/issues.tsx` 写清「不下发 = 看不见」的口径（`CommentActions` 对 0 的渲染就是空串）。
+  ④ **J5 检索与筛选**：`lib/api/issues.ts` 的 `IssueFilter` 补 `q`（后端标题+正文字面匹配），
+     `IssueSort` 的注释补全值域（`parseIssueSort` 收 updated/created/new/old/comments），
+     `lib/api/issues.ts` 与界面都支持 `sort=old`（升序那一档 = 真正的「最早创建」）；
+     `routes/issues.tsx` 把自由词**发给后端**（原先只在前端过滤当前页 → 正文里的词与没翻到的页永远搜不到），
+     并修掉那句已经过期的小字提示（它还写着「后端也没有反馈检索」）。
+     顺带：`?q=` 与 `?sort=` 现在**从 URL 起步**（分享出去的地址能还原同一屏）。
+  - 证据：`npx vitest run` → `34 passed (34) / 174 passed (174)`（新增 6 条：home 1 + 14-home 2 + issues 3）；
+    `pnpm lint` → `0 errors, 20 warnings`（那条 error 是本次新增用例里的未用变量，已修）；
+    `pnpm typecheck` 我改的文件 0 错。**四条新断言各证明过会红**：
+    · J9：把「先看 cover_width」摘掉 → `方卡片：后端说封面太小…` 红（`expected <img …> to be null`）；
+    · L2：把 `{key:'hot'}` 从 SORTS 去掉 → `排序点「最热」…` 红（找不到该按钮）；
+    · J3：让桩**下发** `dislike_count: 7` → 该条红（`expected '7' to be ''`，证明这一格确实由下发决定）；
+    · J5：把 `'old'` 从 `SORT_KEYS` 去掉 → 该条红。
+    出图并**看图**：`shots/kfe/home-sort-hot-1440.png`（排序三档，**最热**高亮）、
+    `shots/kfe/issues-search-1440.png`（检索框里是「隐藏」、排序下拉是**最早创建**、页头写「按 最早创建 排序」、
+    小字提示已改成服务端筛选）。
+  - 下一步：J6 的 `GET /api/v1/issues/kinds` 后端**还没有路由**（`Service.IssueKinds` 在，
+    `handler.go` 里没有挂）—— 等它挂上前端的类型下拉只能是写死的四类。
+  - 阻塞：J6 的 kinds 端点（见下）；L6 / L8 图片仍等（见「阻塞」一节）。

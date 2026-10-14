@@ -3,6 +3,7 @@ import { MemoryRouter, Route, Routes } from 'react-router';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { Providers } from '@/app/providers';
 import { createIssue, fetchIssueCommentReplies, fetchIssues, updateIssue } from '@/lib/api/issues';
+import { SORT_LABEL, SORT_KEYS } from '@/devroom/pages/13-issue/issue-filter-bar';
 import { IssuesPage } from './issues';
 
 // 真页面（routes/issues.tsx）用**设计稿的件**：这里只换网络边界，断言那几件真的渲染出数据，
@@ -156,6 +157,82 @@ describe('问题反馈页（真端点）', () => {
       const down = calls.find((c) => c.url.includes('/issue-comments/c-1/vote') && c.method === 'PUT');
       expect(down?.body).toEqual({ value: -1 });
     });
+  });
+
+  // J3（拍板）：踩数是**按身份下发**的 —— 普通用户 / 游客拿到的 IssueCommentDTO 里**没有**
+  // `dislike_count` 这个键（后端 DTO 带 omitempty，只有管理员及以上与内容发布者能拿到）。
+  // 所以前端必须能在「这个键不存在」时照常渲染：赞数照显示、踩那一格不显示数字，且**不崩**。
+  // 这一条盯的是「接口不下发就不显示」这件事本身 —— 前端不许自己藏，也不许替后端补一个 0 出来。
+  it('后端不下发 dislike_count（普通用户视角）时：照常渲染，赞数在、踩数不显示、不崩', async () => {
+    // 逐字模拟后端对普通用户的响应：**没有 dislike_count 这个键**（不是 0）
+    const COMMENT_WITHOUT_DISLIKE: Record<string, unknown> = { ...COMMENT };
+    // 真删掉这个键，不是置 0：后端对普通用户就是这么发的（DTO 的 omitempty）
+    delete COMMENT_WITHOUT_DISLIKE.dislike_count;
+    mockApi((u) => {
+      if (u.includes('/api/v1/me')) return { body: { data: ME } };
+      if (u.includes('/topics/tp-1/issues')) return { body: { data: [ISSUE], next_cursor: null } };
+      if (u.includes('/issues/i-128/comments')) return { body: { data: [COMMENT_WITHOUT_DISLIKE], next_cursor: null } };
+      if (u.includes('/issue-comments/c-1/replies')) return { body: { data: [] } };
+      if (u.includes('/issues/i-128')) return { body: { data: { ...ISSUE, body_html: '<p>复现。</p>' } } };
+      return undefined;
+    });
+    renderIssues('/issues?topic=tp-1');
+    fireEvent.click(await screen.findByRole('button', { name: /^打开反馈 #128/ }));
+    await screen.findByText('确认是 bug，下个补丁修。');
+
+    // 赞数照显示（它是公开的）
+    expect(screen.getAllByRole('button', { name: '点赞，当前 12 个赞' }).length).toBeGreaterThan(0);
+    // 踩那一格的数字**不显示**：按钮还在（那是动作），但它里面没有数字
+    const down = screen.getAllByRole('button', { name: '点踩' })[0]!;
+    expect(down.textContent).toBe('');
+  });
+
+  // J5（拍板）：检索与筛选**完整实现** —— 自由词必须发给后端搜（`?q=`）。
+  // 为什么这一条重要：前端只拿得到当前这一页，留在前端过滤等于「搜了没结果」与「真的没有」
+  // 长得一模一样（正文里的词、还没翻到的页一律搜不到）。
+  it('J5：检索框里的自由词发 ?q= 给后端（不在前端过滤当页）', async () => {
+    const calls = mockApi((u) => {
+      if (u.includes('/api/v1/me')) return { body: { data: ME } };
+      if (u.includes('/topics/tp-1/issues')) return { body: { data: [ISSUE], next_cursor: null } };
+      if (u.includes('/issues/i-128/comments')) return { body: { data: [COMMENT], next_cursor: null } };
+      if (u.includes('/issue-comments/c-1/replies')) return { body: { data: [] } };
+      if (u.includes('/issues/i-128')) return { body: { data: { ...ISSUE, body_html: '<p>复现。</p>' } } };
+      return undefined;
+    });
+    renderIssues('/issues?topic=tp-1');
+    await waitFor(() => expect(screen.getByLabelText('搜索反馈')).toBeTruthy());
+
+    fireEvent.change(screen.getByLabelText('搜索反馈'), { target: { value: '隐藏结局' } });
+    await waitFor(() => {
+      const hit = calls.find((c) => c.url.includes('/topics/tp-1/issues') && c.url.includes('q='));
+      expect(hit).toBeTruthy();
+      // URLSearchParams 会把中文编码；断言解码后的值，别断言字面量
+      expect(new URL(hit!.url, 'http://x').searchParams.get('q')).toBe('隐藏结局');
+    });
+    // 限定词映射到强类型参数（不塞进 q）：kind:bug → ?kind=bug
+    fireEvent.change(screen.getByLabelText('搜索反馈'), { target: { value: 'kind:feature 隐藏' } });
+    await waitFor(() => {
+      const urls = calls.filter((c) => c.url.includes('/topics/tp-1/issues')).map((c) => c.url);
+      const hit = urls.filter((u) => u.includes('kind=feature')).pop();
+      expect(hit, JSON.stringify(urls)).toBeTruthy();
+      expect(new URL(hit!, 'http://x').searchParams.get('q')).toBe('隐藏');
+    });
+  });
+
+  // J5：排序多了一档 **old（升序）** —— 2026-10-14 后端补的（`IssueSortOld` = created_at ASC, id ASC）。
+  // 原先三种排序全是 DESC，「最早创建」这个需求没有落点。
+  it('J5：排序的第 4 档「最早创建」是 ?sort=old，且下拉里真的有它', async () => {
+    // ① 请求侧：sort=old 原样发出去（这是「最早创建」唯一的实现路径）
+    const calls = mockApi(() => ({ body: { data: [], next_cursor: null } }));
+    await fetchIssues({ sort: 'old' });
+    expect(calls[0]?.url).toContain('sort=old');
+
+    // ② 界面侧：下拉的数据里必须有这一条，且文案是「最早创建」——
+    //    只加请求支持而漏了选项，用户界面上就永远选不到它（等于没做）。
+    expect(SORT_LABEL.old).toBe('最早创建');
+    expect(SORT_KEYS).toContain('old');
+    // 三档 DESC + 一档 ASC：旧行为下 old 不存在
+    expect(SORT_KEYS).toHaveLength(4);
   });
 
   it('未登录：点「报个 Bug」只给一句实话，不发任何写请求', async () => {

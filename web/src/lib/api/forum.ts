@@ -130,8 +130,13 @@ export type Post = {
 export type TopicFilter = {
   board?: string;
   kind?: string;
-  /** 真源 forum/internal/forum/dto.go 的 parseTopicSort 只认 latest / new —— 'hot' 会被 400 拒掉 */
-  sort?: 'latest' | 'new';
+  /**
+   * 真源 `forum/internal/forum/dto.go` 的 parseTopicSort：**latest / new / hot** 三个值。
+   * `hot` 是 2026-10-14（拍板 §L2）后端补的：`score = (like_count + 3*顶层评论数) * time_boost`
+   * （一周内有互动 ×1.5）。它的游标键**不是时间**，由服务端算好（`pgsql.hotScoreSQL` +
+   * `forum/cursor.go` 的 `hotCursor`）—— 前端只透传 `sort=hot` 与 `cursor`，别自己拼游标或算热度。
+   */
+  sort?: 'latest' | 'new' | 'hot';
   q?: string;
 } & PageQuery;
 

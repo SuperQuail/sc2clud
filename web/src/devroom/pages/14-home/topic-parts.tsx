@@ -13,9 +13,14 @@ const MIN_COVER_WIDTH = 320;
 
 /** 16:9 封面容器：固定宽高比 → 有图无图都不跳版（CLS ≤ 0.1 的硬前提）。 */
 export function TopicCover({ topic, className }: { topic: Topic; className?: string }) {
-  // 图太小就退回占位块。用 ref 回调在图片解码后量真实像素宽——不引 useEffect、不跑第二遍渲染。
+  // 图太小就退回占位块。两条判据，**先看后端给的尺寸**（J9）：
+  //   ① cover_width/cover_height 是列表响应自带的（TopicCardDTO），有它就**不用发那次图片请求**，
+  //      也不会有「先闪一张糊图、解码完再换成占位块」的那一跳；
+  //   ② 没有那两个字段时（旧数据、或接口没给）才退回在解码后量 naturalWidth —— 保底路径不变。
+  const declaredTooSmall =
+    typeof topic.cover_width === 'number' && topic.cover_width > 0 && topic.cover_width < MIN_COVER_WIDTH;
   const [tooSmall, setTooSmall] = useState(false);
-  const usable = Boolean(topic.cover) && !tooSmall;
+  const usable = Boolean(topic.cover) && !declaredTooSmall && !tooSmall;
   return (
     <div className={cn('relative aspect-video w-full overflow-hidden bg-muted', className)}>
       {usable ? (

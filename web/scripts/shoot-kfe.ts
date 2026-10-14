@@ -18,6 +18,9 @@ type Shot = { name: string; url: string; width: number; height: number; full: bo
 // 默认主机名用 **localhost 不是 127.0.0.1**：vite dev 在这台机器上只绑了 ::1（IPv6），
 // 走 127.0.0.1 会 ERR_CONNECTION_REFUSED —— 而 Chrome 会把错误页照样截成一张图，
 // 2026-10-14 因此拍出过一批「两张字节数完全相同」的假图（交接单 §5.4 说的就是这个坑）。
+// **route 里的 `?` 与 `&` 必须转义**（写成 %3F / %26）：product.html 那个入口本身也吃查询串
+// （`?stub=1&route=…`），不转义的话 `&sort=old` 会变成 product.html 自己的参数、
+// 永远到不了 SPA 的路由 —— 页面照常渲染，只是那一档静默失效（2026-10-14 出图时真撞上过）。
 const [base = 'http://localhost:5321/product.html', outDir = join(process.cwd(), '..', 'shots', 'kfe')] = process.argv.slice(2);
 mkdirSync(outDir, { recursive: true });
 
@@ -41,6 +44,10 @@ const shots: Shot[] = [
   // 个人设置 · 赞赏与收款码（上传 / 删除 / 两个开关 / 我的打赏记录）
   { name: 'settings-rewards-1440', url: '?stub=1&route=/settings', width: 1440, height: 1200, full: true },
   { name: 'settings-rewards-390', url: '?stub=1&route=/settings', width: 390, height: 1200, full: true },
+  // L2：首页信息流的排序三档（最新回复 / 最新发布 / **最热**）—— 最热由 K-BE 的 sort=hot 支撑
+  { name: 'home-sort-hot-1440', url: '?stub=1&route=%2F%3Fsort%3Dhot', width: 1440, height: 900, full: false, main: 'main' },
+  // J5：问题反馈页的检索条（自由词 ?q= 发后端）+ 排序四档
+  { name: 'issues-search-1440', url: '?stub=1&route=%2Fissues%3Fq%3D%E9%9A%90%E8%97%8F%26sort%3Dold', width: 1440, height: 900, full: false, main: 'main' },
   // G5：DevRoom 11-profile 里「屏蔽词」那一行的 WIP 标记（拍板要求「不要假装能用」）
   { name: 'devroom-g5-wip-1440', url: 'http://localhost:5321/devroom.html?page=11-profile', width: 1440, height: 1200, full: true, before: openSettingsTab },
 ];

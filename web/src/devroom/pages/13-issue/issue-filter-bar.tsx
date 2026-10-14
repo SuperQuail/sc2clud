@@ -10,7 +10,7 @@ import { KINDS } from './shared';
 import { parseQuery } from './query';
 import type { IssueKind, IssueStatus } from './types';
 
-export type SortKey = 'updated' | 'comments' | 'created';
+export type SortKey = 'updated' | 'comments' | 'created' | 'old';
 export type Scope = 'all' | 'mine' | 'assigned';
 
 export const SORT_LABEL: Record<SortKey, string> = {
@@ -19,6 +19,9 @@ export const SORT_LABEL: Record<SortKey, string> = {
   // 后端三种排序列全是 DESC（forum/internal/forum/pgsql/issues.go:110-113,157），
   // 所以 created 是「最新创建」。原先写「最早创建」是照设计稿 mock 抄的，那是一句假话。
   created: '最新创建',
+  // 'old' 是 2026-10-14（J5）后端补的**升序**（`IssueSortOld` = created_at ASC, id ASC，
+  // 走 `sentinelTimeAsc` 那个最小哨兵）。它才是真正的「最早创建」—— 与上面那一档是两个方向。
+  old: '最早创建',
 };
 
 // Ring UI 的 Select 只认条目对象：selected 要传**条目本身**，不是 key（登记表里记过的坑）
@@ -26,11 +29,16 @@ type SortOption = { key: string; label: string };
 type StatusOption = { key: string; label: string; value?: IssueStatus };
 type KindOption = { key: string; label: string; value?: IssueKind };
 
-const SORT_OPTIONS: Array<SelectItem<SortOption>> = [
-  { key: 'updated', label: SORT_LABEL.updated },
-  { key: 'comments', label: SORT_LABEL.comments },
-  { key: 'created', label: SORT_LABEL.created },
-];
+/**
+ * 排序下拉的条目。**导出的 key 列表是给断言用的**：只加请求侧支持而漏了这里的选项，
+ * 用户界面上就永远选不到那一档（等于没做）—— 所以「有哪几档」这件事要能被测到，
+ * 而不是靠人眼看一眼 Select 的 data 数组。
+ */
+// 证明过会红：把 'old' 从这里去掉（只留三档 DESC）→ `issues.test.tsx` 的
+// 「排序的第 4 档」这条立刻 `expected [ 'updated', 'comments', 'created' ] to contain 'old'`。
+export const SORT_KEYS: SortKey[] = ['updated', 'comments', 'created', 'old'];
+
+const SORT_OPTIONS: Array<SelectItem<SortOption>> = SORT_KEYS.map((k) => ({ key: k, label: SORT_LABEL[k] }));
 
 const STATUS_OPTIONS: Array<SelectItem<StatusOption>> = [
   { key: 'any', label: '全部状态' },

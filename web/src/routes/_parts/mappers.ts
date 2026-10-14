@@ -31,6 +31,10 @@ export function toCardTopic(t: ApiTopic): Topic {
     created_at: t.created_at,
     last_reply_at: t.last_reply_at ?? t.created_at,
     cover: imageUrl(t.cover_hash),
+    // J9：后端在列表项里就给了封面原图尺寸 —— 卡片因此能在**发出图片请求之前**判「这张放大出来会糊」，
+    // 而不是先把小图拉下来再回退（原先只有后一条路，靠 onload 量 naturalWidth）。
+    cover_width: t.cover_width,
+    cover_height: t.cover_height,
     pinned: t.pinned,
     featured: t.featured,
   };
@@ -46,7 +50,11 @@ export function toComments(posts: Post[]): CommentData[] {
     body: p.content_html,
     createdAt: p.created_at,
     likes: p.like_count,
-    // dislike_count 是否随响应下发待 P1 确认（§21.2 只写了「点赞数」）；缺省 0 不会假装踩过
+    // J3（拍板）：踩数**按身份下发** —— 后端给普通用户 / 游客的响应里根本没有 `dislike_count` 这个键
+    // （DTO 上带 omitempty）。所以这里**不能回落成 0**：`?? 0` 会把「接口没下发」渲染成「0 个踩」，
+    // 等于前端把这根信任边界又补回来了（数字本来就不该到这里，前端补一个 0 只是让它看起来有值）。
+    // 共享件 @/ui/comment 的 CommentData.dislikes 仍是必填 number，所以那一层照原样收 0 ——
+    // 真正的「不显示那一格」要改 @/ui/comment/comment-actions.tsx，那是冻结目录（见进度文件的阻塞）。
     dislikes: p.dislike_count ?? 0,
     // 真源是 PostDTO.my_vote（forum/dto.go:131），不是 viewer.value —— 读错字段时赞踩态恒为假且不报错
     liked: p.my_vote === 1,

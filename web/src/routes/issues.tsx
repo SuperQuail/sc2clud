@@ -50,7 +50,7 @@ import { Empty, ErrorState, Loading } from './_parts/state';
 
 /** 排序文案：**不抄 DevRoom 的 SORT_LABEL** —— 那张稿的 created 是升序（label「最早创建」，index.tsx:105），
  *  而后端三种排序列全是 DESC（pgsql/issues.go:110-113、157 行 ORDER BY … DESC）。照抄就是一句假话。 */
-const SORT_TEXT: Record<SortKey, string> = { updated: '最新更新', created: '最新创建', comments: '评论最多' };
+const SORT_TEXT: Record<SortKey, string> = { updated: '最新更新', created: '最新创建', old: '最早创建', comments: '评论最多' };
 
 function parseKind(v: string | null): IssueKind | undefined {
   return v === 'bug' || v === 'feature' || v === 'difficulty' || v === 'other' ? v : undefined;
@@ -97,7 +97,15 @@ function toComment(c: ApiIssueComment, replies: ApiIssueComment[]): CommentData 
     body: x.body_html,
     createdAt: formatTime(x.created_at),
     likes: x.like_count,
-    dislikes: x.dislike_count,
+    // J3：踩数**按身份下发** —— 普通用户 / 游客的响应里没有这个键（DTO 带 omitempty）。
+    // 这里**故意不回落成 0**：`?? 0` 会把「接口没给」变成「0 个踩」，等于前端替后端把这个数补出来。
+    // 共享件 @/ui/comment 的 CommentData.dislikes 目前是必填 number（冻结目录），
+    // 所以类型上仍传 undefined —— 它在 CommentActions 里渲染成空串，也就是**那一格不显示数字**，
+    // 这正是 J3 在「不下发」时该有的样子；把那个字段改成可选要 Lead 授权（见进度文件的阻塞）。
+    // 共享件 @/ui/comment 的 CommentData.dislikes 是必填 number（冻结目录），所以类型上给 0；
+    // 而 `CommentActions` 对 0 的渲染就是**空串**（`dislikes || ''`）—— 也就是那一格不显示数字。
+    // 两个数不是一回事，但**用户看到的东西是一样的**：不下发 = 看不见。改类型要 Lead 授权。
+    dislikes: x.dislike_count ?? 0,
     // 真源是 my_vote（dto.go:198），不是 viewer.value —— 读错字段时赞踩态恒为假且不报错
     liked: x.my_vote === 1,
     disliked: x.my_vote === -1,
@@ -119,9 +127,17 @@ export function IssuesPage() {
   const [statusTab, setStatusTab] = useState<IssueStatus>('open');
   const [status, setStatus] = useState<IssueStatus | undefined>(undefined);
   const [kind, setKind] = useState<IssueKind | undefined>(undefined);
-  const [sort, setSort] = useState<SortKey>('updated');
+  // 排序也从 URL 起步（`?sort=`）：与检索词的 `?q=` 同一条规矩 —— 分享出去的地址要能还原同一屏。
+  // 值域与后端 `parseIssueSort` 一致（updated / created / old / comments，见 lib/api/issues.ts）。
+  const [sort, setSort] = useState<SortKey>(() => {
+    const raw = sp.get('sort');
+    return raw === 'created' || raw === 'old' || raw === 'comments' ? raw : 'updated';
+  });
   const [scope, setScope] = useState<Scope>('all');
-  const [query, setQuery] = useState('');
+  // 检索词从 URL 起步（`?q=`）：这样「搜到了把地址发给人」能还原出同一屏结果。
+  // 之后是新输入的本地状态 —— **不往回写 URL**（每敲一个字都改地址会堆满历史，
+  // 而搜索是高频动作）。够用的那一半：深链进来能还原，敲字不受地址栏打扰。
+  const [query, setQuery] = useState(() => sp.get('q') ?? '');
   const [pickedLabels, setPickedLabels] = useState<string[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [receipt, setReceipt] = useState<string | null>(null);
@@ -133,7 +149,12 @@ export function IssuesPage() {
   const scopeReady = scope === 'all' || meHandle !== '';
   const wantStatus: IssueStatus = status ?? parsed.status ?? statusTab;
   const wantKind = kind ?? parsed.kind;
-  const listKey = ['issues', { topic: topicId, status: wantStatus, kind: wantKind ?? '', author: scope === 'mine' ? meHandle : '', assignee: scope === 'assigned' ? 'me' : '', sort }] as const;
+  // J5：自由词**发给后端搜**（`?q=`，标题 + 正文字面匹配）。
+  // 为什么不留在前端过滤：前端只有当前这一页 —— 正文里的词、以及还没翻到的页，一律搜不到，
+  // 而「搜了没结果」与「真的没有」在界面上长得一模一样（这正是交接单 §5.2 那种缺陷形态）。
+  // 限定词（is:/kind:/author:）仍先在前端解析：它们映射到服务端的强类型参数，不是塞进 q 里。
+  const wantQ = parsed.text;
+  const listKey = ['issues', { topic: topicId, status: wantStatus, kind: wantKind ?? '', author: scope === 'mine' ? meHandle : '', assignee: scope === 'assigned' ? 'me' : '', sort, q: wantQ }] as const;
 
   const list = useInfiniteQuery({
     queryKey: listKey,
@@ -146,6 +167,7 @@ export function IssuesPage() {
         author: scope === 'mine' ? meHandle : undefined,
         assignee: scope === 'assigned' ? ('me' as const) : undefined,
         sort,
+        q: wantQ === '' ? undefined : wantQ,
         cursor: pageParam,
       };
       return topicId ? fetchTopicIssues(topicId, f, signal) : fetchIssues(f, signal);
@@ -213,10 +235,12 @@ export function IssuesPage() {
       rows.filter(
         (row) =>
           pickedLabels.every((l) => row.tags.includes(l)) &&
-          // 服务端已经筛过 status / kind，这里只做检索串的**剩余部分**（自由词、label、author、#编号）；
-          // 列表响应没有正文，所以正文不参与匹配（下面那行提示写着这件事）。
+          // 服务端已经筛过 status / kind / 自由词（`?q=`），这里只做**它筛不了的那些**：
+          // label（本项目还没有标签表）与 #编号。所以 `text` 要从前端这一层去掉 ——
+          // 留着它等于「服务端搜一遍、前端又搜一遍」，而前端这一遍只看得到当前页
+          // （结果是服务端明明命中了、却被前端滤掉）。
           matchesQuery(
-            { ...parsed, status: undefined, kind: undefined },
+            { ...parsed, status: undefined, kind: undefined, text: '' },
             {
               title: row.title,
               body: '',
@@ -337,8 +361,9 @@ export function IssuesPage() {
 
         {query !== '' ? (
           <p className='mt-2 text-[11px] leading-relaxed text-muted-foreground'>
-            自由词 / <code>label:</code> / <code>author:</code> 只在**已加载的 {rows.length} 条**里筛，匹配标题、标签、作者与 #编号
-            （列表响应没有正文，后端也没有反馈检索：post_issues 还没有 tsv 列）；<code>is:</code> 与 <code>kind:</code> 是服务端筛选。
+            自由词（<code>?q=</code>）与 <code>is:</code> / <code>kind:</code> / <code>author:</code> 都是**服务端筛选** ——
+            自由词匹配标题与正文（后端字面匹配，中文两字词也命中），所以**还没翻到的页也搜得到**。
+            只有 <code>label:</code> 与 <code>#编号</code> 还在本页 {rows.length} 条里筛（本项目还没有标签表）。
           </p>
         ) : null}
 

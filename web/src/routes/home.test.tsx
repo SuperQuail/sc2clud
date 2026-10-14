@@ -157,6 +157,26 @@ it('四态在真页面里真的换：空 q 是 idle、有 q 加载中是 loading
   expect(screen.getByText(/帖子：标题与正文/)).toBeTruthy();
 });
 
+// L2（拍板 §L2）：首页信息流的排序档里「最热」这一档**必须打给后端** `sort=hot`。
+// 它 2026-10-13 被撤下来过（那时后端只认 latest / new，点了必 400），2026-10-14 后端补齐后接回来。
+// 判据是**请求里的 sort 值**：把 hot 静默映射成 latest 也能让页面看着正常 —— 那正是要防的形态。
+it('排序点「最热」发的是 sort=hot（不是静默退回 latest）', async () => {
+  mockApi((url) => {
+    if (url.includes('/me')) return { body: { data: null } };
+    if (url.includes('/boards')) return { body: BOARDS };
+    return { body: FEED };
+  });
+  renderHome('/');
+  const calls = () => (globalThis.fetch as unknown as { mock: { calls: unknown[][] } }).mock.calls.map((c) => String(c[0]));
+  await waitFor(() => expect(calls().some((u) => u.includes('/api/v1/topics') && u.includes('sort=latest'))).toBe(true));
+
+  act(() => screen.getByRole('button', { name: '最热' }).click());
+  await waitFor(() => expect(calls().some((u) => u.includes('/api/v1/topics') && u.includes('sort=hot'))).toBe(true));
+  // 三档都在界面上（撤掉的那一版这里只有两颗）
+  expect(screen.getByRole('button', { name: '最新回复' })).toBeTruthy();
+  expect(screen.getByRole('button', { name: '最新发布' })).toBeTruthy();
+});
+
 it('提交才搜：输入框里打字不发请求，回车把 q 落到 URL', async () => {
   mockApi((url) => {
     if (url.includes('/me')) return { body: { data: null } };

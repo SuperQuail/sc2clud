@@ -11,7 +11,13 @@ import type { BoardRef, Paged, TopicAuthorSummary } from './forum';
 export type IssueKind = 'bug' | 'feature' | 'difficulty' | 'other';
 export type IssueStatus = 'open' | 'closed';
 /** 后端 parseIssueSort 只认这三个；comments 是聚合排序，**带 cursor 会 400**（issues.go:31 ErrSortUnpageable）。 */
-export type IssueSort = 'updated' | 'created' | 'comments';
+/**
+ * `?sort=` 的值域，逐字照 `forum/internal/forum/issues.go:460` 的 `parseIssueSort`：
+ * 它收 **updated / created / new / old / comments** 五个名字 ——
+ * `new` 是 `created` 的同义别名，`old` 是**升序**（同一列的另一个方向，2026-10-14 J5 补的）。
+ * `comments` 是聚合排序，**带 cursor 会 400**（`ErrSortUnpageable`）。
+ */
+export type IssueSort = 'updated' | 'created' | 'old' | 'comments';
 
 /** IssueDTO：卡片。id 是 public_id（UUID），number 才是帖内编号（界面上显示的 #N）。 */
 export type Issue = {
@@ -44,7 +50,12 @@ export type IssueComment = {
   body_html: string;
   author: TopicAuthorSummary;
   like_count: number;
-  dislike_count: number;
+  /**
+   * 踩数。**按身份下发**（拍板 §J3）：普通用户与游客的响应里没有这个键（DTO 上带 omitempty），
+   * 只有「管理员及以上」与「内容发布者」拿得到 —— 所以它是可选的，别当必填用。
+   * 界面侧的对应处理见 `routes/issues.tsx` 的注释（那一格的显示由服务端决定，前端不自己藏）。
+   */
+  dislike_count?: number;
   my_vote: number;
   created_at: string;
   updated_at: string;
@@ -58,12 +69,18 @@ export type IssueFilter = {
   /** 只能传 'me'（handler.go:579 其它值直接 400），且需要登录。 */
   assignee?: 'me';
   sort?: IssueSort;
+  /**
+   * 检索词（J5）：后端在**标题 + 正文**上做**字面**匹配（不分词，中文两字词天然命中），
+   * 上限 100 字、`%` `_` `\` 这些 LIKE 通配符会被 400 挡掉（`issues.go:161` 的守卫）。
+   * **必须在服务端搜**：前端只过滤当前一页，翻页前的结果永远搜不到。
+   */
+  q?: string;
 } & PageQuery;
 
 /** 列表参数：GET /issues 与 GET /topics/{id}/issues 共用（后端同一个 listIssuesAt）。 */
 function issueQuery(f: IssueFilter): Record<string, string | number | undefined> {
-  const { status, kind, author, assignee, sort, ...page } = f;
-  return { status, kind, author, assignee, sort, ...pageQuery(page) };
+  const { status, kind, author, assignee, sort, q, ...page } = f;
+  return { status, kind, author, assignee, sort, q: q?.trim() === '' ? undefined : q, ...pageQuery(page) };
 }
 
 /** 全站反馈列表（不限主题）。 */
