@@ -59,12 +59,23 @@ export function LoginPage() {
     <AuthShell
       title='登录 SC2clud'
       subtitle='用社区账号继续，或先注册一个。'
+      // 页脚只说真的能做的事（2026-10-14 改）：
+      //   ① 找回密码**已接**（routes/forgot.tsx），原先那句「重置链路还没接…请管理员帮你重置」是假话；
+      //   ② 申诉入口**已上线**（POST /api/v1/appeals 已落地），原先那句「后端不存在」也是假话 ——
+      //      它正好把唯一可用的自救路径说成不存在（与 交接单 §4.B6 同一形状的缺陷）。
       footer={
         <>
-          忘记密码：重置链路（POST /auth/password/forgot）还没接，见回报的端点清单；现在可以请管理员帮你重置。
+          忘记密码？
+          <a className='ml-1 underline' href={appPath('forgot')}>
+            用注册邮箱自助重置
+          </a>
           <br />
-          // 申诉入口**已撤**：后端 POST /api/v1/appeals 不存在，留着就是一个填完必然失败的表单。
-          <span>账号被封了（或被驳回了帖子）？请联系管理员。</span>
+          <span>
+            账号被封了（或被驳回了帖子）？
+            <a className='ml-1 underline' href={appPath('appeal')}>
+              提交申诉
+            </a>
+          </span>
         </>
       }
     >

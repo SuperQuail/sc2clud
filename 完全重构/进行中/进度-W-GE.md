@@ -8,7 +8,8 @@
       与 `clearNotificationMute(body)`，`messages.tsx` 的 `NoticesPane` 给每行加「不再通知此类」。
 - [x] G2 撤回私信：`notice-chat.tsx` 加 `renderActions(message)` 逐条动作槽位（登记表已更新），
       `messages-panel.tsx` 透传，`routes/messages.tsx` 给自己发的那条挂「撤回」→ DELETE /messages/{id}。
-- [ ] G3 找回密码整页：`/forgot` 路由 + 接线（router.tsx 是 Lead 的 → 先写阻塞）。
+- [x] G3 找回密码整页：`web/src/routes/forgot.tsx`（两步一页，接线三个端点）+ 登录页页脚改实话；
+      路由那一行在 `app/router.tsx`（Lead 的冻结文件）→ 见阻塞 1。
 - [x] E2 D7：todayStart 改成按站点时区（`forum/topics.go` 的 `todayStart/siteTZ/DefaultSiteTZ`），
       时区从 `config.Site.Timezone` 来（新增配置项 + Validate + `Site.Location()`），`forum.Deps.TZ` 注入。
 - [ ] G5 消息屏蔽词：先定语义写在这里，再决定做/不做。
@@ -126,5 +127,51 @@
        `web/src/devroom/pages/15-admin/screens/users.tsx`、`web/src/ui/dev-entry.tsx`）。
        我这边用等价的隔离 tsconfig（把上述文件 exclude）跑 `npx tsc --noEmit` → `TSC-EXIT=0`；
        全量 typecheck 要等 W-D1 那条线收口。**我没有碰这四个文件。**
-    4. `web/src/preview/product-fixture.ts` 的 `THREAD.items`：我补了真 DTO 里有的 `mine`（与 `peer`），
-       否则「撤回」那条界面分支在预览里永远不渲染。**这动了共享文件一行**，如不合意请回退我那一处 edit。
+- [x] 第 3 步（2026-10-14）：G3 找回密码整页 + 登录页页脚改实话。
+  - 做了什么：
+    · 新建 `web/src/routes/forgot.tsx`：`ForgotPage` 两步一页（`request` → `code` → `done`），
+      复用 16-auth 的房子件 `AuthShell` / `FormAlert` / `CodeField` / `ResendButton` / `useCountdown` +
+      `@/ui/password-field`。三个端点走 `lib/api/auth.ts` 已有的 `forgotPassword` / `verifyResetCode` /
+      `resetPassword`（**没有新增客户端函数**，它们本来就在）。
+      两个语义决定写在代码注释里：① 第 1 步恒 200 → 无论邮箱存不存在都进第 2 步（不暴露账号是否存在）；
+      ② `auth.token_invalid` 只给一句话（输错与过期同形，分开说等于确认邮箱存在）。
+      ③ 换票据与改密码**连着做完**（票据一次性，中间留一次「再点一下」会让人以为第一次没生效）。
+      ④ 429 按服务端 `Retry-After` 起倒计时，不自己编秒数。
+    · `web/src/routes/login.tsx` 页脚：删掉两句假话（「重置链路还没接」「申诉端点不存在」），
+      换成 `appPath('forgot')` 与 `appPath('appeal')` 两个真入口。
+  - 证据：
+    · `npx vitest run src/routes/forgot.test.tsx` → `Test Files 1 passed` / `Tests 2 passed`；
+      用例断言三条请求的 path 与 body：`{email}` / `{email, code}` / `{reset_ticket, new_password}`。
+    · **变异验证会红**：把 `resetPassword` 的 body 改成 `ticket:`（把 `reset_ticket` 说错）后
+      → `AssertionError: expected { ticket: 'ticket-1', …(1) } to deeply equal { reset_ticket: 'ticket-1', …(1) }`
+      / `Tests 1 failed`；还原后 2 passed。
+    · 出图（临时入口，脚本自删）：`node shots/wge-forgot-shot.mjs` → `wge-forgot-step1(-390).png` /
+      `wge-forgot-step2(-390).png`；第 2 步是**真交互**走到的（CDP `Input.insertText` 填邮箱再点发送，
+      证据行 `DEBUG-STEP2-READY {"value":"demo@example.com","disabled":false}`）。图上读得到
+      `MARKER-WGE-FORGOT /forgot`、顶栏在、`overflow:false`、控制台问题：无。
+    · `npx eslint src/routes/forgot.tsx src/routes/login.tsx` → 0 problem；隔离 `tsc --noEmit` → `TSC-EXIT=0`。
+  - 下一步（**G5 消息屏蔽词**，文件+函数+改成什么）：
+    先写语义（屏蔽通知正文还是私信正文、命中后丢弃还是折叠）再决定做不做；现状见「发现 7」。
+  - 阻塞：
+    · **/forgot 那一行路由要 Lead 加**（`web/src/app/router.tsx`，冻结文件）：
+      `const ForgotPage = lazy(() => import('@/routes/forgot').then((m) => ({ default: m.ForgotPage })));`
+      + 在 `children` 里 `{ path: 'forgot', element: <ForgotPage /> },`（放在 `register/verify` 之后）。
+      `src/preview/product.tsx` 那份 MemoryRouter 里也建议同步加一条，否则产品预览出不了这一页
+      （我出图用的是临时入口，已经删掉了）。
+
+- [x] 第 2 步的补充（同一批文件，未单独提交）：`web/src/preview/product-fixture.ts` 的 `THREAD.items`
+      我补了真 DTO 里有的 `mine`（与 `peer`），否则「撤回」那条界面分支在预览里永远不渲染。
+      **这动了共享文件一行**（它与 W-D1 的 admin-fixtures 在同一个文件里，所以这次没有纳入提交），
+      如不合意请回退我那一处 edit。
+
+- [ ] 第 4 步（G5 消息屏蔽词）：语义还没定，现状见「发现 7」。
+
+## 收工状态的诚实口径（2026-10-14 15:00）
+
+- 我自己的三条（G1 / G2 / G3 / E2）都有会红的用例 + 出图证据；
+- **全量 `npx vitest run` 现在不是全绿**：`src/devroom/pages/19-search/index.test.tsx` 的
+  `空态：给出「查的是什么」与一条出路（清除搜索）` 是红的。那不是我的文件（我也没碰 19-search，
+  那一页不引用我的任何文件），14:50 那次全量它还是绿的 —— 是这一小时内被别人的改动弄红的，留给那条线收口。
+- **全量 `pnpm typecheck` 现在不是全绿**：红的在 `routes/admin.tsx`（W-D1 未提交）、
+  `routes/admin-screens.tsx`（未跟踪）、`devroom/pages/15-admin/screens/users.tsx`、`ui/dev-entry.tsx`。
+  把这四个 exclude 掉之后 `npx tsc --noEmit` 是 `TSC-EXIT=0`（我改的每个文件都在那次检查里）。
