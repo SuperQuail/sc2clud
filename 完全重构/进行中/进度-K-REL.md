@@ -50,3 +50,18 @@
    改法是给 `BoardSummary` 多传两个真值（该文件与 `topic.tsx` 都不在我的作用域）。
 4. **前端关注按钮的落点**：我加在 `web/src/routes/board.tsx`（分区页，我的作用域内）。
    `topic.tsx` 右栏那颗 `BoardSummary` 的「关注分区」要接的话同第 3 条，同一个端点。
+- [x] L11 · 通知实时性：照老站复现 SSE（`notify/stream.go` + `notify/stream_test.go`）+ service 加一条发出线
+  - 做了什么：`GET /api/v1/notifications/stream`（requireLogin）——响应头 `text/event-stream` / `Cache-Control: no-cache` /
+    `Connection: keep-alive` / **`X-Accel-Buffering: no`**（老站 `pages_messages.rs:140-144` 那条 nginx 坑），
+    建立时先写 `: connected` 并 flush；keep-alive 15s（**必须小于 `http.Server.WriteTimeout`=30s**，
+    `config/defaults.go:21`）；一条进程内广播 `streamHub`，容量 256（老站 `lib.rs:90` 同值），满了丢信号；
+    事件体只带 `{changed:true}` —— **不推正文**（正文的渲染逻辑在 `GET /notifications` 里，只有一份，见 stream.go 文件头）。
+    `notify.Service` 加 `publish func(userID)`：`Create` / `NotifySystem` / `Delete` 三处写完后 `notifyChanged`，
+    `NewHandler` 里 `svc.publish = hub.Publish` 接上（**app 层不用改**）。`MarkRead` 不发（自己按的，响应里就知道结果）。
+  - 证据：`gofmt -l internal/notify` 空、`go vet ./internal/notify/...` 退出码 0、
+    `go test ./internal/notify/... -count=1` → `ok forum/internal/notify 31.285s` + `ok forum/internal/notify/pgsql 8.287s`
+    （含新写的 5 条：头三项/只推自己的/事件体只有 changed/接线不断/hub 满了丢且删得掉）。
+    另外 `notify/service_test.go` 的路由用例补了一条 `GET /api/v1/notifications/stream` 断言。
+  - 下一步：前端落点 —— `web/src/lib/api/social.ts` 加 `noticeStreamUrl()`，`web/src/routes/messages.tsx` 里
+    `EventSource`（收到信号 → 重取角标与当前档列表）+ **30s 轮询兜底**（老站 `inbox.html:275` 同值）。
+  - 阻塞：无

@@ -924,6 +924,8 @@ func TestRegisterRoutesDoNotConflict(t *testing.T) {
 		"PUT /api/v1/notifications/mutes",
 		"DELETE /api/v1/notifications/mutes",
 		"DELETE /api/v1/notifications/:id",
+		// L11 的实时推送：静态段 /stream 也要排在通配 /:id 之前（否则它会被当成一个 id）
+		"GET /api/v1/notifications/stream",
 	} {
 		if !got[want] {
 			t.Fatalf("缺少路由 %s（实际 %v）", want, got)

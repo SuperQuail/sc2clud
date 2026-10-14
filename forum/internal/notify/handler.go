@@ -10,10 +10,20 @@ import (
 type Handler struct {
 	svc     *Service
 	actorOf ActorFromGin
+	// SSE 广播（L11，stream.go）。它是**进程内**的，与老站同一条取舍。
+	hub *streamHub
 }
 
 func NewHandler(svc *Service, actorOf ActorFromGin) *Handler {
-	return &Handler{svc: svc, actorOf: actorOf}
+	h := &Handler{svc: svc, actorOf: actorOf, hub: newStreamHub()}
+	// 把「有人写了通知」这条线接上：service 在写完之后调它，handler 负责扇出。
+	// 在这之前（app 层还没建 handler 时）Create 走的是空实现，什么都不会发生 ——
+	// 这是流式端点的接线代价：它需要状态，而 service 是无状态的。
+	// svc 允许为 nil：路由用例只验路由表，不需要一个真 service（nil 时这条线不接，其余行为不变）。
+	if svc != nil {
+		svc.publish = h.hub.Publish
+	}
+	return h
 }
 
 // Register 挂 /api/v1/notifications/*（d4 §3.4）。
@@ -21,6 +31,8 @@ func NewHandler(svc *Service, actorOf ActorFromGin) *Handler {
 func (h *Handler) Register(rg *gin.RouterGroup, requireLogin gin.HandlerFunc) {
 	g := rg.Group("/notifications", requireLogin)
 	g.GET("", h.list)
+	// 实时推送（L11）。静态段 /stream 与 /unread-count 都排在通配 /:id 之前（gin 的路由树）。
+	g.GET("/stream", h.stream)
 	g.GET("/unread-count", h.unreadCount)
 	g.POST("/read", h.markRead)
 	g.PUT("/mutes", h.setMute)

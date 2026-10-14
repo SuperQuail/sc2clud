@@ -27,10 +27,24 @@ type Service struct {
 	clk      clock.Clock
 	pg       *pgsql.Queries
 	settings NoticeSettings
+	// publish 是「这个人的通知变了」的进程内信号（L11 的 SSE 用），由 handler 装配时赋上
+	// （NewHandler 里 svc.publish = hub.Publish）。为空时什么都不发生 —— Service 本身无状态，
+	// 而广播是 handler 的状态，所以这条线只能这样接。
+	// 它**不阻塞也不保证送达**：前端把它当「可能变了，去重取一次」用（stream.go 文件头有完整取舍）。
+	publish func(userID int64)
 }
 
 func NewService(db *ent.Client, clk clock.Clock, pg *pgsql.Queries, settings NoticeSettings) *Service {
 	return &Service{db: db, clk: clk, pg: pg, settings: settings}
+}
+
+// notifyChanged 是写完之后唯一的发出点。三处调用：Create（业务方事务里写的）、
+// NotifySystem（系统通知）、Delete（自己删掉一条）。
+// **MarkRead 不发**：那是用户自己按的「已读」，前端那一次请求的响应里就知道结果了。
+func (s *Service) notifyChanged(userID int64) {
+	if s.publish != nil {
+		s.publish(userID)
+	}
 }
 
 // Create 在调用方的事务里写一条通知，按 (user_id, dedup_key) 幂等（d4 §4.4）。
@@ -70,8 +84,12 @@ func (s *Service) Create(ctx context.Context, tx *ent.Tx, in CreateInput) error 
 	if in.Kind != KindSystem && in.Extra["state"] == nil {
 		dedup = DedupKey(in.Kind, in.RefType, in.RefID)
 	}
-	return pgsql.NewTx(tx).InsertNotification(ctx, publicID.String(), in.UserID, actorID,
-		in.Kind, string(body), in.Link, dedup, s.clk.Now())
+	if err := pgsql.NewTx(tx).InsertNotification(ctx, publicID.String(), in.UserID, actorID,
+		in.Kind, string(body), in.Link, dedup, s.clk.Now()); err != nil {
+		return err
+	}
+	s.notifyChanged(in.UserID)
+	return nil
 }
 
 // NotifySystem 是**业务方直接发一条站内通知**的入口（不问队列）。
@@ -98,6 +116,7 @@ func (s *Service) NotifySystem(ctx context.Context, userID int64, text, link str
 	if !ok {
 		return nil
 	}
+	// Create 自己会发信号，这里不重复发
 	return db.WithTx(ctx, s.db, func(tx *ent.Tx) error { return s.Create(ctx, tx, in) })
 }
 
@@ -173,6 +192,7 @@ func (s *Service) Delete(ctx context.Context, actor *authz.Actor, publicID strin
 	if n == 0 {
 		return apperr.ErrNotFound
 	}
+	s.notifyChanged(actor.UserID)
 	return nil
 }
 
