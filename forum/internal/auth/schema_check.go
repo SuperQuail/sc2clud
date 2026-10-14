@@ -19,6 +19,16 @@ import (
 // 代码有、表里没有 → 启动失败：那个权限点永远判不过，是一条**静默失效的鉴权**。
 // 表里有、代码没有 → 只 Warn：库里多一行不影响任何判定，但值得提醒它指向一个已删的点。
 func (s *Service) CheckPermissions(ctx context.Context) error {
+	return s.checkPermissionSet(ctx, true)
+}
+
+// checkPermissionSet 是上面那条的实体。strict 只控制两件事的严格程度：
+//
+//   - 文案：启动自检失败的原因是「启动被拒绝」，诊断面板要给同一条事实但换一句话说；
+//   - 「代码有、表里没有」的档位：strict=false（面板）时降级成一行说明而不是错误 ——
+//     与 CheckRoleSeeds 同一个理由：迁移没跑全的环境（client.Schema.Create 建的测试库）
+//     也该能看到别的检查结果，而不是被第一条挡在门外。
+func (s *Service) checkPermissionSet(ctx context.Context, strict bool) error {
 	rows, err := s.db.Permission.Query().Select().All(ctx)
 	if err != nil {
 		return fmt.Errorf("自检：读 permissions 失败: %w", err)

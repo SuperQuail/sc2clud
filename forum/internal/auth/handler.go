@@ -69,6 +69,8 @@ func (h *Handler) Register(rg *gin.RouterGroup) {
 	a.DELETE("/users/:id/permissions/:perm", svc.Perm(authz.PermPermissionGrant), h.adminRevokePerm)
 	a.POST("/users/:id/ban", svc.Perm(authz.PermUserBan), h.adminBan)
 	a.POST("/users/:id/sessions/revoke", svc.Perm(authz.PermUserBan), h.adminRevokeSessions)
+	// 自检面板（C3）：debug 关闭时 service 返回 404 common.not_found（不是空 200，§5.13）。
+	a.GET("/diagnostics", svc.Perm(authz.PermSiteSetting), h.adminDiagnostics)
 	a.GET("/audit-logs", svc.Perm(authz.PermAuditView), h.adminAuditList)
 	a.GET("/audit-logs/export", svc.Perm(authz.PermAuditExport), h.adminAuditExport)
 }
@@ -443,6 +445,16 @@ func (h *Handler) adminBatchUsers(c *gin.Context) {
 
 func (h *Handler) adminUserDetail(c *gin.Context) {
 	out, err := h.svc.AdminUserDetail(c.Request.Context(), actorFrom(c), c.Param("id"))
+	if err != nil {
+		httpx.Fail(c, err)
+		return
+	}
+	httpx.OK(c, out)
+}
+
+// adminDiagnostics 是自检面板（C3）。它**只读**：任何「一键修复」都不在网页上做。
+func (h *Handler) adminDiagnostics(c *gin.Context) {
+	out, err := h.svc.AdminDiagnostics(c.Request.Context(), actorFrom(c))
 	if err != nil {
 		httpx.Fail(c, err)
 		return

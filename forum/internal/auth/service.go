@@ -29,6 +29,10 @@ type Service struct {
 	hash  *hasher
 	touch *toucher
 	codes *attemptGuard
+
+	// diag 是自检面板要的进程级事实（版本 / 启动时间），由 app 层注入。
+	// 不注入时面板照样能开：那是「这个部署没配」，不是「功能坏了」。
+	diag DiagnosticsInfo
 }
 
 // Deps 是 NewService 的外部依赖。用具名结构体而不是十几个位置参数：
@@ -43,6 +47,8 @@ type Deps struct {
 	Log     *slog.Logger
 	// TouchFlush 是测试用的钩子：默认写库（设计 §6.5 的两条批量 UPDATE）。
 	TouchFlush func(ctx context.Context, pairs []TouchPair) error
+	// Diagnostics 是 GET /admin/diagnostics 的进程级事实（C3）。
+	Diagnostics DiagnosticsInfo
 }
 
 // TouchPair 是一次会话活跃时间的刷新（摘要 + 观测到的时刻）。
@@ -66,6 +72,7 @@ func NewService(cfg *config.Config, dbc *ent.Client, clk clock.Clock, d Deps) (*
 		cfg: cfg, db: dbc, clk: clk, log: log,
 		users: d.Users, mail: d.Mail, mailer: d.Mailer, captcha: d.Captcha,
 		limiter: d.Limiter, queue: d.Queue, hash: h, codes: newAttemptGuard(),
+		diag: d.Diagnostics,
 	}
 	s.touch = newToucher(clk, cfg.Auth.TouchInterval, cfg.Auth.RenewInterval, cfg.Auth.SessionTTL, s.flushTouch)
 	if d.TouchFlush != nil {

@@ -72,7 +72,24 @@
   - 一个刻意的取舍（写下来免得被当 bug）：**缺 `role_id` 是逐条失败而不是整批 400**。
     理由：同一批里可能混着别的动作，整批 400 会把本来能做的也挡掉；而「这一条不成立」
     正是 items[] 要表达的东西。整批 400 只留给「这次请求本身不成立」的四种（空/超限/非法动作/无身份）。
-  - 下一步：C3 —— `GET /admin/diagnostics`（`forum/internal/auth/admin_diagnostics.go` +
-    `handler.go` 的 `a.GET("/diagnostics", svc.Perm(authz.PermSiteSetting), ...)`；
-    `cfg.HTTP.Debug == false` 时返回 **404 common.not_found**，不是空 200）。
+  - 下一步：C3 —— `GET /admin/diagnostics`。
+  - 阻塞：无
+
+- [x] 第 4 步：C3 —— `GET /admin/diagnostics`（debug 关闭给明确错误码）
+  - 做了什么：新增 `forum/internal/auth/admin_diagnostics.go`（`AdminDiagnostics` + 四条检查 +
+    DTO）与 `admin_diagnostics_test.go`；`handler.go` 加 `a.GET("/diagnostics", svc.Perm(authz.PermSiteSetting), ...)`、
+    `adminDiagnostics`；`service.go` 加 `diag DiagnosticsInfo` 字段 + `Deps.Diagnostics`；
+    `app/http.go` 注入 `{Version, StartedAt, Readonly:true}`（`SetDiagnostics`）。
+    `schema_check.go` 的 `CheckPermissions` 拆出 `checkPermissionSet(ctx, strict)`（面板用 strict=false）。
+  - 证据（**先红后绿**）：路由没挂时 `go test ./internal/auth/ -count=1 -run TestAdminDiagnostics -v` 全 404 红；
+    挂上后六条全 PASS；`go test ./internal/auth/... ./internal/app/ -count=1` →
+    `ok forum/internal/auth 87.2s` + `ok forum/internal/app 20.0s` + `TEST_EXIT=0`。
+    六条用例：游客 401 / 无 `site.setting` 403（断言码）、**debug 关闭 → 404 `common.not_found`**（两层：HTTP 与 service）、
+    debug 打开 → 200 且四条检查的形状（status 与 ok 两个投影必须一致、红的那条必须带 detail、汇总 failed 与逐条相符）、
+    没注入构建信息时版本那条**不报红**、**删掉一个权限点后「权限点集合一致性」真的变红**
+    （先断言删之前是绿的 —— 不先绿一次，红可能是别的原因）。
+  - 取舍：版本那条**只查「迁移过没有 / dirty」**，不比二进制里的最高迁移号 ——
+    那个数字在 `migrations` 包，import 它会把认证域和部署动作绑在一起；严格比对在 `db.EnsureVersion`（拒绝启动）里。
+  - 下一步：C2a —— `GET/POST /admin/boards` + `PATCH /admin/boards/{id}` + `POST /admin/boards/reorder`
+    （`forum/internal/forum/admin_boards.go` + `pgsql/admin_boards.go`；权限 `board.manage`）。
   - 阻塞：无

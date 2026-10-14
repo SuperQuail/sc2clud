@@ -51,6 +51,13 @@ func newHTTPServer(cfg *config.Config, in *Infra, m *Modules, bi BuildInfo) (*HT
 	r.Use(httpx.AccessLog())
 	r.Use(httpx.Recover())
 
+	// 自检面板（C3）要「跑的是哪个制品、什么时候起的」：进程级事实在 app 层才知道，
+	// 所以在这里注入，而不是让 auth 域去 import app 或 main。
+	// Readonly=true：那四条检查里的前两条跑在 run 的启动自检里 —— 红了进程根本起不来。
+	m.Auth.SetDiagnostics(auth.DiagnosticsInfo{
+		Version: bi.Version, StartedAt: bi.StartedAt, Readonly: true,
+	})
+
 	probe := &httpx.Probe{
 		Version:    bi.Version,
 		WebVersion: bi.WebVersion(),
