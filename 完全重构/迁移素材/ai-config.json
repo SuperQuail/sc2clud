@@ -1,0 +1,35 @@
+{
+  "note": "老站 AI 审核配置的**值**（第三轮拍板 §1c：「E3『AI 配置新站没有』这句已过时，把值也纳入迁移资料」）。真源是老站 SQLite 的 site_texts 表（不是代码里的字面量）：site/migrations/0029_ai_review.sql 只是默认值，线上被超管在 /admin 改过就以库为准 —— 本文件抄的是**备份里的库值** backups/old-prod-2026-10-12/sc2clud.sqlite3。落地命令：forum ai-config -manifest <本文件>（可重复执行，-dry-run 先看）。字段名逐字照 forum/internal/aireview/dto.go 的 ConfigView。",
+  "config": {
+    "enabled": false,
+    "provider": "deepseek",
+    "base_url": "https://api.deepseek.com",
+    "model": "deepseek-flash",
+    "thinking": false,
+    "strict_mode": false,
+    "temperature": 0,
+    "timeout_ms": 30000,
+    "max_output_tokens": 2048,
+    "prompt": "你是中型星际争霸 II 社区的内容审核员。判断下面这条帖子是否合规：广告与引流、来源不明的可执行文件、侵权转载、人身攻击等属于明确违规；信息不足、边界情况一律给待定，交人工复核。",
+    "prompt_report": "你是社区内容审核员。下面这条内容被用户举报，请重新判定它是否违规：明确违规才给不通过，拿不准就给待定。"
+  },
+  "traced": [
+    { "field": "enabled", "value": "false", "legacy": "site_texts.ai_enabled = '0'（默认 0，线上未被改过）", "note": "与 site_settings 的 ai.review.enabled（默认 off）是「且」：两处都关着才是老站的「不外呼」。这一格保持关 == 老站值，并且不需要碰 site_settings" },
+    { "field": "base_url", "value": "https://api.deepseek.com", "legacy": "site_texts.ai_endpoint；site/migrations/0029 的默认是 https://api.openai.com/v1，线上被改成 DeepSeek" },
+    { "field": "model", "value": "deepseek-flash", "legacy": "site_texts.ai_model（0029 默认 gpt-4o-mini，线上已改）" },
+    { "field": "prompt", "value": "（见 config.prompt，逐字）", "legacy": "site_texts.ai_prompt_new_post（0029 的默认值逐字相同）" },
+    { "field": "prompt_report", "value": "（见 config.prompt_report，逐字）", "legacy": "site_texts.ai_prompt_report（0029 的默认值逐字相同）" },
+    { "field": "temperature", "value": "0", "legacy": "老站请求体硬编码 temperature: 0（sc2clud-web/src/ai.rs request_body）", "note": "新站 DDL 默认也是 0；两套提示词要求「别抖」" },
+    { "field": "thinking", "value": "false", "legacy": "site_texts.ai_reasoning_effort = ''（旧站不传 reasoning_effort，服务端默认 high = 思考开）", "note": "**不是等价迁移**：新站按 d7 的设计默认走「快」路径（thinking=false → tool_choice: required），老站那条路是服务端默认的思考模式。理由：同一份 prompt 拿老站 key 实测过通（H1 待做），且新站两条路径都实现了；要回老站行为在后台把 thinking 打开即可" },
+    { "field": "strict_mode", "value": "false", "legacy": "（老站没有这一项）", "note": "strict 要求 base_url 带 /beta 且所有 function strict: true；老站的 base_url 是正式域名，保持 false" },
+    { "field": "timeout_ms", "value": "30000", "legacy": "老站 HTTP 客户端 60s（ai.rs 的 Duration::from_secs(60)）", "note": "**不是逐字迁移**：新站 d7 把外呼放在队列 worker 里，30s 是新的默认（DDL 允许 1000–60000，要还老站那 60s 就在后台改一格）" },
+    { "field": "max_output_tokens", "value": "2048", "legacy": "老站 test_connection 用 max_tokens: 8（只有连通测试那一发）；正式审核不传，靠服务端默认", "note": "2048 = 新站 config.AI.MaxTokens（d7 §「合理设置，防止被中途截断」）；DDL 上限 4096" }
+  ],
+  "not_migrated": [
+    { "field": "api key", "legacy": "ai_secrets 1 行（key_cipher/key_nonce，2026-10-12 写入）", "why": "老站用**它自己的主密钥**加密（sc2clud-core 的 Crypter），备份里没有任何主密钥材料（secrets/ 不入库、bot.env 只有新站自己的），所以这串密文在新站**解不开也搬不过去**。新站的密钥走 POST /admin/ai/config/secret 或 env FORUM_AI__KEY，与发信凭据同一把主密钥" },
+    { "field": "ai_review_posts = '1'", "legacy": "site_texts", "why": "它不是配置值，是**结构性开关**：老站用它决定「新帖要不要送审」，新站是 review_policy 决定 review_state、AI 只当判定来源（d7 §1），这条路径恒开 —— 没有可映射的那一格" },
+    { "field": "ai_review_on_report = '1'", "legacy": "site_texts", "why": "同上：新站的「举报到阈值 → 复审」没有开关（d7 §2.2 把阈值做成了 site_settings 的三个键），恒开" },
+    { "field": "ai_review_comments = '0'", "legacy": "site_texts", "why": "老站评论=独立表；新站回复是楼层、走同一套帖子审核。功能不存在，不是漏迁（《数据迁移审计》§6.4 已记）" },
+    { "field": "reasoning_effort", "legacy": "site_texts.ai_reasoning_effort = ''（空）", "why": "老站这一格自己就是空的（= 不传，用服务端默认）。新站没有这一列：它由 thinking 布尔表达，值见 traced.thinking" }
+  ]
+}

@@ -39,3 +39,21 @@
     （幂等那条先断言 first>0 再断言 second=0；名字那条先把 `tool-player` 改回旧名再跑 seed，要求变回来）。
   - 下一步：AI 配置的值也做成迁移资料（`完全重构/迁移素材/ai-config.json` + `forum ai-config` 导入命令 + 用例）。
   - 阻塞：无。
+- [x] 第3步：AI 配置**完全迁移**（值也做成迁移资料 + 可重复执行的导入路径）
+  - 做了什么：①\`完全重构/迁移素材/ai-config.json\` —— 老站 AI 配置的**值**（真源是备份库的 \`site_texts\` 表，
+    不是代码字面量：\`site/migrations/0029\` 只是默认值，线上被超管改过）。11 格：\`enabled/provider/base_url/model/
+    prompt/prompt_report/temperature/thinking/strict_mode/timeout_ms/max_output_tokens\`，另带 \`traced\`（逐格给老站出处
+    + 哪几格**不是逐字迁移**）与 \`not_migrated\`（密钥为什么不迁：老站 \`ai_secrets\` 的密文用**老站自己的主密钥**加密，
+    备份里没有该密钥材料 → 新站解不开，只能重配）。②\`forum/internal/app/ai_config_import.go\` 的 \`AIConfig\`
+    （\`forum ai-config -ai-manifest <file> [-dry-run]\`）：与 board-covers 同一套做法 —— manifest 是资料、命令是落地动作；
+    干跑不接库；**只改与目标不一致的那几格**（11 格逐格比对算 changed，一条 UPDATE 落地）。③迁移素材 README 加一节；④用例。
+  - 证据：\`go test ./internal/app/ -run TestAIConfigImportIsIdempotent -count=1 -v\` →
+    \`ai-config: ok, changed=5 unchanged=6\`（第一遍：base_url/model/两段提示词真的被写进去；
+    timeout_ms/max_output_tokens 与新站默认同值）→ 第二遍 \`changed=0 unchanged=11\` → \`--- PASS\`、\`ok 9.649s\`。
+    用例还核了：两段提示词逐字是老站原文（含「交人工复核」「拿不准就给待定」）、\`secret_cipher IS NULL\`（密钥没被搬）。
+    老站值（只读备份实测）：\`ai_enabled=0 / ai_endpoint=https://api.deepseek.com / ai_model=deepseek-flash / 
+    ai_prompt_new_post=你是中型星际争霸 II 社区的内容审核员… / ai_prompt_report=你是社区内容审核员… /
+    ai_reasoning_effort=（空）/ ai_review_posts=1 / ai_review_on_report=1 / ai_review_comments=0\`。
+  - 下一步：把盘点表那一条从「部分已迁 / 措辞要更正」改成**已迁**，并在审计里补 AI 配置值这一节（§6.4 / §6.5 / §5.3）。
+  - 阻塞：无。**两处已知偏差**（写进 manifest 的 traced，没有偷偷写成「等价」）：\`thinking=false\`
+    （老站不传 reasoning_effort → 服务端默认思考开）与 \`timeout_ms=30000\`（老站客户端 60s）。

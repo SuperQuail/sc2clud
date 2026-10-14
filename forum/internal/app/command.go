@@ -12,13 +12,14 @@ import (
 )
 
 // Usage 是给用户看的用法；退出码 2 表示用法错误（与运行期失败的 1 区分）。
-const Usage = "usage: forum <run|migrate|check|seed|reindex|board-covers|create-admin|backup> [-config path]\n" +
+const Usage = "usage: forum <run|migrate|check|seed|reindex|board-covers|ai-config|create-admin|backup> [-config path]\n" +
 	"  run           -listen addr -web dir\n" +
 	"  migrate\n" +
 	"  check\n" +
 	"  seed                                         （写入演示数据；可重复执行，不是迁移）\n" +
 	"  reindex                                      （重建 topic_search：数据导入/迁移之后必须跑一次）\n" +
 	"  board-covers  -manifest file.json [-dry-run] （内置分区图标：落盘 → 登记 images → 设 boards.cover_hash）\n" +
+	"  ai-config     -ai-manifest file.json [-dry-run] （老站 AI 配置的值 → ai_config 单行表；密钥不在里面）\n" +
 	"  create-admin  -username name [-email addr]   （口令从 stdin 读；-password 仅供开发）\n" +
 	"  backup        -out file.dump\n"
 
@@ -39,7 +40,9 @@ func Main(args []string, version string) int {
 	email := fs.String("email", "", "create-admin: 邮箱（默认 <username>@sc2clud.local）")
 	password := fs.String("password", "", "create-admin: 口令（默认从 stdin 读）")
 	manifest := fs.String("manifest", "完全重构/迁移素材/board-covers.json", "board-covers: 分区图标 manifest")
-	dryRun := fs.Bool("dry-run", false, "board-covers: 只打印将要写入的 slug → hash，不碰库、不落盘")
+	dryRun := fs.Bool("dry-run", false, "board-covers / ai-config: 只打印将要写入的值，不碰库")
+	// ai-config 用同一个 -manifest 开关，只是默认路径不同：两个子命令各自的资料都在 迁移素材/ 下。
+	aiManifest := fs.String("ai-manifest", "完全重构/迁移素材/ai-config.json", "ai-config: AI 配置 manifest")
 	if err := fs.Parse(args[2:]); err != nil {
 		return 2
 	}
@@ -79,6 +82,8 @@ func Main(args []string, version string) int {
 		err = Reindex(ctx, cfg)
 	case "board-covers":
 		err = BoardCovers(ctx, cfg, *manifest, *dryRun)
+	case "ai-config":
+		err = AIConfig(ctx, cfg, *aiManifest, *dryRun)
 	case "create-admin":
 		pw := *password
 		if pw == "" {
