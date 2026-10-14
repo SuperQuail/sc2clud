@@ -1,7 +1,7 @@
 import { expect, it } from 'vitest';
 import type { Board as ApiBoard, TopicDetail as ApiTopicDetail } from '@/lib/api/forum';
 import type { UserProfile } from '@/lib/api/user';
-import { toDesignAuthor, toDesignBoard, toDesignSource, toDesignTopic, toReview } from './topic';
+import { toDesignAuthor, toDesignBoard, toDesignSource, toDesignTopic, toReview } from './_parts/topic-mappers';
 
 // 这一条盯的是**字段名**（不是逻辑）：契约两侧各写一份、两边测试都过、序列化那一层没人测 ——
 // 这样栽过 6 次（board/board_id、captcha/captcha_answer、login/username、parent_id、hot、post.create）。

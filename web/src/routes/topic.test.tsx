@@ -2,7 +2,9 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { expect, it, vi } from 'vitest';
 import { MemoryRouter, Route, Routes } from 'react-router';
-import { TopicPage, toMentionCandidates } from './topic';
+import { TopicPage } from './topic';
+// 映射函数 2026-10-14 搬到 _parts/topic-mappers（宿主只留取数与传参，见那边的注释）
+import { toMentionCandidates } from './_parts/topic-mappers';
 
 // **真站这一页**的接线断言（房间那一屏由 12-topic 自己的测试盯）：
 //   ① 实测的线格式喂进来，整页要画得出来（不是白屏 / 不是崩）；

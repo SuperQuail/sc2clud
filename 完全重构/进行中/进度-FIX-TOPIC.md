@@ -3,12 +3,13 @@
 > 作用域：`web/src/devroom/pages/12-topic/**`、`web/src/devroom/pages/13-issue/**`、
 > `web/src/routes/{topic,issues}.tsx`、`web/src/lib/api/issues.ts`、
 > `forum/internal/forum/{dto,map,issues}.go`（只在需要补字段时）、本文件。
+> **后端一行都没改**（D6 选的是前端换格式，见下）。
 
 - [x] D4：下载来源移到正文上方 + 收成紧凑一行 + `target=_blank rel=noopener`
   - 证据：`npx vitest run src/devroom/pages/12-topic/topic-view.test.tsx`
     · 旧代码（`git stash` 掉三份 View 改动后）`FAIL … D4` →
     `AssertionError: expected +0 to be truthy`（`heading.compareDocumentPosition(body) & FOLLOWING`：
-    来源标题排在正文**之后**，正是缺陷本身）；改完 `Tests 26 passed`（12-topic 全组）。
+    来源标题排在正文**之后**，正是缺陷本身）；改完 `Tests 15 passed`（topic 两组）。
     · 图：`shots/fix-topic/d9-rail.png`（来源块在标题下、正文之上，一行一条：图标+站点+来源+提取码+大小）。
   - 下一步：无。
   - 阻塞：无
@@ -31,16 +32,16 @@
   - 证据：`npx vitest run src/routes/issues.new-issue.test.tsx`（3 passed）。网络替身**照后端行为写**
     （存下什么就渲染什么；旧测试拿手写 HTML 当 body_html，所以这个缺陷一直看不出来）：
     `expect(posted.body.body_md).toBe('走到第二波就卡关。')`、
-    `expect(JSON.stringify(posted.body)).not.toContain('"root"')`、页面上 `getByText('走到第二波就卡关。')`、
-    且 `document.body.textContent` 不含 `"root"`。序列化本身另有
-    `src/ui/rich/editor-json-to-markdown.test.ts`（4 passed：段落/格式/列表/引用 + 非 JSON 原样返回）。
-  - 为什么选前端换：正文那一列**同时装两种东西**（新写的 EditorState JSON 与老站迁来的 Markdown），
-    后端要认就得同时做 JSON 解析器 + Markdown 渲染器两套，而**存进去的那一份仍然不是 Markdown**
-    （编辑回填、列表、迁移全都要跟着分叉）；后端契约本来就是「上行 Markdown，下行 *_html」，
-    前端一次性转掉，后端一行不用动（也就没碰 handler.go）。
-  - 下一步：`routes/compose.tsx`（发帖 / 编辑正文）与 `routes/topic.tsx` 的回复走的是同一条根因
-    （上行 content_md = EditorState JSON → 后端当 Markdown 渲染），按同一办法接
-    `@/ui/rich/editor-json-to-markdown` 即可；那几处不在本包作用域，这里只做记录。
+    `expect(JSON.stringify(posted.body)).not.toContain('"root"')`、
+    `expect(screen.getByText('走到第二波就卡关。'))`、`document.body.textContent` 不含 `"root"`。
+    序列化本身另有 `src/ui/rich/editor-json-to-markdown.test.ts`（4 passed：段落/格式/列表/引用 + 非 JSON 原样返回）。
+  - 为什么选前端换（另一条路是后端认 JSON）：正文那一列**同时装两种东西**（新写的 EditorState JSON 与
+    老站迁来的 Markdown），后端要认就得同时做 JSON 解析器 + Markdown 渲染器两套，而**存进去的那一份
+    仍然不是 Markdown**（编辑回填、列表、迁移全都要跟着分叉）；后端契约本来就是「上行 Markdown，
+    下行 *_html」（`issues.go` 的 render → goldmark → bluemonday），前端一次性转掉，后端一行不用动。
+  - 下一步：`routes/compose.tsx`（发帖 / 编辑正文）与 `routes/topic.tsx` 的回复是**同一条根因**
+    （上行 content_md = EditorState JSON → 后端当 Markdown 渲染），接
+    `@/ui/rich/editor-json-to-markdown` 即可；那几处不在本包作用域，只做记录。
   - 阻塞：无
 
 - [x] D7：新建反馈从弹窗改成 issue 页内的完整表单区
@@ -55,8 +56,25 @@
   - 证据（浏览器实测，脚本 `shots/fix-topic/overlap.mjs`：把右栏所有可见控件/徽章两两比矩形）：
     1440 / 1000 / 700 三个视口**都没有任何一对相交**，唯一的「重叠」是头像链接包着自己的 img（嵌套，非缺陷）。
     实测坐标（1440）：关注按钮 y 709..733，作者卡角色徽章 y 916..936 —— 纵向差 183px，横向重叠 38px。
-    即用户截图里那种「压住」是**同一列里上下两格贴太近**造成的观感，不是叠层问题（缺陷清单里这条本来就标了「待核」）。
-  - 改法：`board-summary.tsx` 的两个动作（关注 / 发帖）单独成行、上下各加一条分隔线；
-    作者卡身份区与上一格的间距由 170px 增到 183px。图：`shots/fix-topic/d9-rail.png`。
-  - 下一步：如果用户手里那张截图确实是**真重叠**，请把原图或复现步骤发回来（我这边三个视口都量不到）。
-  - 阻塞：无（几何证据见上）
+    即截图里那种「压住」是**同一列上下两格贴太近**造成的观感，不是叠层问题（缺陷清单里这条本来就标了「待核」）。
+  - 改法：`board-summary.tsx` 的两个动作（关注 / 发帖）单独成行、上下各加分隔线；
+    作者卡身份区与上一格间距 170px → 183px。图：`shots/fix-topic/d9-rail.png`。
+  - 下一步：如果那张截图确实是**真重叠**，请把原图或复现步骤发回来（我这边三个视口都量不到）。
+  - 阻塞：无
+
+## 顺手收掉的（同一轮踩到、同一处改）
+
+- `routes/topic.tsx` 546 → **411 行**、`routes/issues.tsx` 540 → **497 行**：
+  DTO 映射搬到 `routes/_parts/{topic,issues}-mappers.ts`，表单搬进 `13-issue/new-issue-panel.tsx`。
+  `gate:size` 里那两条登记（当初写的正是「拆出映射与版面」）按门禁规矩撤掉 —— `node scripts/check-size.ts`
+  `检查 324 个文件，超限 1 个`（剩下的是别人的 `15-admin/screens/boards.tsx`，已登记）。
+- B6（同一段话就在我的文件里）：`onResubmit` 原来谎称「PATCH /topics/{id} 不会重置 review_state」，
+  实际带 content_md 的 PATCH 就会回 pending（`ResetTopicReview`）——现在它是**真请求**，不再只给回执。
+
+## 收工验证
+
+- `pnpm typecheck` 干净；`pnpm lint` `0 errors`（17 warnings，全是仓库既有的 react-refresh 类）。
+- `npx vitest run`：48 个文件里 **47 绿**；唯一红的是别的包新加的
+  `devroom/pages/10-messages/same-source.test.tsx`（FIX-MSG 的 D10），**单独跑绿、全量跑红**（连跑两次都红），
+  与本包改动无关 —— 记在这里供 Lead 归因。
+- `node scripts/check-size.ts` 通过。`pnpm check` **没跑**（协议：清 dist、与别人互踩）。

@@ -10,9 +10,9 @@ const PENDING: Record<string, string> = {
   // 2026-10-14 FIX-TOPIC 收口：routes/messages.tsx 的重构**已经做完**（FIX-MSG 的 D10 把信息中心收成
   // prop 驱动的 notice-center View + 薄宿主，该文件降到 232 行），登记按门禁的规矩撤掉 ——
   // 留着它就是一条「已归还的债还挂在账上」，而 gate:size 会因此常红（谁也不会去修一条假账）。
-  // 2026-10-14：K3-FIX 给 topic.tsx 补了关注分区 / 成员数 / 角色徽标 / 提及候选 / MarkdownEditor 编辑，
-  // 涨到 546 行。**重构目标**：把三块弹层与动作条拆到 routes/topic/ 下，行数只减不增。
-  'routes/topic.tsx': '拆出弹层与动作条到 routes/topic/',
+  // 2026-10-14 FIX-TOPIC：topic.tsx 已从 546 降到 411 行（DTO 映射搬到 routes/_parts/topic-mappers.ts、
+  // 版面全部收回 12-topic 的 View）——登记按门禁的规矩撤掉。**这次的形状就是当初那句重构目标**：
+  // 宿主只留「取数 + 传参」，映射是纯函数放 _parts，版面一个字都不在这里。
   // 2026-10-14 FIX-TOPIC：issues.tsx 已降到 497 行（DTO 映射搬到 routes/_parts/issues-mappers.ts、
   // 表单搬进 13-issue/new-issue-panel.tsx、列表/详情留在页面里）——登记按门禁的规矩撤掉。
   // 2026-10-14：K-ADMIN 给后台分区屏补了封面预览/更换/清空与 ACL/版主，涨到 510 行。

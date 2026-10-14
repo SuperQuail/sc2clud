@@ -18,28 +18,19 @@ import {
   setTopicBookmark,
   setTopicLike,
   updateTopic,
-  type Board as ApiBoard,
   type ReportReason,
   type TopicDetail as ApiTopicDetail,
-  type TopicSource as ApiSource,
 } from '@/lib/api/forum';
-import { fetchUserProfile, searchUsers, type SearchUser, type UserProfile } from '@/lib/api/user';
+import { fetchUserProfile, searchUsers } from '@/lib/api/user';
 import { createDonation, fetchUserChannels } from '@/lib/api/rewards';
 import { fetchBoardFollow, followBoard, unfollowBoard } from '@/lib/api/follow';
-import { formatCents, formatTime } from '@/lib/format';
+import { formatCents } from '@/lib/format';
 import { DesignActionNote } from '@/devroom/pages/12-topic/design-action';
-import { TopicView, type TopicReview } from '@/devroom/pages/12-topic/topic-view';
-import type { MentionCandidate } from '@/ui/comment/mention-types';
-import type {
-  Board,
-  BoardNav,
-  BoardSlug,
-  TopicAuthor,
-  TopicDetail,
-  TopicSource,
-} from '@/devroom/pages/12-topic/types';
+import { TopicView } from '@/devroom/pages/12-topic/topic-view';
+import type { Board, BoardNav, BoardSlug } from '@/devroom/pages/12-topic/types';
 import { ErrorState, Loading } from './_parts/state';
-import { imageUrl, toComments } from './_parts/mappers';
+import { toComments } from './_parts/mappers';
+import { boardHref, toDesignAuthor, toDesignBoard, toDesignTopic, toMentionCandidates, toReview, type TopicWire } from './_parts/topic-mappers';
 
 // 帖子详情 + 回复（契约：GET /topics/{id}、GET /topics/{id}/posts、POST /topics/{id}/posts）。
 // **公开首屏，不做代码分割**（前端方案 §6：它是从搜索引擎直接落地的页面）。
@@ -51,21 +42,6 @@ import { imageUrl, toComments } from './_parts/mappers';
 //   ③ 把每个动作接到真端点上（点赞 / 收藏 / 举报 / 编辑 / 回复 / 删回复 / 删帖）。
 // 为什么要有 ②：设计件吃的是「展示用的形状」（时间已是展示串、来源已归一），接口给的是线格式；
 // 两侧都不该为了对方改签名 —— 转换只在这一层（与 _parts/mappers.ts 同一个理由）。
-
-/** 后端详情里 lib/api/forum.ts 的 TopicDetail **还没声明**的审核/反馈态字段（照 forum/internal/forum/dto.go 抄）。
- *  头像与 cover 原先也在这张表里（当年 lib/api/forum 还停在设计稿的名字上）—— 2026-10-14 那边改成
- *  DTO 真名之后，本类型只剩这几个真没声明的。 */
-type TopicWire = {
-  review_state?: string;
-  /** 这一轮审核是否已转人工（后端 review_events 最新一条判定 = review，拍板 08 §第三轮 6） */
-  review_pending_human?: boolean;
-  review_note?: string | null;
-  issue_open_count?: number;
-  can_edit?: boolean;
-  can_reply?: boolean;
-  /** L6：只有 `revision_requested`（打回修改）时才有值 —— 上一份**过审的**正文（forum/map.go:77）。 */
-  revision_of?: { content_md: string; content_html: string; approved_at: string } | null;
-};
 
 /** 分区内导航：后端只有 kind 这一个筛选（featured / announcement 两个筛选没有端点，routes/board.tsx 同一处缺口），
  *  而且**没有「每个筛选各多少帖」的计数** —— 所以真站只给四项，且不带数字（给了 0 会被当成「这里没有帖子」）。 */
@@ -422,129 +398,6 @@ export function TopicPage() {
 /** 主题详情 + 作者资料 → 设计件的 TopicAuthor。
  *  两处字段名都是**实测**的：论坛的 UserBriefDTO 回 avatar_hash（裸哈希），
  *  用户域 user.Profile 回的是平铺的 level/exp/exp_max/topic_count/like_received/joined_at/title。 */
-export function toDesignAuthor(t: ApiTopicDetail, ap?: UserProfile): TopicAuthor {
-  return {
-    handle: t.author.handle,
-    nickname: t.author.nickname,
-    // 裸哈希没有 URL，统一走 mappers.imageUrl 拼 /img/<hash>；没有哈希就是空串（UserAvatar 自己回落首字母）
-    avatar: imageUrl(t.author.avatar_hash) ?? '',
-    // 角色徽标：详情会带 role（UserBriefDTO.Role，只有详情那条查询选这三列）。
-    // 没带就是 null（列表项路径没有徽标位），不编一个默认角色出来。
-    role: t.author.role ?? null,
-    title: ap?.title ?? t.author.title ?? null,
-    bio: ap?.bio ?? t.author.bio ?? '',
-    level: ap?.level ?? t.author.level ?? 1,
-    exp: ap?.exp ?? 0,
-    exp_max: ap?.exp_max ?? 1,
-    topic_count: ap?.topic_count ?? 0,
-    like_received: ap?.like_received ?? 0,
-    // 两处接口给的都是 RFC3339，而作者卡上那一行是「2024 年 3 月加入」——
-    // 不过这一手就会在真站上显示成「2024-03-02T00:00:00Z加入」（个人主页 routes/profile.tsx:372
-    // 早就在做同一件事，是帖子页漏了）。
-    joined_at: joinedMonth(ap?.joined_at ?? t.author.joined_at ?? ''),
-  };
-}
-
-/** 「2024 年 3 月」：与 routes/profile.tsx 的 joinedText 同一口径（那里带「加入」两字，这里不带）。 */
-function joinedMonth(iso: string): string {
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return '';
-  return new Intl.DateTimeFormat('zh-CN', { year: 'numeric', month: 'long' }).format(d);
-}
-
-/** 主题详情 → 设计件的 TopicDetail（时间在这一步变成展示串）。 */
-export function toDesignTopic(t: ApiTopicDetail, author: TopicAuthor): TopicDetail {
-  return {
-    id: t.id,
-    board: { slug: t.board.slug as BoardSlug, name: t.board.name },
-    kind: t.kind,
-    title: t.title,
-    // 正文真源（编辑弹层用）；后端字段名就是 content_md，缺了给空串（编辑器会是空文档）
-    content_md: t.content_md ?? '',
-    content_html: t.content_html,
-    author,
-    created_at: formatTime(t.created_at),
-    updated_at: formatTime(t.updated_at),
-    reply_count: t.reply_count,
-    like_count: t.like_count,
-    view_count: t.view_count,
-    bookmark_count: 0,
-    pinned: t.pinned,
-    // 详情与列表项都叫 featured（TopicCardDTO.Featured 是 bool）
-    featured: t.featured,
-    locked: t.locked ?? false,
-    sources: (t.sources ?? []).map(toDesignSource),
-    images: t.images ?? [],
-    viewer: { liked: t.viewer?.liked ?? false, bookmarked: t.viewer?.bookmarked ?? false, following: false },
-  };
-}
-
-/** 审核态：review_state 只有 pending / approved / rejected 三个值（migrations 的 CHECK）。 */
-export function toReview(t: ApiTopicDetail): TopicReview {
-  const raw = t as ApiTopicDetail & TopicWire;
-  return {
-    state: (raw.review_state ?? 'approved') as TopicReview['state'],
-    // L6：打回修改时那一份「最后过审版本」。**没有就不造假**（后端也只在第四态给）。
-    revision: raw.revision_of ? { content_html: raw.revision_of.content_html, approved_at: raw.revision_of.approved_at } : null,
-    // 「已转人工」那一档：后端按 review_events 最新一条判定算（只有作者视角才有意义，读者恒 false）。
-    // 缺失时按 false 读 = 「正在自动检查」—— 那正是没有这条信息时该说的话。
-    pendingHuman: raw.review_pending_human ?? false,
-    note: raw.review_note ?? null,
-  };
-}
-
-/** 提及候选：后端 `SearchItem` → 编辑器吃的 `MentionCandidate`。
- *  **id 直接用**（后端已经是数字 user id，就是 `mention:<id>` 里那个真源）；
- *  avatar 后端已经拼成 `/img/<hash>`（与个人主页同一条约定），别再套一层 imageUrl；
- *  ambiguous（后端按显示名判的重名）就是编辑器要的 duplicate 标记。 */
-export function toMentionCandidates(items: SearchUser[]): MentionCandidate[] {
-  return items.map((u) => ({
-    id: String(u.id),
-    handle: u.handle,
-    nickname: u.nickname,
-    avatar: u.avatar,
-    duplicate: u.ambiguous,
-  }));
-}
-
-/** 后端回的是 /api/v1/...（不带 /dev 前缀），必须过 appPath 才能同时活在 / 与 /dev/ 两个前缀下。 */
-export function toDesignSource(s: ApiSource): TopicSource {
-  return {
-    id: s.id,
-    // 开放集合：词表在后端 sources.go 与 lib/api/forum 的 SOURCE_PROVIDERS，设计件按它挑图标
-    provider: s.provider,
-    label: s.label,
-    go_path: appPath(s.go_path),
-    extraction_code: s.extraction_code ?? null,
-    size: s.size ?? '',
-    verified_at: s.verified_at ? formatTime(s.verified_at) : '未核对',
-    upkeep: s.upkeep === 'archived' ? 'archived' : 'active',
-  };
-}
-
-/** GET /boards 的一行 → 设计件的 Board。
- *  member_count 与 joined **不在这里填**（BoardDTO 没有这两列：成员数就是关注数，
- *  它来自 GET /boards/{slug}/follow，由宿主只对当前这一个分区取一次再覆盖上去）——
- *  所以这里给的是「没有关注信息时」的中性值，不是假数。 */
-export function toDesignBoard(b: ApiBoard): Board {
-  return {
-    slug: b.slug as BoardSlug,
-    name: b.name,
-    cover: b.cover ?? '',
-    description: b.description,
-    topic_count: b.topic_count,
-    post_count: b.post_count ?? 0,
-    member_count: b.member_count ?? 0,
-    today_count: b.today_count ?? 0,
-    // shortcut: hint 那句话后端没有（左栏悬停提示），要真话得后端给
-    joined: false,
-    hint: '',
-  };
-}
-
-function boardHref(slug: BoardSlug): string {
-  return appPath('b/' + encodeURIComponent(slug));
-}
 
 async function copyLink(href: string, setReceipt: (s: string) => void) {
   try {
