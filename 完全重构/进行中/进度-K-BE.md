@@ -39,6 +39,15 @@
 - [x] L10 + E3 老站功能清单逐条核对（只写文档）
 - [ ] C9-2 剩余：`auth` / `notify` / `appeal` 三域的同类 `{id}` 核实
 
+## 收工验证（三批提交之后）
+
+- `gofmt -l .` → **空**
+- `go vet ./...` → **0 输出**
+- `go test ./internal/forum/ ./internal/auth/ ./internal/title/ ./internal/reward/ ./internal/notify/ ./internal/appeal/ ./internal/app/ ./internal/site/ -count=1`
+  → **8 个包全 ok**（forum 80.6s / auth 72.5s / title 30.6s / reward 51.5s / notify 54.7s /
+  appeal 12.9s / app 15.2s / site 26.1s）
+- 提交：`4ccb811`（第一批）、`01df68a`（第二批）、`2656e44`（第三批）
+
 ## 记录
 
 ### J1 · `moderator` → `creator`
