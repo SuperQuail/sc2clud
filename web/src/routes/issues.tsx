@@ -55,6 +55,10 @@ import { Empty, ErrorState, Loading } from './_parts/state';
  *  而后端三种排序列全是 DESC（pgsql/issues.go:110-113、157 行 ORDER BY … DESC）。照抄就是一句假话。 */
 const SORT_TEXT: Record<SortKey, string> = { updated: '最新更新', created: '最新创建', old: '最早创建', comments: '评论最多' };
 
+/** D5：顶上两个页签（帖子内容 / 问题反馈）的选中态写在地址上。
+ *  写出来的唯一一处是 routes/topic.tsx 的 `onOpenIssue`（`issues?topic=<id>`，缺这个参数 = 反馈页）。 */
+const VIEW_PARAM = 'view';
+
 function parseKind(v: string | null): IssueKind | undefined {
   return v === 'bug' || v === 'feature' || v === 'difficulty' || v === 'other' ? v : undefined;
 }
@@ -341,7 +345,10 @@ export function IssuesPage() {
     <div className='flex w-full flex-col gap-4'>
       <div className='w-full'>
         <TopicTaskTabs
-          value='issue'
+          // D5：页签的选中态**由 URL 决定**（?view=issue）—— 两页共用这一套 key，
+          // 「帖子内容」= /t/<id>、「问题反馈」= /issues?topic=<id>&view=issue，于是两处看同一页必然一致，
+          // 而不会出现「地址在反馈页、按钮还高亮着帖子内容」那种两套真源的分叉。
+          value={sp.get(VIEW_PARAM) === 'content' ? 'content' : 'issue'}
           onChange={(v) => {
             if (v !== 'content') return;
             // 「帖子内容」这一格要回帖子页；全站列表（没有 ?topic=）不属于任何帖子，点了给一句实话
@@ -349,8 +356,15 @@ export function IssuesPage() {
             else setReceipt('当前是全站反馈列表（没有 ?topic=），没有对应的帖子内容可回；从帖子页的「问题反馈」入口进来才有。');
           }}
           onOpenIssue={() => {
+            // 重复点这一格 = 「回到全部反馈列表」：清筛选 + 收掉入参 kind（把地址也擦干净）
             setScope('all');
             setReceipt(null);
+            if (sp.get('kind') || sp.get(VIEW_PARAM) !== 'issue') {
+              const next = new URLSearchParams(sp);
+              next.delete('kind');
+              next.set(VIEW_PARAM, 'issue');
+              setSp(next, { replace: true });
+            }
           }}
         />
 

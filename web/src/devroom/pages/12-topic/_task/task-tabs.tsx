@@ -32,6 +32,9 @@ export function TopicTaskTabs({ value, onChange, onOpenIssue, issueCount }: Topi
     if (key === 'issue') onOpenIssue();
   }
 
+  // **受控**：value 是唯一真源（真站把它接到 URL 的 ?view=，见 routes/issues.tsx 的 VIEW_PARAM）。
+  // 这一层不自己记 state —— 自己记一份就会出现「地址说在反馈页、按钮还高亮着帖子内容」那种分叉。
+
   return (
     <nav
       data-testid='topic-tabs'
@@ -44,6 +47,7 @@ export function TopicTaskTabs({ value, onChange, onOpenIssue, issueCount }: Topi
         return (
           <Button
             key={key}
+            data-testid={'topic-tab-' + key}
             height={ControlsHeight.L}
             // 必须显式写 inline={false}：Ring UI 只要看到 icon 就把按钮按 inline（链接样式）排，
             // 顺带把 primary 也吃掉（button.js: isInline = inline ?? text ?? !!icon；primaryBlock = primary && !inline）。

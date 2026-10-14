@@ -241,6 +241,23 @@ it('审核态：rejected 显示理由与「重新提交审核」，approve 后�
   expect(screen.queryByTestId('topic-resubmit')).toBeNull();
 });
 
+// D5（2026-10-14 用户实测）：点「问题反馈」页签**要真的切过去**。
+// 这一层只证明回调到位（真站的导航在 routes/topic.tsx，判据是地址真的变了 —— 见 issues.tabs.test.tsx）；
+// 同时钉住「宿主没接时不静默」：至少页签自己会选中，而不是一块点了没反应的死按钮。
+it('D5：点「问题反馈」页签把 onOpenIssue 交给宿主', async () => {
+  const onOpenIssue = vi.fn();
+  const { container } = render(<TopicView {...viewProps({ onOpenIssue })} />);
+  fireEvent.click(container.querySelectorAll('[data-testid=topic-tabs] button')[1]!);
+  expect(onOpenIssue).toHaveBeenCalledTimes(1);
+});
+
+it('D5：宿主不接 onOpenIssue 时，页签自己也要选中（不许静默）', async () => {
+  const { container } = render(<TopicView {...viewProps({ onOpenIssue: undefined })} />);
+  const tabs = container.querySelectorAll('[data-testid=topic-tabs] button');
+  fireEvent.click(tabs[1]!);
+  expect(container.querySelectorAll('[data-testid=topic-tabs] button')[1]!.getAttribute('aria-current')).toBe('page');
+});
+
 it('四个反馈入口各是一条带了各自类型的链接（B2）', async () => {
   const issueHrefFor = vi.fn((kind: string) => '/issues?topic=t_1042&kind=' + kind);
   render(<TopicView {...viewProps({ issueHrefFor, feedbackHref: '/issues?topic=t_1042' })} />);

@@ -128,7 +128,9 @@ export type TopicViewProps = {
   /** 四个类型入口各自的地址（带上 kind）。给了它就优先于 feedbackHref —— 那样每个入口才预设得上自己的类型 */
   issueHrefFor?: (kind: IssueKind) => string;
   onOpenFeedback?: (kind?: IssueKind) => void;
-  /** 页签上那个「问题反馈」入口要去哪；给了 href 就不需要它 */
+  /** 「问题反馈」页签的落点（**宿主必须接**）。
+   *  D5（2026-10-14 用户实测）：原先它默认 noop —— 点页签什么都没发生，人还以为页签坏了。
+   *  这里不自己导航（组件不认识路由），但宿主不接时也不静默：见下面 TopicTaskTabs 的兜底。 */
   onOpenIssue?: () => void;
 
   // —— 下载来源能不能点（房间没有转链端点）——
@@ -216,7 +218,14 @@ export function TopicView({
 
   return (
     <div className='flex w-full flex-col gap-4'>
-      <TopicTaskTabs value={tab} onChange={setTab} issueCount={issueCount} onOpenIssue={onOpenIssue ?? (() => {})} />
+      <TopicTaskTabs
+        value={tab}
+        onChange={setTab}
+        issueCount={issueCount}
+        // D5：页签是**受控**的，切过去靠宿主导航（房间指房间里的反馈页，真站指 /issues?topic=）。
+        // 宿主没接时退回「选中它」——至少页签会动，而不是点下去一片死寂（那正是用户报的现象）。
+        onOpenIssue={onOpenIssue ?? (() => setTab('issue'))}
+      />
 
       <div className='grid grid-cols-1 gap-x-5 gap-y-4 md:grid-cols-[minmax(0,1fr)_248px] xl:flex xl:items-start'>
         {/* 左栏：只在 ≥1200px 出现。用 hidden 而不是挪到底部——它是「常驻栏」，不该在窄屏抢首屏 */}

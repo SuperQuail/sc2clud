@@ -349,13 +349,12 @@ export function TopicPage() {
       reportedIds={reportedIds}
       onDelete={() => remove.mutate()}
       deleting={remove.isPending}
-      // **这两个端点后端都还没有**（forum/handler.go 里既没有 review 也没有 appeal；router.tsx 因此把申诉页整页隐藏）。
-      // 但横幅上那句「改完可以重新提交」没有落点，正是这一轮要修的缺陷 —— 所以按钮留着、点了给一次诚实的回执：
-      // 不静默、也不谎称已经提交。后端补上端点后，把这两行换成真请求即可。
+      // B6：「重新提交审核」**有真端点**：带 content_md 的 PATCH /topics/{id} 会把 review_state 打回
+      // pending（forum 的 ResetTopicReview，597c4ac 修的）——就是保存那一支，不必先点「编辑」。
+      // 而「申请人工复核」后端**确实没有**（handler.go 里没有这个路由，router.tsx 因此把申诉页整页隐藏），
+      // 所以它照旧只给一次诚实回执，不谎称已经提交。
       onAppeal={() => setReceipt('「申请人工复核」的端点后端还没有，所以这一次没有真的提交。')}
-      onResubmit={() =>
-        setReceipt('「重新提交审核」的端点后端还没有（PATCH /topics/{id} 不会重置 review_state），可以先点动作条上的「编辑」改内容。')
-      }
+      onResubmit={() => save.mutate({ title: t.title, json: t.content_md ?? '' })}
       comments={comments}
       commentTotal={t.reply_count}
       // shortcut: 提及候选要 GET /users/mention-candidates 之类的端点（lib/api 里还没有），先不给候选
@@ -411,6 +410,9 @@ export function TopicPage() {
       //   「看全部反馈」不带 kind（那一页自己按页签选），所以只给它 topic。
       issueHrefFor={(kind) => appPath('issues?topic=' + encodeURIComponent(t.id) + '&kind=' + kind)}
       feedbackHref={appPath('issues?topic=' + encodeURIComponent(t.id))}
+      // D5：顶上那个「问题反馈」页签原来点了什么都不发生（onOpenIssue 组件层默认 noop）——
+      // 现在它就是一次真导航（同一份反馈页，`?topic=` 限定到这张帖）。
+      onOpenIssue={() => void navigate(appPath('issues?topic=' + encodeURIComponent(t.id)))}
       sourcesLinked
       receipt={failed ? <ErrorState what={failed.what} error={failed.m.error} /> : receiptText ? <DesignActionNote message={receiptText} /> : null}
     />
