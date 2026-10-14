@@ -22,8 +22,9 @@ const BoardPage = lazy(() => import('@/routes/board').then((m) => ({ default: m.
 const ProfilePage = lazy(() => import('@/routes/profile').then((m) => ({ default: m.ProfilePage })));
 const SettingsPage = lazy(() => import('@/routes/settings').then((m) => ({ default: m.SettingsPage })));
 const ComposePage = lazy(() => import('@/routes/compose').then((m) => ({ default: m.ComposePage })));
-// **申诉暂不上线**：`POST /api/v1/appeals` 后端不存在（§21.2 里只有帖子的 review/appeal，那条也没实现）。
-// 留着一个填完必然失败的表单比没有更糟，所以整页隐藏、入口也撤掉（见 完全重构/UI与后端对齐.md 第二节）。
+// **申诉页已上线**（2026-10-14）：`POST /api/v1/appeals` 已落地（免登录自证：用户名 + 注册邮箱 + 图形验证码），
+// 连同 `/appeals/lookup`（凭单号查进展）、`/me/appeals` 与管理端队列。此前整页隐藏的理由（后端端点不存在）作废。
+const AppealPage = lazy(() => import('@/routes/appeal').then((m) => ({ default: m.AppealPage })));
 const AdminLayout = lazy(() => import('@/routes/admin').then((m) => ({ default: m.AdminLayout })));
 const NotFoundPage = lazy(() => import('@/routes/not-found').then((m) => ({ default: m.NotFoundPage })));
 const NotificationsPage = lazy(() => import('@/routes/notifications').then((m) => ({ default: m.NotificationsPage })));
@@ -52,7 +53,7 @@ const router = createBrowserRouter(
         { path: 'login', element: <LoginPage /> },
         { path: 'register', element: <RegisterPage /> },
         { path: 'register/verify', element: <VerifyPage /> },
-        // { path: 'appeal', element: <AppealPage /> },  // 后端端点不存在，整页隐藏（2026-10-13）
+        { path: 'appeal', element: <AppealPage /> },
         { path: 'settings', element: <SettingsPage /> },
         { path: 'notifications', element: <NotificationsPage /> },
         { path: 'me', element: <MePage /> },

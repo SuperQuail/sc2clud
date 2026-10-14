@@ -58,7 +58,7 @@ export function EditTopicDialog({
         <div className='flex flex-col gap-1'>
           <h2 className='text-base font-semibold text-foreground'>编辑帖子</h2>
           <p className='text-[12px] leading-relaxed text-muted-foreground'>
-            保存后正文与「最后编辑」时间就地更新（本页数据是本地的，用于验证入口与闭环）。
+            保存后正文与「最后编辑」时间就地更新。
             帖子处在审核中 / 未通过时，改完可以重新提交审核。
           </p>
         </div>

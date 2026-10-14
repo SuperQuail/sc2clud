@@ -50,6 +50,9 @@ export function AppealPage() {
   const [details, setDetails] = useState('');
   const [contact, setContact] = useState('');
   const [captcha, setCaptcha] = useState('');
+  // 图形验证码是**成对**校验的：服务端按 id 找答案（无论对错都作废那张图）。
+  // 只发答案的话后端拿不到题 → 一律 auth.captcha_wrong，用户会以为是自己看错了图。
+  const [captchaId, setCaptchaId] = useState('');
   const [touched, setTouched] = useState(false);
 
   const loggedIn = session.isLoggedIn;
@@ -59,7 +62,11 @@ export function AppealPage() {
     mutationFn: () =>
       api<{ no: string; eta?: string }>(APPEAL_ENDPOINT, {
         method: 'POST',
-        body: { type, username, email, ref: ref || undefined, title, details, contact: contact || undefined, captcha: captcha || undefined },
+        body: {
+          type, username, email, ref: ref || undefined, title, details,
+          contact: contact || undefined,
+          captcha: captcha || undefined, captcha_id: captchaId || undefined,
+        },
       }),
     onSuccess: () => window.scrollTo({ top: 0 }),
   });
@@ -244,7 +251,7 @@ export function AppealPage() {
           disabled={submit.isPending}
         />
 
-        {!loggedIn ? <ProductCaptcha value={captcha} onChange={setCaptcha} /> : null}
+        {!loggedIn ? <ProductCaptcha value={captcha} onChange={setCaptcha} onChallenge={setCaptchaId} /> : null}
 
         <Button
           data-testid='appeal-submit'
