@@ -49,10 +49,11 @@ func TestCreateTopicAndReadBack(t *testing.T) {
 		t.Fatalf("1 楼不算回复，reply_count 应为 0，实际 %d", d.ReplyCount)
 	}
 
-	// 搜索索引与通知：发主题只投 search:index（notify 由 D4 自己决定，见 d3-forum §8.3）。
+	// 发主题投两个任务：search:index（搜索索引）与 ai:review（AI 审核，d7 §1）。
+	// notify 由 D4 自己决定（d3-forum §8.3）；AI 调用本身在 worker 里，**不在发帖事务里**。
 	types := h.queue.types()
-	if len(types) != 1 || types[0] != "search:index" {
-		t.Fatalf("发主题应只投 search:index，实际 %v", types)
+	if len(types) != 2 || types[0] != "search:index" || types[1] != "ai:review" {
+		t.Fatalf("发主题应投 search:index + ai:review，实际 %v", types)
 	}
 
 	// 游客看不到待审主题，作者自己看得到（§3.7 Q6 的第三条 or）。

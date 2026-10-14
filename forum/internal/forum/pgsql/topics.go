@@ -68,7 +68,7 @@ const topicColumns = `t.id, t.public_id, t.kind, t.title, t.excerpt,
        (t.pinned_at IS NOT NULL) AS pinned, (t.featured_at IS NOT NULL) AS featured,
        (t.locked_at IS NOT NULL) AS locked,
        b.slug, b.name,
-       a.id, a.public_id, a.username, COALESCE(NULLIF(a.nickname, ''), a.username), a.avatar_hash, a.avatar_small_hash, a.status,
+       a.id, a.public_id, a.username, COALESCE(NULLIF(a.nickname, ''), a.username), COALESCE(NULLIF(a.avatar_hash, ''), a.default_avatar_hash, ''), COALESCE(NULLIF(a.avatar_small_hash, ''), NULLIF(a.avatar_hash, ''), a.default_avatar_hash, ''), a.status,
        ci.hash, ci.width, ci.height`
 
 // scanTopicRow 按 topicColumns 的顺序扫一行；extra 按调用方在列清单之后追加的列依次接收。

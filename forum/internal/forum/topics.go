@@ -314,8 +314,18 @@ func (s *Service) insertTopic(ctx context.Context, actor *authz.Actor, boardID i
 		if _, err := pgsql.InsertTopicBody(ctx, tx, newPublicID(), id, actor.UserID, in.ContentMD, html, now); err != nil {
 			return err
 		}
-		return s.enqueue(ctx, tx, queue.Task{
+		if err := s.enqueue(ctx, tx, queue.Task{
 			Type: queue.TypeSearchIndex, Payload: map[string]int64{"id": id}, UniqueKey: "topic:" + itoa64(id),
+		}); err != nil {
+			return err
+		}
+		// AI 审核（d7 §1/§6）：**与发帖同事务入队**，但 AI 调用绝不在这条事务里发生。
+		// priority=20 高于验证码邮件(10)：用户可以晚几秒收到信，但帖子晚几秒审完他就在看「审核中」；
+		// max_retry=2（d7 §6）：重试太久没意义，第 3 次直接交人工（主题留在 pending）。
+		return s.enqueue(ctx, tx, queue.Task{
+			Type:      queue.TypeAIReview,
+			Payload:   map[string]any{"topic_id": id, "trigger": "create"},
+			UniqueKey: "review:create:" + itoa64(id), Priority: 20, MaxRetry: 2,
 		})
 	})
 	if err == nil || in.ClientToken == "" || !isUniqueViolation(err) {

@@ -6,6 +6,9 @@ import "time"
 // 自增 bigint 一律不出现在响应里——外面看到的 id 都是 public_id。
 
 // UserBriefDTO 是卡片与楼层上的作者。列表查询里 JOIN users 直接取，没有 N+1。
+//
+// 两根头像列**在 SQL 里就回落过**（pgsql 每条作者查询：avatar_hash 空 → users.default_avatar_hash）：
+// 前端拿到的是「有就用」的裸哈希，所以新加查询时必须照抄那个 COALESCE，否则作者头像会退回首字母占位。
 type UserBriefDTO struct {
 	Handle      string `json:"handle"`
 	Nickname    string `json:"nickname"`

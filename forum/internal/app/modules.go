@@ -125,9 +125,8 @@ func newModules(ctx context.Context, cfg *config.Config, in *Infra) (*Modules, e
 
 	// AI 审核域（d7）：库句柄是 pgx 原生池（这两张表不加 ent schema），密钥加解密与发信同一套。
 	// crypter 从 mail 域拿 —— 主密钥只有一把，**不为 AI 再引一把**（d7 §2.1）。
-	if m.Mail.Crypter == nil {
-		return nil, fmt.Errorf("装配: aireview: mail 的主密钥没配好（FORUM_MAIL__KEY）")
-	}
+	// 主密钥没配时不拒绝启动（与 mail 域「缺主密钥也照启动、只是发信不可用」的既定决定一致）：
+	// AI 审核在真正要解密时会报「未配置」并转人工，不会让整站起不来。
 	m.AIReview = aireview.New(in.Pool, nil, m.Mail.Crypter, entQueue{in.Queue}, m.Site, in.Clock, in.Log)
 	m.Report = report.NewService(in.DB, reportTargets{m}, reportUsers{m}, m.Site, m.AIReview,
 		m.audit, in.Clock, in.Log)

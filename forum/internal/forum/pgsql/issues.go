@@ -36,11 +36,11 @@ const topicScopeColumns = `t.id, t.title, b.slug, b.name`
 const issueColumns = "i.id, i.public_id, i.number, i.kind, i.title, i.status, i.body_html, i.tags, " +
 	"i.created_at, i.updated_at, i.closed_at, " +
 	topicScopeColumns + ", " +
-	"a.id, a.public_id, a.username, COALESCE(NULLIF(a.nickname, ''), a.username), a.avatar_hash, a.avatar_small_hash, a.status"
+	"a.id, a.public_id, a.username, COALESCE(NULLIF(a.nickname, ''), a.username), COALESCE(NULLIF(a.avatar_hash, ''), a.default_avatar_hash, ''), COALESCE(NULLIF(a.avatar_small_hash, ''), NULLIF(a.avatar_hash, ''), a.default_avatar_hash, ''), a.status"
 
 // 指派人是可空的外键：LEFT JOIN + 一组可空标量，扫完再拼成一个可空的 UserRow。
 const issueAssignee = `
-       asg.id, asg.public_id, asg.username, COALESCE(NULLIF(asg.nickname, ''), asg.username), asg.avatar_hash, asg.avatar_small_hash, asg.status`
+       asg.id, asg.public_id, asg.username, COALESCE(NULLIF(asg.nickname, ''), asg.username), COALESCE(NULLIF(asg.avatar_hash, ''), asg.default_avatar_hash, ''), COALESCE(NULLIF(asg.avatar_small_hash, ''), NULLIF(asg.avatar_hash, ''), asg.default_avatar_hash, ''), asg.status`
 
 const issueFrom = `
   FROM post_issues i
@@ -292,7 +292,7 @@ func (s *Store) IssueComments(ctx context.Context, issueID, viewerID, cursorID i
 	err := s.query(ctx, `
 SELECT c.id, c.public_id, c.issue_id, c.parent_id, par.public_id, c.body_html, c.visibility,
        c.like_count, c.dislike_count, c.created_at, c.updated_at,
-       a.id, a.public_id, a.username, COALESCE(NULLIF(a.nickname, ''), a.username), a.avatar_hash, a.avatar_small_hash, a.status,
+       a.id, a.public_id, a.username, COALESCE(NULLIF(a.nickname, ''), a.username), COALESCE(NULLIF(a.avatar_hash, ''), a.default_avatar_hash, ''), COALESCE(NULLIF(a.avatar_small_hash, ''), NULLIF(a.avatar_hash, ''), a.default_avatar_hash, ''), a.status,
        COALESCE(my.value, 0)
   FROM issue_comments c
   JOIN users a ON a.id = c.author_id
@@ -319,7 +319,7 @@ func (s *Store) IssueCommentReplies(ctx context.Context, parentID, viewerID int6
 	err := s.query(ctx, `
 SELECT c.id, c.public_id, c.issue_id, c.parent_id, c.body_html, c.visibility,
        c.like_count, c.dislike_count, c.created_at, c.updated_at,
-       a.id, a.public_id, a.username, COALESCE(NULLIF(a.nickname, ''), a.username), a.avatar_hash, a.avatar_small_hash, a.status,
+       a.id, a.public_id, a.username, COALESCE(NULLIF(a.nickname, ''), a.username), COALESCE(NULLIF(a.avatar_hash, ''), a.default_avatar_hash, ''), COALESCE(NULLIF(a.avatar_small_hash, ''), NULLIF(a.avatar_hash, ''), a.default_avatar_hash, ''), a.status,
        COALESCE(my.value, 0)
   FROM issue_comments c
   JOIN users a ON a.id = c.author_id
@@ -447,7 +447,7 @@ func (s *Store) IssueCommentByID(ctx context.Context, commentID, viewerID int64)
 	err := s.query(ctx, `
 SELECT c.id, c.public_id, c.issue_id, c.parent_id, par.public_id, c.body_html, c.visibility,
        c.like_count, c.dislike_count, c.created_at, c.updated_at,
-       a.id, a.public_id, a.username, COALESCE(NULLIF(a.nickname, ''), a.username), a.avatar_hash, a.avatar_small_hash, a.status,
+       a.id, a.public_id, a.username, COALESCE(NULLIF(a.nickname, ''), a.username), COALESCE(NULLIF(a.avatar_hash, ''), a.default_avatar_hash, ''), COALESCE(NULLIF(a.avatar_small_hash, ''), NULLIF(a.avatar_hash, ''), a.default_avatar_hash, ''), a.status,
        COALESCE(my.value, 0)
   FROM issue_comments c
   JOIN users a ON a.id = c.author_id
