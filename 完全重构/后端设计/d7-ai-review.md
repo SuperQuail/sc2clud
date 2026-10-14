@@ -275,7 +275,7 @@ review_events 只回答「它被谁、因为什么、判过几次」。
     1. 读 ai_config 与 site_settings（阈值、开关）；任一关闭 → 记 Debug 并返回 nil
     2. 取主题：title + 1 楼 PlainText(content_html)；主题已删除/已人工审 → 返回 nil
     3. 判单帖当日调用次数（review_events 里 source='ai' 且今日的条数）超限 → 返回 nil（转人工由状态机保证：它还留在 pending）
-    4. 组装 prompt（§4）与 user 消息（标题 + 正文，按 §2.4 截断）
+    4. 组装 prompt（§4）与 user 消息（标题 + 正文；**不截断**，见 §2.4 与 §8）
     5. 调 DeepSeek（§3），记 latency_ms
     6. 解析（§3.5）→ 得 verdict / reason / categories
     7. 单事务：写 review_events + 改 topics.review_state / review_note / reviewed_at / review_source
@@ -358,3 +358,21 @@ review_events 只回答「它被谁、因为什么、判过几次」。
 | prompt 里放作者信息 | 昵称/邮箱/IP 与审核无关，且是隐私 |
 | 用 deepseek-v4-pro | 审核不需要推理链，而它贵一档、并发只有 500 |
 | 流式输出 | 审核要的是结论，不是打字机效果 |
+## 8. 实现偏差（2026-10-14，Lead 记账）
+
+实现这一轮时发现**当前依赖 `sashabaranov/go-openai` 有两条硬限制**，两条都直接影响 §3.2 的参数纪律：
+
+| # | d7 要求 | 依赖的限制 | 当前实现 |
+|---|---|---|---|
+| 1 | `tool_choice: "required"` 强制调用；关掉思考（思考模式下不支持 required） | 关思考要发厂商扩展字段 `thinking`，只能走 `extra_body`；**该 SDK 不支持 extra body** | 发 `tools` 但**不强制**（思考模式下官方支持工具调用）；模型没调工具按 §3.5 fail-open 到人工 |
+| 2 | `temperature: 0`（分类任务要确定性） | 字段是 `float32` + `omitempty`，**传 0 会被丢弃** → 实际用的是模型默认值（1.0） | 暂时接受，**判定会抖**；已记 TODO |
+
+**修法（唯一正确的那个）**：换成官方 `openai/openai-go` —— 它用 `param.Opt` 显式表达「传了 0」，
+并且支持 `ExtraFields`（可发 `thinking`）。**不手写 HTTP 去绕**：那等于自己维护一个更差的 SDK，
+与「宁可引依赖也不自己写糟糕实现」这条规矩相反。
+
+### 另外一处文档自相矛盾（已按明确条款执行）
+
+§6 第 4 步写「组装 user 消息（标题 + 正文，**按 §2.4 截断**）」，而 §2.4 自己写着「**不做任何截断**」。
+两处冲突时按**明确禁止的那条**执行：**不截断**（截断会让 AI 只看到半篇，判出来的结论就是错的）。
+已把 §6 那句改掉。
