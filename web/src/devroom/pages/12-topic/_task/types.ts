@@ -26,7 +26,7 @@ export type IssueSummary = {
 // 四类反馈的固定文案：**标签与服务端 kind 一一对应**，前端不再自己拼词。
 // description 用在一句话说明（入口按钮的 aria-label / title），所以它是契约的一部分。
 export const ISSUE_KIND_META: Record<IssueKind, { label: string; description: string }> = {
-  bug: { label: '报个 Bug', description: '卡住、崩溃、AI 不动、地图打不开这类「不对」的事' },
+  bug: { label: '汇报 Bug', description: '卡住、崩溃、AI 不动、地图打不开这类「不对」的事' },
   feature: { label: '功能建议', description: '希望站点或战役多一个什么能力' },
   difficulty: { label: '难度建议', description: '哪一关太难或太简单，节奏、资源、强度都能提' },
   other: { label: '其他反馈', description: '上面三类都不是的，随便说' },

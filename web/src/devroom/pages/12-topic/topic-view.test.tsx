@@ -263,7 +263,7 @@ it('四个反馈入口各是一条带了各自类型的链接（B2）', async ()
   render(<TopicView {...viewProps({ issueHrefFor, feedbackHref: '/issues?topic=t_1042' })} />);
   // 每个类型一条地址：点哪一类就把哪一类带进去（原先四个按钮共用一条 href，kind 丢了）
   for (const [name, kind] of [
-    [/^报个 Bug/, 'bug'],
+    [/^汇报 Bug/, 'bug'],
     [/^功能建议/, 'feature'],
     [/^难度建议/, 'difficulty'],
     [/^其他反馈/, 'other'],

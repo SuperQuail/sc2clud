@@ -163,7 +163,7 @@ it('D7：新建反馈是页内表单区而不是弹窗，校验逐条保留', as
   expect(screen.queryByRole('dialog')).toBeNull();
 
   // 点四个类型入口之一 → 表单**就地出现**（不是弹层）
-  fireEvent.click(screen.getAllByRole('button', { name: /^报个 Bug/ })[0]!);
+  fireEvent.click(screen.getAllByRole('button', { name: /^汇报 Bug/ })[0]!);
   const panel = await screen.findByTestId('new-issue-form');
   expect(panel.getAttribute('aria-label')).toBe('我要反馈');
   expect(screen.queryByRole('dialog')).toBeNull();

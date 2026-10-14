@@ -15,7 +15,7 @@ describe('13-issue 页面', () => {
 
   it('四个新建入口都在，且是可键盘操作的按钮', () => {
     render(<IssuePage />);
-    for (const label of ['报个 Bug', '功能建议', '难度建议', '其他反馈']) {
+    for (const label of ['汇报 Bug', '功能建议', '难度建议', '其他反馈']) {
       expect(screen.getAllByRole('button', { name: new RegExp('^' + label) }).length).toBeGreaterThan(0);
     }
   });

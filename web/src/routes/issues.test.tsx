@@ -322,7 +322,7 @@ describe('问题反馈页（真端点）', () => {
     expect(SORT_KEYS).toHaveLength(4);
   });
 
-  it('未登录：点「报个 Bug」只给一句实话，不发任何写请求', async () => {
+  it('未登录：点「汇报 Bug」只给一句实话，不发任何写请求', async () => {
     const calls = mockApi((u) => {
       if (u.includes('/api/v1/me')) return { body: { data: null } };
       if (u.includes('/topics/tp-1/issues')) return { body: { data: [], next_cursor: null } };
@@ -330,8 +330,8 @@ describe('问题反馈页（真端点）', () => {
     });
     renderIssues('/issues?topic=tp-1');
 
-    await waitFor(() => expect(screen.getByRole('button', { name: /^报个 Bug/ })).toBeTruthy());
-    fireEvent.click(screen.getByRole('button', { name: /^报个 Bug/ }));
+    await waitFor(() => expect(screen.getByRole('button', { name: /^汇报 Bug/ })).toBeTruthy());
+    fireEvent.click(screen.getByRole('button', { name: /^汇报 Bug/ }));
 
     await waitFor(() => expect(screen.getByRole('status').textContent).toContain('提反馈要先登录。'));
     // 带 href 的 Ring Button 渲染成 <a>（不是 <button>）
@@ -355,7 +355,7 @@ describe('问题反馈页（真端点）', () => {
     expect(screen.getByRole('alert').textContent).toContain('数据库连接失败');
     // 错误态长在列表那一格；页面壳照常（不是白屏）：四个入口与检索条都还在
     expect(screen.getByRole('region', { name: '反馈列表' }).textContent).toContain('反馈列表没能加载');
-    expect(screen.getByRole('button', { name: /^报个 Bug/ })).toBeTruthy();
+    expect(screen.getByRole('button', { name: /^汇报 Bug/ })).toBeTruthy();
     expect(screen.getByLabelText('搜索反馈')).toBeTruthy();
   });
 });

@@ -101,7 +101,7 @@ export function TopicTaskShowcase() {
             当前选择：{kind ? ISSUE_KIND_META[kind].label : '未选择'}
           </span>
         </Block>
-        <Block label='size 三档 · sm / md / lg' hint='以「报个 Bug」为例；不传 onSelect 即纯展示（不可点）'>
+        <Block label='size 三档 · sm / md / lg' hint='以「汇报 Bug」为例；不传 onSelect 即纯展示（不可点）'>
           <div className='flex flex-wrap items-center gap-2'>
             <IssueKindButton kind='bug' size='sm' />
             <IssueKindButton kind='bug' size='md' />

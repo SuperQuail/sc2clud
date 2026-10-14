@@ -7,7 +7,7 @@ import { ISSUE_KIND_META, type IssueKind } from './types';
 // 文案面向普通玩家，界面上不出现「Issue」这个词（用户 2026-10-12 明确提过）。
 // **数据驱动**：颜色与图标来自 kind-style（唯一真源），文案来自 ISSUE_KIND_META；按钮不认识业务。
 // 无障碍：Ring UI Button = 原生 <button>，键盘可达、焦点环由控件负责，这里不覆盖它的外观与尺寸变量；
-//   title 与 aria-label 是同一份完整说明（"报个 Bug：…"），鼠标/键盘/读屏拿到一样的信息。
+//   title 与 aria-label 是同一份完整说明（"汇报 Bug：…"），鼠标/键盘/读屏拿到一样的信息。
 export type IssueKindButtonSize = 'sm' | 'md' | 'lg';
 
 export type IssueKindButtonProps = {
