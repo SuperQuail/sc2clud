@@ -183,13 +183,20 @@ function Step-Pack([string]$Ver) {
   # VERSION at the artifact root is the identity a human reads; web/dist/VERSION
   # is the one /healthz reports as web_version. Same string, two readers.
   Copy-Item (Join-Path $WebDir ('dist' + $Sep + 'VERSION')) (Join-Path $stage 'VERSION')
+  # 迁移素材（分区封面清单 / AI 配置值）：生产切换要跑 `forum board-covers -manifest ...` 与
+  # `forum ai-config -manifest ...`，这些文件必须**随产物走**，否则运维得回仓库取（2026-10-14 实测：第一次部署就没带）。
+  # 目录不存在时不算失败：素材还没做完的中间状态不该拦住部署。
+  $migSrc = Join-Path $Root ('完全重构' + $Sep + '迁移素材')
+  if (Test-Path $migSrc) { Copy-Item $migSrc (Join-Path $stage 'migration') -Recurse }
 
   New-Item -ItemType Directory -Force -Path $ArtifactDir | Out-Null
   $name = 'forum-' + $Ver + '.tar.gz'
   $artifact = Join-Path $ArtifactDir $name
   if (Test-Path $artifact) { Remove-Item -Force $artifact }
   # bsdtar ships with Windows 10+, so no archiver is added to the toolchain.
-  & tar -czf $artifact -C $stage bin web VERSION
+  $tarItems = @('bin', 'web', 'VERSION')
+  if (Test-Path (Join-Path $stage 'migration')) { $tarItems += 'migration' }
+  & tar -czf $artifact -C $stage @tarItems
   if ($LASTEXITCODE -ne 0) { Fail ('tar failed (exit ' + $LASTEXITCODE + ')') }
 
   $sha = (Get-FileHash -Algorithm SHA256 $artifact).Hash.ToLower()
