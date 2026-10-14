@@ -693,23 +693,38 @@ func TestNotifyReviewCarriesSnapshotFromPayload(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// 去重键是 review:topic:<id>（uq_notifications_user_dedup），两次判定落在一行上。
-	// 但这**一行必须是先发生的那一次判定**：拒绝理由弄丢了就再也补不回来。
-	var payload string
-	if err := pool.QueryRow(ctx,
-		"SELECT payload::text FROM notifications WHERE user_id = $1 AND type = 'review' ORDER BY id LIMIT 1",
-		author).Scan(&payload); err != nil {
+	// 两次判定 = 两条通知：审核结果是**事件**不是状态，改判必须两条都送得到。
+	// 老实现带 review:topic:<id> 的 dedup_key，第二条被 uq_notifications_user_dedup 吃掉，
+	// 作者只会看到先发生的那一次（而帖子其实是 approved）。
+	rows, err := pool.Query(ctx,
+		"SELECT payload::text FROM notifications WHERE user_id = $1 AND type = 'review' ORDER BY id", author)
+	if err != nil {
 		t.Fatal(err)
 	}
-	var got struct {
-		State string `json:"state"`
-		Text  string `json:"text"`
+	defer rows.Close()
+	var states, texts []string
+	for rows.Next() {
+		var payload string
+		if err := rows.Scan(&payload); err != nil {
+			t.Fatal(err)
+		}
+		var got struct {
+			State string `json:"state"`
+			Text  string `json:"text"`
+		}
+		if err := json.Unmarshal([]byte(payload), &got); err != nil {
+			t.Fatal(err)
+		}
+		states, texts = append(states, got.State), append(texts, got.Text)
 	}
-	if err := json.Unmarshal([]byte(payload), &got); err != nil {
-		t.Fatal(err)
+	if len(states) != 2 {
+		t.Fatalf("两次判定必须两条通知（改判是两次事实），实际 %d 条：%v", len(states), states)
 	}
-	if got.State != "rejected" || got.Text != "来源不明" {
-		t.Fatalf("审核通知必须带判定那一刻的快照，实际 state=%q text=%q（%s）", got.State, got.Text, payload)
+	if states[0] != "rejected" || texts[0] != "来源不明" {
+		t.Fatalf("第一条必须是判定那一刻的拒绝（含理由），实际 state=%q text=%q", states[0], texts[0])
+	}
+	if states[1] != "approved" {
+		t.Fatalf("第二条必须是随后那次放行，实际 state=%q", states[1])
 	}
 }
 func TestNotifySkipsBannedRecipientsAndRespectsSettings(t *testing.T) {

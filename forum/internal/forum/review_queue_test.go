@@ -461,6 +461,20 @@ func TestReviewTopicWritesReviewEvent(t *testing.T) {
 		t.Fatalf("被拒的判定不该留事件，实际 %d", n)
 	}
 
+	// notify:review 的 payload 必须带**判定那一刻**的快照（M5）：任务可能延迟消费，
+	// 现读 topics 时「拒绝 → 紧接着放行」两条都会读成 approved，拒绝理由一个字都送不到。
+	h.queue.reset()
+	if _, err := h.svc.ReviewTopic(h.ctx, mod, d.ID, ReviewReject, "来源不明"); err != nil {
+		t.Fatal(err)
+	}
+	payload := h.queue.payloadOf("notify:review")
+	if payload == nil {
+		t.Fatalf("判定必须投一条 notify:review，实际 %v", h.queue.types())
+	}
+	if payload["state"] != "rejected" || payload["text"] != "来源不明" {
+		t.Fatalf("payload 必须带判定时的 state/text 快照，实际 %v", payload)
+	}
+
 	// 500 字的理由写不进 varchar(200) 的 reason：必须截断，不能因为 22001 把整条判定回滚
 	longNote := strings.Repeat("理", 500)
 	if _, err := h.svc.ReviewTopic(h.ctx, mod, d.ID, ReviewReject, longNote); err != nil {

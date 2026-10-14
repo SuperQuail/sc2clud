@@ -67,6 +67,24 @@
     （`CreateNotifyInput` 加 `State`/`Text` 两个字段）；`notify/pgsql` 的 ReviewTarget 保留兜底。
   - 阻塞：无
 
+- [x] M5 通知是消费时现读 topics 而不是判定时快照
+  - 证据：两处一起改。
+    ① **判定时快照进 payload**：`forum/internal/forum/review_queue.go` 的 `notify:review` payload 加
+    `"state"`/`"text"`（就是刚写进 topics 的那两个值）；`notify/tasks.go` 的 `CreateNotifyInput`
+    加 `State`/`Text` 字段，`NotifyReview` 有快照用快照、没有（老 payload）才现读 topics。
+    ② **审核结果是事件不是状态**：`notify/service.go` 的 `Create` 对带快照的通知不再写 `dedup_key`。
+    实测（探针，reject 后紧接着 approve）：改前 = 1 条，payload `{"state":"approved"}`，
+    拒绝理由「来源不明」**一个字都没有**；只改① = 1 条 `{"state":"rejected",...}`（不丢理由，
+    但帖子明明已 approved，作者看到的是「未通过」）；①②都改 = 2 条，依次是
+    `rejected/来源不明` 与 `approved` —— 与队列那边「不设 UniqueKey」的注释一致（两次判定两条通知）。
+    **会红的证明**：`TestNotifyReviewCarriesSnapshotFromPayload` 在只改①时红在
+    `两次判定必须两条通知…实际 1 条`；在①②都改之前它先红在 `必须带判定那一刻的快照`。
+    forum 侧 `TestReviewTopicWritesReviewEvent` 另有一断言：payload 里 `state=rejected` 且 `text=来源不明`。
+    `go test ./internal/forum/ ./internal/notify/ ./internal/platform/httpx/ -count=1` 三个包全 `ok`；
+    `gofmt -l` 空、`go vet` 退出 0。
+  - 下一步：（六条任务全部完成，见文末「收尾」）
+  - 阻塞：无
+
 - [x] 额外（顺手，不在清单里但同域同因）：`notify` 的「不带 ?kind= 的通知列表恒空」
   - 证据：`forum/internal/notify/service.go` 的 `parseListKinds` 对空串返回**无类型 nil**，
     pgx 把它当 NULL 发进 `listSQL` 的 `$4::text[]` —— `cardinality(NULL)` 与 `'x' = ANY(NULL)`

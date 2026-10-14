@@ -21,6 +21,11 @@ type CreateNotifyInput struct {
 	RefID   int64  `json:"ref_id"`
 	TopicID int64  `json:"topic_id"`
 	UserID  int64  `json:"user_id"` // 仅 mention 用（被提及者）
+	// State / Text 是 notify:review 的**判定时快照**（forum 侧投任务时写进 payload）。
+	// 为什么不能只现读 topics：拒绝之后紧接着放行时，两条任务都是后一个状态被读走，
+	// 作者的「拒绝理由」一个字都送不到。空串 = 老 payload（或别的来源），退回现读。
+	State string `json:"state"`
+	Text  string `json:"text"`
 }
 
 // ParsePayload 解队列 payload（app/worker.go 注册处理函数时用）。
@@ -122,8 +127,14 @@ func (s *Service) NotifyReward(ctx context.Context, in CreateNotifyInput) error 
 		map[string]any{"amount_cents": t.AmountCents})
 }
 
-// NotifyReview 处理 notify:review：收件人是主题作者，审核态与理由现读 topics（d4 §5.1 ⑤）。
-// 触发者取 topics.reviewed_by（payload 里那个 actor_id 是 0）：审核人是谁只有那一列知道。
+// NotifyReview 处理 notify:review：收件人是主题作者。审核态与理由**优先用 payload 里的快照**，
+// 只有老 payload（State 为空）才现读 topics（d4 §5.1 ⑤）。
+//
+// 为什么必须是快照：任务是至少一次投递、可能延迟消费。原来现读 topics 时，
+// 「拒绝（带理由）→ 紧接着放行」这一串会把两条任务都读成后一个状态 ——
+// 作者的拒绝理由一个字都送不到（M5，2026-10-14）。判定那一刻的事实只有 payload 里有。
+// 触发者仍取 topics.reviewed_by（payload 里那个 actor_id 是 0）——审核人是谁只有那一列知道。
+//
 // 【与 d4 §9 自检 4 冲突】AI 判定（reviewed_by 为空）时这条通知的 actor 也是 NULL，
 // 那条「非 system 通知必须有 actor」的自检需要给它豁免，见交接回报。
 func (s *Service) NotifyReview(ctx context.Context, in CreateNotifyInput) error {
@@ -134,6 +145,10 @@ func (s *Service) NotifyReview(ctx context.Context, in CreateNotifyInput) error 
 	if err != nil {
 		return err
 	}
+	state, text := t.State, t.Note
+	if in.State != "" {
+		state, text = in.State, in.Text
+	}
 	return s.createAll(ctx, []CreateInput{{
 		UserID:  t.AuthorID,
 		ActorID: t.ReviewedBy,
@@ -142,7 +157,7 @@ func (s *Service) NotifyReview(ctx context.Context, in CreateNotifyInput) error 
 		RefID:   in.RefID,
 		TopicID: in.RefID,
 		Link:    "/t/" + t.TopicPublicID,
-		Extra:   map[string]any{"state": t.State, "text": t.Note},
+		Extra:   map[string]any{"state": state, "text": text},
 	}})
 }
 

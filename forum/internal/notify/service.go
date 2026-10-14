@@ -44,7 +44,9 @@ func (s *Service) Create(ctx context.Context, tx *ent.Tx, in CreateInput) error 
 	if in.ActorID != 0 {
 		actorID = &in.ActorID
 	}
-	// payload 只放渲染这一条所需的最小形状，不放快照（d4 §1.1）
+	// payload 只放渲染这一条所需的最小形状（d4 §1.1）。
+	// 例外是审核结果：它的 state/text 是**判定那一刻的快照**（Extra 里带过来），
+	// 因为消费时现读 topics 会把前后两次判定读成同一个状态（M5）。
 	payload := map[string]any{"ref_type": in.RefType, "ref_id": in.RefID}
 	if in.TopicID != 0 {
 		payload["topic_id"] = in.TopicID
@@ -59,9 +61,13 @@ func (s *Service) Create(ctx context.Context, tx *ent.Tx, in CreateInput) error 
 	if err != nil {
 		return fmt.Errorf("notify: marshal payload: %w", err)
 	}
-	// 系统通知没有「同一次事件」，不带 dedup_key（否则两条系统通知会互相顶掉）
+	// 系统通知没有「同一次事件」，不带 dedup_key（否则两条系统通知会互相顶掉）。
+	// 审核结果同理**不带**：改判（拒绝→放行）是两次不同的事实，带着快照来就必须两条都发 ——
+	// 去重键是 review:topic:<id>，(user_id, dedup_key) 会把第二条吃掉，作者只会看到先发生的那一次
+	// （实测：reject 后紧接着 approve，作者收到 1 条「未通过」而帖子其实是 approved）。
+	// 队列任务那边也为这个目的不设 UniqueKey（forum/review_queue.go）。
 	dedup := ""
-	if in.Kind != KindSystem {
+	if in.Kind != KindSystem && in.Extra["state"] == nil {
 		dedup = DedupKey(in.Kind, in.RefType, in.RefID)
 	}
 	return pgsql.NewTx(tx).InsertNotification(ctx, publicID.String(), in.UserID, actorID,

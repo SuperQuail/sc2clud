@@ -249,11 +249,17 @@ func (s *Service) ReviewTopic(ctx context.Context, actor *authz.Actor, publicID,
 		}); err != nil {
 			return err
 		}
-		// 通知作者（d4 §5.1 ⑤）：actor 由 notify 侧从 topics.reviewed_by 现读，
-		// 所以这里只需要 ref_id。**不设 UniqueKey**：两次判定是两条通知，去重会把后一条吃掉。
+		// 通知作者（d4 §5.1 ⑤）：actor 由 notify 侧从 topics.reviewed_by 现读。
+		// **state/text 必须随 payload 走**（判定那一刻的快照）：任务是至少一次投递、可能延迟消费，
+		// 现读 topics 时「拒绝（带理由）→ 紧接着放行」会把两条任务都读成后一个状态，
+		// 作者的拒绝理由一个字都送不到（M5，2026-10-14）。判定那一刻的事实只有这里知道。
+		// **不设 UniqueKey**：两次判定是两条通知，去重会把后一条吃掉。
 		return s.enqueue(ctx, tx, queue.Task{
-			Type:    queue.TypeNotifyReview,
-			Payload: map[string]any{"ref_type": notifyRefTopic, "ref_id": ref.ID, "topic_id": ref.ID},
+			Type: queue.TypeNotifyReview,
+			Payload: map[string]any{
+				"ref_type": notifyRefTopic, "ref_id": ref.ID, "topic_id": ref.ID,
+				"state": state, "text": note,
+			},
 		})
 	})
 	if err != nil {

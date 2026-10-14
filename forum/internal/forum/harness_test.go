@@ -110,6 +110,19 @@ func (q *fakeQueue) types() []string {
 	return out
 }
 
+// payloadOf 取某类任务的 payload（同一类只会有一条时用）。
+func (q *fakeQueue) payloadOf(taskType string) map[string]any {
+	q.mu.Lock()
+	defer q.mu.Unlock()
+	for _, t := range q.tasks {
+		if t.Type == taskType {
+			m, _ := t.Payload.(map[string]any)
+			return m
+		}
+	}
+	return nil
+}
+
 func (q *fakeQueue) reset() {
 	q.mu.Lock()
 	defer q.mu.Unlock()
