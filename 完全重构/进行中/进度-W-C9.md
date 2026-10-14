@@ -114,7 +114,7 @@ rg = rg.Group("", httpx.ValidPathIDs("id"))
     `pathguard_test.go:32: 非 uuid 的路径 id 必须是 400（挂闸前是 500），实际 500：{"error":{"code":"common.internal"...}}`，
     服务端日志 `media: delete channel: 错误: 无效的类型 uuid 输入语法: "not-a-uuid" (SQLSTATE 22P02)`；
     挂闸后 `go test ./internal/media/ -count=1` → `ok forum/internal/media 62.046s`（整包）。
-  - 下一步：release —— `release/internal/release/handler.go` 的 `Register` 第一行加同一行
+  - 下一步：release —— `forum/internal/release/handler.go` 的 `Register` 第一行加同一行
     （本域 {id} 三条：`GET /launcher/assets/{id}/go`、`PATCH /admin/launcher/releases/{id}`、
     `DELETE /admin/launcher/assets/{id}`），用例打 `GET /api/v1/launcher/assets/not-a-uuid/go`。
   - 阻塞：无
