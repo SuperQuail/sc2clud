@@ -124,3 +124,27 @@ it('后端回的形状不是数组时给空态，**不把整页打成错误页**
   await waitFor(() => expect(screen.getByText(/还没有收款码/)).toBeTruthy());
   expect(screen.getByText(/还没有申报过打赏/)).toBeTruthy();
 });
+
+// D1 的回归位（2026-10-14 用户实测「同一句提示出现两次」）：上传器内部画一行、宿主又画一行。
+// 现在控件不再自己画，宿主这一行是唯一的一份 —— 把「一共几行」钉死，重复渲染回不来。
+it('体积超限时提示只有一行（控件不再自己画一份）', async () => {
+  mockApi((url) => {
+    if (url.includes('/me/payment-channels')) return { body: CHANNEL };
+    if (url.includes('/me/donation-settings')) return { body: SETTINGS };
+    if (url.includes('/me/rewards')) return { body: MINE };
+    return { status: 404, body: { error: { code: 'common.not_found', message: 'no' } } };
+  });
+  const { container } = renderPanel();
+  await waitFor(() => expect(screen.getByText('微信')).toBeTruthy());
+
+  // 12MB > 可压缩上限（AVATAR_MAX_BYTES）→ 当场拒；这里只读 name/size，不真分配 12MB
+  const input = container.querySelector<HTMLInputElement>('#payment-channels input[type=file]')!;
+  const huge = Object.defineProperty(new File([], 'huge.png', { type: 'image/png' }), 'size', { value: 12 * 1024 * 1024 });
+  Object.defineProperty(input, 'files', { configurable: true, value: [huge] });
+  fireEvent.change(input);
+
+  await waitFor(() => expect(screen.getByText(/没有加进来/)).toBeTruthy());
+  expect(screen.getAllByText(/没有加进来/)).toHaveLength(1);
+  // 而且**没有**发那一发必然 413 的上传（上限在压缩之前就拦下了）
+  expect(calls.some((c) => c.method === 'POST' && c.url.includes('/me/payment-channels'))).toBe(false);
+});

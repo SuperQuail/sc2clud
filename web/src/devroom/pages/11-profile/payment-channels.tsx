@@ -54,7 +54,9 @@ export function PaymentChannelsPanel() {
   const qc = useQueryClient();
   const [label, setLabel] = useState('');
   const [picked, setPicked] = useState<UploadedImage[]>([]);
-  // 体积与张数的提示**只有上传器那一份**（它的 onError 已透出）。这里再画一行 = 同一句话出现两次（D1）。
+  // 上传器给的体积/张数提示落在这一行上。**只有这一行** —— 上传器内部不再画（D1 的「同一句提示出现两次」）；
+  // 但它必须有人画：不加这个 state，超限就变成**一句提示都没有**（出图当场抓到过）。
+  const [error, setError] = useState<string | null>(null);
 
   // 本人管理自己的码走 /me/payment-channels（不是 /users/{handle}/channels：那条要过作者的展示开关）
   const channels = useQuery({ queryKey: qk.paymentChannels(), queryFn: ({ signal }) => fetchMyChannels(signal) });
@@ -67,6 +69,7 @@ export function PaymentChannelsPanel() {
     onSuccess: () => {
       setPicked([]);
       setLabel('');
+      setError(null);
       void qc.invalidateQueries({ queryKey: qk.paymentChannels() });
     },
   });
@@ -155,11 +158,13 @@ export function PaymentChannelsPanel() {
               }}
               maxSize={AVATAR_MAX_BYTES}
               targetBytes={CHANNEL_TARGET}
+              onError={setError}
             />
             {/* 已满时说清为什么点不动，而不是让按钮静默无效 */}
             {full ? (
               <span className='text-[12px] text-muted-foreground'>已经有 {CHANNEL_MAX} 张了，删一张才能再传。</span>
             ) : null}
+            {error ? <span role='alert' className='text-[12px] text-destructive'>{error}</span> : null}
             {add.isError ? (
               <span role='alert' className='text-[12px] text-destructive'>
                 {isApiError(add.error) ? add.error.message : '上传失败'}
