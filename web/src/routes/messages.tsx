@@ -10,6 +10,7 @@ import { qk } from '@/lib/query/keys';
 import { formatCents, formatTime } from '@/lib/format';
 import { useSession } from '@/lib/perms';
 import {
+  deleteMessage,
   fetchConversations,
   fetchThread,
   fetchUnreadMessages,
@@ -33,6 +34,7 @@ import { NoticeLayout } from '@/ui/message/notice-layout';
 import { NoticeList } from '@/ui/message/notice-list';
 import { NoticeNav, type NoticeNavItem } from '@/ui/message/notice-nav';
 import { NoticeRow } from '@/ui/message/notice-row';
+import type { ChatMessage } from '@/ui/message/notice-chat';
 import { NoticeSettings, type SettingRow } from '@/ui/message/notice-settings';
 import { UserAvatar } from '@/ui/user/avatar';
 import { MessagesPanel, plainText } from '@/devroom/pages/10-messages/messages-panel';
@@ -166,11 +168,14 @@ function MessagesPane() {
     list.unshift({ peer: thread.data.peer, messages: [], summary: '', lastAt: '', unread: 0 });
   }
   // 后端按 id DESC 给（最新在前）；聊天气泡要最早在上，所以翻一次
-  const bubbles = (thread.data?.items ?? [])
+  // `mine` 留在这里：撤回那一格要按它决定给不给（ChatMessage 本身不知道「谁发的」，
+  // 它只有 from —— 而 from:'me' 就是 mine，两处同源所以不会漂）。
+  const bubbles: Array<ChatMessage & { mine: boolean }> = (thread.data?.items ?? [])
     .slice()
     .reverse()
     .map((m) => ({
       id: m.id,
+      mine: m.mine,
       from: (m.mine ? 'me' : 'other') as 'me' | 'other',
       nickname: m.mine ? (session.session?.nickname ?? '我') : (thread.data?.peer.nickname ?? handle ?? ''),
       avatar: m.mine ? session.session?.avatar : thread.data?.peer.avatar,
@@ -181,6 +186,17 @@ function MessagesPane() {
 
   const send = useMutation({
     mutationFn: (body: string) => sendMessage(handle ?? '', body),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: qk.thread(handle ?? '') });
+      void qc.invalidateQueries({ queryKey: qk.conversations() });
+    },
+  });
+
+  // 撤回（G2）：DELETE /messages/{id} 是「各自删除」——只置我这一侧的标记，对方照常看得见。
+  // **不做乐观删除**：游标分页下本地删一条会在下一页留下一个洞，所以等重取；
+  // 代价是网络往返这一小会儿那条气泡还在（success 之后它就不在服务端返回里了）。
+  const retract = useMutation({
+    mutationFn: (id: string) => deleteMessage(id),
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: qk.thread(handle ?? '') });
       void qc.invalidateQueries({ queryKey: qk.conversations() });
@@ -248,6 +264,24 @@ function MessagesPane() {
                 setKeyword('');
               }}
             />
+          ) : null
+        }
+        // 逐条动作槽位（G2）：**只有自己发的**给「撤回」。
+        // 后端对「不在我参与的会话里」的消息返回 404，所以别人那条本来也撤不掉 —— 不给入口而不是点了报错。
+        renderMessageActions={(m) =>
+          m.mine ? (
+            <Button
+              data-testid={'message-retract-' + m.id}
+              inline={false}
+              height={ControlsHeight.S}
+              ghost
+              danger
+              icon={icon16(Trash2)}
+              loader={retract.isPending && retract.variables === m.id}
+              onClick={() => retract.mutate(m.id)}
+            >
+              撤回
+            </Button>
           ) : null
         }
         headerActions={

@@ -6,9 +6,8 @@
 
 - [x] G1 通知静音（**只做类别级**，理由见「发现 4」）：`social.ts` 加 `muteNotificationKind(type)`
       与 `clearNotificationMute(body)`，`messages.tsx` 的 `NoticesPane` 给每行加「不再通知此类」。
-- [ ] G2 撤回私信：`web/src/lib/api/messages.ts` 的 `deleteMessage` 已在（G2 描述与现状不符，见下），
-      缺的是**落点**：`web/src/ui/message/notice-chat.tsx` 给气泡加逐条动作槽位（已登记控件，改动克制），
-      `web/src/routes/messages.tsx` 接上 DELETE /messages/{id}。
+- [x] G2 撤回私信：`notice-chat.tsx` 加 `renderActions(message)` 逐条动作槽位（登记表已更新），
+      `messages-panel.tsx` 透传，`routes/messages.tsx` 给自己发的那条挂「撤回」→ DELETE /messages/{id}。
 - [ ] G3 找回密码整页：`/forgot` 路由 + 接线（router.tsx 是 Lead 的 → 先写阻塞）。
 - [x] E2 D7：todayStart 改成按站点时区（`forum/topics.go` 的 `todayStart/siteTZ/DefaultSiteTZ`），
       时区从 `config.Site.Timezone` 来（新增配置项 + Validate + `Site.Location()`），`forum.Deps.TZ` 注入。
@@ -30,6 +29,15 @@
    点「回复我的」那一档会在**全站**静音回复通知，这是这次能提供的最诚实的动作。
    按内容静音要落地必须先补「通知 DTO 带上可静音的 ref 键」或「GET /mutes + 按 ref 静音」，记在阻塞里。
 5. **后端没有 `GET /notifications/mutes`**：列表里无法显示「这一类已静音」。本屏里点过的记在本地 state。
+
+6. **产品预览里 `/messages` 整页崩（新发现，不在我的作用域）**：`web/src/preview/product-fixture.ts:216`
+   给会话页返回的是 `{ data: { peer, items }, next_cursor }`，而真契约是 `{ data: [...], next_cursor, peer }`
+   （d4 §5.2 / `client.ts` 的 `apiEnvelope`）。于是 `thread.data.items` 拿到对象、
+   `routes/messages.tsx` 的 `items.slice()` 抛 TypeError，整页落进错误边界（实测：`/messages/demo-admin`
+   出图得到「页面出错了」）。**这是「私信页出不了产品图」的根因**，修法是一行：
+   `return { body: { data: THREAD.items.slice().reverse(), next_cursor: null, peer: THREAD.peer } };`
+   `product-fixture.ts` 不在我的作用域，请 Lead 改（E2 之外我没有动它，只在 `THREAD.items` 上补了
+   真 DTO 有的 `mine` 字段——见下条）。
 
 ## 步骤记录
 
@@ -72,3 +80,51 @@
       ① 通知 DTO 没有「可静音的 ref 键」→「这条内容不再通知」做不了（发现 4）；
       ② 没有 `GET /notifications/mutes` → 界面无法显示「已静音」态、也无法取消（本次只在本地记账）。
     · E1（公告区两档门槛）、G5（屏蔽词语义）尚未开工。
+
+- [x] 第 2 步（2026-10-14）：G2 撤回私信（控件槽位 + 落点 + 用例）。
+  - 做了什么：
+    · `web/src/ui/message/notice-chat.tsx`：`NoticeChat` 加 `renderActions?: (message: ChatMessage) => ReactNode`，
+      气泡下方渲染这一格；**没有动作时不渲染空节点**。这是已登记控件的**加法**（不改既有 props 语义），
+      10-messages 不传它 → 那一屏的行为与之前逐字相同。
+    · `web/src/devroom/pages/10-messages/messages-panel.tsx`：加 `renderMessageActions` 并透传给 `NoticeChat`。
+    · `web/src/routes/messages.tsx`：`MessagesPane` 加 `retract` 变更（`deleteMessage` → invalidate
+      `qk.thread`/`qk.conversations`），`bubbles` 带上 `mine`，**只有自己发的那条**给「撤回」。
+      不做乐观删除：游标分页下本地删一条会在下一页留一个洞（注释里写了）。
+    · `web/src/devroom/registry.ts`：`notice-chat` 条目补上 `renderActions` 与 verify 日期。
+  - 证据：
+    · `npx vitest run src/routes/messages.test.tsx` → `Test Files 1 passed` / `Tests 4 passed`
+      （新用例：`私信页：自己那条有「撤回」…`）
+    · 全量 `npx vitest run` → `Test Files 28 passed (28)` / `Tests 147 passed (147)`（基线 146 → 147）
+    · **变异验证会红**：把 `renderMessageActions` 的判定改成恒假后，
+      同一用例 → `Unable to find an element by: [data-testid="message-retract-m-1"]` / `Tests 1 failed | 3 passed`；
+      还原后 4 passed。
+    · 出图：`node shots/wge-shot.mjs`（我的端口 5236/9236）→ `wge-notices-system.png` / `wge-notices-reply.png`
+      与两张 390 窄屏图；图上读得到 `MARKER-PRODUCT-LOGIN /notifications?…`，三条系统通知各有一行
+      「标为已读 | 不再通知此类 | 删除」，`overflow:false`、控制台问题：无。
+      **私信那一页出不了图**，原因见「发现 6」（product-fixture 的桩形状不对，不在我的作用域）。
+    · `npx eslint` 我改的 7 个前端文件 → `0 errors`（1 warning 是 messages-panel 早就有的
+      `react-refresh/only-export-components`，来自 `plainText` 那个导出，不是我加的）。
+  - 下一步（**G3 找回密码整页**，文件+函数+改成什么）：
+    1. 新建 `web/src/routes/forgot.tsx`：`ForgotPage` 用 `AuthShell` + `FormAlert` + `CodeField` +
+       `PasswordField`（都是 16-auth 的房子件，DevRoom `forgot-view.tsx` 是只读设计稿，**不要 import 它**），
+       两步一页：`forgotPassword(email)`（恒 200，不暴露邮箱是否存在）→
+       `verifyResetCode(email, code)` 拿 `reset_ticket` → `resetPassword(ticket, newPassword)`；
+       成功页文案照设计稿「所有设备上的登录都已退出」。
+    2. `web/src/routes/login.tsx` 的 `footer`：把「重置链路还没接…请管理员帮你重置」改成实话 +
+       `href={appPath('forgot')}`。
+    3. 用例 `web/src/routes/forgot.test.tsx`：断言三步各发的端点与字段名
+       （`{email}` / `{email, code}` / `{reset_ticket, new_password}` —— 字段名照 `auth/handler.go`，
+       本仓库踩过 `token`/`reset_ticket` 的坑）。
+  - 阻塞：
+    1. **/forgot 路由要挂**：`web/src/app/router.tsx` 是 Lead 的冻结文件（`const ForgotPage = lazy(...)`
+       + `{ path: 'forgot', element: <ForgotPage /> }`）。我的页面与用例可以先落地，路由这一行请 Lead 加，
+       否则整页不可达（与 `appeal` 那次同一形状的阻塞）。
+    2. `web/src/preview/product-fixture.ts:216` 的会话页包络形状不对 → 产品预览里 `/messages` 整页崩
+       （见「发现 6」）。修法一行，请 Lead 改。
+    3. **`cd web && pnpm typecheck` 当前不是绿的，红的全在别人的在途文件里**（D1 的 W-D1：
+       `web/src/routes/admin.tsx`（M 未提交）、`web/src/routes/admin-screens.tsx`（未跟踪）、
+       `web/src/devroom/pages/15-admin/screens/users.tsx`、`web/src/ui/dev-entry.tsx`）。
+       我这边用等价的隔离 tsconfig（把上述文件 exclude）跑 `npx tsc --noEmit` → `TSC-EXIT=0`；
+       全量 typecheck 要等 W-D1 那条线收口。**我没有碰这四个文件。**
+    4. `web/src/preview/product-fixture.ts` 的 `THREAD.items`：我补了真 DTO 里有的 `mine`（与 `peer`），
+       否则「撤回」那条界面分支在预览里永远不渲染。**这动了共享文件一行**，如不合意请回退我那一处 edit。

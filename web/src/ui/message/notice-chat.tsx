@@ -20,11 +20,17 @@ export function NoticeChat({
   messages,
   title,
   headerActions,
+  renderActions,
   children,
 }: {
   messages: ChatMessage[];
   title?: ReactNode;
   headerActions?: ReactNode;
+  /**
+   * 逐条动作槽位。**调用方决定哪几条有动作**（例如只有自己发的私信能撤回）——
+   * 控件本身不知道业务语义，也不做权限判断。返回 null/undefined 时这一格不占位。
+   */
+  renderActions?: (message: ChatMessage) => ReactNode;
   /** 输入区 */
   children?: ReactNode;
 }) {
@@ -40,6 +46,8 @@ export function NoticeChat({
         <span className='mx-auto text-[12px] text-muted-foreground'>{messages[0]?.time ?? ''}</span>
         {messages.map((m) => {
           const mine = m.from === 'me';
+          // 没有动作时**不渲染空节点**：宿主每条都调一次，返回 undefined 是常态
+          const actions = renderActions?.(m);
           return (
             <div
               key={m.id}
@@ -57,6 +65,7 @@ export function NoticeChat({
                   {m.html}
                 </div>
                 {m.note ? <span className='text-[12px] text-muted-foreground'>{m.note}</span> : null}
+                {actions ? <span className='flex items-center gap-1'>{actions}</span> : null}
               </div>
             </div>
           );

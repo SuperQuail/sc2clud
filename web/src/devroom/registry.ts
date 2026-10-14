@@ -169,7 +169,7 @@ export const VERIFIED: VerifiedControl[] = [
   { name: 'notice-nav', path: '@/ui/message/notice-nav', page: '10-messages', verifiedOn: '2026-10-12', props: ['见组件注释：全部为数据驱动的通用 props'], notes: ['竖排导航：items/value/onChange，行用 Ring Button'] },
   { name: 'notice-row', path: '@/ui/message/notice-row', page: '10-messages', verifiedOn: '2026-10-12', props: ['见组件注释：全部为数据驱动的通用 props'], notes: ['一行通知：actors/action/body/excerpt/time/actions'] },
   { name: 'notice-list', path: '@/ui/message/notice-list', page: '10-messages', verifiedOn: '2026-10-12', props: ['见组件注释：全部为数据驱动的通用 props'], notes: ['列表容器：title/hint/empty/children'] },
-  { name: 'notice-chat', path: '@/ui/message/notice-chat', page: '10-messages', verifiedOn: '2026-10-12', props: ['见组件注释：全部为数据驱动的通用 props'], notes: ['会话气泡：messages + children（输入区）'] },
+  { name: 'notice-chat', path: '@/ui/message/notice-chat', page: '10-messages', verifiedOn: '2026-10-14', props: ['见组件注释：全部为数据驱动的通用 props', 'renderActions(message) → ReactNode：逐条动作槽位（G2 的「撤回」落点）；返回空则不占位'], notes: ['会话气泡：messages + children（输入区）', '2026-10-14 加逐条动作槽位（G2 私信撤回）：10-messages 不传它，行为与之前逐字相同'] },
   { name: 'notice-composer', path: '@/ui/message/notice-composer', page: '10-messages', verifiedOn: '2026-10-12', props: ['见组件注释：全部为数据驱动的通用 props'], notes: ['输入区：复用 MarkdownEditor(compact) + Ring Button'] },
   { name: 'notice-settings', path: '@/ui/message/notice-settings', page: '10-messages', verifiedOn: '2026-10-12', props: ['见组件注释：全部为数据驱动的通用 props'], notes: ['设置面板：模式驱动的 rows（radio/toggle/tags）'] },
   { name: 'notice-layout', path: '@/ui/message/notice-layout', page: '10-messages', verifiedOn: '2026-10-12', props: ['见组件注释：全部为数据驱动的通用 props'], notes: ['两栏骨架：nav + children'] },

@@ -43,6 +43,7 @@ export function MessagesPanel({
   listFooter,
   title,
   headerActions,
+  renderMessageActions,
   placeholder,
   empty,
   busy,
@@ -63,6 +64,8 @@ export function MessagesPanel({
   title?: ReactNode;
   /** 聊天区标题右侧 */
   headerActions?: ReactNode;
+  /** 逐条气泡的动作槽位（真站用它挂「撤回」）；不传就什么都不渲染 */
+  renderMessageActions?: (m: ChatMessage & { mine?: boolean }) => ReactNode;
   placeholder?: string;
   /** 一条会话都没有时替换整个右栏（宿主给 Empty / Loading / ErrorState） */
   empty?: ReactNode;
@@ -97,7 +100,7 @@ export function MessagesPanel({
               </div>
               {/* grid 让 NoticeChat 自己撑满这一格（它是 flex 列，消息区才会内部滚动） */}
               <div className='grid min-h-0 flex-1'>
-                <NoticeChat messages={messages} title={chat} headerActions={headerActions}>
+                <NoticeChat messages={messages} title={chat} headerActions={headerActions} renderActions={renderMessageActions}>
                   <NoticeComposer
                     maxLength={500}
                     placeholder={placeholder ?? (messages.length === 0 ? '还没有消息，先打个招呼吧' : '请输入消息内容')}
