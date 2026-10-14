@@ -16,16 +16,18 @@ type BoardRow struct {
 	Status       string
 	ACLEnabled   bool
 	MinPostLevel int
-	TopicCount   int64
-	PostCount    int64
-	TodayCount   int64
+	// MinReplyLevel 是回帖门槛（拍板 08 · E1，迁移 0027）：0 = 不限。
+	MinReplyLevel int
+	TopicCount    int64
+	PostCount     int64
+	TodayCount    int64
 }
 
 // 分区统计走 LATERAL：三个数都是 topics 上的索引现算，没有计数列。
 // post_count 用 sum(reply_count) 而不是 count(posts)：后者要扫 posts 在分区里的全部行。
 var boardSelect = sqlJoin(
 	"SELECT b.id, b.slug, b.name, b.description, b.cover_hash, b.status,",
-	"       b.acl_enabled, b.min_post_level,",
+	"       b.acl_enabled, b.min_post_level, b.min_reply_level,",
 	"       live.topic_count, live.post_count, live.today_count",
 	"  FROM boards b",
 	"  LEFT JOIN LATERAL (",
@@ -49,7 +51,7 @@ func (s *Store) Boards(ctx context.Context, todayStart time.Time, id *int64, slu
 		var b BoardRow
 		var cover sql.NullString
 		if err := rows.Scan(&b.ID, &b.Slug, &b.Name, &b.Description, &cover, &b.Status,
-			&b.ACLEnabled, &b.MinPostLevel, &b.TopicCount, &b.PostCount, &b.TodayCount); err != nil {
+			&b.ACLEnabled, &b.MinPostLevel, &b.MinReplyLevel, &b.TopicCount, &b.PostCount, &b.TodayCount); err != nil {
 			return err
 		}
 		b.CoverHash = scanNullString(cover)
@@ -66,7 +68,7 @@ func (s *Store) BoardBySlug(ctx context.Context, slug string, todayStart time.Ti
 		var b BoardRow
 		var cover sql.NullString
 		if err := rows.Scan(&b.ID, &b.Slug, &b.Name, &b.Description, &cover, &b.Status,
-			&b.ACLEnabled, &b.MinPostLevel, &b.TopicCount, &b.PostCount, &b.TodayCount); err != nil {
+			&b.ACLEnabled, &b.MinPostLevel, &b.MinReplyLevel, &b.TopicCount, &b.PostCount, &b.TodayCount); err != nil {
 			return err
 		}
 		b.CoverHash = scanNullString(cover)

@@ -30,6 +30,7 @@ func (s *Service) Vote(ctx context.Context, actor *authz.Actor, target VoteTarge
 	if err != nil {
 		return nil, err
 	}
+	showDislike := s.ShowDislikeCount(actor)
 	now := s.clk.Now().UTC()
 	var like, dislike int
 	err = db.WithTx(ctx, s.db, func(tx *ent.Tx) error {
@@ -41,6 +42,9 @@ func (s *Service) Vote(ctx context.Context, actor *authz.Actor, target VoteTarge
 		if err != nil {
 			return err
 		}
+		// 「发布者也能看踩数」（J3）：这条路径上「发布者」是**内容作者**，
+		// 由 resolveVoteTarget 顺带解出来的归属回答，不额外查一次。
+		showDislike = showDislike || vt.authorID == actor.UserID
 		if changed && value == 1 {
 			// payload 的形状是**消费方 notify 定的**（§8.1 定稿）：
 			// {ref_type, ref_id, topic_id, actor_id}，任务类型用 platform/queue 的常量。
@@ -58,7 +62,7 @@ func (s *Service) Vote(ctx context.Context, actor *authz.Actor, target VoteTarge
 	if err != nil {
 		return nil, err
 	}
-	return &VoteResultDTO{LikeCount: like, DislikeCount: dislike, MyVote: value}, nil
+	return &VoteResultDTO{LikeCount: like, DislikeCount: hideDislikeCount(dislike, showDislike), MyVote: value}, nil
 }
 
 // Unvote 是幂等的取消（§5.3）：没有票时 200 + 当前计数，不是 404。
@@ -70,6 +74,7 @@ func (s *Service) Unvote(ctx context.Context, actor *authz.Actor, target VoteTar
 	if err != nil {
 		return nil, err
 	}
+	showDislike := s.ShowDislikeCount(actor) || vt.authorID == actor.UserID
 	var like, dislike int
 	err = db.WithTx(ctx, s.db, func(tx *ent.Tx) error {
 		// 取消是幂等的：没有票时删 0 行也是成功（§5.3）——那种情况 UPDATE 不返回行，
@@ -89,7 +94,17 @@ func (s *Service) Unvote(ctx context.Context, actor *authz.Actor, target VoteTar
 		return nil, err
 	}
 	// 取消后 my_vote 恒为 0；主题没有踩，所以两个数字里只有 like 有意义。
-	return &VoteResultDTO{LikeCount: like, DislikeCount: dislike, MyVote: 0}, nil
+	return &VoteResultDTO{LikeCount: like, DislikeCount: hideDislikeCount(dislike, showDislike), MyVote: 0}, nil
+}
+
+// hideDislikeCount 与 PostDTO 的抹除同一条规矩（J3）：**不下发**，而不是下发一个 0。
+// omitempty 让「不许看」在 JSON 里就是「没有这个字段」——前端藏一个字段是显示层的事，
+// 后端发不发是信任边界的事。
+func hideDislikeCount(n int, show bool) int {
+	if !show {
+		return 0
+	}
+	return n
 }
 
 // voteTargetRef 是投票目标解析出来的三件事。**ref_type 与 ref_id 在这里算一次**，
@@ -99,6 +114,9 @@ type voteTargetRef struct {
 	kind string // notify 的 ref_type：post | topic | comment
 	// topicID 是通知要的 topic_id：楼层与 issue 评论各有归属主题，主题就是它自己。
 	topicID int64
+	// authorID 是**内容作者**：J3 的「发布者也能看踩数」靠它判归属。
+	// 它顺路就有（三条解析查询本来都取了/能取到 author_id），不额外查一次。
+	authorID int64
 }
 
 // resolveVoteTarget 把 public_id 解成内部 id，并回答「这一行对外存在吗」。
@@ -113,13 +131,13 @@ func (s *Service) resolveVoteTarget(ctx context.Context, actor *authz.Actor, tar
 			}
 			return voteTargetRef{}, err
 		}
-		return voteTargetRef{id: ref.ID, kind: notifyRefTopic, topicID: ref.ID}, nil
+		return voteTargetRef{id: ref.ID, kind: notifyRefTopic, topicID: ref.ID, authorID: ref.AuthorID}, nil
 	case VotePost:
 		ref, err := s.postRef(ctx, actor, publicID)
 		if err != nil {
 			return voteTargetRef{}, err
 		}
-		return voteTargetRef{id: ref.ID, kind: notifyRefPost, topicID: ref.TopicID}, nil
+		return voteTargetRef{id: ref.ID, kind: notifyRefPost, topicID: ref.TopicID, authorID: ref.AuthorID}, nil
 	case VoteIssueComment:
 		ref, err := s.repo.IssueCommentRef(ctx, publicID, actor.UserID)
 		if err != nil {
@@ -130,7 +148,7 @@ func (s *Service) resolveVoteTarget(ctx context.Context, actor *authz.Actor, tar
 		}
 		// likes.target_type='issue_comment' → notify 的 ref_type="comment"
 		// （NotifyLike 只认 post/topic/comment 三个，§8.1 的映射规则）。
-		return voteTargetRef{id: ref.ID, kind: notifyRefComment, topicID: ref.TopicID}, nil
+		return voteTargetRef{id: ref.ID, kind: notifyRefComment, topicID: ref.TopicID, authorID: ref.AuthorID}, nil
 	default:
 		return voteTargetRef{}, invalid("target", "不支持的投票目标")
 	}

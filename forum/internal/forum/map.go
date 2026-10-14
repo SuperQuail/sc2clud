@@ -35,7 +35,10 @@ func (s *Service) topicCard(r pgsql.TopicRow) TopicCardDTO {
 	return d
 }
 
-func (s *Service) topicDetailDTO(r pgsql.TopicDetailRow, sources []pgsql.SourceRow) TopicDetailDTO {
+// topicDetailDTO 把详情行拼成响应。rev 是「最后过审版本」（拍板 08 · L6），
+// 只在打回修改那一态且库里确有快照时非 nil；viewerID 用来判「这次读的是不是作者本人」。
+func (s *Service) topicDetailDTO(r pgsql.TopicDetailRow, sources []pgsql.SourceRow,
+	rev *pgsql.ApprovedRevisionRow) TopicDetailDTO {
 	d := TopicDetailDTO{
 		ID: r.PublicID, Kind: r.Kind, Title: r.Title, Excerpt: r.Excerpt,
 		Board:  BoardRefDTO{Slug: r.BoardSlug, Name: r.BoardName},
@@ -50,6 +53,8 @@ func (s *Service) topicDetailDTO(r pgsql.TopicDetailRow, sources []pgsql.SourceR
 		ViewCount:      r.ViewCount + s.count.Get(counterTopicViewKey(r.ID)),
 		IssueOpenCount: r.IssueOpenCount,
 		Pinned:         r.Pinned, Featured: r.Featured, Locked: r.Locked,
+		// 封面宽高与列表卡片同一个来源（拍板 08 · J9）：详情页的图集也要按真实宽高开容器。
+		CoverHash: deref(r.CoverHash), CoverWidth: r.CoverWidth, CoverHeight: r.CoverHeight,
 		// UpdatedAt 以前**从没赋值**（dto.go 声明了它）—— 于是接口永远返回 Go 零值 `0001-01-01T00:00:00Z`，
 		// 而库里其实更新了：盲测 PATCH 主题后标题与正文真的变了、DB 里 updated_at 也变了，只有响应是零值。
 		CreatedAt: r.CreatedAt.UTC(), UpdatedAt: r.UpdatedAt.UTC(), LastReplyAt: r.LastReplyAt.UTC(),
@@ -60,6 +65,18 @@ func (s *Service) topicDetailDTO(r pgsql.TopicDetailRow, sources []pgsql.SourceR
 	const deletedHTML = "<p>正文已被作者删除</p>"
 	if d.ContentDeleted {
 		d.ContentMD, d.ContentHTML = "", deletedHTML
+	}
+	if rev != nil {
+		// 正文是**作者手上正在改的那一版**（content_md），revision_of 额外给出上一份过审的内容。
+		//
+		// 为什么不在这里「替别人换成过审版本」：打回期间**只有作者看得见**这条主题
+		// （可见性谓词就是 approved OR author_id = viewer，别人拿到的是 404），
+		// 所以那一支没有可观测行为 —— 写了也测不到，属于死代码（L6 的用例专门钉了 404 那条）。
+		// 真正需要「别人看到过审版本」的是**审核队列**（另一条 DTO + 另一条可见性），
+		// 它读的是 review_note 与正文，与这里无关。
+		d.RevisionOf = &TopicRevisionDTO{
+			ContentMD: rev.ContentMD, ContentHTML: rev.ContentHTML, ApprovedAt: rev.ApprovedAt.UTC(),
+		}
 	}
 	// review_note 只给作者看（拍板 §6）：别人连主题都看不到，所以这里只多一层保险。
 	d.ReviewNote = r.ReviewNote
@@ -139,5 +156,13 @@ func issueCommentDTO(r pgsql.IssueCommentRow) IssueCommentDTO {
 		ID: r.PublicID, ParentID: r.ParentPublicID, BodyHTML: r.BodyHTML,
 		Author: userBriefDTO(r.Author), LikeCount: r.LikeCount, DislikeCount: r.DislikeCount,
 		MyVote: r.MyVote, CreatedAt: r.CreatedAt.UTC(), UpdatedAt: r.UpdatedAt.UTC(),
+	}
+}
+
+// hideCommentDislike 与 hideDislike 同一条规矩（Issue 评论的 DTO 是另一个类型，
+// 而把它与 PostDTO 合并成泛型只会让两个字段名绑在一起 —— 它们的父字段就不一样）。
+func hideCommentDislike(d *IssueCommentDTO, show bool) {
+	if !show {
+		d.DislikeCount = 0
 	}
 }

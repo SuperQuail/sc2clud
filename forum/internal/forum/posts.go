@@ -35,9 +35,14 @@ func (s *Service) ListPosts(ctx context.Context, actor *authz.Actor, in ListPost
 	if err != nil {
 		return nil, err
 	}
+	// 谁能看到踩数（J3）：管理员及以上，或**这条楼层是我的**。两半都要 ——
+	// 只判全局那一半会让作者的踩数消失，只判归属那一半会让管理员看不到。
+	showDislike := s.ShowDislikeCount(actor)
 	items := make([]PostDTO, 0, len(rows))
 	for _, r := range rows {
-		items = append(items, postDTO(r))
+		d := postDTO(r)
+		hideDislike(&d, showDislike || r.Author.ID == viewerID(actor))
+		items = append(items, d)
 	}
 	return &PostPage{Items: items, NextCursor: nextIntCursor(rows, limit, func(r pgsql.PostRow) int64 { return r.ID })}, nil
 }
@@ -52,9 +57,12 @@ func (s *Service) ListReplies(ctx context.Context, actor *authz.Actor, postPubli
 	if err != nil {
 		return nil, err
 	}
+	showDislike := s.ShowDislikeCount(actor)
 	out := make([]PostDTO, 0, len(rows))
 	for _, r := range rows {
-		out = append(out, postDTO(r))
+		d := postDTO(r)
+		hideDislike(&d, showDislike || r.Author.ID == viewerID(actor))
+		out = append(out, d)
 	}
 	return out, nil
 }
@@ -69,6 +77,14 @@ func postDTO(r pgsql.PostRow) PostDTO {
 		Author: userBriefDTO(r.Author), LikeCount: r.LikeCount, DislikeCount: r.DislikeCount,
 		MyVote: r.MyVote, ReplyTotal: r.ReplyTotal, PreviewIDs: ids,
 		CreatedAt: r.CreatedAt.UTC(), UpdatedAt: r.UpdatedAt.UTC(),
+	}
+}
+
+// hideDislike 抹掉踩数（拍板 08 · J3）：**服务层在序列化之前统一抹**，
+// 不分散到七条 SQL 的列清单里 —— 那是七次「记得别选那一列」，忘一次就是泄漏。
+func hideDislike(d *PostDTO, show bool) {
+	if !show {
+		d.DislikeCount = 0
 	}
 }
 
@@ -133,6 +149,8 @@ func (s *Service) CreatePost(ctx context.Context, actor *authz.Actor, topicPubli
 		return nil, err
 	}
 	d := postDTO(*row)
+	// 新发的楼层踩数必然是 0，但判据不因此省略：这条路径与列表共用同一个「谁能看」的规则。
+	hideDislike(&d, s.ShowDislikeCount(actor) || row.Author.ID == actor.UserID)
 	return &d, nil
 }
 
@@ -183,6 +201,7 @@ func (s *Service) insertPost(ctx context.Context, actor *authz.Actor, ref *pgsql
 		}
 		*postID = id
 		// ④ reply_count 与 last_reply_at：重算而不是增量（§3.7 Q8a 的取舍）。
+		// reply_count **含楼中楼**（拍板 08 · J4）：口径写在 pgsql.RecountTopic 上，只有那一处。
 		if err := pgsql.RecountTopic(ctx, tx, ref.ID); err != nil {
 			return err
 		}

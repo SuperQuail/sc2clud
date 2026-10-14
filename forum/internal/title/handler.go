@@ -27,7 +27,11 @@ func NewHandler(svc *Service, users UserLookup, actorOf ActorFromGin) *Handler {
 // {id} 一律是 public_id（v2 §21.1）：/admin/users/{id} 是用户，/admin/titles/{id} 是头衔。
 func (h *Handler) Register(rg *gin.RouterGroup, requireLogin gin.HandlerFunc, perm PermMiddleware) {
 	// 非 uuid 的 {id} 一律在进 service 之前挡成 400（见 platform/httpx.ValidPathIDs）。
-	rg = rg.Group("", httpx.ValidPathIDs("id"))
+	// **两个路径参数都点名**（拍板 08 · C9-1：同类 {id} 语义统一成 400）：
+	// {titleId} 以前不在闸里，靠 service 的 checkPublicID 兜成 404 —— 「格式错」被说成
+	// 「找不到」是另一件事，而且 404/400 的判据混在一处以后没人分得清。
+	// 它不能与 :id 同名（gin 不允许同一条路由出现两个同名参数），所以这里是两个名字。
+	rg = rg.Group("", httpx.ValidPathIDs("id", "titleId"))
 
 	rg.GET("/titles", h.listTitles)
 	rg.GET("/users/:handle/titles", h.userTitles)

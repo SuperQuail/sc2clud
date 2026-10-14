@@ -215,10 +215,19 @@ VALUES ($1, $2, $3, 'x', $2, $4, $5, $6) RETURNING id`,
 
 func (h *harness) seedBoard(slug string, minPostLevel int, aclEnabled bool) int64 {
 	h.t.Helper()
+	return h.seedBoardReply(slug, minPostLevel, minPostLevel, aclEnabled)
+}
+
+// seedBoardReply 建一个分区并**显式给出两档门槛**（E1：发帖 / 回帖）。
+// seedBoard 是它的简写（两档同值 —— 那正是 0027 回填老数据时的口径，
+// 所以既有用例的语义一个字没变）。
+func (h *harness) seedBoardReply(slug string, minPostLevel, minReplyLevel int, aclEnabled bool) int64 {
+	h.t.Helper()
 	var id int64
 	err := h.pool.QueryRow(h.ctx, `
-INSERT INTO boards (slug, name, min_post_level, acl_enabled) VALUES ($1, $1, $2, $3) RETURNING id`,
-		slug, minPostLevel, aclEnabled).Scan(&id)
+INSERT INTO boards (slug, name, min_post_level, min_reply_level, acl_enabled)
+VALUES ($1, $1, $2, $3, $4) RETURNING id`,
+		slug, minPostLevel, minReplyLevel, aclEnabled).Scan(&id)
 	if err != nil {
 		h.t.Fatal(err)
 	}

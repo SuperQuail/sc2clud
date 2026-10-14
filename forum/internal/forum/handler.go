@@ -98,7 +98,11 @@ func (h *Handler) Register(rg *gin.RouterGroup, requireLogin gin.HandlerFunc, pe
 	rg.DELETE("/topics/:id/bookmark", w("/topics/:id/bookmark", requireLogin, httpx.ValidPathIDs("id", "sid"), h.unbookmarkTopic)...)
 	rg.GET("/me/bookmarks", requireLogin, h.listBookmarks)
 	rg.POST("/topics/:id/issues", w("/topics/:id/issues", requireLogin, perm(authz.PermTopicCreate), httpx.ValidPathIDs("id", "sid"), httpx.BodyLimit(maxWriteBody), h.createIssue)...)
-	rg.PATCH("/issues/:id", w("/issues/:id", requireLogin, perm(authz.PermTopicEditOwn), httpx.ValidPathIDs("id", "sid"), httpx.BodyLimit(maxWriteBody), h.updateIssue)...)
+	// **不挂 perm(topic.edit.own)**：能改一条 Issue 的人有四种（作者 / 版主 / 管理员及以上 /
+	// Issue 发布者，拍板 08 · J8），路由级中间件只判得了「这类动作允不允许」，判不了
+	// 「这条是不是我的、我是不是版主」。四档判定在 service 的 canEditTopic / canCloseIssue 里，
+	// 与「作用域权限不进中间件」是同一条规矩（拍板 §1.2）。
+	rg.PATCH("/issues/:id", w("/issues/:id", requireLogin, httpx.ValidPathIDs("id", "sid"), httpx.BodyLimit(maxWriteBody), h.updateIssue)...)
 	rg.POST("/issues/:id/comments", w("/issues/:id/comments", requireLogin, perm(authz.PermTopicCreate), httpx.ValidPathIDs("id", "sid"), httpx.BodyLimit(maxWriteBody), h.createIssueComment)...)
 	rg.POST("/topics/:id/sources", w("/topics/:id/sources", requireLogin, perm(authz.PermTopicEditOwn), httpx.ValidPathIDs("id", "sid"), httpx.BodyLimit(maxWriteBody), h.saveSource)...)
 	rg.PATCH("/topics/:id/sources/:sid", w("/topics/:id/sources/:sid", requireLogin, perm(authz.PermTopicEditOwn), httpx.ValidPathIDs("id", "sid"), httpx.BodyLimit(maxWriteBody), h.updateSource)...)

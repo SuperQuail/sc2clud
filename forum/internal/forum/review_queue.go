@@ -34,14 +34,25 @@ const (
 	ReviewQueueAll      = "all"
 )
 
-// 判定动作。**没有 request_revision**：topics.review_state 只有三值
-// （0004 的 ck_topics_review_state），而「请求修改」在作者那一侧与 rejected 完全同形 ——
-// 同一张横幅、同一条 review_note。加第四态是 schema 变更而没有用户可感知的差别。
-// 作者改完 1 楼正文会经 ResetTopicReview 自动回到 pending（pgsql/topics.go），闭环不缺这一环。
+// 判定动作。
+//
+//   - approve / reject 是原来的两条；
+//   - **request_revision 是第四态**（拍板 08 · L6）：用户要的是「改改就能过」与「直接拒绝」
+//     分开 —— 对作者是不同的心理预期，所以它不再是「与 rejected 完全同形」的那条。
+//     打回期间**只有作者可见**（可见性谓词天然如此：只有 approved 对所有人可见），
+//     作者看到的是**最后一个过审版本**（topic_revisions，迁移 0028）。
+//
+// 作者改完 1 楼正文会经 ResetTopicReview 自动回到 pending（pgsql/topics.go），闭环不走缺环。
 const (
-	ReviewApprove = "approve"
-	ReviewReject  = "reject"
+	ReviewApprove         = "approve"
+	ReviewReject          = "reject"
+	ReviewRequestRevision = "request_revision"
 )
+
+// ReviewStateRevisionRequested 是第四态在库里的值（迁移 0028 的 CHECK 值域）。
+// 它同时是**作者侧横幅的判据**：TopicDetailDTO.ReviewState 与 RevisionOf 一起给出，
+// 前端据此渲染「按审核意见改一版」而不是「未通过」。
+const ReviewStateRevisionRequested = "revision_requested"
 
 // AuditReviewAction 是人工判定的审计动作名（AI 那一侧是 topic.ai_hide）。
 const AuditReviewAction = "topic.review"
@@ -56,8 +67,14 @@ const (
 )
 
 var (
-	reviewQueueStates  = map[string]bool{ReviewQueuePending: true, ReviewQueueRejected: true, ReviewQueueAll: true}
-	reviewQueueActions = map[string]bool{ReviewApprove: true, ReviewReject: true}
+	// 队列还有第四档（拍板 08 · L6）：打回修改的那些帖**也要在队列里有一档**，
+	// 否则「谁被打回了、改到哪一步了」在后台看不见。索引谓词是 review_state <> 'approved'，
+	// 第四态自动在索引里，所以这一档不多花代价。
+	reviewQueueStates = map[string]bool{
+		ReviewQueuePending: true, ReviewQueueRejected: true,
+		ReviewStateRevisionRequested: true, ReviewQueueAll: true,
+	}
+	reviewQueueActions = map[string]bool{ReviewApprove: true, ReviewReject: true, ReviewRequestRevision: true}
 )
 
 // ReviewQueueInput 是 GET /admin/topics 的入参。
@@ -117,7 +134,7 @@ func (s *Service) ListReviewQueue(ctx context.Context, actor *authz.Actor, in Re
 		state = ReviewQueuePending
 	}
 	if !reviewQueueStates[state] {
-		return nil, invalid("state", "只能是 pending / rejected / all")
+		return nil, invalid("state", "只能是 pending / rejected / revision_requested / all")
 	}
 	q := strings.TrimSpace(in.Q)
 	if len([]rune(q)) > maxReviewQ {
@@ -160,16 +177,17 @@ func (s *Service) ReviewTopic(ctx context.Context, actor *authz.Actor, publicID,
 		return nil, err
 	}
 	if !reviewQueueActions[action] {
-		return nil, invalid("action", "只能是 approve / reject")
+		return nil, invalid("action", "只能是 approve / reject / request_revision")
 	}
 	note = strings.TrimSpace(note)
 	if len([]rune(note)) > maxReviewNote {
 		return nil, invalid("note", "最多 500 字")
 	}
-	// 不通过必须给理由：作者在帖子页看到的就是这条 review_note（topic-view 的审核横幅）。
-	// 允许空理由等于让作者收到一条「未通过」而不知道为什么。
-	if action == ReviewReject && note == "" {
-		return nil, invalid("note", "不通过必须写理由（作者能看到）")
+	// 不通过 / 打回都必须给理由：作者在帖子页看到的就是这条 review_note（topic-view 的审核横幅）。
+	// 允许空理由等于让作者收到一条「未通过」而不知道为什么 —— 打回更糟：
+	// 「改改就能过」但不说改哪里，等于让作者猜。
+	if (action == ReviewReject || action == ReviewRequestRevision) && note == "" {
+		return nil, invalid("note", "不通过 / 打回必须写理由（作者能看到）")
 	}
 
 	ref, err := s.repo.TopicRef(ctx, publicID, actor.UserID, true)
@@ -186,8 +204,12 @@ func (s *Service) ReviewTopic(ctx context.Context, actor *authz.Actor, publicID,
 	now := s.clk.Now()
 	state := "approved"
 	var notePtr *string
-	if action == ReviewReject {
+	switch action {
+	case ReviewReject:
 		state = "rejected"
+		notePtr = &note
+	case ReviewRequestRevision:
+		state = ReviewStateRevisionRequested
 		notePtr = &note
 	}
 	detail, err := json.Marshal(map[string]any{
@@ -236,9 +258,37 @@ func (s *Service) ReviewTopic(ctx context.Context, actor *authz.Actor, publicID,
 		// 因为什么、判过几次」—— 后台审核屏要的就是后者。0021 还专门给 actor_id 补了索引。
 		// 与判定同事务：判定没落库就不该留下一条事件。
 		reviewerID := actor.UserID
-		if err := pgsql.InsertReviewEvent(ctx, tx, ref.ID, ReviewSourceManual, action, note,
+		// verdict 用**状态名**而不是动作名：动作是 API 的词（request_revision），
+		// 状态是库里的值（revision_requested，ck_review_events_verdict 与 ck_topics_review_state 同域）。
+		// 两个词长得像但不是同一个东西 —— 把动作原样写进去会撞 CHECK（23514）整条回滚。
+		verdict := action
+		if action == ReviewRequestRevision {
+			verdict = ReviewStateRevisionRequested
+		}
+		if err := pgsql.InsertReviewEvent(ctx, tx, ref.ID, ReviewSourceManual, verdict, note,
 			&reviewerID, now); err != nil {
 			return err
+		}
+		// 「最后过审版本」（拍板 08 · L6）：放行一个**此前过审过**的主题时，把 1 楼正文快照下来。
+		//
+		// 两个条件都是必需的，少一个都会让「最后过审版本」变成假话：
+		//   · 上一态就是 approved（ref.ReviewState）—— 一条 pending 的新帖第一次被批准时，
+		//     它此前没有任何过审内容，而 1 楼正文就在这次批准之后的库里：写一份「还没审过的正文」
+		//     进 topic_revisions，作者在 revision_of 里会看到一份从没被批准过的内容。
+		//   · 还没有快照（HasApprovedRevision）—— 快照一旦写下就固定了，重复批准不该覆盖它
+		//     （approved_at 说的是「这份内容什么时候被批准」，覆盖会让那个时间戳说谎）。
+		//
+		// 于是「作者改完 → 复审通过 → 再被打回」这条路上，revision_of 永远是**上一份真过审的**内容。
+		if action == ReviewApprove && ref.ReviewState == "approved" {
+			has, err := s.repo.HasApprovedRevision(ctx, tx, ref.ID)
+			if err != nil {
+				return err
+			}
+			if !has {
+				if err := pgsql.SnapshotApprovedRevision(ctx, tx, ref.ID, actor.UserID, now); err != nil {
+					return err
+				}
+			}
 		}
 		// 放行必须重建搜索索引：indexTopic 对「未过审」的主题是**把索引行删掉**（app/tasks.go），
 		// 而 search:index 只由发帖/改帖/删帖入队 —— 少了这一条，人工放行的帖子在搜索里

@@ -22,6 +22,7 @@ func Vote(ctx context.Context, tx Querier, targetType string, targetID, userID i
 	}
 	changed := false
 	// 0 行 = 这一票与原来相同（幂等重放）：不是错误，计数不动。
+	// $5 = now：topics 的 last_interaction_at 用它（最热排序的「一周内」判据，迁移 0025）。
 	err := queryOneQ(ctx, tx, voteSQL(table), []any{userID, targetType, targetID, value, now.UTC()},
 		func(rows *sql.Rows) error { return rows.Scan(&changed) })
 	if err == ErrNoRows {
@@ -66,11 +67,33 @@ func voteSQL(table string) string {
 //   - topics 只有 like_count（主题只有赞，不能踩）；
 //   - posts / issue_comments 两列都有（评论区有赞/踩，拍板 §11.2 第 6 条与接口定稿补充 §5）。
 func likeSetSQL(table string) string {
+	// like_count 自己不看 t.*（左值），所以 UPDATE...FROM 里它排第一位。
 	s := "like_count = t.like_count + ((i.new_value = 1)::int - (i.old_value = 1)::int)"
-	if table == "topics" {
-		return s
+	if table != "topics" {
+		s += ",\n       dislike_count = t.dislike_count + ((i.new_value = -1)::int - (i.old_value = -1)::int)"
 	}
-	return s + ",\n       dislike_count = t.dislike_count + ((i.new_value = -1)::int - (i.old_value = -1)::int)"
+	return s + hotInteractionSetSQL(table)
+}
+
+// hotInteractionSetSQL 是「最热」的 last_interaction_at 维护（拍板 08 · L2 / 迁移 0025）。
+//
+// **复算，不是回退**：取消一票不把时间往回拨 —— 真实事件是「刚刚发生了互动（一次取消）」，
+// 而回退要在「谁取消了哪一票」上做减法，那是增量维护的老毛病（一处漏写就永久漂移）。
+// 复算的代价是一条 EXISTS：likes 上有主键 (user_id,target_type,target_id) 与
+// idx_likes_target，都是等值前缀。
+//
+// 只有 topics 有这一列（posts / issue_comments 不参与主题热度）。
+// 空票时回落 GREATEST(created_at,last_reply_at)：与迁移 0025 的回填口径逐字一致。
+func hotInteractionSetSQL(table string) string {
+	if table != "topics" {
+		return ""
+	}
+	return `,
+       last_interaction_at = CASE WHEN i.new_value = 1
+         THEN GREATEST(t.created_at, t.last_reply_at, $5::timestamptz)
+         ELSE GREATEST(t.created_at, t.last_reply_at,
+                       (SELECT max(l.updated_at) FROM likes l
+                         WHERE l.target_type = 'topic' AND l.target_id = t.id)) END`
 }
 
 // Unvote 是幂等的取消（§5.3）：没有票时不删任何行 → UPDATE 零行 → 幂等成功。
@@ -105,12 +128,22 @@ func (s *Store) Unvote(ctx context.Context, tx Querier, targetType string, targe
 
 // unlikeSetSQL 是取消投票的 SET 子句，列的取舍与 likeSetSQL 逐字同源。
 func unlikeSetSQL(table string) string {
+	// d.value 是 CTE 的列，不是目标表的列 —— 这里不像 likeSetSQL 那样受 UPDATE...FROM 的限制。
 	s := "like_count = t.like_count - (CASE WHEN d.value = 1 THEN 1 ELSE 0 END)"
-	if table == "topics" {
-		return s
+	if table != "topics" {
+		return s + ",\n       dislike_count = t.dislike_count - (CASE WHEN d.value = -1 THEN 1 ELSE 0 END)"
 	}
-	return s + ",\n       dislike_count = t.dislike_count - (CASE WHEN d.value = -1 THEN 1 ELSE 0 END)"
+	// 取消也算一次互动（复算，不回退）：likes 这一行已经被 CTE 删掉了，
+	// 所以 max(updated_at) 看到的是**取消之后**剩下的票，口径与 likeSetSQL 的 ELSE 分支一致。
+	return s + hotUnlikeSet
 }
+
+// hotUnlikeSet 与 hotInteractionSetSQL 的 ELSE 分支逐字同源（两处分开是因为
+// likeSetSQL 那条不能引用 t.* 做左值以外的转换，见那边的注释）。
+const hotUnlikeSet = `,
+       last_interaction_at = GREATEST(t.created_at, t.last_reply_at,
+                                      (SELECT max(l.updated_at) FROM likes l
+                                        WHERE l.target_type = 'topic' AND l.target_id = t.id))`
 
 // voteCountCols 与 voteCountDest 一起解决「topics 只有 like_count」这一件事。
 func voteCountCols(table string) string {

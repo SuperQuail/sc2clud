@@ -31,9 +31,11 @@ type BoardDTO struct {
 	CoverHash    string `json:"cover_hash"`
 	ACLEnabled   bool   `json:"acl_enabled"`
 	MinPostLevel int    `json:"min_post_level"`
-	TopicCount   int64  `json:"topic_count"`
-	PostCount    int64  `json:"post_count"`
-	TodayCount   int64  `json:"today_count"`
+	// MinReplyLevel 是回帖门槛（拍板 08 · E1）：老站两档门槛的第二档，与 min_post_level 同构。
+	MinReplyLevel int   `json:"min_reply_level"`
+	TopicCount    int64 `json:"topic_count"`
+	PostCount     int64 `json:"post_count"`
+	TodayCount    int64 `json:"today_count"`
 }
 
 // TopicCardDTO 是列表项（交接单 §1.2 的 TopicCardDTO）。
@@ -64,9 +66,14 @@ type TopicCardDTO struct {
 }
 
 // TopicPage 是列表响应：{ data, next_cursor }（拍板 §5.1）。
+//
+// Sort 只在最热（hot）时填，且**不出现在 JSON 里**（handler 只取 Items 与 NextCursor）：
+// 它是给服务端内部与测试的一个自述 —— 游标的含义取决于排序键（时间戳 vs 热度分，
+// 拍板 08 · L2），报错与断言时说得出是哪种比「游标格式不正确」有用。
 type TopicPage struct {
 	Items      []TopicCardDTO
 	NextCursor string
+	Sort       string
 }
 
 // TopicBriefDTO 是置顶区块（§3.3 Q2b）：只有标题与状态，5 行以内不翻页。
@@ -98,15 +105,32 @@ type TopicDetailDTO struct {
 	Pinned         bool         `json:"pinned"`
 	Featured       bool         `json:"featured"`
 	Locked         bool         `json:"locked"`
-	CreatedAt      time.Time    `json:"created_at"`
-	LastReplyAt    time.Time    `json:"last_reply_at"`
-	UpdatedAt      time.Time    `json:"updated_at"`
-	ReviewState    string       `json:"review_state"`
-	ReviewNote     *string      `json:"review_note"` // 只有作者看得到（拍板 §6）
-	CanEdit        bool         `json:"can_edit"`
-	CanReply       bool         `json:"can_reply"`
-	Viewer         ViewerDTO    `json:"viewer"`
-	Sources        []SourceDTO  `json:"sources"`
+	// 封面与它的真实宽高（拍板 08 · J9 = §4.2）：与列表卡片同一个来源（topic_images 里 sort=0 的那张）。
+	// 0 在这三列上只有一个含义：这张主题没有封面（前端按 cover_hash 是否为空走占位块）。
+	CoverHash   string    `json:"cover_hash"`
+	CoverWidth  int       `json:"cover_width"`
+	CoverHeight int       `json:"cover_height"`
+	CreatedAt   time.Time `json:"created_at"`
+	LastReplyAt time.Time `json:"last_reply_at"`
+	UpdatedAt   time.Time `json:"updated_at"`
+	ReviewState string    `json:"review_state"`
+	ReviewNote  *string   `json:"review_note"` // 只有作者看得到（拍板 §6）
+	// RevisionOf 是**最后一个过审版本**（拍板 08 · L6）：只在打回修改（revision_requested）
+	// 且库里确实有快照时非空。作者改的是新内容（content_md 是新的），而页面要能显示
+	// 「上一版过审长什么样」—— 少了它，作者只能凭 review_note 猜该改哪里。
+	RevisionOf *TopicRevisionDTO `json:"revision_of"`
+	CanEdit    bool              `json:"can_edit"`
+	CanReply   bool              `json:"can_reply"`
+	Viewer     ViewerDTO         `json:"viewer"`
+	Sources    []SourceDTO       `json:"sources"`
+}
+
+// TopicRevisionDTO 是「最后过审版本」的正文（迁移 0028 的 topic_revisions）。
+// 两列与 TopicDetailDTO 的正文同名：前端可以把整块内容直接换掉。
+type TopicRevisionDTO struct {
+	ContentMD   string    `json:"content_md"`
+	ContentHTML string    `json:"content_html"`
+	ApprovedAt  time.Time `json:"approved_at"`
 }
 
 // ViewerDTO 是我的三态。游客恒 like=0 / bookmarked=false。
@@ -122,17 +146,20 @@ type PostDTO struct {
 	// 2026-10-13 之前这里是 string（空串 = 顶层），而前端声明的是 `string | null` 并按 `=== null` 过滤 ——
 	// 于是顶层楼层全被过滤掉，**评论区一条都不渲染**（接口 200 且返回数据，DOM 容器是空的）。
 	// 契约两侧各写了一份约定，两边的测试都过，序列化那一层没人测。
-	ParentID     *string      `json:"parent_id"`
-	Floor        int          `json:"floor"`
-	ContentHTML  string       `json:"content_html"`
-	Author       UserBriefDTO `json:"author"`
-	LikeCount    int          `json:"like_count"`
-	DislikeCount int          `json:"dislike_count"`
-	MyVote       int          `json:"my_vote"`
-	ReplyTotal   int          `json:"reply_total"`
-	PreviewIDs   []string     `json:"preview_ids"`
-	CreatedAt    time.Time    `json:"created_at"`
-	UpdatedAt    time.Time    `json:"updated_at"`
+	ParentID    *string      `json:"parent_id"`
+	Floor       int          `json:"floor"`
+	ContentHTML string       `json:"content_html"`
+	Author      UserBriefDTO `json:"author"`
+	LikeCount   int          `json:"like_count"`
+	// DislikeCount 是**信任边界**（拍板 08 · J3）：普通用户拿不到这个字段（omitempty，
+	// 等于「不下发」而不是「下发一个 0」）。能看的是管理员及以上与这条内容的作者。
+	// 判据在 forum.ShowDislikeCount + 逐条的归属判定里，**不在前端**。
+	DislikeCount int       `json:"dislike_count,omitempty"`
+	MyVote       int       `json:"my_vote"`
+	ReplyTotal   int       `json:"reply_total"`
+	PreviewIDs   []string  `json:"preview_ids"`
+	CreatedAt    time.Time `json:"created_at"`
+	UpdatedAt    time.Time `json:"updated_at"`
 }
 
 // PostPage 是回复列表的一页。
@@ -189,15 +216,16 @@ type IssuePage struct {
 
 // IssueCommentDTO 是 Issue 评论。
 type IssueCommentDTO struct {
-	ID           string       `json:"id"`
-	ParentID     *string      `json:"parent_id"` // nil = 顶层（同 PostDTO，Issue 评论同病同治）
-	BodyHTML     string       `json:"body_html"`
-	Author       UserBriefDTO `json:"author"`
-	LikeCount    int          `json:"like_count"`
-	DislikeCount int          `json:"dislike_count"`
-	MyVote       int          `json:"my_vote"`
-	CreatedAt    time.Time    `json:"created_at"`
-	UpdatedAt    time.Time    `json:"updated_at"`
+	ID        string       `json:"id"`
+	ParentID  *string      `json:"parent_id"` // nil = 顶层（同 PostDTO，Issue 评论同病同治）
+	BodyHTML  string       `json:"body_html"`
+	Author    UserBriefDTO `json:"author"`
+	LikeCount int          `json:"like_count"`
+	// DislikeCount 同 PostDTO：普通用户拿不到（拍板 08 · J3）。
+	DislikeCount int       `json:"dislike_count,omitempty"`
+	MyVote       int       `json:"my_vote"`
+	CreatedAt    time.Time `json:"created_at"`
+	UpdatedAt    time.Time `json:"updated_at"`
 }
 
 // IssueCommentPage 是 Issue 评论的一页。
@@ -207,9 +235,12 @@ type IssueCommentPage struct {
 }
 
 // VoteResultDTO 是投票后的计数（拍板 §3：两个计数 + 我的投票）。
+//
+// **契约仍是单值投票**（拍板 08 · J3 的第一句）：my_vote 只有 -1/0/1，
+// 没有「既赞又踩」。DislikeCount 的可见性同 PostDTO —— 只有管理员及以上看得到。
 type VoteResultDTO struct {
 	LikeCount    int `json:"like_count"`
-	DislikeCount int `json:"dislike_count"`
+	DislikeCount int `json:"dislike_count,omitempty"`
 	MyVote       int `json:"my_vote"`
 }
 

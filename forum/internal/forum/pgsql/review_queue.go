@@ -182,7 +182,8 @@ func SetTopicReview(ctx context.Context, tx Querier, topicID int64, state string
 //
 //   - trigger 恒为 'manual'：这条路径只可能是人在后台点的（值域 create|report|manual，0020）；
 //   - source 恒为 'manual'：不可覆盖的判定来源（d7 §1 铁律）；
-//   - verdict 就是动作 approve|reject（值域 approve|reject|review）；
+//   - verdict 是**状态名**（approve|reject|revision_requested），不是 API 的动作名 ——
+//     打回的动作叫 request_revision 而库里的状态叫 revision_requested，service 负责换算；
 //   - categories / model / latency_ms 是 AI 那侧才有的，留默认值。
 func InsertReviewEvent(ctx context.Context, tx Querier, topicID int64, source, verdict, reason string,
 	actorID *int64, now time.Time) error {
@@ -190,6 +191,61 @@ func InsertReviewEvent(ctx context.Context, tx Querier, topicID int64, source, v
 		"INSERT INTO review_events (topic_id, trigger, source, verdict, reason, actor_id, created_at) "+
 			"VALUES ($1, 'manual', $2, $3, $4, $5, $6)",
 		topicID, source, verdict, clipReason(reason), actorID, now.UTC())
+}
+
+// SnapshotApprovedRevision 在「1 楼被批准发布」的那一刻把它的正文快照成「最后过审版本」
+// （拍板 08 · L6；表在迁移 0028）。
+//
+// **先插后查**：正文此刻在库里就是被批准的那一份，所以直接从 posts 取。
+// **NOT EXISTS** 而不是 ON CONFLICT：快照是幂等的，而且不能覆盖更早的那一份 ——
+// 同一个 approved 版本被再批一次时，要留住的是**最早**成为「过审版本」的那次，
+// 覆盖会让 approved_at 说谎（那是「这份内容什么时候被批准」的时间戳）。
+// 一帖一份由 uq_topic_revisions_topic 兜底。
+func SnapshotApprovedRevision(ctx context.Context, tx Querier, topicID, approverID int64, now time.Time) error {
+	return exec(ctx, tx, snapshotRevisionSQL, topicID, approverID, now.UTC())
+}
+
+// HasApprovedRevision 回答「这一帖有没有过审版本」。service 用它决定**要不要**写快照，
+// 而不是只比 review_state：一条 pending 的新帖被第一次批准时，它此前没有过审内容 ——
+// 那种情况下写快照会把「还没审过的正文」记成历史（见 forum/review_queue.go 的说明）。
+func (s *Store) HasApprovedRevision(ctx context.Context, q Querier, topicID int64) (bool, error) {
+	var ok bool
+	err := queryOneQ(ctx, q, "SELECT EXISTS (SELECT 1 FROM topic_revisions WHERE topic_id = $1)",
+		[]any{topicID}, func(rows *sql.Rows) error { return rows.Scan(&ok) })
+	return ok, err
+}
+
+// snapshotRevisionSQL 单独抽出来只为一件事：Go 的原始字符串里不能出现反引号，
+// 而这条 SQL 用 sqlJoin 拼会变成一长串加号（读的人看不出 SQL 形状）。
+const snapshotRevisionSQL = `INSERT INTO topic_revisions
+  (topic_id, post_id, content_md, content_html, approved_by, approved_at, created_at, updated_at)
+SELECT p.topic_id, p.id, p.content_md, p.content_html, $2, $3, $3, $3
+  FROM posts p
+ WHERE p.topic_id = $1 AND p.floor = 1
+   AND NOT EXISTS (SELECT 1 FROM topic_revisions r WHERE r.topic_id = $1)`
+
+// ApprovedRevision 读「最后过审版本」（没有就是 nil）：打回期间作者看到的那一份。
+func (s *Store) ApprovedRevision(ctx context.Context, topicID int64) (*ApprovedRevisionRow, error) {
+	var r ApprovedRevisionRow
+	err := s.queryOne(ctx,
+		"SELECT content_md, content_html, approved_at FROM topic_revisions WHERE topic_id = $1",
+		[]any{topicID}, func(rows *sql.Rows) error {
+			return rows.Scan(&r.ContentMD, &r.ContentHTML, &r.ApprovedAt)
+		})
+	if err == ErrNoRows {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	return &r, nil
+}
+
+// ApprovedRevisionRow 是 topic_revisions 的一行（内容三列与 posts 逐字同名）。
+type ApprovedRevisionRow struct {
+	ContentMD   string
+	ContentHTML string
+	ApprovedAt  time.Time
 }
 
 // clipReason 是 reason 的 varchar(200) 硬上限（service 的 note 上限是 500，

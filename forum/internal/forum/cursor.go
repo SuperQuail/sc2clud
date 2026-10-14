@@ -7,6 +7,7 @@ import (
 	"strconv"
 	"time"
 
+	"forum/internal/forum/pgsql"
 	"forum/internal/platform/apperr"
 )
 
@@ -61,8 +62,74 @@ func decodeCursor(s string) (time.Time, int64, error) {
 	return t.UTC(), c.ID, nil
 }
 
+// badCursor 是全部游标解码失败的唯一出口：400 common.invalid_input，
+// **不是**「当成第一页静默吞掉」——伪造的游标是客户端 bug 或攻击，不该看不出来。
 func badCursor() error {
 	return apperr.Invalid(map[string]string{"cursor": "游标格式不正确"})
+}
+
+// ---- 最热（sort=hot）的游标（拍板 08 · L2）----
+//
+// 为什么不能复用上面那条：`cursor.K` 是 **RFC3339Nano 的时间戳** —— 现有三种排序的键
+// 都是时间列（last_reply_at / created_at / featured_at），游标比较直接写
+// `(col, id) < ($k::timestamptz, $id::bigint)`。最热的键**不是时间**，是
+// `score = (like_count + 3*顶层评论数) * time_boost`，而 time_boost 依赖 now()，
+// 所以键必须由服务端算好放进游标，客户端不能推、也不能拿时间字段冒充。
+//
+// 编码成字符串而不是 float64：JSON 数字在 float64 与 numeric 之间来回会丢精度，
+// 而 k 要直接进 `::numeric` 比较（与 id 那条「bigint 不出 JSON number」的取舍同源）。
+type hotCursor struct {
+	K  string `json:"k"`
+	ID int64  `json:"id"`
+}
+
+func encodeHotCursor(k string, id int64) string {
+	b, err := json.Marshal(hotCursor{K: k, ID: id})
+	if err != nil {
+		return ""
+	}
+	return base64.RawURLEncoding.EncodeToString(b)
+}
+
+func decodeHotCursor(s string) (string, int64, error) {
+	raw, err := base64.RawURLEncoding.DecodeString(s)
+	if err != nil {
+		return "", 0, badCursor()
+	}
+	var c hotCursor
+	if err := json.Unmarshal(raw, &c); err != nil {
+		return "", 0, badCursor()
+	}
+	if _, err := strconv.ParseFloat(c.K, 64); err != nil {
+		return "", 0, badCursor()
+	}
+	return c.K, c.ID, nil
+}
+
+// hotFirstPage 是第一页的哨兵。**禁止传 NULL**（与 sentinelTime 同一条纪律）。
+// 它必须大于任何真实分数：epoch 秒的上界约 1e11，乘 1.5 的增益再乘不上限的互动量 ——
+// 1e300 是「比任何 LISTEN 得到的数都大」的一个安全上界。
+const hotFirstPage = "1e300"
+
+// hotPageCursor 把列表入参的游标解成 (score,id)。空游标 = 第一页的哨兵。
+func hotPageCursor(s string) (string, int64, error) {
+	if s == "" {
+		return hotFirstPage, sentinelID, nil
+	}
+	return decodeHotCursor(s)
+}
+
+// hotNextCursor 只在「取到了 limit 条」时才给下一页游标（§3.8 规则 3），与 nextCursor 同一条规则。
+//
+// 分数用 strconv.FormatFloat(-1) 而不是 %v：-1 是「最短且能往返」的表示。
+// 游标是服务端自己发给自己，只要往返后 ::numeric 比较的序不变就够（float64 的 17 位有效数字
+// 远够 1e11 量级的分辨）。**不要**改成手写精度：那会让「比较」与「展示」两处各有一套四舍五入。
+func hotNextCursor(rows []pgsql.TopicRow, limit int) string {
+	if len(rows) < limit {
+		return ""
+	}
+	last := rows[len(rows)-1]
+	return encodeHotCursor(strconv.FormatFloat(last.HotKey, 'g', -1, 64), last.ID)
 }
 
 // pageCursor 把列表入参的游标解成 (k,id)。空游标 = 第一页的哨兵。

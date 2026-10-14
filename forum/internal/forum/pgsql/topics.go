@@ -33,6 +33,9 @@ type TopicRow struct {
 	CoverWidth   int
 	CoverHeight  int
 	BookmarkedAt *time.Time
+	// HotKey 只有 sort=hot 的那条查询会填（SELECT 列表末尾多的 hot_key 列）：
+	// 游标要把它原样带回给客户端，所以扫描时就得接住 —— 见 scanTopicRow 的 extra。
+	HotKey float64
 }
 
 // UserRow 是卡片与楼层上的作者列。
@@ -96,6 +99,13 @@ func scanTopicRow(rows *sql.Rows, r *TopicRow, extra ...any) error {
 	}
 	r.Author.AvatarHash = scanNullString(avatar)
 	r.Author.AvatarSmall = scanNullString(avatarSmall)
+	// extra 里可能带一个 *float64（sort=hot 的 hot_key）；用类型断言而不是多加参数，
+	// 因为只有一条查询有它，而 scanTopicRow 被五条查询共用。
+	for _, e := range extra {
+		if p, ok := e.(*float64); ok {
+			r.HotKey = *p
+		}
+	}
 	return nil
 }
 
@@ -105,14 +115,45 @@ type TopicSort string
 const (
 	SortLatest TopicSort = "latest" // last_reply_at DESC, id DESC（索引 a / b）
 	SortNew    TopicSort = "new"    // created_at   DESC, id DESC（索引 c / d）
+	// SortHot 是「最热」（拍板 08 · L2）：键不是时间列，见 hotScoreSQL 的整段说明。
+	// 它**没有** col 可拼：hotScoreSQL 是一整段表达式，作为游标键与排序列自己拼进去。
+	SortHot TopicSort = "hot"
 )
 
 func (s TopicSort) column() string {
 	if s == SortNew {
 		return "t.created_at"
 	}
+	if s == SortHot {
+		return hotScoreSQL
+	}
 	return "t.last_reply_at"
 }
+
+// hotScoreSQL 是「最热」的排序键（拍板 08 · L2）：
+//
+//	score = (like_count + 3 * 顶层评论数) * time_boost
+//	time_boost = 1.5 当互动（最后一次点赞 / 顶层回复）在**一周内**，否则 1.0
+//
+// 三条口径写死在这里，别处不许各推一套：
+//   - **顶层评论**用 count(posts WHERE floor > 1 AND parent_id IS NULL)：reply_count 是
+//     「含楼中楼」的口径（J4），直接拿它当乘数会把楼中楼算成 3 分。两个口径各归各的用途。
+//   - **互动时间**用 topics.last_interaction_at（迁移 0025 加的冗余列），**不是 now() 参与比较以外的
+//     任何东西**：点赞与顶层回复都会推它；它让「一周内」有稳定的落点（now() 一变分数就变，
+//     所以游标必须由服务端编码，见 forum/cursor.go 的 hotCursor）。
+//   - **增益乘在整数权重上**，所以 score 是「克」不是「千克」：1.5 = 3/2。
+//
+// 索引命中：ORDER BY 表达式本身用不了索引，但 `(t.last_interaction_at DESC, t.id DESC)` 的排序
+// 结果与 score DESC **不完全同序**（增益档一变，老的互动会被新的反超），所以这里**不假装**它走索引：
+// idx_topics_hot 的用途是「先按互动时间取一段候选」，真正的排序由 Sort 完成。
+// 主题量级是万级，一页 20 条；要提吞吐再说（shortcut: 全排序，主题上百万行时改成物化 score 列）。
+// hotFirstPageSQL 是第一页的哨兵：比任何真实 score 都大（epoch 秒上界 ~1e11，增益 1.5）。
+// 传它而不是 NULL —— 行比较遇 NULL 会让整条谓词变 NULL、静默返回零行（§3.8 规则 2）。
+const hotFirstPageSQL = "1e300"
+
+const hotScoreSQL = `((t.like_count + 3 * (SELECT count(*) FROM posts hp
+        WHERE hp.topic_id = t.id AND hp.floor > 1 AND hp.parent_id IS NULL AND hp.visibility = 'normal'))
+   * CASE WHEN t.last_interaction_at >= now() - interval '7 days' THEN 1.5 ELSE 1.0 END)`
 
 // TopicFilter 是四条游标列表共用的筛选形状。
 type TopicFilter struct {
@@ -122,8 +163,11 @@ type TopicFilter struct {
 	Sort     TopicSort
 	CursorT  time.Time
 	CursorID int64
-	Limit    int
-	ViewerID int64
+	// CursorScore 只有 sort=hot 用：热度的键不是时间（见 hotScoreSQL）。
+	// 语义与 CursorT 一样是**哨兵**，所以空串 = 第一页（SQL 里空串 → '1e300'，恒真）。
+	CursorScore string
+	Limit       int
+	ViewerID    int64
 }
 
 // ListTopics 是首页 / 分区页 / 个人主页的主题列表（§3.2 Q1、§3.3 Q2a/Q2c/Q2d、§3.5 Q4a 的骨架）。
@@ -150,6 +194,23 @@ func (s *Store) ListTopics(ctx context.Context, f TopicFilter, featured bool) ([
 			" AND (t.featured_at, t.id) < ($3::timestamptz, $4::bigint)" +
 			" ORDER BY t.featured_at DESC, t.id DESC LIMIT $5"
 		args = []any{f.BoardID, f.CursorT.UTC(), f.CursorID, f.Limit}
+	} else if f.Sort == SortHot {
+		// 最热（拍板 08 · L2）：游标是 (score, id)，键由服务端算好放进游标 —— 时间戳那一套在这里
+		// 用不了（score 不是时间，而且它随 now() 变）。表达式**只写一遍**（col = hotScoreSQL），
+		// SELECT 列表与 ORDER BY 引用同一个字符串，避免「排序按 A、游标按 B」的漂移。
+		sqlText = "SELECT " + topicColumns + ", " + col + " AS hot_key" +
+			" FROM topics t" + boardJoin + authorJoin + coverJoin +
+			" WHERE t.visibility = 'normal' AND t.review_state = 'approved'" +
+			" AND ($1::bigint IS NULL OR t.board_id = $1)" +
+			" AND ($2::text IS NULL OR t.kind = $2)" +
+			" AND (" + col + " < $3::numeric" +
+			"      OR (" + col + " = $3::numeric AND t.id < $4::bigint))" +
+			" ORDER BY " + col + " DESC, t.id DESC LIMIT $5"
+		score := f.CursorScore
+		if score == "" {
+			score = hotFirstPageSQL
+		}
+		args = []any{f.BoardID, nullIfEmpty(f.Kind), score, f.CursorID, f.Limit}
 	} else {
 		sqlText = "SELECT " + topicColumns + " FROM topics t" + boardJoin + authorJoin + coverJoin +
 			" WHERE t.visibility = 'normal' AND t.review_state = 'approved'" +
@@ -163,7 +224,13 @@ func (s *Store) ListTopics(ctx context.Context, f TopicFilter, featured bool) ([
 	var out []TopicRow
 	err := s.query(ctx, sqlText, args, func(rows *sql.Rows) error {
 		var r TopicRow
-		if err := scanTopicRow(rows, &r); err != nil {
+		// 只有 sort=hot 的 SELECT 列表末尾多一列 hot_key（scanTopicRow 的 extra 接住它）。
+		if f.Sort == SortHot {
+			var hot float64
+			if err := scanTopicRow(rows, &r, &hot); err != nil {
+				return err
+			}
+		} else if err := scanTopicRow(rows, &r); err != nil {
 			return err
 		}
 		out = append(out, r)
@@ -275,6 +342,13 @@ func (s *Store) TopicDetail(ctx context.Context, publicID string, viewerID int64
 			return err
 		}
 		r.CoverHash = scanNullString(cover)
+		// 宽高与 scanTopicRow 逐字同源：详情以前漏赋值，于是 cover_width/height 恒 0（J9 核实发现）。
+		if w.Valid {
+			r.CoverWidth = int(w.Int64)
+		}
+		if h.Valid {
+			r.CoverHeight = int(h.Int64)
+		}
 		r.Author.AvatarHash = scanNullString(avatar)
 		r.Author.AvatarSmall = scanNullString(avatarSmall)
 		d = &r
@@ -398,8 +472,8 @@ func InsertTopic(ctx context.Context, tx Querier, publicID string, boardID, auth
 	err := queryOneQ(ctx, tx, `
 INSERT INTO topics (public_id, board_id, author_id, kind, title, excerpt,
                     review_state, resource_status, client_token,
-                    last_reply_at, created_at, updated_at)
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $10, $10)
+                    last_reply_at, last_interaction_at, created_at, updated_at)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $10, $10, $10)
 RETURNING id`,
 		[]any{publicID, boardID, authorID, kind, title, excerpt, reviewState, resourceStatus, clientToken, now.UTC()},
 		func(rows *sql.Rows) error { return rows.Scan(&id) })

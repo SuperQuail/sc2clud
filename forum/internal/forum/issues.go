@@ -32,11 +32,15 @@ func (s *Service) ListIssues(ctx context.Context, actor *authz.Actor, in ListIss
 		return nil, ErrSortUnpageable
 	}
 	f := pgsql.IssueFilter{Status: status, Kind: in.Kind, Sort: sort, Limit: limitOf(in.Limit)}
+	// 值域来自 issue_kinds 表（拍板 08 · J6），**不是代码里的封闭枚举**。
+	// 不认识的 kind 直接 400 而不是「不过滤」：静默当不过滤会让前端以为筛选生效了。
 	if f.Kind != "" {
-		switch f.Kind {
-		case "bug", "feature", "difficulty", "other":
-		default:
-			return nil, invalid("kind", "只能是 bug / feature / difficulty / other")
+		ok, err := s.repo.IssueKindExists(ctx, s.db, f.Kind)
+		if err != nil {
+			return nil, err
+		}
+		if !ok {
+			return nil, s.invalidKind(ctx)
 		}
 	}
 	if in.TopicPublicID != "" {
@@ -85,6 +89,13 @@ func (s *Service) ListIssues(ctx context.Context, actor *authz.Actor, in ListIss
 	return &IssuePage{Items: items, NextCursor: nextCursor(rows, f.Limit, ref)}, nil
 }
 
+// IssueKinds 是当前可用的 Issue 类型值域（拍板 08 · J6）。
+// 前端用它渲染「新建 Issue」的四个入口与筛选下拉 —— **值域只有这一处**，
+// 所以加一类之后界面不需要发版（它读的是端点，不是常量表）。
+func (s *Service) IssueKinds(ctx context.Context) ([]string, error) {
+	return s.repo.IssueKinds(ctx)
+}
+
 // issueCursorRef 与 SQL 的 ORDER BY 逐字同源：sort=comments 时没有游标（首页专用）。
 func issueCursorRef(sort pgsql.IssueSort) func(pgsql.IssueRow) (time.Time, int64) {
 	return func(r pgsql.IssueRow) (time.Time, int64) {
@@ -129,9 +140,13 @@ func (s *Service) ListIssueComments(ctx context.Context, actor *authz.Actor, iss
 	if err != nil {
 		return nil, err
 	}
+	// 踩数的可见性（J3）：管理员及以上，或**这条评论是我的**。
+	showDislike := s.ShowDislikeCount(actor)
 	items := make([]IssueCommentDTO, 0, len(rows))
 	for _, r := range rows {
-		items = append(items, issueCommentDTO(r))
+		d := issueCommentDTO(r)
+		hideCommentDislike(&d, showDislike || r.Author.ID == viewerID(actor))
+		items = append(items, d)
 	}
 	return &IssueCommentPage{Items: items, NextCursor: nextIntCursor(rows, limit, func(r pgsql.IssueCommentRow) int64 { return r.ID })}, nil
 }
@@ -149,9 +164,12 @@ func (s *Service) ListIssueCommentReplies(ctx context.Context, actor *authz.Acto
 	if err != nil {
 		return nil, err
 	}
+	showDislike := s.ShowDislikeCount(actor)
 	out := make([]IssueCommentDTO, 0, len(rows))
 	for _, r := range rows {
-		out = append(out, issueCommentDTO(r))
+		d := issueCommentDTO(r)
+		hideCommentDislike(&d, showDislike || r.Author.ID == viewerID(actor))
+		out = append(out, d)
 	}
 	return out, nil
 }
@@ -166,8 +184,14 @@ func (s *Service) CreateIssue(ctx context.Context, actor *authz.Actor, topicPubl
 	if err := requirePerm(actor, authz.PermTopicCreate); err != nil {
 		return nil, err
 	}
-	if err := validIssueKind(in.Kind); err != nil {
+	// 值域来自 issue_kinds（拍板 08 · J6）。在事务之外先查一次：拿到 400 就不必开事务；
+	// 事务里 post_issues.kind 的外键是第二道闸（并发删类型时兜底）。
+	kindOK, err := s.repo.IssueKindExists(ctx, s.db, in.Kind)
+	if err != nil {
 		return nil, err
+	}
+	if !kindOK {
+		return nil, s.invalidKind(ctx)
 	}
 	title := strings.TrimSpace(in.Title)
 	if title == "" || len([]rune(title)) > 120 {
@@ -247,9 +271,13 @@ func (s *Service) UpdateIssue(ctx context.Context, actor *authz.Actor, publicID 
 	if _, err := requireActor(actor); err != nil {
 		return err
 	}
-	if err := requirePerm(actor, authz.PermTopicEditOwn); err != nil {
-		return err
-	}
+	// **不在这里判 topic.edit.own**（2026-10-14 修）：能改这条 Issue 的人不止一种，
+	// 全局权限点判不掉「哪种人做哪种事」——权限点的判据在下面对应的分支里各判一次：
+	//   · 改标题 / 正文 → canEditTopic（own / delete.any / board.moderate）；
+	//   · 开关（关 / 开）→ canCloseIssue（J8：作者 / 版主 / 管理员及以上 / Issue 发布者）；
+	//   · 指派         → canCloseIssue 的同一档。
+	// 原来第一行就 requirePerm(topic.edit.own)，后果是**持 topic.lock 的管理员关不掉 Issue**
+	// （403），而 J8 明确要求他能关 —— 一条路由级中间件把 service 的四档判定压成了一档。
 	ref, err := s.repo.IssueRef(ctx, publicID, actor.UserID, canReview(actor))
 	if err != nil {
 		if err == pgsql.ErrNoRows {
@@ -258,7 +286,8 @@ func (s *Service) UpdateIssue(ctx context.Context, actor *authz.Actor, publicID 
 		return err
 	}
 	editor := canEditTopic(actor, authz.PermTopicEditOwn, authz.PermTopicDeleteAny, ref.AuthorID, ref.BoardID)
-	locker := canLockTopic(actor, ref.AuthorID, ref.BoardID)
+	// J8：能关 Issue 的人 = **作者**（主题作者）/ 版主 / 管理员及以上 / **Issue 发布者**（ref.AuthorID）。
+	locker := canCloseIssue(actor, ref.TopicAuthorID, ref.BoardID, &ref.AuthorID)
 	if !editor && !locker {
 		return apperr.ErrForbidden
 	}
@@ -392,6 +421,8 @@ func (s *Service) CreateIssueComment(ctx context.Context, actor *authz.Actor, is
 		return nil, err
 	}
 	d := issueCommentDTO(*row)
+	// 新评论的踩数必然是 0，判据仍然走同一条规则（列表与 201 的响应不能两套）。
+	hideCommentDislike(&d, s.ShowDislikeCount(actor) || row.Author.ID == actor.UserID)
 	return &d, nil
 }
 
@@ -408,12 +439,16 @@ func parseIssueSort(s string) (pgsql.IssueSort, error) {
 	}
 }
 
-// validIssueKind 是四类 kind 的 CHECK（界面施工 §3.2）。
-func validIssueKind(k string) error {
-	switch k {
-	case "bug", "feature", "difficulty", "other":
-		return nil
-	default:
-		return invalid("kind", "只能是 bug / feature / difficulty / other")
+// invalidKind 造「kind 不认识」的 400，并把**当前可用值域**列出来（拍板 08 · J6）。
+//
+// 为什么带上值域：值域不再写死在代码里，所以错误信息不能写死 ——
+// 「只能是 bug / feature / difficulty / other」这句话在加了一类之后就是假话，
+// 而这类假话正是本仓库最容易留下的东西（参见交接单 §5 的「过期注释」）。
+// 查值域失败时不因此变成 500：错误信息拿不到就拿不到，400 本身是对的。
+func (s *Service) invalidKind(ctx context.Context) error {
+	kinds, err := s.repo.IssueKinds(ctx)
+	if err != nil || len(kinds) == 0 {
+		return invalid("kind", "不是当前可用的 Issue 类型")
 	}
+	return invalid("kind", "只能是 "+strings.Join(kinds, " / "))
 }

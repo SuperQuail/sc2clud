@@ -112,16 +112,55 @@ func canEditTopic(actor *authz.Actor, ownPerm, anyPerm string, authorID, boardID
 
 // canLockTopic 是锁主题 / 关 Issue 的同一个判定（§7.5：关 Issue 与锁主题是同一类动作）。
 func canLockTopic(actor *authz.Actor, authorID, boardID int64) bool {
+	return canLockAs(actor, authorID, boardID, authz.PermTopicLock)
+}
+
+// canCloseIssue 是「谁能关 Issue」（拍板 08 · J8）：作者 / 版主 / 管理员及以上 / **Issue 发布者**。
+//
+// 与 canLockTopic 只差最后一项，所以它不是又一份判定：四条判据与顺序完全一样，
+// 由 canLockAs 收在一处 —— 两份几乎相同的权限判定正是「改一处漏一处」的形状。
+// 非作者那一档走 post.lock（§3.5 的建议：它的语义就是「锁定 / 关闭讨论」）。
+func canCloseIssue(actor *authz.Actor, topicAuthorID int64, boardID int64, issueAuthorID *int64) bool {
+	if issueAuthorID != nil && actor != nil && actor.UserID == *issueAuthorID &&
+		(actor.IsSuper || actor.Perms.Has(authz.PermTopicEditOwn)) {
+		return true
+	}
+	return canLockAs(actor, topicAuthorID, boardID, authz.PermTopicLock)
+}
+
+// canLockAs 是上面两条共用的四条判据，顺序即文档里的顺序：
+//  1. 归属：必须**同时**满足「是我的」与「有这个权限点」（先 Require 再判归属，拍板 §1.2）；
+//  2. 全局权限：超管短路放在权限集合之前（authz 硬规则 2）；
+//  3. 作用域权限：board.moderate **只在 board_moderators 命中的分区内**生效（拍板 §1.2）。
+func canLockAs(actor *authz.Actor, authorID, boardID int64, globalPerm string) bool {
 	if actor == nil {
 		return false
 	}
 	if actor.UserID == authorID && (actor.IsSuper || actor.Perms.Has(authz.PermTopicEditOwn)) {
 		return true
 	}
-	if actor.IsSuper || actor.Perms.Has(authz.PermTopicLock) {
+	if actor.IsSuper || actor.Perms.Has(globalPerm) {
 		return true
 	}
 	return actor.Perms.Has(authz.PermBoardModerate) && authz.CanInBoard(actor, boardID)
+}
+
+// ShowDislikeCount 是点踩数据的**信任边界**（拍板 08 · J3）：
+// 用户原话「单值,并且界面只显示点赞,不显示点踩,只有管理员以上权限/发布者能看到点踩数据」。
+//
+// 三条口径：
+//  1. **投票仍是单值**（likes 表一行一个 value，±1）—— 这一条一个字都没改；
+//  2. 界面只显示点赞数：普通读者拿不到踩的数 —— 不是前端藏，是**后端不下发**；
+//  3. 能看的是「管理员及以上」与「内容发布者」。
+//
+// 「管理员及以上」在权限点语义里就是 topic.delete.any（能删任何人的内容这一档）：
+// 它比 post.review / report.handle 那几个单点更接近「管理员」这个词的边界，
+// 而且 admin 与 superadmin 都持有它（0017 的矩阵）。**不比较角色字符串**（后端方案 §9.8 的禁令）。
+//
+// 「发布者」是**逐条内容**判的（作者看自己的帖/楼层），所以这里只判全局那一半，
+// 另一半由调用方按归属判 —— 两半都有，缺一半就是把别人的踩数发给了普通用户。
+func (s *Service) ShowDislikeCount(actor *authz.Actor) bool {
+	return actor != nil && (actor.IsSuper || actor.Perms.Has(authz.PermTopicDeleteAny))
 }
 
 // render 是 Markdown → (html, plain) 的唯一入口。没有配渲染器时**不静默降级成原文 HTML**：

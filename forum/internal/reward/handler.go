@@ -29,28 +29,30 @@ func NewHandler(svc *Service, actor ActorFunc) *Handler {
 //
 //	reward.NewHandler(svc, authAdapter).Register(v1, requireLogin, perm, limit)
 func (h *Handler) Register(rg *gin.RouterGroup, requireLogin, perm func(...string) gin.HandlerFunc, limit func(string, gin.HandlerFunc) gin.HandlerFunc) {
-	// 非 uuid 的 {id} 一律在进 service 之前挡成 400（见 platform/httpx.ValidPathIDs）。
-	rg = rg.Group("", httpx.ValidPathIDs("id"))
+	// 路径参数的闸：**公开读挂组上，写路由挂在「身份 → 权限」之后**（拍板 08 · C9-3）。
+	// 顺序差决定未登录的非 uuid 请求拿 401 还是 400：读路径没有身份可验，格式先判（400，C9-1）；
+	// 写路径先吃 requireLogin（未登录 → 401），登录了才轮到格式判定（→ 400）。
+	read := rg.Group("", httpx.ValidPathIDs("id"))
 
-	user := rg.Group("/users/:handle")
+	user := read.Group("/users/:handle")
 	user.GET("/channels", h.channels)
 	user.GET("/rewards", h.userDonations)
 
-	me := rg.Group("/me", requireLogin())
+	me := read.Group("/me", requireLogin())
 	me.GET("/rewards", h.myDonations)
 	me.GET("/donation-settings", h.getSettings)
 	me.PATCH("/donation-settings", h.updateSettings)
 
-	rg.POST("/rewards", requireLogin(), limit("reward:create", h.create))
-	rg.DELETE("/rewards/:id", requireLogin(), h.withdraw)
+	// 写路由逐条挂闸：路径闸的位置就在 requireLogin 之后、handler 之前。
+	rg.POST("/rewards", requireLogin(), httpx.ValidPathIDs("id"), limit("reward:create", h.create))
+	rg.DELETE("/rewards/:id", requireLogin(), httpx.ValidPathIDs("id"), h.withdraw)
 
-	admin := rg.Group("/admin", requireLogin())
-	admin.GET("/rewards", perm(authz.PermRewardVerify), h.queue)
-	admin.POST("/rewards/:id/verify", perm(authz.PermRewardVerify), limit("reward:verify", h.verify))
-	admin.POST("/rewards/batch", perm(authz.PermRewardVerify), h.verifyBatch)
-	admin.GET("/rewards/stats", perm(authz.PermRewardVerify), h.stats)
-	admin.GET("/donation-notice-defaults", perm(authz.PermSiteSetting), h.noticeDefaults)
-	admin.PATCH("/donation-notice-defaults", perm(authz.PermSiteSetting), h.updateNoticeDefaults)
+	rg.GET("/admin/rewards", requireLogin(), perm(authz.PermRewardVerify), h.queue)
+	rg.POST("/admin/rewards/:id/verify", requireLogin(), perm(authz.PermRewardVerify), httpx.ValidPathIDs("id"), limit("reward:verify", h.verify))
+	rg.POST("/admin/rewards/batch", requireLogin(), perm(authz.PermRewardVerify), h.verifyBatch)
+	rg.GET("/admin/rewards/stats", requireLogin(), perm(authz.PermRewardVerify), h.stats)
+	rg.GET("/admin/donation-notice-defaults", requireLogin(), perm(authz.PermSiteSetting), h.noticeDefaults)
+	rg.PATCH("/admin/donation-notice-defaults", requireLogin(), perm(authz.PermSiteSetting), h.updateNoticeDefaults)
 }
 
 func (h *Handler) channels(c *gin.Context) {

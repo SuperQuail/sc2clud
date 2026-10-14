@@ -46,21 +46,29 @@ func (s *Service) canSpeak(ctx context.Context, actor *authz.Actor, boardID int6
 			WithMsg("你被禁止在此发言（至 " + until.Format("2006-01-02 15:04") + " UTC）").
 			WithFields(map[string]string{"until": until.Format(time.RFC3339)})
 	}
+	// 两档门槛（拍板 08 · E1）：发主题看 min_post_level，回复 / Issue / Issue 评论看 min_reply_level。
+	minLevel := row.MinReplyLevel
+	if action == "post" {
+		minLevel = row.MinPostLevel
+	}
 	if !row.ACLEnabled {
-		return s.checkMinLevel(ctx, actor, row.MinPostLevel)
+		return s.checkMinLevel(ctx, actor, minLevel, action)
 	}
 	if row.Deny(action) {
 		return ErrACLDenied
 	}
 	if row.Can(action) {
-		return s.checkMinLevel(ctx, actor, row.MinPostLevel)
+		return s.checkMinLevel(ctx, actor, minLevel, action)
 	}
 	return ErrACLDenied
 }
 
-// checkMinLevel 是发帖门槛（§6.4）：放在最后，因为它是唯一要读 users 的一步。
+// checkMinLevel 是发言门槛（§6.4）：放在最后，因为它是唯一要读 users 的一步。
 // level 公式（floor(sqrt(exp/100))+1）的唯一实现在 D4，本域只读一个数。
-func (s *Service) checkMinLevel(ctx context.Context, actor *authz.Actor, minLevel int) error {
+//
+// action 只影响**文案**（「发帖」/「回帖」）：两档门槛的数字由调用方选好，
+// 这里再判一次 action 就等于把「哪一档」写两遍。
+func (s *Service) checkMinLevel(ctx context.Context, actor *authz.Actor, minLevel int, action string) error {
 	if minLevel <= 0 {
 		return nil
 	}
@@ -71,9 +79,13 @@ func (s *Service) checkMinLevel(ctx context.Context, actor *authz.Actor, minLeve
 	if level >= minLevel {
 		return nil
 	}
+	what := "回帖"
+	if action == "post" {
+		what = "发帖"
+	}
 	want := strconv.Itoa(minLevel)
 	return ErrLevelTooLow.
-		WithMsg("需要 " + want + " 级才能在此发帖").
+		WithMsg("需要 " + want + " 级才能在此" + what).
 		WithFields(map[string]string{"level": want})
 }
 

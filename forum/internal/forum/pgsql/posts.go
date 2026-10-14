@@ -228,6 +228,11 @@ func UpdatePostContent(ctx context.Context, tx Querier, postID int64, contentMD,
 
 // RecountTopic 重算 reply_count 与 last_reply_at（§3.7 Q8a/Q8b）。
 //
+// **reply_count 的口径（拍板 08 · J4：含楼中楼，写死）**：`floor > 1` 就是「不是 1 楼」，
+// 与 parent_id 无关 —— 顶层回复与楼中楼一起算。用户眼里的「评论 128」就是全部回复；
+// 「N 条回复 / 展开 M 条」那种「只有顶层」的数由 ListPosts 单独给（topic_detail 的 reply_count 不含它）。
+// 判据写成 floor 而不是 parent_id IS NULL：增量加与重算只差这一处措辞，改错了界面上的数就小一半。
+//
 // **刻意不用 reply_count = reply_count + 1**：增量加要在「删回复、删主题、隐藏回复、管理员删楼」
 // 四条路径上各写一遍补偿，一处漏写就永久漂移；重算只有一处，且天然收敛。
 //
@@ -235,13 +240,20 @@ func UpdatePostContent(ctx context.Context, tx Querier, postID int64, contentMD,
 // 所以它命中的其实就是 t.created_at——那正是「最后一条楼层就是 1 楼」该有的值，
 // NOT NULL 因此不会在这一步被破坏。
 func RecountTopic(ctx context.Context, tx Querier, topicID int64) error {
+	// last_interaction_at 是「最热」的落点（拍板 08 · L2 / 迁移 0025）：发 / 删**顶层回复**都推它。
+	// 楼中楼不算互动（口径：评论不计算楼中楼），所以那条 EXISTS 带 parent_id IS NULL；
+	// 漏了这个条件，一条楼中楼就能把老帖拉回热的。
 	return exec(ctx, tx, `
 UPDATE topics t
    SET reply_count  = (SELECT count(*) FROM posts p
                         WHERE p.topic_id = t.id AND p.floor > 1 AND p.visibility = 'normal'),
        last_reply_at = COALESCE((SELECT max(p.created_at) FROM posts p
                                   WHERE p.topic_id = t.id AND p.visibility = 'normal'),
-                                t.created_at)
+                                t.created_at),
+       last_interaction_at = GREATEST(t.created_at, t.last_reply_at,
+         COALESCE((SELECT max(p.created_at) FROM posts p
+                    WHERE p.topic_id = t.id AND p.floor > 1 AND p.parent_id IS NULL
+                      AND p.visibility = 'normal'), 'epoch'::timestamptz))
  WHERE t.id = $1`, topicID)
 }
 

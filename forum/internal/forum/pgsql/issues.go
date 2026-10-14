@@ -183,22 +183,26 @@ func (s *Store) ListIssues(ctx context.Context, f IssueFilter) ([]IssueRow, erro
 
 // IssueRef 是写路径要的判定列。
 type IssueRef struct {
-	ID         int64
-	PublicID   string
-	TopicID    int64
-	BoardID    int64
-	AuthorID   int64
-	AssigneeID *int64
-	Kind       string
-	Status     string
-	TopicLive  bool
+	ID       int64
+	PublicID string
+	TopicID  int64
+	BoardID  int64
+	// AuthorID 是 **Issue 的发布者**；TopicAuthorID 是它所属主题的作者。
+	// 两者不同：J8（拍板 08）要的「能关 Issue 的人 = 作者 / 版主 / 管理员及以上 / Issue 发布者」
+	// 里的「作者」指前者、「发布者」指后者 —— 少了任何一列都判不出这四种人。
+	AuthorID      int64
+	TopicAuthorID int64
+	AssigneeID    *int64
+	Kind          string
+	Status        string
+	TopicLive     bool
 }
 
 // IssueRef 取一条 Issue。$2 = 当前用户，$3 = 持 post.review（审核队列用，公开详情恒 false）。
 func (s *Store) IssueRef(ctx context.Context, publicID string, viewerID int64, canReview bool) (*IssueRef, error) {
 	var r IssueRef
 	err := s.queryOne(ctx, `
-SELECT i.id, i.public_id, i.topic_id, t.board_id, i.author_id, i.assignee_id, i.kind, i.status,
+SELECT i.id, i.public_id, i.topic_id, t.board_id, i.author_id, t.author_id, i.assignee_id, i.kind, i.status,
        (t.visibility = 'normal' AND t.review_state = 'approved')
   FROM post_issues i JOIN topics t ON t.id = i.topic_id
  WHERE i.public_id = $1
@@ -206,12 +210,40 @@ SELECT i.id, i.public_id, i.topic_id, t.board_id, i.author_id, i.assignee_id, i.
          OR t.author_id = $2
          OR $3::boolean )`,
 		[]any{publicID, viewerID, canReview}, func(rows *sql.Rows) error {
-			return rows.Scan(&r.ID, &r.PublicID, &r.TopicID, &r.BoardID, &r.AuthorID, &r.AssigneeID, &r.Kind, &r.Status, &r.TopicLive)
+			return rows.Scan(&r.ID, &r.PublicID, &r.TopicID, &r.BoardID, &r.AuthorID, &r.TopicAuthorID,
+				&r.AssigneeID, &r.Kind, &r.Status, &r.TopicLive)
 		})
 	if err != nil {
 		return nil, err
 	}
 	return &r, nil
+}
+
+// IssueKindExists 回答「这个 kind 现在存不存在」（拍板 08 · J6：值域由 issue_kinds 表驱动，
+// 不是代码里的封闭枚举）。**在发 Issue 的那条事务里查**：
+//   - 建 Issue 本来就是个写事务，多一次主键等值查（微秒级）换来「与插入同一快照」的保证；
+//   - 缓存要处理失效，而表只在迁移时变 —— 真嫌慢再加缓存，现在不值得多一处会漂的状态。
+func (s *Store) IssueKindExists(ctx context.Context, q Querier, kind string) (bool, error) {
+	var ok bool
+	err := queryOneQ(ctx, q, "SELECT EXISTS (SELECT 1 FROM issue_kinds WHERE key = $1 AND archived = false)",
+		[]any{kind}, func(rows *sql.Rows) error { return rows.Scan(&ok) })
+	return ok, err
+}
+
+// IssueKinds 是当前可用的类型值域（列表筛选与前端入口都用它）。
+// 排序键是 sort: 数值小的在前，同值按 key 稳定 —— 有稳定顺序前端才能做深链预设。
+func (s *Store) IssueKinds(ctx context.Context) ([]string, error) {
+	var out []string
+	err := s.query(ctx, "SELECT key FROM issue_kinds WHERE archived = false ORDER BY sort, key",
+		nil, func(rows *sql.Rows) error {
+			var k string
+			if err := rows.Scan(&k); err != nil {
+				return err
+			}
+			out = append(out, k)
+			return nil
+		})
+	return out, err
 }
 
 // IssueIDByClientToken 是幂等回查（§4.3 的同一套办法）。

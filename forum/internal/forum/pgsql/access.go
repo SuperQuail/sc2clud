@@ -11,10 +11,13 @@ import (
 // **没有第五支**：「我这个角色有没有 topic.create」已经在 actor.Perms 上
 // （D2 的装配查询一次取回），再查 role_permissions 就是第二份真源。
 type ACLRow struct {
-	BoardID       int64
-	BoardStatus   string
-	ACLEnabled    bool
-	MinPostLevel  int
+	BoardID      int64
+	BoardStatus  string
+	ACLEnabled   bool
+	MinPostLevel int
+	// MinReplyLevel 是**回帖**门槛（拍板 08 · E1，迁移 0027）：老站两档门槛的第二档。
+	// 与 MinPostLevel 同构（等级，不是角色）；0 = 不限。按 action 取哪一档由 canSpeak 决定。
+	MinReplyLevel int
 	HasRoleRow    bool
 	CanPost       bool
 	CanReply      bool
@@ -47,7 +50,7 @@ func (s *Store) ACLRowFor(ctx context.Context, boardID, roleID, userID int64, ac
 	var until sql.NullTime
 	var hit, permanent sql.NullBool
 	var err = s.queryOne(ctx, sqlJoin(
-		"SELECT b.id, b.status, b.acl_enabled, b.min_post_level,",
+		"SELECT b.id, b.status, b.acl_enabled, b.min_post_level, b.min_reply_level,",
 		"       COALESCE(acl.can_post,   false),",
 		"       COALESCE(acl.can_reply,  false),",
 		"       COALESCE(acl.deny_post,  false),",
@@ -70,7 +73,7 @@ func (s *Store) ACLRowFor(ctx context.Context, boardID, roleID, userID int64, ac
 		"  ) s ON true",
 		" WHERE b.id = $1 AND b.status = 'active'",
 	), []any{boardID, roleID, userID, action, now.UTC()}, func(rows *sql.Rows) error {
-		if err := rows.Scan(&r.BoardID, &r.BoardStatus, &r.ACLEnabled, &r.MinPostLevel,
+		if err := rows.Scan(&r.BoardID, &r.BoardStatus, &r.ACLEnabled, &r.MinPostLevel, &r.MinReplyLevel,
 			&r.CanPost, &r.CanReply, &r.DenyPost, &r.DenyReply, &r.HasRoleRow,
 			&hit, &permanent, &until, &r.IsModerator); err != nil {
 			return err

@@ -46,7 +46,8 @@ func (s *Service) BoardBySlug(ctx context.Context, slug string) (*BoardDTO, erro
 func boardDTO(b pgsql.BoardRow) BoardDTO {
 	return BoardDTO{
 		ID: b.ID, Slug: b.Slug, Name: b.Name, Description: b.Description,
-		CoverHash: deref(b.CoverHash), ACLEnabled: b.ACLEnabled, MinPostLevel: b.MinPostLevel,
+		CoverHash: deref(b.CoverHash), ACLEnabled: b.ACLEnabled,
+		MinPostLevel: b.MinPostLevel, MinReplyLevel: b.MinReplyLevel,
 		TopicCount: b.TopicCount, PostCount: b.PostCount, TodayCount: b.TodayCount,
 	}
 }
@@ -89,13 +90,20 @@ func (s *Service) ListTopics(ctx context.Context, actor *authz.Actor, in ListTop
 		return nil, err
 	}
 	limit := limitOf(in.Limit)
-	cursorT, cursorID, err := pageCursor(in.Cursor)
-	if err != nil {
-		return nil, err
-	}
-	f := pgsql.TopicFilter{
-		Kind: in.Kind, Sort: sort, CursorT: cursorT, CursorID: cursorID,
-		Limit: limit, ViewerID: viewerID(actor),
+	f := pgsql.TopicFilter{Kind: in.Kind, Sort: sort, Limit: limit, ViewerID: viewerID(actor)}
+	// 游标的编码随排序键走：三种时间序用 (时间, id)，最热用 (score, id)（见 forum/cursor.go 的 hotCursor）。
+	if sort == pgsql.SortHot {
+		score, id, err := hotPageCursor(in.Cursor)
+		if err != nil {
+			return nil, err
+		}
+		f.CursorScore, f.CursorID = score, id
+	} else {
+		cursorT, cursorID, err := pageCursor(in.Cursor)
+		if err != nil {
+			return nil, err
+		}
+		f.CursorT, f.CursorID = cursorT, cursorID
 	}
 	// 精华标签走索引 (f)，与默认流不是同一条路径（§3.3 Q2c）。
 	featured := in.Kind == "featured"
@@ -123,6 +131,12 @@ func (s *Service) ListTopics(ctx context.Context, actor *authz.Actor, in ListTop
 	items := make([]TopicCardDTO, 0, len(rows))
 	for _, r := range rows {
 		items = append(items, s.topicCard(r))
+	}
+	if sort == pgsql.SortHot {
+		return &TopicPage{
+			Items: items, Sort: "hot",
+			NextCursor: hotNextCursor(rows, limit),
+		}, nil
 	}
 	col := "last_reply_at"
 	if sort == pgsql.SortNew {
@@ -230,7 +244,17 @@ func (s *Service) TopicDetail(ctx context.Context, actor *authz.Actor, publicID 
 	if err != nil {
 		return nil, err
 	}
-	d := s.topicDetailDTO(*row, sources)
+	// 「最后过审版本」（拍板 08 · L6）：只有涉及打回时才需要它，所以**只在那一态查**
+	// （打回修改是少数路径，别让每一次详情页读都多一条查询）。
+	// 读不到快照是正常情况：一条从没被批准过的帖不会有过审版本（nil = 字段不出现在响应里）。
+	var rev *pgsql.ApprovedRevisionRow
+	if row.ReviewState == ReviewStateRevisionRequested {
+		rev, err = s.repo.ApprovedRevision(ctx, row.ID)
+		if err != nil {
+			return nil, err
+		}
+	}
+	d := s.topicDetailDTO(*row, sources, rev)
 	return &d, nil
 }
 
@@ -599,8 +623,11 @@ func parseTopicSort(s string) (pgsql.TopicSort, error) {
 		return pgsql.SortLatest, nil
 	case "new":
 		return pgsql.SortNew, nil
+	case "hot":
+		// 最热（拍板 08 · L2）：口径写在 pgsql.hotScoreSQL 上，只有那一处。
+		return pgsql.SortHot, nil
 	default:
-		return "", invalid("sort", "只能是 latest / new")
+		return "", invalid("sort", "只能是 latest / new / hot")
 	}
 }
 
