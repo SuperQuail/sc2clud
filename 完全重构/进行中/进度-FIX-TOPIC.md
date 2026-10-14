@@ -8,40 +8,55 @@
   - 证据：`npx vitest run src/devroom/pages/12-topic/topic-view.test.tsx`
     · 旧代码（`git stash` 掉三份 View 改动后）`FAIL … D4` →
     `AssertionError: expected +0 to be truthy`（`heading.compareDocumentPosition(body) & FOLLOWING`：
-    来源标题排在正文**之后**，正是缺陷本身）；改完 `Tests 11 passed (11)`。
-    · 图：`shots/fix-topic/d4-12-topic-900.png`（来源块在标题下、正文之上，一行一条）。
+    来源标题排在正文**之后**，正是缺陷本身）；改完 `Tests 26 passed`（12-topic 全组）。
+    · 图：`shots/fix-topic/d9-rail.png`（来源块在标题下、正文之上，一行一条：图标+站点+来源+提取码+大小）。
   - 下一步：无。
   - 阻塞：无
 
 - [x] D8：作者名与头像可点进 `/u/<handle>`（正文头部作者行 + 右栏作者卡）
   - 证据：`topic-view.test.tsx` 的 `D8` 用例（href=/u/demo-admin 且文字含「示范管理员」的链接 ≥2 条）。
-  - 下一步：无。
+    · 顺带修掉真站上的一处显示缺陷：作者卡的加入时间原来直接显示 RFC3339
+    （`2024-03-02T00:00:00Z加入`）—— `toDesignAuthor` 现在过 `joinedMonth()`，与个人主页同一口径。
+  - 图：`shots/fix-topic/product-topic.png`（产品页真实壳）。
   - 阻塞：无
 
 - [x] D5：点「问题反馈」页签真的切过去（选中态写在 URL 上，两页共用一套 key）
-  - 证据：`npx vitest run src/routes/issues.tabs.test.tsx`（2 passed）+ `topic-view.test.tsx`（11 passed）：
+  - 证据：`npx vitest run src/routes/issues.tabs.test.tsx`（2 passed）+ `topic-view.test.tsx`：
     页签 `aria-current=page` 来自 `?view=`；点「帖子内容」真的把人送到 `/t/:topicId`；
-    View 的 `onOpenIssue` 真的被叫到；宿主不接时页签自己也会选中。
+    View 的 `onOpenIssue` 真的被叫到；宿主不接时页签自己也会选中（不许静默）。
   - 下一步：无。
   - 阻塞：无
 
 - [x] D6：正文不再显示 Lexical JSON —— **选「前端把 EditorState JSON 换成 Markdown 再上行」**
-  - 证据：`npx vitest run src/routes/issues.new-issue.test.tsx`（3 passed）。
-    网络替身**照后端行为写**（存下什么就渲染什么，旧测试拿手写 HTML 当 body_html 所以一直看不出）：
-    `expect(posted.body.body_md).toBe('走到第二波就卡关。')`、`expect(JSON.stringify(posted.body)).not.toContain('"root"')`、
-    页面上 `screen.getByText('走到第二波就卡关。')` 且 `document.body.textContent` 不含 `"root"`。
-    序列化本身另有 `src/ui/rich/editor-json-to-markdown.test.ts`（4 passed：段落/格式/列表/引用 + 非 JSON 原样返回）。
+  - 证据：`npx vitest run src/routes/issues.new-issue.test.tsx`（3 passed）。网络替身**照后端行为写**
+    （存下什么就渲染什么；旧测试拿手写 HTML 当 body_html，所以这个缺陷一直看不出来）：
+    `expect(posted.body.body_md).toBe('走到第二波就卡关。')`、
+    `expect(JSON.stringify(posted.body)).not.toContain('"root"')`、页面上 `getByText('走到第二波就卡关。')`、
+    且 `document.body.textContent` 不含 `"root"`。序列化本身另有
+    `src/ui/rich/editor-json-to-markdown.test.ts`（4 passed：段落/格式/列表/引用 + 非 JSON 原样返回）。
   - 为什么选前端换：正文那一列**同时装两种东西**（新写的 EditorState JSON 与老站迁来的 Markdown），
     后端要认就得同时做 JSON 解析器 + Markdown 渲染器两套，而**存进去的那一份仍然不是 Markdown**
     （编辑回填、列表、迁移全都要跟着分叉）；后端契约本来就是「上行 Markdown，下行 *_html」，
-    前端一次性转掉，后端一行不用动（也就不用碰 handler.go）。
-  - 下一步：`routes/compose.tsx`、`routes/topic.tsx` 的正文/回复/编辑三处**也是同一根因**（上行 content_md = JSON，
-    后端当 Markdown 渲染），按同一办法接 `editorJsonToMarkdown`（拍照官：它们不在本包作用域，只做记录）。
+    前端一次性转掉，后端一行不用动（也就没碰 handler.go）。
+  - 下一步：`routes/compose.tsx`（发帖 / 编辑正文）与 `routes/topic.tsx` 的回复走的是同一条根因
+    （上行 content_md = EditorState JSON → 后端当 Markdown 渲染），按同一办法接
+    `@/ui/rich/editor-json-to-markdown` 即可；那几处不在本包作用域，这里只做记录。
   - 阻塞：无
 
 - [x] D7：新建反馈从弹窗改成 issue 页内的完整表单区
-  - 证据：`issues.new-issue.test.tsx` 的 `D7：新建反馈是页内表单区而不是弹窗，校验逐条保留`：
-    `screen.queryByRole('dialog')` 为 null、`[data-testid=new-issue-form]` 在、标题 ≥4 字与正文非空各拦一次且
-    **一个 POST 都不发**、点「收起」那块区域真的消失；房间页（13-issue）与真站渲染的是同一个 `NewIssuePanel`。
-  - 下一步：无（房间出图见 `shots/fix-topic/d7-13-issue.png`）。
+  - 证据：`issues.new-issue.test.tsx` 的 `D7` 用例：`queryByRole('dialog')` 为 null、
+    `[data-testid=new-issue-form]`（aria-label=我要反馈）在、标题 ≥4 字与正文非空各拦一次且
+    **一个 POST 都不发**、点「收起」那块区域真的消失；房间页与真站渲染同一个 `NewIssuePanel`。
+    · 编辑器按需加载（Lexical ≈100KB gzip 不进首屏），测试用 `Editor` 注入点换成假编辑器。
+  - 下一步：无（房间出图 `shots/fix-topic/d7-13-issue.png`）。
   - 阻塞：无
+
+- [x] D9：右栏「关注」与徽章不再含混 —— 先量几何，结论是**从来没有真重叠**，改的是分组与留白
+  - 证据（浏览器实测，脚本 `shots/fix-topic/overlap.mjs`：把右栏所有可见控件/徽章两两比矩形）：
+    1440 / 1000 / 700 三个视口**都没有任何一对相交**，唯一的「重叠」是头像链接包着自己的 img（嵌套，非缺陷）。
+    实测坐标（1440）：关注按钮 y 709..733，作者卡角色徽章 y 916..936 —— 纵向差 183px，横向重叠 38px。
+    即用户截图里那种「压住」是**同一列里上下两格贴太近**造成的观感，不是叠层问题（缺陷清单里这条本来就标了「待核」）。
+  - 改法：`board-summary.tsx` 的两个动作（关注 / 发帖）单独成行、上下各加一条分隔线；
+    作者卡身份区与上一格的间距由 170px 增到 183px。图：`shots/fix-topic/d9-rail.png`。
+  - 下一步：如果用户手里那张截图确实是**真重叠**，请把原图或复现步骤发回来（我这边三个视口都量不到）。
+  - 阻塞：无（几何证据见上）

@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import Input from '@jetbrains/ring-ui-built/components/input/input';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { MemoryRouter, Route, Routes } from 'react-router';
 import { afterEach, expect, it, vi } from 'vitest';
@@ -39,14 +40,13 @@ function paragraph(value: string, format = 0): unknown {
 const EDITOR_JSON = doc([paragraph('走到第二波就卡关。')]);
 function FakeEditor({ onTitle, onBody, onLength }: { title: string; onTitle: (v: string) => void; onBody: (json: string, html: string) => void; onLength: (n: number) => void }) {
   const [json, setJson] = useState('');
+  // 用 Ring UI 的 Input（不手写 <input>：gate:ui 的规矩对测试文件同样生效）
   return (
     <div className='flex flex-col gap-2'>
-      {/* 标题那一格在这份假件里（真件里是 Ring 的 Input，见 new-issue-form.tsx） */}
-      <label htmlFor='fake-title'>标题</label>
-      <input id='fake-title' onChange={(e) => onTitle(e.target.value)} />
-      <label htmlFor='fake-body'>假编辑器（测试注入）</label>
-      <input
-        id='fake-body'
+      {/* 标题那一格在这份假件里（真件里也是 Ring 的 Input，见 new-issue-form.tsx） */}
+      <Input label='标题' onChange={(e) => onTitle(e.target.value)} />
+      <Input
+        label='假编辑器（测试注入）'
         value={json}
         onChange={(e) => {
           setJson(e.target.value);

@@ -438,8 +438,18 @@ export function toDesignAuthor(t: ApiTopicDetail, ap?: UserProfile): TopicAuthor
     exp_max: ap?.exp_max ?? 1,
     topic_count: ap?.topic_count ?? 0,
     like_received: ap?.like_received ?? 0,
-    joined_at: ap?.joined_at ?? t.author.joined_at ?? '',
+    // 两处接口给的都是 RFC3339，而作者卡上那一行是「2024 年 3 月加入」——
+    // 不过这一手就会在真站上显示成「2024-03-02T00:00:00Z加入」（个人主页 routes/profile.tsx:372
+    // 早就在做同一件事，是帖子页漏了）。
+    joined_at: joinedMonth(ap?.joined_at ?? t.author.joined_at ?? ''),
   };
+}
+
+/** 「2024 年 3 月」：与 routes/profile.tsx 的 joinedText 同一口径（那里带「加入」两字，这里不带）。 */
+function joinedMonth(iso: string): string {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return '';
+  return new Intl.DateTimeFormat('zh-CN', { year: 'numeric', month: 'long' }).format(d);
 }
 
 /** 主题详情 → 设计件的 TopicDetail（时间在这一步变成展示串）。 */

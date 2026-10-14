@@ -41,7 +41,12 @@ export function BoardSummary({
         <Stat label='成员' value={board.member_count} />
       </dl>
 
-      <div className='flex flex-wrap items-center gap-2'>
+      {/* D9：动作两件独占一行、且与下面的权限说明留出间隔。
+          为什么为这一点写一段注释：右栏是 248px 的窄栏，「关注」这一颗按钮与**下一格作者卡的头像/徽章**
+          在纵向只隔 16px，而两者在横向重叠 38px（2026-10-14 实测 1440/1000/700 三个视口都是这个数）——
+          截图里看就是「关注被徽章压住」的样子。几何上从来没有真重叠（扫描见进度文件的证据），
+          但把两组分清楚的成本只有一行 class，而含混的代价是一次误报。 */}
+      <div data-testid='board-actions' className='flex flex-wrap items-center gap-2 border-t border-border pt-3'>
         {/* inline={false} 必须显式写：Ring UI 只要看到 icon 就把按钮排成 inline（链接样式），
             primary 的填充会被压掉、height 档位也失效 —— 实测改前 bg 透明、颜色是链接蓝。 */}
         <Button
@@ -59,7 +64,7 @@ export function BoardSummary({
       </div>
 
       {/* 只留一行权限说明：成员数上面统计格里已经有了，写第三遍没有信息量，窄栏里还会折行 */}
-      <p className='flex items-center gap-1.5 text-[11px] text-muted-foreground'>
+      <p className='flex items-center gap-1.5 border-t border-border pt-3 text-[11px] text-muted-foreground'>
         <MessageSquare aria-hidden className='size-3 shrink-0' />
         游客可读，发帖需登录
       </p>
