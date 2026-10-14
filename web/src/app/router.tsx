@@ -37,6 +37,9 @@ const MessagesPage = lazy(() => import('@/routes/messages').then((m) => ({ defau
 const DownloadPage = lazy(() => import('@/routes/download').then((m) => ({ default: m.DownloadPage })));
 // 问题反馈整页（DevRoom 13-issue 接真端点）。入口参数：?topic=<资源帖 public id> 定范围与新建落点，?kind= 预设类型。
 const IssuesPage = lazy(() => import('@/routes/issues').then((m) => ({ default: m.IssuesPage })));
+// 找回密码（两步一页：用户名/邮箱 + 验证码换 reset_ticket -> 设新密码）。
+// 后端三个端点与客户端函数早就有了，登录页页脚也一直指向它 —— 路由没挂的时候点进去是 404。
+const ForgotPage = lazy(() => import('@/routes/forgot').then((m) => ({ default: m.ForgotPage })));
 
 const router = createBrowserRouter(
   [
@@ -57,6 +60,7 @@ const router = createBrowserRouter(
         { path: 'settings', element: <SettingsPage /> },
         { path: 'notifications', element: <NotificationsPage /> },
         { path: 'me', element: <MePage /> },
+        { path: 'forgot', element: <ForgotPage /> },
         { path: 'issues', element: <IssuesPage /> },
         // /messages 与 /messages/:handle 是同一屏：左边会话列表 + 右边会话（后者是 URL 里的选中态）
         { path: 'messages', element: <MessagesPage /> },
