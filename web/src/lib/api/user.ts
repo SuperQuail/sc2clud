@@ -31,6 +31,38 @@ export type UserProfile = {
   title: { name: string; color: string } | null;
 };
 
+/**
+ * 搜索用户：GET /search?type=users（真源 forum/internal/app/search_endpoint.go:109 →
+ * user.Service.Search → user.SearchItem）。
+ *
+ * **这是第二档搜索的入口**：首页那一块搜索有「帖子 / 用户」两档，帖子档走 forum.ts 的
+ * searchTopics()，用户档原先全站没有函数 —— 于是设计稿里的「搜人」在真站上做不出来。
+ *
+ * 与帖子档的两点不同（照后端抄，不是照设计稿猜）：
+ *   · **没有游标**：response 是 { data: SearchItem[] }，没有 next_cursor（用户档不分页，
+ *     上限就是 limit=20 —— user/service.go 把 >20 一律夹到 20）；
+ *   · **没有条目数量上限之外的契约**：q 必须是 1–32 个字，超长/为空后端返回 400
+ *     （apperr.Invalid 的 fields.q），所以调用方不要在 q 为空时发这个请求。
+ *
+ * avatar 是完整路径 /img/<hash>，可能为空串（该用户没有头像且默认池为空）→ 界面回落首字占位。
+ */
+export type SearchUser = {
+  id: string;
+  handle: string;
+  nickname: string;
+  /** /img/<hash>；**空串 = 没有头像**（与 Profile.avatar 同一条约定）；拼装结果行时换成 null */
+  avatar: string | null;
+  /** 契约里有 level；**前端没有等级体系**（见 @/ui/user/user-badge 的注释），带着但不渲染 */
+  level: number;
+  /** 昵称重名：后端让前端用 @handle 区分（user/service.go:83） */
+  ambiguous: boolean;
+};
+
+/** limit 默认 10、上限 20（maxSearchLimit / user.Search 的同一口径）；这一档没有游标，所以直接要满一页。 */
+export function searchUsers(q: string, limit = 20, signal?: AbortSignal): Promise<SearchUser[]> {
+  return api<SearchUser[]>('search', { query: { q, type: 'users', limit }, signal });
+}
+
 export function fetchUserProfile(handle: string, signal?: AbortSignal): Promise<UserProfile> {
   return api<UserProfile>('users/' + encodeURIComponent(handle), { signal });
 }
