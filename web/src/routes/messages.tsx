@@ -256,6 +256,18 @@ function MessagesPane() {
             </span>
           ) : null
         }
+        listFooter={
+          conversations.hasNextPage ? (
+            <Button
+              loader={conversations.isFetchingNextPage}
+              inline={false}
+              height={ControlsHeight.S}
+              onClick={() => void conversations.fetchNextPage()}
+            >
+              {conversations.isFetchingNextPage ? '加载中…' : '更早的会话'}
+            </Button>
+          ) : null
+        }
         empty={
           !handle ? (
             conversations.isError ? (
@@ -274,20 +286,6 @@ function MessagesPane() {
           ) : null
         }
       />
-
-      {/* 会话列表的「更早的会话」：列表是游标分页的，只画第一页会让老会话永远打不开 */}
-      {conversations.hasNextPage ? (
-        <div className='flex justify-center'>
-          <Button
-            loader={conversations.isFetchingNextPage}
-            inline={false}
-            height={ControlsHeight.S}
-            onClick={() => void conversations.fetchNextPage()}
-          >
-            {conversations.isFetchingNextPage ? '加载中…' : '更早的会话'}
-          </Button>
-        </div>
-      ) : null}
 
       <p className='m-0 text-[12px] text-muted-foreground'>
         打开一条会话会自动标为已读；正文是纯文本（后端 body 是 varchar，没有富文本）。

@@ -1,5 +1,6 @@
 import Button from '@jetbrains/ring-ui-built/components/button/button';
 import { ControlsHeight } from '@jetbrains/ring-ui-built/components/global/controls-height';
+import type { ReactNode } from 'react';
 import { UserPlus } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { icon16 } from '@/ui/icons';
@@ -16,11 +17,14 @@ export function ConversationList({
   selectedHandle,
   onSelect,
   onOpenPicker,
+  footer,
 }: {
   conversations: Conversation[];
   selectedHandle: string | null;
   onSelect: (handle: string) => void;
   onOpenPicker: () => void;
+  /** 列表下方的一块（宿主放「更早的会话」这类翻页动作）—— 放在**左栏内**，不要在整块下面另起一行 */
+  footer?: ReactNode;
 }) {
   const unread = conversations.reduce((n, c) => n + c.unread, 0);
   return (
@@ -52,6 +56,7 @@ export function ConversationList({
           ))
         )}
       </div>
+      {footer ? <div className='border-t border-border p-2'>{footer}</div> : null}
     </div>
   );
 }

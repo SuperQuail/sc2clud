@@ -40,6 +40,7 @@ export function MessagesPanel({
   onSend,
   onOpenPicker,
   picker,
+  listFooter,
   title,
   headerActions,
   placeholder,
@@ -56,6 +57,8 @@ export function MessagesPanel({
   onOpenPicker: () => void;
   /** 选人弹层；返回 null 表示没打开。由宿主决定内容（真站是搜人，房间是本地目录） */
   picker?: () => ReactNode;
+  /** 会话列表下方（宿主放「更早的会话」） */
+  listFooter?: ReactNode;
   /** 聊天区标题（默认用对方昵称） */
   title?: ReactNode;
   /** 聊天区标题右侧 */
@@ -63,7 +66,7 @@ export function MessagesPanel({
   placeholder?: string;
   /** 一条会话都没有时替换整个右栏（宿主给 Empty / Loading / ErrorState） */
   empty?: ReactNode;
-  /** 发送中（禁用发送键） */
+  /** 发送中：连点会发出两条，所以输入区这时不给提交 */
   busy?: boolean;
 }) {
   const current = conversations.find((c) => c.peer.handle === selectedHandle) ?? null;
@@ -79,6 +82,7 @@ export function MessagesPanel({
             selectedHandle={selectedHandle}
             onSelect={onSelect}
             onOpenPicker={onOpenPicker}
+            footer={listFooter}
           />
         </div>
 
