@@ -3,7 +3,7 @@ import { useNavigate, useParams, useSearchParams } from 'react-router';
 import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import Button from '@jetbrains/ring-ui-built/components/button/button';
 import { ControlsHeight } from '@jetbrains/ring-ui-built/components/global/controls-height';
-import { AtSign, Bell, Check, Inbox, MessageSquare, Send, Settings, ThumbsUp, Trash2, UserRound } from 'lucide-react';
+import { AtSign, Bell, Check, Inbox, MessageSquare, Send, Settings, ThumbsUp, Trash2, UserRound, type LucideIcon } from 'lucide-react';
 import { icon16 } from '@/ui/icons';
 import { appPath, routePath } from '@/lib/url';
 import { qk } from '@/lib/query/keys';
@@ -56,17 +56,24 @@ import { Empty, ErrorState, Loading } from './_parts/state';
 type Panel = 'notices' | 'messages' | 'settings';
 
 /** 通知分档 → 后端 \`?kind=\` 的单值（notify/kinds.go 的值域逐字）。 */
-const NOTICE_KINDS = [
-  { kind: 'reply', label: '回复我的', icon: Send },
-  { kind: 'mention', label: '@ 我的', icon: AtSign },
-  { kind: 'like', label: '收到的赞', icon: ThumbsUp },
-  { kind: 'system', label: '系统通知', icon: Bell },
-] as const;
+const NOTICE_KINDS: Array<{ kinds: string[]; label: string; icon: LucideIcon }> = [
+  { kinds: ['reply'], label: '回复我的', icon: Send },
+  { kinds: ['mention'], label: '@ 我的', icon: AtSign },
+  { kinds: ['like'], label: '收到的赞', icon: ThumbsUp },
+  { kinds: ['system', 'review', 'sanction', 'reward'], label: '系统通知', icon: Bell },
+];
+
+const KIND_SEP = ',';
+/** URL 的 ?kind= 与档位之间的归一：四类合一的档在 URL 上是一串，旧书签的单值（?kind=review）也要落到它那一档。 */
+function resolveNoticeKind(raw: string): string {
+  const one = NOTICE_KINDS.find((t) => t.kinds.join(KIND_SEP) === raw || t.kinds.includes(raw));
+  return (one ?? NOTICE_KINDS[0]!).kinds.join(KIND_SEP);
+}
 
 export function NoticeCenter({ panel }: { panel: Panel }) {
   const [params, setParams] = useSearchParams();
   // 档位：URL 的 \`?kind=\` **就是**选中档 —— 可收藏、可刷新、可后退（原先靠组件内 state，回退就丢）。
-  const kind = params.get('kind') ?? 'reply';
+  const kind = resolveNoticeKind(params.get('kind') ?? 'reply');
 
   /** 导航与分档都改 URL：react-router 会把 basename 前置到 \`to\` 上，所以这里用 setSearchParams */
   function go(next: { panel?: Panel; kind?: string }) {
@@ -83,7 +90,7 @@ export function NoticeCenter({ panel }: { panel: Panel }) {
   // 而 NoticeNav 只认识一个 value 字符串（它是通用件，不该知道「消息中心」有几种命名空间）。
   const nav: NoticeNavItem[] = [
     { key: 'messages', label: '我的消息', icon: <MessageSquare aria-hidden className='size-4' /> },
-    ...NOTICE_KINDS.map((k) => ({ key: 'kind:' + k.kind, label: k.label, icon: <k.icon aria-hidden className='size-4' /> })),
+    ...NOTICE_KINDS.map((k) => ({ key: 'kind:' + k.kinds.join(KIND_SEP), label: k.label, icon: <k.icon aria-hidden className='size-4' /> })),
     { key: 'settings', label: '消息设置', icon: <Settings aria-hidden className='size-4' />, groupTitle: '设置' },
   ];
 
@@ -356,7 +363,8 @@ function NoticesPane({ kind }: { kind: string }) {
   const removeOne = useMutation({ mutationFn: (id: string) => deleteNotification(id), onSuccess: refresh });
 
   const items = list.data?.pages.flatMap((p) => p.items) ?? [];
-  const current = NOTICE_KINDS.find((k) => k.kind === kind) ?? NOTICE_KINDS[0];
+  // 选中档由调用方归一过（resolveNoticeKind），所以这里按值域精确找，找不到就是第一档
+  const current = NOTICE_KINDS.find((k) => k.kinds.join(KIND_SEP) === kind) ?? NOTICE_KINDS[0]!;
 
   return (
     <NoticeList

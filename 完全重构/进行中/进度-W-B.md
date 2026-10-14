@@ -46,3 +46,13 @@
     （**所以不是我的改动弄红的**）；放宽窗口后同一条 → `Test Files 27 passed (27) / Tests 142 passed (142)`。
   - 下一步：见上一步。
   - 阻塞：无
+- [x] 第 2 步：B1「系统通知」一档四类合一（system / review / sanction / reward）
+  - 做了什么：`routes/messages.tsx` 的 `NOTICE_KINDS` 从「一个 `kind` 字符串」改成「`kinds: string[]`」；
+    `resolveNoticeKind()` 把 URL 的 `?kind=` 归一（`?kind=review` 这种旧书签落到「系统通知」那一档，不会显示成「回复我的」）；
+    请求串用 `kinds.join(',')`（后端 `notify/service.go:200 parseListKinds` 认逗号多值，值域 `notify/kinds.go`）。
+  - 证据：新文件 `web/src/routes/messages.test.tsx`（2 条）——
+    `npx vitest run src/routes/messages.test.tsx` → `Test Files 1 passed / Tests 2 passed`；
+    **先证明它会红**：把那一档临时改回 `['system']` → `Tests 2 failed`（① 请求串不是四类 ② `?kind=review` 落错档）。
+    全套 `npx vitest run` → `Test Files 28 passed (28) / Tests 144 passed (144)`；`pnpm typecheck` 无输出；`npx eslint src/routes/messages.tsx src/routes/messages.test.tsx` → exit 0。
+  - 下一步：B3 改 `web/src/devroom/pages/13-issue/issue-filter-bar.tsx:19`：`created: '最早创建'` → `'最新创建'`（后端三种排序列全 DESC：`forum/internal/forum/pgsql/issues.go:110-113,157`）。
+  - 阻塞：无
