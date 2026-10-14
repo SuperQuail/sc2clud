@@ -15,7 +15,9 @@ const (
 	TypeNotifyReview   = "notify:review"   // ref_type=topic，ref_id=topic_id=<topic id>
 	TypeNotifySanction = "notify:sanction" // ref_type=sanction，ref_id=<sanction id>
 
-	TypeSearchIndex    = "search:index"    // {"id": <topic id>}
+	TypeSearchIndex = "search:index" // {"id": <topic id>}
+	// TypeAIReview 是 AI 审核（d7 §6）：payload {"topic_id": <bigint>, "trigger": "create"|"report"}
+	TypeAIReview       = "ai:review"
 	TypeImageGC        = "image:gc"        // {}
 	TypeJobCleanup     = "queue:cleanup"   // {}
 	TypeBackupSnapshot = "backup:snapshot" // {}

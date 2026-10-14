@@ -1,0 +1,131 @@
+// Package aireview 是 AI 审核域（d7-ai-review.md）。
+//
+// 定位：**AI 是第一道审核，人是最后一道**。它不是独立业务线，而是审核队列的一个判定来源 ——
+// 读写的是 forum 的主题状态（review_state / review_note / review_source），并把每一次判定记进 review_events。
+//
+// 三条铁律（d7 §1）：① AI 不删内容（最多把 visibility 置 hidden）；② AI 失败不阻塞发帖（任务退避后交人工）；
+// ③ 同一篇主题的 AI 调用有上限。以及一条幂等：**AI 绝不覆盖人工判定**。
+package aireview
+
+import (
+	"context"
+	"errors"
+
+	"forum/internal/ent"
+)
+
+// Crypter 是密钥加解密（与发信凭据**同一套**、同一把主密钥 —— d7 §2.1）。由 app 注入实现。
+type Crypter interface {
+	Encrypt(plain, aad []byte) (ciphertext, nonce []byte, err error)
+	Decrypt(ciphertext, nonce, aad []byte) ([]byte, error)
+}
+
+// aadAIKey 是密钥加密的附加认证数据：与 mail 用 public_id 同构，这里单行表用一个固定串。
+var aadAIKey = []byte("ai_config:1")
+
+// Config 是 ai_config 单行表（d7 §2.1）的读视图。**永不含密钥明文**。
+type Config struct {
+	Enabled         bool
+	Provider        string
+	BaseURL         string
+	Model           string
+	Thinking        bool
+	StrictMode      bool
+	Prompt          string
+	PromptReport    string
+	Temperature     float64
+	TimeoutMS       int
+	MaxOutputTokens int
+	HasSecret       bool
+	SecretUpdatedAt *string
+	LastOKAt        *string
+	LastError       string
+	LastErrorAt     *string
+}
+
+const selectConfig = `
+	SELECT enabled, provider, base_url, model, thinking, strict_mode, prompt, prompt_report,
+	       temperature::float8, timeout_ms, max_output_tokens,
+	       secret_cipher IS NOT NULL, secret_updated_at::text, last_ok_at::text, last_error, last_error_at::text
+	  FROM ai_config WHERE id = 1`
+
+func (s *Service) GetConfig(ctx context.Context) (*Config, error) {
+	var c Config
+	err := s.db.QueryRowContext(ctx, selectConfig).Scan(
+		&c.Enabled, &c.Provider, &c.BaseURL, &c.Model, &c.Thinking, &c.StrictMode, &c.Prompt, &c.PromptReport,
+		&c.Temperature, &c.TimeoutMS, &c.MaxOutputTokens,
+		&c.HasSecret, &c.SecretUpdatedAt, &c.LastOKAt, &c.LastError, &c.LastErrorAt)
+	if err != nil {
+		return nil, err
+	}
+	return &c, nil
+}
+
+// LoadKey 解出密钥（只在真正要外呼时调；**任何返回值都不进 API、不进日志**）。
+func (s *Service) LoadKey(ctx context.Context) (string, error) {
+	var cipher, nonce []byte
+	err := s.db.QueryRowContext(ctx, `SELECT secret_cipher, secret_nonce FROM ai_config WHERE id = 1`).Scan(&cipher, &nonce)
+	if err != nil {
+		return "", err
+	}
+	if len(cipher) == 0 {
+		return "", errors.New("aireview: 还没配 API Key")
+	}
+	plain, err := s.crypter.Decrypt(cipher, nonce, aadAIKey)
+	if err != nil {
+		return "", err
+	}
+	return string(plain), nil
+}
+
+// SaveKey 写入密钥（写成功要清掉 last_error：换了 key 之后旧的错误不再代表现状）。
+func (s *Service) SaveKey(ctx context.Context, plain string) error {
+	cipher, nonce, err := s.crypter.Encrypt([]byte(plain), aadAIKey)
+	if err != nil {
+		return err
+	}
+	_, err = s.db.ExecContext(ctx, `
+		UPDATE ai_config SET secret_cipher = $1, secret_nonce = $2, secret_updated_at = now(),
+		                     last_error = '', last_error_at = NULL, updated_at = now()
+		 WHERE id = 1`, cipher, nonce)
+	return err
+}
+
+// UpdateConfig 只写传进来的字段（nil = 不动）。
+func (s *Service) UpdateConfig(ctx context.Context, in ConfigInput) error {
+	_, err := s.db.ExecContext(ctx, `
+		UPDATE ai_config SET
+		  enabled           = COALESCE($1, enabled),
+		  provider          = COALESCE($2, provider),
+		  base_url          = COALESCE($3, base_url),
+		  model             = COALESCE($4, model),
+		  thinking          = COALESCE($5, thinking),
+		  strict_mode       = COALESCE($6, strict_mode),
+		  prompt            = COALESCE($7, prompt),
+		  prompt_report     = COALESCE($8, prompt_report),
+		  temperature       = COALESCE($9, temperature),
+		  timeout_ms        = COALESCE($10, timeout_ms),
+		  max_output_tokens = COALESCE($11, max_output_tokens),
+		  updated_at        = now()
+		 WHERE id = 1`,
+		in.Enabled, in.Provider, in.BaseURL, in.Model, in.Thinking, in.StrictMode,
+		in.Prompt, in.PromptReport, in.Temperature, in.TimeoutMS, in.MaxOutputTokens)
+	return err
+}
+
+// markOK / markError 是 d7 §7 的用量与失败率数据来源。
+func (s *Service) markOK(ctx context.Context) {
+	_, _ = s.db.ExecContext(ctx, `UPDATE ai_config SET last_ok_at = now(), last_error = '', last_error_at = NULL WHERE id = 1`)
+}
+
+func (s *Service) markError(ctx context.Context, msg string) {
+	if len(msg) > 500 {
+		msg = msg[:500]
+	}
+	_, _ = s.db.ExecContext(ctx, `UPDATE ai_config SET last_error = $1, last_error_at = now() WHERE id = 1`, msg)
+}
+
+// enqueue 供 forum 在发帖事务里入队（d7 §1：EnqueueTx，绝不进发帖事务之外的地方调 AI）。
+func EnqueueTx(ctx context.Context, tx ent.Tx, q queue.TxQueue, topicID int64, trigger string) error {
+	return nil // 由 app 层通过 Deps 注入的具体实现替代（见 service.go 的 Enqueuer）
+}
