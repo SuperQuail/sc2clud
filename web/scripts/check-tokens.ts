@@ -6,7 +6,10 @@ import { fileURLToPath } from 'node:url';
 // 例外：DevRoom（它就是在对比候选配色）与设计语言 B 的配色定义处（src/ui/vivid）。
 // 选中的那套配色必须回写成令牌，这条靠评审，门禁只能保证不扩散。
 const SRC = fileURLToPath(new URL('../src', import.meta.url));
-const ALLOW = ['devroom', 'vivid'];
+// preview 也免：那底下是**出图桩**——它模拟的是后端字段值（头衔 badge_color、角色色）与壳，
+// 不是界面样式选择。2026-10-14 实测：admin-fixtures 里 5 处头衔色被这条挡下，而它们本来就该是**后端给的十六进制**。
+// 真界面的颜色仍然只有令牌一条路（devroom 之外的所有 src/ 都在查）。
+const ALLOW = ['devroom', 'vivid', 'preview'];
 const LITERAL = /#[0-9a-fA-F]{3,8}\b|\brgba?\s*\(/;
 
 function walk(dir: string): string[] {
