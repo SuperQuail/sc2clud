@@ -8,6 +8,7 @@ import { UserAvatar } from '@/ui/user/avatar';
 import { Username } from '@/ui/user/username';
 import { RoleBadge, type UserRole } from '@/ui/user/role-badge';
 import { TitleBadge, type UserTitle } from '@/ui/user/title-badge';
+import { DropdownPanel } from '@/ui/dropdown-panel';
 
 // DevRoom 11 · 个人主页的 **hero**（壁纸带 + 压在下边缘的身份卡）。
 // 从 index.tsx 拆出来，理由与 11 页里的 sponsor-card 同一条：这一块自成一体、只通过 props 与页面交互，
@@ -30,6 +31,17 @@ export type ProfileHeroProps = {
   avatar?: string | null;
   role?: UserRole | null;
   title?: UserTitle | null;
+  /**
+   * 本人主页：本人**持有**的全部头衔（GET /users/{handle}/titles 的 items）。**传了才可点** ——
+   * 下拉里就是这一份清单 + 「不佩戴」；看别人的主页不传，头衔是一枚纯展示的徽标。
+   * 常态与纯展示**完全一样**（用户口径 D18：不点看不出可交互）—— 触发器只是把这枚徽标包起来，
+   * 不加下划线/箭头/背景这类「这里能点」的装饰。
+   */
+  titleOptions?: UserTitle[];
+  /** 佩戴中的头衔 id（equipped_id；"" = 未佩戴）。下拉里靠它标出当前那一个 */
+  equippedTitleId?: string;
+  /** 选了一个头衔（null = 不佩戴）。宿主去调 PUT /me/title，再把资料与头衔读回来 */
+  onTitlePick?: (id: string | null) => void;
   stats?: ProfileStat[];
   /** 顶栏右上角那一对动作（更换封面 / 更换头像）。真实站点没有上传端点时调用方可以不画 */
   topActions?: ReactNode;
@@ -59,6 +71,9 @@ export function ProfileHero({
   avatar,
   role,
   title,
+  titleOptions,
+  equippedTitleId,
+  onTitlePick,
   stats = [],
   topActions,
   hasCover = false,
@@ -166,7 +181,31 @@ export function ProfileHero({
           <span className='flex flex-wrap items-center gap-2'>
             <Username nickname={nickname} size='xl' strong />
             {role ? <RoleBadge role={role} /> : null}
-            {title ? <TitleBadge title={title} /> : null}
+            {/* D18：**本人**的头衔可点开下拉（佩戴 / 卸下），别人只能看。
+                两条清单都来自宿主：持有的是 GET /users/{handle}/titles 的 items，佩戴中的是 equipped_id；
+                组件自己不取数、也不认识端点。下单与「不佩戴」两档都走 onTitlePick(null 或 id)。 */}
+            {title ? (
+              titleOptions && onTitlePick ? (
+                <DropdownPanel label='佩戴头衔' width='w-56' trigger={<TitleBadge title={title} />}>
+                  {titleOptions.map((t) => (
+                    <Button
+                      key={t.id}
+                      height={ControlsHeight.S}
+                      active={t.id === equippedTitleId}
+                      onClick={() => onTitlePick(t.id ?? null)}
+                    >
+                      {t.name}
+                    </Button>
+                  ))}
+                  {/* 卸下那一档：后端把 title_id 收成 ""（title.Equip 的 ClearEquippedTitleID） */}
+                  <Button height={ControlsHeight.S} active={!equippedTitleId} onClick={() => onTitlePick(null)}>
+                    不佩戴
+                  </Button>
+                </DropdownPanel>
+              ) : (
+                <TitleBadge title={title} />
+              )
+            ) : null}
           </span>
           <span className='flex flex-wrap items-center gap-x-3 gap-y-1 text-[13px] text-muted-foreground'>
             <span>@{handle}</span>

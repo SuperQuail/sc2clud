@@ -18,6 +18,7 @@ import { assetUrl, appPath, routePath } from '@/lib/url';
 import { qk } from '@/lib/query/keys';
 import { can, useSession } from '@/lib/perms';
 import { clearCover, fetchUserProfile, fetchUserTopics, uploadAvatar, uploadCover } from '@/lib/api/user';
+import { equipTitle, fetchUserTitles } from '@/lib/api/title';
 import { createDonation, fetchDonationSettings, fetchUserChannels } from '@/lib/api/rewards';
 import { formatCents, formatTime } from '@/lib/format';
 import { isApiError } from '@/lib/api/errors';
@@ -85,6 +86,23 @@ export function ProfilePage() {
     queryFn: ({ signal }) => fetchDonationSettings(signal),
     enabled: isSelf,
   });
+  // 头衔（D18）：本人的头衔可点开下拉（佩戴 / 不佩戴）。清单来自 GET /users/{handle}/titles
+  // ——**只有本人**才发这个请求：下拉只对本人有意义，别人的主页那一枚是纯展示（hero 没拿到 options 就不包触发器）。
+  const titles = useQuery({
+    queryKey: qk.userTitles(handle),
+    queryFn: ({ signal }) => fetchUserTitles(handle, signal),
+    enabled: isSelf,
+  });
+  // 选完即调 PUT /me/title（body 是 { title_id }，null = 卸下），成功**两处都失效**：
+  // hero 上那枚徽标读的是 user.Profile.title，下拉里「当前佩戴」读的是 equipped_id —— 是两个端点给的两份。
+  const equip = useMutation({
+    mutationFn: (id: string | null) => equipTitle(id),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: qk.profile(handle) });
+      void queryClient.invalidateQueries({ queryKey: qk.userTitles(handle) });
+    },
+  });
+
   // 封面（拍板 08 第二轮「壁纸替换」）：POST/DELETE /me/cover 落 users.cover_hash（0030）。
   // **就地换**：hero 右上那颗「更换封面」打开这一格里的上传控件（不再往设置页跳），
   // 选完即传，成功后 invalidate 这一页的资料查询 —— 新封面从服务端回来才算数。
@@ -158,6 +176,10 @@ export function ProfilePage() {
         bio={u.bio || undefined}
         avatar={u.avatar || null}
         title={u.title}
+        // 本人的头衔可点（D18）：下拉是「我持有的 + 不佩戴」；看别人时三样都不传 = 纯展示
+        titleOptions={isSelf ? titles.data?.items : undefined}
+        equippedTitleId={titles.data?.equipped_id}
+        onTitlePick={isSelf ? (id) => equip.mutate(id) : undefined}
         stats={stats}
         // 头像的入口就是头像本身（AvatarPicker，2026-10-14）；封面那套走 onCoverPick 的弹层。
         // 不再有独立的「更换头像」按钮 —— 用户明确要求去掉。

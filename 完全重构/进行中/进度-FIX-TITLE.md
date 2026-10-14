@@ -20,3 +20,19 @@
     这三个动作已被 Lead 的 `2ee918a` 一并提交（我这边 `git diff` 因此为空，不是没改）。
   - 下一步：D18 主页头衔下拉（`profile-hero.tsx` 的 TitleBadge + `routes/profile.tsx` 传参）。
   - 阻塞：无
+
+- [x] D18：本人主页的头衔可点开下拉（佩戴 / 不佩戴），别人只显示；选完调 `PUT /me/title` 并刷新
+  - 证据：`npx vitest run src/routes/profile.test.tsx`（新文件，4 条）—— **先红**：
+    `Tests 3 failed | 1 passed`，两条是 `Unable to find an element by: [data-testid="dropdown-trigger"]`、
+    一条是测试自己查重（页面本来就把头衔画两处）；改完 `Tests 4 passed (4)`，含
+    「选中 → `PUT /api/v1/me/title` 且请求体 `{title_id:'ti-2'}`」与「不佩戴 → `{title_id:''}`」两条。
+    · 契约字段名照 `forum/internal/title/{handler,types}.go`：`GET /users/{handle}/titles` →
+    `{items:[{id,key,name,color,description,archived_at}], equipped_id}`（"" = 未佩戴）、
+    `PUT /me/title {title_id}` → 204（`""` 或 null = 卸下，`Equip` 判的是 "" 那一条）。
+    · 图（都看过）：`shots/fix-title/d18-title-closed-1440.png`（**常态与普通徽标完全一样**：
+    没有箭头/下划线/底色）、`d18-title-menu-1440.png`（点开：执政官[当前] / 首席设计师 / 不佩戴）、
+    `d18-title-menu-390.png`（390 窄屏，浮层不越界）。
+    · 落点在 **hero 的身份行**（昵称与角色徽标那一行）—— 那一处才是「主页头衔」；右栏「徽章」格里那枚
+    保持纯展示（同一页同一个动作不做两个入口）。
+  - 下一步：D19 用户关注（作者卡 + 个人主页，`PUT/DELETE /users/{handle}/follow`）。
+  - 阻塞：无

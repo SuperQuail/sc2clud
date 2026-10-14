@@ -23,6 +23,8 @@ export const qk = {
   /** 关注状态（L5）：对象进 key —— 改一个分区的关注不影响另一个 */
   followBoard: (slug: string) => ['follow', 'board', slug] as const,
   followUser: (handle: string) => ['follow', 'user', handle] as const,
+  /** 某人**持有**的头衔 + 佩戴中的那一个（lib/api/title.ts）：本人主页的下拉靠它 */
+  userTitles: (handle: string) => ['titles', handle] as const,
   unreadMessages: () => ['messages', 'unread'] as const,
   conversations: () => ['messages', 'conversations'] as const,
   thread: (handle: string) => ['messages', 'thread', handle] as const,

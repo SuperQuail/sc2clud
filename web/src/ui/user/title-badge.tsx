@@ -5,7 +5,9 @@ import { cn } from '@/lib/utils';
 //   2 半透明底 + 全圆胶囊
 //   3 半透明底 + 底部色条（不用边框，靠底部一条线区分）
 export type TitleDesign = 1 | 2 | 3;
-export type UserTitle = { key?: string; name: string; color?: string | null; description?: string | null };
+/** id 是 title.TitleDTO 的 public_id —— 只有「佩戴 / 卸下」需要它（PUT /me/title 的 title_id）；
+ *  纯展示的三处（评论、主题行、徽章墙）拿不到它，所以是可缺省的。 */
+export type UserTitle = { id?: string; key?: string; name: string; color?: string | null; description?: string | null };
 const SIZE = { sm: 'text-[11px]', md: 'text-xs', lg: 'text-sm' } as const;
 
 export function TitleBadge({

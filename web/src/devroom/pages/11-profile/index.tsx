@@ -66,6 +66,13 @@ const TABS: IconTabItem[] = [
 // 统一假名单（完全重构/DevRoom-假数据规范.md）：兵种名，一眼看出是示例
 const FOLLOWING = ['陆战队员', '狂热者', '刺蛇', '虫后'];
 
+// D18 演示：本人**持有**的两个头衔（真值来自 GET /users/{handle}/titles 的 items，id 是 public_id）。
+// 房间口径 = 选中即结果（本地 state）；真站在 routes/profile.tsx 里调 PUT /me/title，再把两份读回来。
+const HELD_TITLES = [
+  { id: 'ti-1', name: '执政官', color: '#2563eb' },
+  { id: 'ti-2', name: '首席设计师', color: '#16a34a' },
+];
+
 // 赞助入口（对照 12.4–12.7 的展示侧 + 用户反馈「主页没有赞助按钮」）。
 // 与帖子页的 reward-panel **同款**：一大颗 --vivid-accent 按钮（白字、≥44px、15px）+ 一行 11px 说明，
 // 点开后**在这个格子里就地展开**（渠道 → 收款码 → 文案 → 登记），不跳转、也不是常驻红块。
@@ -97,6 +104,8 @@ export default function ProfilePage() {
   // （与头像那颗按钮同一条路 —— 房间的这一页是设计稿，选中即结果；真站在 profile.tsx 里弹层直传）。
   const [coverPath, setCoverPath] = useState<string | null>(null);
   const cover = coverPath ? assetUrl(coverPath) : assetUrl('starcraft/sc2-battle.webp');
+  // 佩戴中的头衔 id（"" = 不佩戴）；hero 上那枚徽标读它，下拉换的就是它
+  const [equippedTitle, setEquippedTitle] = useState('ti-1');
   const [visibility, setVisibility] = useState('public');
   const [showTitle, setShowTitle] = useState(true);
   // G5：屏蔽词**不实现**（拍板），所以这里没有 setter —— 见下面那一行的 onAdd/onRemove 为什么是空的。
@@ -211,7 +220,12 @@ export default function ProfilePage() {
         bio='战役作者，负责关卡设计与剧情。有问题直接回复，我每天都在。'
         avatar={avatar ?? assetUrl('miyin/smile-160.webp')}
         role={{ key: 'admin', name: '管理员' }}
-        title={{ name: '执政官', color: '#2563eb' }}
+        // D18：本人可点开下拉换头衔；看别人主页时不传 titleOptions = 纯展示（点不动）。
+        // 不佩戴时 title 为 null —— 与真站同一条口径：没有头衔就不画那一枚，不编假占位（D16）。
+        title={HELD_TITLES.find((t) => t.id === equippedTitle) ?? null}
+        titleOptions={selfView.isSelf ? HELD_TITLES : undefined}
+        equippedTitleId={equippedTitle}
+        onTitlePick={selfView.isSelf ? (id) => setEquippedTitle(id ?? '') : undefined}
         stats={[
           { value: '42', label: '帖子' },
           { value: '318', label: '回复' },
