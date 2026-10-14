@@ -1,4 +1,5 @@
 import type { UserSummary } from '@/ui/user/user-badge';
+import type { AiCategory, AiVerdict } from './ai-types';
 import { USERS } from './users';
 import type { AdminUser } from './core';
 
@@ -95,7 +96,9 @@ export type ReviewItem = {
   /** d7 §5.1：这一轮的判定来源；NULL = AI 未判定（调用失败/没配密钥 → 留 pending 进人工队列） */
   review_source: 'ai' | 'manual' | 'trusted' | null;
   /** 最近一次判定的 verdict：ai + review = **AI 转人工**（队列里要高亮） */
-  review_verdict: 'approve' | 'reject' | 'review';
+  review_verdict: AiVerdict;
+  /** 1 楼正文（AI 审核屏的试跑内容源；列表页不渲染它） */
+  body?: string;
 };
 
 /** d7 §5.2 review_events：审核是**一串事件**，只增不改。倒序展示（新 → 旧）。 */
@@ -103,8 +106,10 @@ export type ReviewEvent = {
   id: string;
   trigger: 'create' | 'report' | 'manual';
   source: 'ai' | 'manual' | 'trusted';
-  verdict: 'approve' | 'reject' | 'review';
+  verdict: AiVerdict;
   reason: string;
+  /** d7 §5.2 的 categories text[]：模型给的事由分类（人工判定与免审为空） */
+  categories: AiCategory[];
   model: string;
   latency_ms: number;
   actor: UserSummary | null;
@@ -118,6 +123,7 @@ export const REVIEW_QUEUE: ReviewItem[] = [
     excerpt: '第三章加入了新的指挥官技能树与三个可选支线。安装方式见文末，压缩包内附校验值……',
     images: 4, state: 'pending', review_note: '', reviewer: null, reviewed_at: null,
     review_source: 'ai', review_verdict: 'review',
+    body: '第三章一共 12 关，含 3 个可选支线与 9 段过场。安装：把 .SC2Map 放进 Maps 目录，压缩包内附校验值。\n\n新增指挥官技能树面板，数量与冷却都在触发器里调过。卡关请回帖附存档与报错截图。',
   },
   {
     id: 'tp_02', title: '关于合作模式 AI 波次缩放的几点想法', board: { slug: 'mapping', name: '地图制作' },
@@ -125,6 +131,7 @@ export const REVIEW_QUEUE: ReviewItem[] = [
     excerpt: '我试着把波次数量做成随难度递增的曲线，但发现 8 分钟后的第一波会同时压到两个路口……',
     images: 1, state: 'pending', review_note: '', reviewer: null, reviewed_at: null,
     review_source: 'ai', review_verdict: 'review',
+    body: '试着把波次数量做成随难度递增的曲线：第 8 分钟的第一波会同时压到两个路口，正面很难守住。\n\n现在给每波加前置延迟，但延迟一长玩家又觉得空。想听听大家怎么处理节奏。',
   },
   {
     id: 'tp_03', title: '免费领取优惠券，点击进入', board: { slug: 'meta', name: '站务讨论' },
@@ -132,6 +139,7 @@ export const REVIEW_QUEUE: ReviewItem[] = [
     excerpt: '限时活动，先到先得……',
     images: 0, state: 'pending', review_note: '', reviewer: null, reviewed_at: null,
     review_source: null, review_verdict: 'review',
+    body: '限时活动，先到先得：免费领取优惠券，加群后私聊领取，仅限前 50 名，点击进入站外链接。',
   },
   {
     id: 'tp_04', title: '【资源】高清地形纹理包 v3（含夜间变体）', board: { slug: 'resources', name: '资源分享' },
@@ -139,6 +147,7 @@ export const REVIEW_QUEUE: ReviewItem[] = [
     excerpt: '在 v2 基础上重做了 14 张地形贴图，新增夜间变体；体积从 480MB 降到 310MB……',
     images: 6, state: 'pending', review_note: '', reviewer: null, reviewed_at: null,
     review_source: 'ai', review_verdict: 'review',
+    body: '在 v2 基础上重做了 14 张地形贴图，新增夜间变体；体积从 480MB 降到 310MB。\n\n下载：网盘直链 + 提取码 8k2d。素材来源是网上搜集，若原作者看到请联系我删除。',
   },
   {
     id: 'tp_05', title: '启动器 0.7.2 更新说明（外部直链）', board: { slug: 'announce', name: '公告与活动' },
@@ -228,43 +237,43 @@ export const REPORTS: ReportItem[] = [
 /** d7 §5.2：每帖的判定历史（倒序展示）。tp_01 走的是「创建时 trusted 免审 → 被 3 人举报 → AI 复审转人工」。 */
 export const REVIEW_EVENTS: Record<string, ReviewEvent[]> = {
   tp_01: [
-    { id: 'ev_1_3', trigger: 'report', source: 'ai', verdict: 'review', model: 'deepseek-chat', latency_ms: 1180, actor: null,
+    { id: 'ev_1_3', trigger: 'report', source: 'ai', verdict: 'review', categories: ['other'], model: 'deepseek-flash', latency_ms: 1180, actor: null,
       reason: '已被 3 人举报，重点复核资源来源与授权；AI 无法确认素材版权，交人工。', created_at: '2026-10-12T11:02:00Z' },
-    { id: 'ev_1_2', trigger: 'create', source: 'trusted', verdict: 'approve', model: '', latency_ms: 0, actor: null,
+    { id: 'ev_1_2', trigger: 'create', source: 'trusted', verdict: 'approve', categories: [], model: '', latency_ms: 0, actor: null,
       reason: '作者 trusted=true：发帖免审直接发布。', created_at: '2026-10-12T10:45:00Z' },
   ],
   tp_02: [
-    { id: 'ev_2_1', trigger: 'create', source: 'ai', verdict: 'review', model: 'deepseek-chat', latency_ms: 940, actor: null,
+    { id: 'ev_2_1', trigger: 'create', source: 'ai', verdict: 'review', categories: ['other'], model: 'deepseek-flash', latency_ms: 940, actor: null,
       reason: '正文点名某位作者的关卡设计并带有比较性评价，按提示词「涉及指控某人」交人工。', created_at: '2026-10-12T09:41:20Z' },
   ],
   tp_03: [
-    { id: 'ev_3_2', trigger: 'create', source: 'ai', verdict: 'review', model: 'deepseek-chat', latency_ms: 15000, actor: null,
+    { id: 'ev_3_2', trigger: 'create', source: 'ai', verdict: 'review', categories: [], model: 'deepseek-flash', latency_ms: 15000, actor: null,
       reason: '调用超时（timeout_ms=15000）：退避重试 2 次仍失败，按 d7「AI 失败不挡发帖」留在 pending 交人工。', created_at: '2026-10-12T08:16:00Z' },
-    { id: 'ev_3_1', trigger: 'create', source: 'ai', verdict: 'review', model: 'deepseek-chat', latency_ms: 15000, actor: null,
+    { id: 'ev_3_1', trigger: 'create', source: 'ai', verdict: 'review', categories: [], model: 'deepseek-flash', latency_ms: 15000, actor: null,
       reason: '第一次尝试超时，进入退避重试。', created_at: '2026-10-12T08:15:30Z' },
   ],
   tp_04: [
-    { id: 'ev_4_1', trigger: 'create', source: 'ai', verdict: 'review', model: 'deepseek-chat', latency_ms: 1320, actor: null,
+    { id: 'ev_4_1', trigger: 'create', source: 'ai', verdict: 'review', categories: ['other'], model: 'deepseek-flash', latency_ms: 1320, actor: null,
       reason: '正文含网盘直链与提取码，需人工确认无侵权与无引流。', created_at: '2026-10-11T20:31:00Z' },
   ],
   tp_05: [
-    { id: 'ev_5_2', trigger: 'manual', source: 'manual', verdict: 'approve', model: '', latency_ms: 0, actor: sum(u('demo-admin')),
+    { id: 'ev_5_2', trigger: 'manual', source: 'manual', verdict: 'approve', categories: [], model: '', latency_ms: 0, actor: sum(u('demo-admin')),
       reason: '与作者确认后放行：直链属启动器正式发布内容。', created_at: '2026-10-11T02:20:00Z' },
-    { id: 'ev_5_1', trigger: 'create', source: 'ai', verdict: 'approve', model: 'deepseek-chat', latency_ms: 700, actor: null,
+    { id: 'ev_5_1', trigger: 'create', source: 'ai', verdict: 'approve', categories: [], model: 'deepseek-flash', latency_ms: 700, actor: null,
       reason: '正常发布说明，无违规特征。', created_at: '2026-10-11T02:10:20Z' },
   ],
   tp_06: [
-    { id: 'ev_6_1', trigger: 'create', source: 'ai', verdict: 'approve', model: 'deepseek-chat', latency_ms: 860, actor: null,
+    { id: 'ev_6_1', trigger: 'create', source: 'ai', verdict: 'approve', categories: [], model: 'deepseek-flash', latency_ms: 860, actor: null,
       reason: '正常创作讨论，无违规特征；作者 trusted=false，由 AI 自动放行。', created_at: '2026-10-10T16:01:00Z' },
   ],
   tp_07: [
-    { id: 'ev_7_2', trigger: 'manual', source: 'manual', verdict: 'reject', model: '', latency_ms: 0, actor: sum(u('demo-admin')),
+    { id: 'ev_7_2', trigger: 'manual', source: 'manual', verdict: 'reject', categories: [], model: '', latency_ms: 0, actor: sum(u('demo-admin')),
       reason: '违反站规第 4 条（交易账号），拒绝并警告作者。', created_at: '2026-10-09T12:30:00Z' },
-    { id: 'ev_7_1', trigger: 'create', source: 'ai', verdict: 'review', model: 'deepseek-chat', latency_ms: 990, actor: null,
+    { id: 'ev_7_1', trigger: 'create', source: 'ai', verdict: 'review', categories: ['ad'], model: 'deepseek-flash', latency_ms: 990, actor: null,
       reason: '疑似站外交易，但表述含糊，转人工确认。', created_at: '2026-10-09T12:02:00Z' },
   ],
   tp_08: [
-    { id: 'ev_8_1', trigger: 'create', source: 'ai', verdict: 'reject', model: 'deepseek-chat', latency_ms: 1080, actor: null,
+    { id: 'ev_8_1', trigger: 'create', source: 'ai', verdict: 'reject', categories: ['illegal'], model: 'deepseek-flash', latency_ms: 1080, actor: null,
       reason: '正文只有一句话且附未授权素材链接，无法判断安装方式与来源；拒绝并请作者补充。', created_at: '2026-10-08T09:38:00Z' },
   ],
 };

@@ -3,23 +3,30 @@ import Button from '@jetbrains/ring-ui-built/components/button/button';
 import Input from '@jetbrains/ring-ui-built/components/input/input';
 import Select, { Type as SelectType } from '@jetbrains/ring-ui-built/components/select/select';
 import Toggle from '@jetbrains/ring-ui-built/components/toggle/toggle';
-import { AlertTriangle, CheckCircle2, Clock, Download, KeyRound, PlugZap } from 'lucide-react';
+import { ControlsHeight } from '@jetbrains/ring-ui-built/components/global/controls-height';
+import { Clock, Download, KeyRound } from 'lucide-react';
 import { icon16 } from '@/ui/icons';
 import { ConfirmDialog } from '../confirm';
 import { DisabledReason, GateNote, KV, Panel, Pill, ScreenHead, Stat, StatRow, Toolbar } from '../bits';
-import {
-  AI_BUILTIN_PROMPT, AI_CONFIG, AI_PROVIDERS, AI_STATS, AI_TEST_SEQUENCE, AI_THRESHOLDS,
-  fmtTime, relTime, type AiConfig, type AiTestResult,
-} from '../mock';
+import { AiHistory } from './ai-history';
+import { AiPrompts } from './ai-prompts';
+import { AiTrial } from './ai-trial';
+import { AI_CONFIG, AI_PROVIDERS, AI_STATS, AI_THRESHOLDS, fmtTime, relTime, type AiConfig } from '../mock';
 import { useCan } from '../mock/perms';
-import { ControlsHeight } from '@jetbrains/ring-ui-built/components/global/controls-height';
 
-// D7 AI 帖子审核的管理端（d7 §8 + 拍板 §10）。
+// D7 AI 审核编辑器（管理端）。唯一真源：完全重构/后端设计/d7-ai-review.md。
+// 这一屏回答四个问题，顺序就是它们的顺序（照 open-webui 的提示词编辑器学的信息架构 ——
+// 「模型 → 提示词 → 试跑 → 历史」）：**用哪个模型、喂它什么话、它会怎么判、它以前判过什么**。
+//
 // 三条设计纪律在这里要看得见：
 //   ① **密钥只写不回显**：GET 只给 has_secret 与 secret_updated_at（d7 验收 11 断言响应里没有密钥字段）；
 //   ② **AI 失败不挡发帖**：失败率与 last_error 摆在配置旁边，而不是藏进日志；
 //   ③ AI 不删内容：界面上没有任何「删除」动作，最多 hidden（可恢复）。
-// 权限沿用 site.setting —— 不新造权限点（拍板 §10.3）。
+// 权限沿用 site.setting —— 不新造权限点（d7 §8）。
+//
+// 2026-10-14 与旧版的两处**按文档修正**（旧 mock 与 d7 相反）：
+//   · max_body_chars（正文截断 4000）已删 —— d7 §2.4 明确不截断，只有输出上限 max_output_tokens；
+//   · model 默认 deepseek-flash —— d7 §2.3 明确 deepseek-chat 已下线。
 
 type Thresholds = Record<string, string>;
 
@@ -34,9 +41,6 @@ export function AiReviewScreen() {
   const [savedThresholds, setSavedThresholds] = useState<Thresholds>(() => Object.fromEntries(AI_THRESHOLDS.map((t) => [t.key, String(t.value)])));
   const [secret, setSecret] = useState('');
   const [confirmSecret, setConfirmSecret] = useState(false);
-  const [testing, setTesting] = useState(false);
-  const [result, setResult] = useState<AiTestResult | null>(null);
-  const [testCount, setTestCount] = useState(0);
 
   const configDirty = JSON.stringify(cfg) !== JSON.stringify(savedCfg);
   const thresholdsDirty = AI_THRESHOLDS.some((t) => thresholds[t.key] !== savedThresholds[t.key]);
@@ -46,22 +50,11 @@ export function AiReviewScreen() {
     setCfg((c) => ({ ...c, ...next }));
   }
 
-  function runTest() {
-    setTesting(true);
-    setResult(null);
-    // mock：连点依次 成功 → 401 → 超时；真实实现是 POST /api/v1/admin/ai/test（不返回密钥）
-    window.setTimeout(() => {
-      setResult(AI_TEST_SEQUENCE[testCount % AI_TEST_SEQUENCE.length]!);
-      setTestCount((n) => n + 1);
-      setTesting(false);
-    }, 900);
-  }
-
   return (
     <div className='flex flex-col gap-3'>
       <ScreenHead
-        title='AI 审核'
-        note='d7：AI 是第一道审核，人是最后一道。新帖先判一次；被举报到阈值用同一套提示词复审；复审仍不过或拿不准 → 人工。'
+        title='AI 审核编辑器'
+        note='d7：AI 是第一道审核，人是最后一道。新帖先判一次；被举报到阈值用「举报复核」那套提示词再审一次；复审仍不过或拿不准 → 人工。'
         actions={
           <>
             <Pill tone={dirty ? 'warn' : 'ok'}>{dirty ? '未保存' : '已保存'}</Pill>
@@ -71,7 +64,20 @@ export function AiReviewScreen() {
         }
       />
 
-      {!canSetting ? <GateNote perm='site.setting'>整屏只读：配置、密钥、测试连通与阈值都要求 site.setting。</GateNote> : null}
+      {!canSetting ? <GateNote perm='site.setting'>整屏只读：配置、提示词、密钥、试跑与阈值都要求 site.setting。</GateNote> : null}
+
+      <Panel
+        title='与当前后端实现的对齐（接入单）'
+        note='本屏按 d7 设计（d7 有 ai_config 表结构与四个 admin 端点）；后端**现在只落地了 cron 审核那一段**，下面几项还不是接口。'
+      >
+        <KV k='配置来源' v='YAML / env（FORUM_AI__*）' hint='ai_config 单行表还没建 → 这一屏的编辑框暂时没有端点可存' />
+        <KV k='提示词' v='单条 config.AI.prompt' hint='两套（新建帖 / 举报复核）是本屏新提的，需要 ai_config 加 prompt / prompt_report 两列' />
+        <KV k='调用形状' v='response_format=json_object · temperature=0' hint='POST {endpoint}/v1/chat/completions（注意实现里带 /v1，与 d7 §3.2 写的 base_url + /chat/completions 不一致）' />
+        <KV k='回执' v='{"ok": bool, "reason": string}' hint='d7 要的是三值 verdict + categories；实现是二值，于是「违规」与「拿不准」现在落在同一档' />
+        <KV k='判定落库' v='ok → review_state=approved；否则只写 review_note + ai_review_note，状态仍 pending' hint='与 d7 §1 那行「判违规 → rejected」不同：实现是「只有明确说合规才放行」，本屏按**实现**写' />
+        <KV k='审核历史' v='review_events 还没建表' hint='本屏的历史是把 15-admin 帖子审核队列里那份假数据摊平成全站视图，不是接口' />
+        <KV k='admin 端点' v='GET/PATCH /admin/ai/config · POST /admin/ai/config/secret · POST /admin/ai/test · GET /admin/ai/stats' hint='四个都还没做（d7 §8）' />
+      </Panel>
 
       <div className='grid gap-3 lg:grid-cols-2'>
         {AI_STATS.map((s) => (
@@ -95,7 +101,7 @@ export function AiReviewScreen() {
       </div>
 
       <div className='grid items-start gap-3 lg:grid-cols-2'>
-        <Panel title='配置（ai_config 单行表）' note='提供商只留两个值：协议相同就不该有第二份实现（d7 §2.1）'>
+        <Panel title='模型与端点' note='ai_config 单行表（d7 §2.1）。提供商只留两个值：协议相同就不该有第二份实现（§2.1）'>
           <div className='mb-2 flex flex-wrap items-center gap-2'>
             <Toggle checked={cfg.enabled} disabled={!canSetting} onChange={(e) => patch({ enabled: e.target.checked })}>
               启用 AI 审核
@@ -109,89 +115,37 @@ export function AiReviewScreen() {
             label='provider'
             data={AI_PROVIDERS}
             selected={AI_PROVIDERS.find((p) => p.key === cfg.provider) ?? null}
-            onSelect={(item) => { if (item) patch({ provider: item.key }); }}
+            onSelect={(item) => { if (item) patch({ provider: item.key as AiConfig['provider'] }); }}
           />
           <Input label='base_url' value={cfg.base_url} disabled={!canSetting} onChange={(e) => patch({ base_url: e.target.value })} />
-          <Input label='model' value={cfg.model} disabled={!canSetting} onChange={(e) => patch({ model: e.target.value })} />
-          <span className='text-[11px] text-muted-foreground'>
-            默认 deepseek-chat：审核是分类任务不是推理任务，要快与便宜；以后 DeepSeek 出快速别名，改这里即可
-          </span>
-          <Input label='timeout_ms（1000–60000）' value={String(cfg.timeout_ms)} disabled={!canSetting} onChange={(e) => patch({ timeout_ms: Number(e.target.value.replace(/\D/g, '')) || 0 })} />
-          <Input label='max_body_chars（500–20000）' value={String(cfg.max_body_chars)} disabled={!canSetting} onChange={(e) => patch({ max_body_chars: Number(e.target.value.replace(/\D/g, '')) || 0 })} />
-          <span className='text-[11px] text-muted-foreground'>
-            只送 title + 1 楼正文的纯文本，截断到这里；<b>不送图片、不送作者信息</b>
-          </span>
           <Input
-            label='提示词（留空 = 用内置默认）'
-            multiline
-            rows={8}
-            // Ring 的 textarea 高度由它自己的 CSS 决定，rows 不生效 → 显式给高度
-            inputClassName='!h-[176px]'
-            value={cfg.prompt}
+            label='model'
+            value={cfg.model}
             disabled={!canSetting}
-            onChange={(e) => patch({ prompt: e.target.value })}
+            onChange={(e) => patch({ model: e.target.value })}
+            help='默认 deepseek-flash：审核是分类任务不是推理任务，要快与便宜。deepseek-chat 已下线，别填它（d7 §2.3）'
           />
-          <div className='mt-1 rounded-md bg-muted/50 px-2 py-1.5'>
-            <span className='text-[11px] font-medium text-muted-foreground'>内置默认提示词（只读；上面的输入框留空时生效）</span>
-            <p className='mt-1 whitespace-pre-line text-[11px] leading-relaxed text-muted-foreground'>{AI_BUILTIN_PROMPT}</p>
+          <div className='mt-2 flex flex-col gap-1'>
+            <Toggle checked={cfg.thinking} disabled={!canSetting} onChange={(e) => patch({ thinking: e.target.checked })}>
+              thinking（推理模式）
+            </Toggle>
+            <span className='text-[11px] leading-relaxed text-muted-foreground'>
+              关（默认）= 走 Tool Calls + tool_choice=required，读 tool_calls[0].function.arguments；
+              开 = 走 JSON Output，读 message.content。<b>思考模式下官方不支持 tool_choice=required</b>，所以两条路不能混（d7 §3.4）。
+              慢一点也贵一点，只在转人工比例偏高时开。
+            </span>
+            <Toggle checked={cfg.strict_mode} disabled={!canSetting} onChange={(e) => patch({ strict_mode: e.target.checked })}>
+              strict_mode（schema 严格校验）
+            </Toggle>
+            <span className='text-[11px] leading-relaxed text-muted-foreground'>
+              打开后「模型不按 schema 输出」的概率降到接近零，代价是 base_url 必须用 <code className='rounded-sm bg-muted px-1'>https://api.deepseek.com/beta</code>（d7 §3.3）。
+            </span>
           </div>
-          <KV
-            k='内置默认提示词'
-            v={cfg.prompt.trim() === '' ? '正在使用' : '已被自定义覆盖'}
-            hint='宁可放过，不可错杀——误杀正常帖的代价大于放过边缘内容（d7 §4）'
-          />
-        </Panel>
-
-        <div className='flex flex-col gap-3'>
-          <Panel title='API Key' note='只写不回显：保存后连管理员也看不到，只能替换（d7 §8 验收 11）'>
-            <div className='mb-2 flex flex-wrap items-center gap-2'>
-              <Pill tone={cfg.has_secret ? 'ok' : 'danger'}>{cfg.has_secret ? '已配置' : '未配置'}</Pill>
-              <span className='text-[11px] text-muted-foreground'>
-                {cfg.has_secret ? '最后更新于 ' + fmtTime(cfg.secret_updated_at) : '未配置时新帖全部走人工队列，AI 不参与'}
-              </span>
-            </div>
-            <Input
-              label={cfg.has_secret ? '新 API Key（粘贴后保存，替换旧的）' : 'API Key'}
-              type='password'
-              placeholder='sk-…'
-              value={secret}
-              disabled={!canSetting}
-              onChange={(e) => setSecret(e.target.value)}
-            />
-            <p className='text-[11px] leading-relaxed text-muted-foreground'>
-              密钥加密存储（chacha20poly1305，与发信凭据同一把主密钥）；<b>保存后不可查看，只能替换</b>。
-              POST /api/v1/admin/ai/config/secret 的 body 里只有新密钥，读接口永远不返回它。
-            </p>
-            <Toolbar className='mt-2'>
-              <Button
-                inline={false}
-                height={ControlsHeight.S}
-                icon={icon16(KeyRound)}
-                disabled={!canSetting || secret.trim() === ''}
-                onClick={() => setConfirmSecret(true)}
-              >
-                保存密钥
-              </Button>
-              {secret.trim() === '' ? <DisabledReason>先在输入框里粘贴新密钥；空值不会清掉旧密钥</DisabledReason> : null}
-            </Toolbar>
-            {cfg.has_secret && secret.trim() === '' ? (
-              <p className='text-[11px] text-muted-foreground'>输入框留空 —— 界面上不会把已保存的密钥填回来。</p>
-            ) : null}
-          </Panel>
-
-          <Panel
-            title='测试连通'
-            note='POST /api/v1/admin/ai/test：真实调一次，返回耗时与模型原始回执（不含密钥）'
-            actions={<Button inline={false} height={ControlsHeight.S} icon={icon16(PlugZap)} loader={testing} disabled={!canSetting} onClick={runTest}>测试连通</Button>}
-          >
-            {result === null && !testing ? (
-              <p className='text-[12px] text-muted-foreground'>还没测过。上次成功：{relTime(cfg.last_ok_at)}。</p>
-            ) : null}
-            {testing ? <p className='text-[12px] text-muted-foreground'>正在请求 {cfg.base_url}/chat/completions …</p> : null}
-            {result ? <TestResult result={result} /> : null}
+          <div className='mt-2'>
+            <KV k='最近一次成功' v={relTime(cfg.last_ok_at)} />
             {cfg.last_error ? (
-              <div className='mt-2 rounded-md border border-border px-2 py-1.5'>
-                <span className='flex items-center gap-1.5'>
+              <div className='mt-1 rounded-md border border-border px-2 py-1.5'>
+                <span className='flex flex-wrap items-center gap-1.5'>
                   <Clock size={12} aria-hidden className='text-muted-foreground' />
                   <span className='text-[12px] text-foreground'>上一次失败 · {relTime(cfg.last_error_at)}</span>
                   <Pill tone={kindOf(cfg.last_error)}>{kindOf(cfg.last_error) === 'danger' ? '密钥/鉴权' : '网络/超时'}</Pill>
@@ -202,9 +156,74 @@ export function AiReviewScreen() {
                 </p>
               </div>
             ) : null}
-          </Panel>
-        </div>
+          </div>
+        </Panel>
+
+        <Panel title='API Key' note='只写不回显：保存后连管理员也看不到，只能替换（d7 §8 验收 11）'>
+          <div className='mb-2 flex flex-wrap items-center gap-2'>
+            <Pill tone={cfg.has_secret ? 'ok' : 'danger'}>{cfg.has_secret ? '已配置' : '未配置'}</Pill>
+            <span className='text-[11px] text-muted-foreground'>
+              {cfg.has_secret ? '最后更新于 ' + fmtTime(cfg.secret_updated_at) : '未配置时新帖全部走人工队列，AI 不参与'}
+            </span>
+          </div>
+          <Input
+            label={cfg.has_secret ? '新 API Key（粘贴后保存，替换旧的）' : 'API Key'}
+            type='password'
+            placeholder='sk-…'
+            value={secret}
+            disabled={!canSetting}
+            onChange={(e) => setSecret(e.target.value)}
+          />
+          <p className='text-[11px] leading-relaxed text-muted-foreground'>
+            密钥加密存储（chacha20poly1305，与发信凭据同一把主密钥）；<b>保存后不可查看，只能替换</b>。
+            POST /api/v1/admin/ai/config/secret 的 body 里只有新密钥，读接口永远不返回它。
+          </p>
+          <Toolbar className='mt-2'>
+            <Button
+              inline={false}
+              height={ControlsHeight.S}
+              icon={icon16(KeyRound)}
+              disabled={!canSetting || secret.trim() === ''}
+              onClick={() => setConfirmSecret(true)}
+            >
+              保存密钥
+            </Button>
+            {secret.trim() === '' ? <DisabledReason>先在输入框里粘贴新密钥；空值不会清掉旧密钥</DisabledReason> : null}
+          </Toolbar>
+        </Panel>
       </div>
+
+      <Panel title='温度与上限' note='d7 §2.4 只有**输出**上限，没有输入截断：截断会让 AI 只看到半篇、判出来的结论就是错的'>
+        <div className='grid gap-3 md:grid-cols-3'>
+          <Input
+            label='temperature（0–2）'
+            value={String(cfg.temperature)}
+            disabled={!canSetting}
+            onChange={(e) => patch({ temperature: decimal(e.target.value) })}
+            help='d7 §3.2 钉死 0：分类任务要确定性，审核结论不该抖。做成可调只为排查误判，默认仍是 0'
+          />
+          <Input
+            label='max_output_tokens（64–4096）'
+            value={String(cfg.max_output_tokens)}
+            disabled={!canSetting}
+            onChange={(e) => patch({ max_output_tokens: digits(e.target.value) })}
+            help='默认 512：schema 只有 verdict / reason / categories 三个字段，输出上限与输入大小无关'
+          />
+          <Input
+            label='timeout_ms（1000–60000）'
+            value={String(cfg.timeout_ms)}
+            disabled={!canSetting}
+            onChange={(e) => patch({ timeout_ms: digits(e.target.value) })}
+            help='默认 20000：超时按「拿不准」转人工，不无限重试，也绝不因为超时就放行'
+          />
+        </div>
+      </Panel>
+
+      <AiPrompts cfg={cfg} canEdit={canSetting} onPatch={patch} />
+
+      <AiTrial cfg={cfg} canRun={canSetting} />
+
+      <AiHistory />
 
       <Panel
         title='阈值'
@@ -228,9 +247,9 @@ export function AiReviewScreen() {
           ))}
         </div>
         <p className='mt-2 text-[11px] leading-relaxed text-muted-foreground'>
-          链路：新帖 → AI 判 → 未处理举报累计到 {thresholds['ai.review.report_threshold_1'] || '3'} → AI 复审（同提示词 + 「已被 N 人举报，重点看是否违规」）
+          链路：新帖 → AI 判（create）→ 未处理举报累计到 {thresholds['ai.review.report_threshold_1'] || '3'} → 用「举报复核」那套再审一次（report）
           → 复审仍不过或拿不准 → 人工；累计到 {thresholds['ai.review.report_threshold_2'] || '5'} → <b>直接人工，不再调 AI</b>。
-          单帖每天最多调 {thresholds['ai.review.daily_limit_per_topic'] || '3'} 次。
+          单帖每天最多调 {thresholds['ai.review.daily_limit_per_topic'] || '3'} 次。人工判过的帖子，AI 重放会直接返回，绝不覆盖人工判定（d7 §6 幂等）。
         </p>
       </Panel>
 
@@ -271,49 +290,6 @@ export function AiReviewScreen() {
   );
 }
 
-/** 三种回执**长得不一样**：一眼能分出「密钥错（401）」与「网络/超时」。 */
-function TestResult({ result }: { result: AiTestResult }) {
-  if (result.kind === 'ok') {
-    return (
-      <div className='rounded-md border border-border px-2 py-2'>
-        <span className='flex flex-wrap items-center gap-1.5'>
-          <CheckCircle2 size={14} aria-hidden className='text-primary' />
-          <Pill tone='ok'>连通成功</Pill>
-          <span className='text-[12px] text-foreground'>耗时 {result.latency_ms} ms · {result.model}</span>
-        </span>
-        <p className='mt-2 break-all font-mono text-[11px] text-muted-foreground'>{result.raw}</p>
-        <p className='text-[11px] text-muted-foreground'>回执可解析：verdict / reason / categories 三个字段齐全，说明 JSON 模式生效。</p>
-      </div>
-    );
-  }
-  if (result.kind === 'auth') {
-    return (
-      <div className='rounded-md border border-destructive/40 bg-destructive/8 px-2 py-2'>
-        <span className='flex flex-wrap items-center gap-1.5'>
-          <AlertTriangle size={14} aria-hidden className='text-destructive' />
-          <Pill tone='danger'>密钥错 · HTTP {result.status}</Pill>
-          <span className='text-[12px] text-foreground'>鉴权失败，不是网络问题</span>
-        </span>
-        <p className='mt-2 text-[11px] leading-relaxed text-muted-foreground'>{result.message}</p>
-        <p className='text-[11px] leading-relaxed text-muted-foreground'>处理：去 DeepSeek 控制台重新生成，粘贴到上面的密钥框保存（会走二次确认）。</p>
-      </div>
-    );
-  }
-  return (
-    <div className='rounded-md border border-border bg-muted/50 px-2 py-2'>
-      <span className='flex flex-wrap items-center gap-1.5'>
-        <Clock size={14} aria-hidden className='text-muted-foreground' />
-        <Pill tone='warn'>网络 / 超时 · {result.timeout_ms} ms</Pill>
-        <span className='text-[12px] text-foreground'>没拿到回执</span>
-      </span>
-      <p className='mt-2 text-[11px] leading-relaxed text-muted-foreground'>{result.message}</p>
-      <p className='text-[11px] leading-relaxed text-muted-foreground'>
-        处理：先确认 base_url 与本机出网；确实慢就把 timeout_ms 调大（当前 {AI_CONFIG.timeout_ms} ms），别急着换密钥。
-      </p>
-    </div>
-  );
-}
-
 function pct(part: number, total: number): string {
   if (total <= 0) return '0%';
   return Math.round((part / total) * 100) + '%';
@@ -322,4 +298,13 @@ function pct(part: number, total: number): string {
 /** 把 last_error 粗分类成「鉴权」与「网络/超时」，界面要一眼分得开。 */
 function kindOf(error: string): 'danger' | 'warn' {
   return /401|403|auth|key|鉴权|invalid/i.test(error) ? 'danger' : 'warn';
+}
+
+function digits(v: string): number {
+  return Number(v.replace(/\D/g, '')) || 0;
+}
+
+function decimal(v: string): number {
+  const n = Number(v.replace(/[^\d.]/g, ''));
+  return Number.isFinite(n) ? n : 0;
 }

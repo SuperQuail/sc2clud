@@ -28,6 +28,7 @@ const AdminPage = lazy(() => import('./pages/15-admin'));
 const AuthPage = lazy(() => import('./pages/16-auth'));
 const AppealPage = lazy(() => import('./pages/17-appeal'));
 const ComposePage = lazy(() => import('./pages/18-compose'));
+const SearchPage = lazy(() => import('./pages/19-search'));
 import { ThemeSwitcher } from '@/ui/theme-switcher';
 
 // 开发者房间：控件在这里**逐件验证**；业务代码只允许使用登记过的控件。
@@ -100,6 +101,7 @@ const GROUPS: NavGroup[] = [
       // 17-appeal / 18-compose 的导航条目由 Lead 加（app.tsx 是共享文件，避免施工者抢同一个文件）。
       { key: '17-appeal', title: '17 · 申诉与反馈', el: () => <AppealPage /> },
       { key: '18-compose', title: '18 · 发帖', el: () => <ComposePage /> },
+      { key: '19-search', title: '19 · 搜索', el: () => <SearchPage /> },
     ],
   },
 ];
