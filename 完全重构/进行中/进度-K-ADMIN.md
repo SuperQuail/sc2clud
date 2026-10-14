@@ -99,13 +99,15 @@
   `react-refresh/only-export-components` 与 `markdown-editor` 的 `exhaustive-deps`，不是我的文件）。
 - `cd web && node scripts/check-size.ts` → `检查 296 个文件，超限 1 个，登记 1 个` + `文件体量门禁通过`
   （唯一超限的是**别人的** `routes/messages.tsx 646 行`，已在 PENDING 里登记）。
-- `node scripts/check-budget.ts`：**没有重跑** —— 它量的是 `dist/` 里的产物，而 `dist/` 现在是
-  **15:15 的旧构建**（比我的改动早）。为了那一个数字去 `pnpm build` 会清空 `dist/`，与别人正在跑的
-  `pnpm check` 互踩（交接单 §3 第 5 条）。**结构上的保证**：我这一轮没有碰 `src/main.tsx`、
-  `app/router.tsx`、`app/shell.tsx`、`styles/**`，唯一的入口级改动是 `routes/admin.tsx` 的映射表 ——
-  而 `/admin/*` 在 `router.tsx` 里是 `lazy` 的（`routes/admin` 一个独立 chunk），所以首屏 JS 一个字节都没动。
-  上一轮同样的改动之后量到的是 `首屏 JS 148.7 KB / 150.0 KB`、`最大路由 chunk 96.0 KB / 120.0 KB` + 通过。
-  **给 Lead 的一句话**：合这一轮之后串行跑一次 `pnpm check` 就能把这条补齐。
+- `cd web && pnpm build && node scripts/check-budget.ts` → **`首屏 JS 148.8 KB / 150.0 KB`**、
+  `首屏 CSS 37.4 KB / 40.0 KB`、`最大路由 chunk 96.0 KB / 120.0 KB`、**`产物体积门禁通过`**。
+  说明两件事：① 我**跑了一次 `pnpm build`**（它清 `dist/`，是一次共享写入 —— 动手前确认了当时没有别的
+  `pnpm check` 在跑，跑完立刻量）—— Protocol §3 第 5 条只禁**并发**，这里没有并发；② 首屏从 148.7 涨到
+  **148.8**（+0.1 KB）**不是这一轮造成的**：我改的 24 个文件里没有 `main.tsx` / `app/router.tsx` /
+  `app/shell.tsx` / `styles/**`，唯一的入口级改动是 `routes/admin.tsx` 的映射表，而 `/admin/*` 在
+  `router.tsx:28` 是 `lazy(() => import('@/routes/admin'))` —— 后台代码整个落在自己的
+  `admin-*.js`（176.9 KB raw / 走的正是 `NAMED_ROUTE_LIMITS` 里那条 `^admin → 90 KB` 具名例外），
+  一个字节都不进首屏。那 0.1 KB 是别人在这段时间合进去的（`64ec296` 等）。
 - 后端：**没有碰 `forum/**` 一行**，所以不需要跑 Go 测试。
 
 ### 出图（`web/scripts/shoot-admin.ps1`，端口 5230，收工按 PID 关掉；产物在 `shots/kadmin/`）
