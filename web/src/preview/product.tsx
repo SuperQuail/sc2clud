@@ -65,6 +65,8 @@ const router = createMemoryRouter(
         { path: 'messages', lazy: () => import('@/routes/messages').then((m) => ({ Component: m.MessagesPage })) },
         { path: 'messages/:handle', lazy: () => import('@/routes/messages').then((m) => ({ Component: m.MessagesPage })) },
         { path: 'issues', lazy: () => import('@/routes/issues').then((m) => ({ Component: m.IssuesPage })) },
+        // 发帖页（FIX-JSON 报的：没有这一条 compose 就出不了图，那一处只有单测证据）
+        { path: 'new', lazy: () => import('@/routes/compose').then((m) => ({ Component: m.ComposePage })) },
         { path: 't/:topicId', lazy: () => import('@/routes/topic').then((m) => ({ Component: m.TopicPage })) },
         // 个人主页：右栏那一格打赏入口（SponsorCard）只在这一页出现 —— 2026-10-14 之前它挂不上这里，
         // 于是「赞助卡到底长什么样」只能靠单测说。L1 接线后必须出图。

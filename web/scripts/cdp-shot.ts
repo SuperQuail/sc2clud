@@ -7,6 +7,8 @@
 // 用法:
 //   node scripts/cdp-shot.ts <url> <out.png> [动作...]
 //   动作: click:<css> | type:<css>:<文本> | wait:<ms> | shot:<path> | key:<Enter|Escape>
+//         | size:<宽>x<高>（换视口，窄屏图用）| scroll:<css>（把某一块滚进视口）| mark:<文本>（往 DOM 插一个可见标记 —— 出图必须能自证
+//           拍的是当前源码，见交接单 §5.4；产品页的标记由 product.html 自己插）
 //
 // 2026-10-14：本文件一开始漏了类型（22 条 tsc 错），**连带把 pnpm build 也卡住了**
 // （build = tsc --noEmit && vite build，于是 pack-dev.ts 与 deploy.ps1 一起跑不动）。
@@ -53,11 +55,18 @@ const chrome = spawn(
 
 const sleep = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms));
 
-/** 一条 CDP 回包：这里只读我们要用的三个字段，不铺完整类型 */
-type CdpReply = {
+/**
+ * 一条 CDP **回包的 result 部分**（send() 已经把最外层剥掉了）。
+ *
+ * 层级说明（2026-10-14 踩过，FIX-JSON 实测报回）：`Runtime.evaluate` 的原始回包是
+ * `{id, result: { result: {type,value}, exceptionDetails }}`；`Page.captureScreenshot` 是 `{id, result: {data}}`。
+ * 这里把外面那层 result 当作 CdpResult 返回，所以取值是 `r.result.value` 与 `r.data` ——
+ * **不要再包一层**（包了的表现就是 click/type 永远「点不到」、截图拍出 0 字节）。
+ */
+type CdpResult = {
   result?: { value?: unknown };
   exceptionDetails?: { exception?: { description?: string } };
-  error?: unknown;
+  data?: string;
 };
 
 /** 等到 DevTools 端口起来并给出 webSocketDebuggerUrl */
@@ -81,23 +90,23 @@ async function targetWs(): Promise<string> {
 class Cdp {
   ws: WebSocket;
   id = 0;
-  pending = new Map<number, { resolve: (v: CdpReply) => void; reject: (e: Error) => void }>();
+  pending = new Map<number, { resolve: (v: CdpResult) => void; reject: (e: Error) => void }>();
 
   constructor(ws: WebSocket) {
     this.ws = ws;
     ws.addEventListener('message', (e: MessageEvent) => {
-      const msg = JSON.parse(String(e.data)) as { id?: number; error?: unknown; result?: CdpReply['result'] };
+      const msg = JSON.parse(String(e.data)) as { id?: number; error?: unknown; result?: CdpResult };
       if (msg.id === undefined) return;
       const p = this.pending.get(msg.id);
       if (p) {
         this.pending.delete(msg.id);
         if (msg.error) p.reject(new Error(JSON.stringify(msg.error)));
-        else p.resolve({ result: msg.result });
+        else p.resolve(msg.result ?? {});
       }
     });
   }
 
-  send(method: string, params: Record<string, unknown> = {}): Promise<CdpReply> {
+  send(method: string, params: Record<string, unknown> = {}): Promise<CdpResult> {
     const id = ++this.id;
     this.ws.send(JSON.stringify({ id, method, params }));
     return new Promise((resolve, reject) => this.pending.set(id, { resolve, reject }));
@@ -116,8 +125,8 @@ class Cdp {
     // CDP 的 Page.captureScreenshot 把 PNG 放在 result.data（base64），**不是** Runtime.evaluate 那种
     // result.value —— 这里曾经按 .value 读，于是每一张图都是 0 字节而脚本照样打印 OK
     // （2026-10-14 MIG-ART 实测：0 字节的「成功」出图比没有出图更糟）。
-    const { result } = await this.send('Page.captureScreenshot', { format: 'png' });
-    const b64 = typeof result?.data === 'string' ? result.data : '';
+    const r = await this.send('Page.captureScreenshot', { format: 'png' });
+    const b64 = typeof r.data === 'string' ? r.data : '';
     if (!b64) throw new Error('截图没拿到数据（result.data 为空）：' + path);
     mkdirSync(dirname(path), { recursive: true });
     writeFileSync(path, Buffer.from(b64, 'base64'));
@@ -176,6 +185,22 @@ for (const action of actions) {
     await cdp.send('Input.dispatchKeyEvent', { type: 'keyUp', ...d });
   } else if (kind === 'shot') {
     await cdp.shot(rest.join(':'));
+  } else if (kind === 'size') {
+    const [w, h] = (rest[0] ?? '').split('x').map(Number);
+    if (!w || !h) throw new Error('size 要写成 宽x高: ' + action);
+    await cdp.send('Emulation.setDeviceMetricsOverride', { width: w, height: h, deviceScaleFactor: 1, mobile: false });
+    await sleep(400);
+  } else if (kind === 'scroll') {
+    // 窄屏整页很长，要拍的那一块往往在视口外；滚到它再拍，图才看得清（6000px 的整页图缩到读不出字）
+    const sel = rest.join(':');
+    const ok = await cdp.eval<boolean>(`(() => { const el = document.querySelector(\`${sel}\`); if (!el) return false; el.scrollIntoView({ block: 'center' }); return true; })()`);
+    if (!ok) throw new Error('滚不到: ' + sel);
+    await sleep(300);
+  } else if (kind === 'mark') {
+    const text = rest.join(':');
+    await cdp.eval(
+      `(() => { const p = document.createElement('p'); p.id = 'shot-marker'; p.textContent = ${JSON.stringify(text)}; p.setAttribute('style', 'position:fixed;left:8px;bottom:8px;z-index:99999;background:#000;color:#fff;font:12px monospace;padding:2px 6px;border-radius:4px'); document.body.appendChild(p); return true; })()`,
+    );
   } else {
     throw new Error('不认识的动作: ' + action);
   }
