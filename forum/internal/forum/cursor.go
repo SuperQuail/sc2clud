@@ -36,6 +36,13 @@ var (
 	sentinelID   = int64(math.MaxInt64)
 )
 
+// sentinelTimeAsc 是**升序**列表（Issue 的 sort=old）第一页的哨兵，与 sentinelID 的用法成对。
+//
+// 为什么升序不能复用 sentinelTime：第一页的判据是「键在哨兵之后」——
+// 降序是 key < 9999，升序就得是 key > 0001。用 9999 的话升序第一页恒假、**永远返回零行**
+// （这是「第一页」这件事唯一的方向性，看代码看不出来，只有用例能钉住）。
+var sentinelTimeAsc = time.Date(1, 1, 1, 0, 0, 0, 0, time.UTC)
+
 func encodeCursor(k time.Time, id int64) string {
 	b, err := json.Marshal(cursor{K: k.UTC().Format(time.RFC3339Nano), ID: id})
 	if err != nil {

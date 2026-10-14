@@ -17,8 +17,19 @@ import (
 
 // ListIssues 是 Issue 列表：TopicPublicID 为空时是**全站聚合**（W3 的反馈页，§7.7）。
 //
-// 三种排序：updated（默认，走索引）/ created（索引仍是 status 前缀）/ comments（聚合排序，
-// **不走索引**，所以只允许首页——带上游标直接 400，不让它变成一条会扫全表的翻页路径）。
+// 检索与筛选（拍板 08 · J5 = 界面施工 §3.1 + §3.1.1）：
+//
+//	q       标题 + 正文，**不分词**（ILIKE '%q%'）。中文两字词靠这条就能命中：
+//	        PG 的 FTS 需要分词器，而这一版的 issue 量级与需求（"「卡关」搜得到"）
+//	        都不值得引入它（§3.1 的 q 就是「复用 PG 侧的检索能力」这一条）。
+//	status  open | closed（空 = 不限，换算在 issueStatusDB，只有那一处）
+//	kind    issue_kinds 表的值域（拍板 08 · J6）—— 不认识的直接 400，不静默当不限
+//	author  handle（空 = 不限）
+//	assignee 只接受 me（别的值 = 探测口，§7.7）
+//
+// 四种排序：updated（默认，走索引）/ created（新→旧）/ old（旧→新，同一列的另一个方向）/
+// comments（聚合排序，**不走索引**，所以只允许首页 —— 带上游标直接 400，
+// 不让它变成一条会扫全表的翻页路径）。
 func (s *Service) ListIssues(ctx context.Context, actor *authz.Actor, in ListIssuesInput) (*IssuePage, error) {
 	status, err := issueStatusDB(in.Status)
 	if err != nil {
@@ -31,7 +42,16 @@ func (s *Service) ListIssues(ctx context.Context, actor *authz.Actor, in ListIss
 	if sort == pgsql.IssueSortComments && in.Cursor != "" {
 		return nil, ErrSortUnpageable
 	}
-	f := pgsql.IssueFilter{Status: status, Kind: in.Kind, Sort: sort, Limit: limitOf(in.Limit)}
+	q := strings.TrimSpace(in.Q)
+	// 检索词是 SQL LIKE 的**模式**，% 与 _ 是通配符：不转义的话「%」会命中全部
+	// （看起来像「搜索生效了」），而「_」会变成任意单字符。**用户输入不是模式**。
+	if strings.ContainsAny(q, "%_\\") {
+		return nil, invalid("q", "检索词不能包含 % _ \\ 这些字符")
+	}
+	if len([]rune(q)) > maxIssueQ {
+		return nil, invalid("q", "最多 100 字")
+	}
+	f := pgsql.IssueFilter{Status: status, Kind: in.Kind, Q: q, Sort: sort, Limit: limitOf(in.Limit)}
 	// 值域来自 issue_kinds 表（拍板 08 · J6），**不是代码里的封闭枚举**。
 	// 不认识的 kind 直接 400 而不是「不过滤」：静默当不过滤会让前端以为筛选生效了。
 	if f.Kind != "" {
@@ -74,6 +94,11 @@ func (s *Service) ListIssues(ctx context.Context, actor *authz.Actor, in ListIss
 	cursorT, cursorID, err := pageCursor(in.Cursor)
 	if err != nil {
 		return nil, err
+	}
+	// sort=old 是升序：空游标的哨兵要取**最小值**，否则第一页恒假、返回零行
+	// （见 cursor.go 的 sentinelTimeAsc）。
+	if in.Cursor == "" && sort == pgsql.IssueSortOld {
+		cursorT = sentinelTimeAsc
 	}
 	f.CursorT, f.CursorID = cursorT, cursorID
 
@@ -426,16 +451,24 @@ func (s *Service) CreateIssueComment(ctx context.Context, actor *authz.Actor, is
 	return &d, nil
 }
 
+// maxIssueQ 是检索词上限（防止一个超长 ILIKE 被滥用成扫表工具）。
+const maxIssueQ = 100
+
+// parseIssueSort 是 ?sort= 的值域（§3.1 的 new|old|comments + 默认 updated）。
+// 四个名字都收：new 与 created 同义（前者是需求里的写法，后者是已发货的名字）——
+// 同一个方向只留一个实现，别名只是入口。
 func parseIssueSort(s string) (pgsql.IssueSort, error) {
 	switch s {
 	case "", "updated":
 		return pgsql.IssueSortUpdated, nil
-	case "created":
+	case "created", "new":
 		return pgsql.IssueSortCreated, nil
+	case "old":
+		return pgsql.IssueSortOld, nil
 	case "comments":
 		return pgsql.IssueSortComments, nil
 	default:
-		return "", invalid("sort", "只能是 updated / created / comments")
+		return "", invalid("sort", "只能是 updated / new / old / comments")
 	}
 }
 

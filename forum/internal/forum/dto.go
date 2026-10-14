@@ -271,11 +271,12 @@ type ListPostsInput struct {
 // ListIssuesInput 是 Issue 列表。TopicPublicID 为空 = 全站聚合。
 type ListIssuesInput struct {
 	TopicPublicID string
+	Q             string // 标题 + 正文字面匹配（拍板 08 · J5 / 界面施工 §3.1）
 	Status        string // open | closed | 空
-	Kind          string
+	Kind          string // issue_kinds 的值域（数据驱动，拍板 08 · J6）
 	Author        string // handle
 	AssigneeMe    bool
-	Sort          string // updated（默认）| created | comments
+	Sort          string // updated（默认）| new(=created) | old | comments
 	Cursor        string
 	Limit         int
 }

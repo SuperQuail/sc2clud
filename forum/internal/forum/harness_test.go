@@ -123,6 +123,19 @@ func (q *fakeQueue) payloadOf(taskType string) map[string]any {
 	return nil
 }
 
+// tasksOf 取某一类任务的全部副本（审核通知的去重取舍要看「几条」，见 M5 的用例）。
+func (q *fakeQueue) tasksOf(taskType string) []queue.Task {
+	q.mu.Lock()
+	defer q.mu.Unlock()
+	var out []queue.Task
+	for _, t := range q.tasks {
+		if t.Type == taskType {
+			out = append(out, t)
+		}
+	}
+	return out
+}
+
 func (q *fakeQueue) reset() {
 	q.mu.Lock()
 	defer q.mu.Unlock()

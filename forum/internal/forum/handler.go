@@ -600,6 +600,7 @@ func (h *Handler) verifySource(c *gin.Context) {
 }
 
 type listIssuesQuery struct {
+	Q        string `form:"q"`
 	Status   string `form:"status"`
 	Kind     string `form:"kind"`
 	Author   string `form:"author"`
@@ -623,7 +624,7 @@ func (h *Handler) listIssuesAt(c *gin.Context, topicPublicID string) {
 		return
 	}
 	page, err := h.svc.ListIssues(c.Request.Context(), h.actor(c), ListIssuesInput{
-		TopicPublicID: topicPublicID, Status: q.Status, Kind: q.Kind, Author: q.Author,
+		TopicPublicID: topicPublicID, Q: q.Q, Status: q.Status, Kind: q.Kind, Author: q.Author,
 		AssigneeMe: q.Assignee == "me", Sort: q.Sort, Cursor: q.Cursor, Limit: q.Limit,
 	})
 	if err != nil {

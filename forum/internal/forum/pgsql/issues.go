@@ -109,23 +109,40 @@ type IssueSort string
 const (
 	IssueSortUpdated  IssueSort = "updated"  // 默认：updated_at DESC, id DESC（走索引 n / o）
 	IssueSortCreated  IssueSort = "created"  // created_at DESC, id DESC（索引前缀仍是 status）
+	IssueSortOld      IssueSort = "old"      // created_at ASC, id ASC：**同一列的另一个方向**
 	IssueSortComments IssueSort = "comments" // comment_count DESC：**不走索引**，只能在首页用
 )
 
 func (s IssueSort) column() string {
 	switch s {
-	case IssueSortCreated:
+	case IssueSortCreated, IssueSortOld:
 		return "i.created_at"
 	case IssueSortComments:
-		return "comment_count"
+		// **就地展开的相关子查询**，不是 SELECT 列表里那个别名 comment_count：
+		// 别名在 WHERE / ORDER BY 里看不见（见 ListIssues 的说明）。
+		return issueCommentCountExpr
 	default:
 		return "i.updated_at"
 	}
 }
 
+// issueCommentCountExpr 是 issueCommentCount 那个别名的**裸表达式**：
+// 排序与游标都要在 WHERE / ORDER BY 里直接引用它，而别名在那里不可见。
+// 两处逐字同源 —— 改一处必须改另一处。
+const issueCommentCountExpr = "(SELECT count(*) FROM issue_comments c WHERE c.issue_id = i.id AND c.visibility = 'normal')"
+
+// ascending 只有 old 一档是 true：方向与游标比较符都要跟着翻，
+// 所以它和 column() 必须成对读 —— 单独改一个会让游标静默漏行。
+func (s IssueSort) ascending() bool { return s == IssueSortOld }
+
 // IssueFilter 是 Issue 列表的筛选形状。
 type IssueFilter struct {
-	TopicID    int64  // 0 = 全站聚合
+	TopicID int64 // 0 = 全站聚合
+	// Q 是标题 + 正文字面匹配（拍板 08 · J5）：**不分词**，所以中文两字词天然命中。
+	// 走 ILIKE '%q%'（没有索引可用）—— issue 的量级是「每个资源帖几十条」，
+	// 而引入分词器（PG 侧要装扩展、要维护词典）的代价远大于它省下的那点扫描。
+	// shortcut: 全表 ILIKE，issue 上百万行时换成 pg_trgm 的 GIN（那才需要扩展）。
+	Q          string
 	Status     string // keep_open | closed | 空
 	Kind       string
 	AuthorID   *int64
@@ -143,18 +160,34 @@ type IssueFilter struct {
 // sort=comments 的排序键是聚合出来的 comment_count，不走索引，所以 service 只允许它出现在
 // 首页（无游标）；带上游标直接 400（§7.7 的注）。
 func (s *Store) ListIssues(ctx context.Context, f IssueFilter) ([]IssueRow, error) {
-	col := f.Sort.column()
 	// scope 是**一个恒被引用的条件**，不是「有时拼进来的一整段」：args 里恒有 $5，
 	// 只要有一条路径不引用它，pgx 的 DescribeExec 就定不出它的类型 → 42P18
 	// （全站列表、无筛选时就是这么炸的）。改这条 SQL 的人请保持「参数个数 == 拼进去的个数」。
 	scope := "($5::bigint IS NULL OR i.topic_id = $5)"
-	cursor := "(" + col + ", i.id) < ($6::timestamptz, $7::bigint)"
-	if f.Sort == IssueSortComments {
-		// 首页才允许；带游标由 service 拒掉（所以这里给一个恒真的游标条件是没有意义的，
-		// 直接用 id 兜底，保证首页 20 条稳定）。
-		cursor = "TRUE"
+	// 方向与比较符成对：只有 old 是 ASC（见 IssueSort.ascending 的注释）。
+	cmp, dir := "<", "DESC"
+	if f.Sort.ascending() {
+		cmp, dir = ">", "ASC"
 	}
-	order := col + " DESC, i.id DESC"
+	// **排序键与游标键必须是同一个表达式**，而且都要能在 WHERE / ORDER BY 里直接展开：
+	// sort=comments 的键是相关子查询（算出来的数），column() 因此返回裸表达式而不是别名。
+	// 不能套一层 `SELECT * FROM (...) q ORDER BY comment_count` —— 外层看不见 i，
+	// 而游标条件建立在这个表达式上（第一次实现套了那层，得到 42P01「表 i 丢失 FROM 子句项」）。
+	col := f.Sort.column()
+	cursor := "(" + col + ", i.id) " + cmp + " ($6::timestamptz, $7::bigint)"
+	if f.Sort == IssueSortComments {
+		// comments 仍然没有可翻的游标（service 对「带游标」直接 400）；
+		// 恒真保证首页 20 条稳定，而不是让它变成一条会扫全表的翻页路径。
+		//
+		// **必须让 $6/$7 出现在 SQL 里并且带上类型**：pgx 的 DescribeExec 只看得到
+		//「参数有没有出现在 SQL 文本里、出现在什么位置」，恒真但完全不含参数的条件
+		// 会让它定不出类型 → 42P18「无法确定参数 $6 的数据类型」
+		// （这条在补 q / sort=old 的用例之前从来没被跑到：sort=comments 这条路径一次都没测过）。
+		// 写法是「参数 IS NOT DISTINCT FROM 它自己」——恒真、类型明确、不依赖任何列。
+		cursor = "($6::timestamptz IS NOT DISTINCT FROM $6::timestamptz" +
+			" AND $7::bigint IS NOT DISTINCT FROM $7::bigint)"
+	}
+	order := col + " " + dir + ", i.id " + dir
 
 	sqlText := "SELECT " + issueColumns + "," + issueAssignee + "," + issueCommentCount + issueFrom +
 		" WHERE " + scope +
@@ -162,12 +195,14 @@ func (s *Store) ListIssues(ctx context.Context, f IssueFilter) ([]IssueRow, erro
 		" AND ($2::text IS NULL OR i.kind = $2)" +
 		" AND ($3::bigint IS NULL OR i.author_id = $3)" +
 		" AND ($4::bigint IS NULL OR i.assignee_id = $4)" +
+		" AND ($9::text IS NULL OR i.title ILIKE '%' || $9::text || '%'" +
+		"                       OR i.body_text ILIKE '%' || $9::text || '%')" +
 		" AND " + cursor +
 		" ORDER BY " + order + " LIMIT $8"
 
 	// TopicID=0（全站聚合）时给 NULL，条件退化成恒真——$5 仍然被引用。
 	args := []any{nullIfEmpty(f.Status), nullIfEmpty(f.Kind), f.AuthorID, f.AssigneeID,
-		nullIfZero(f.TopicID), f.CursorT.UTC(), f.CursorID, f.Limit}
+		nullIfZero(f.TopicID), f.CursorT.UTC(), f.CursorID, f.Limit, nullIfEmpty(f.Q)}
 
 	var out []IssueRow
 	err := s.query(ctx, sqlText, args, func(rows *sql.Rows) error {
