@@ -117,6 +117,9 @@ func newModules(ctx context.Context, cfg *config.Config, in *Infra) (*Modules, e
 		// Render 是唯一的 Markdown 出口。Users 在本域没有调用点（SQL 里 JOIN 了 users），留 nil。
 		Render: mdRenderer{}, Queue: entQueue{in.Queue},
 		Counter: in.Counter, Limit: in.Limiter, TZ: siteTZ,
+		// 版主任免（C2）之后必须让该用户的权限快照失效，否则他会在缓存过期前仍然是版主
+		// （能锁主题、能关 Issue）—— 权限泄漏，不是显示延迟。这条是 D2 定下的约定。
+		InvalidateUser: m.Auth.InvalidateUser,
 	})
 	// release 的下载计数与 forum 的浏览量共用一个缓冲：pgcounter 一条语句写两张表。
 	m.Release = release.NewService(in.DB, in.Counter, in.Clock, in.Log)

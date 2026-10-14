@@ -21,6 +21,10 @@ var (
 	ErrIssueNotFound  = apperr.New("issue.not_found", http.StatusNotFound, "反馈不存在")
 	ErrSourceNotFound = apperr.New("source.not_found", http.StatusNotFound, "下载源不存在")
 	ErrBoardNotFound  = apperr.New("board.not_found", http.StatusNotFound, "分区不存在")
+	// 版主任免的两条（C2）。与 board.not_found 分开：前端要把「这个人不是版主」与
+	// 「这个分区不存在」显示成两句不同的话 —— 免一个本来就不是版主的人时，管理员多半点错了行。
+	ErrAdminModeratorNotFound     = apperr.New("board.moderator_not_found", http.StatusNotFound, "这个人不是该分区的版主")
+	ErrAdminModeratorUserNotFound = apperr.New("board.moderator_user_not_found", http.StatusNotFound, "用户不存在")
 
 	ErrTopicLocked   = apperr.New("topic.locked", http.StatusForbidden, "主题已锁定，不能再回复")
 	ErrReviewPending = apperr.New("topic.review_pending", http.StatusForbidden, "主题正在审核中，通过后才能回复")

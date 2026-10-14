@@ -111,6 +111,7 @@ SELECT s.token_hash, s.csrf_token, s.expires_at, s.id AS session_id,
         SELECT array_agg(m.board_id ORDER BY m.board_id) AS board_ids
           FROM board_moderators m
          WHERE m.user_id = u.id
+           AND m.grown_at IS NULL
            AND (m.expires_at IS NULL OR m.expires_at > $2)
        ) bm ON true
  WHERE s.token_hash = $1
@@ -184,7 +185,8 @@ SELECT u.id, u.public_id, u.status, u.email_verified_at, u.activated_at,
                    FROM perms x JOIN permissions p ON p.id = x.permission_id), '{}'::text[]) AS perm_keys,
        COALESCE((SELECT array_agg(m.board_id ORDER BY m.board_id)
                    FROM board_moderators m
-                  WHERE m.user_id = u.id AND (m.expires_at IS NULL OR m.expires_at > $3)), '{}'::bigint[]) AS board_ids,
+                  WHERE m.user_id = u.id AND m.grown_at IS NULL
+                    AND (m.expires_at IS NULL OR m.expires_at > $3)), '{}'::bigint[]) AS board_ids,
        COALESCE((SELECT jsonb_agg(jsonb_build_object('key', p.key, 'expires_at', up.expires_at) ORDER BY p.key)
                    FROM user_permissions up JOIN permissions p ON p.id = up.permission_id
                   WHERE up.user_id = u.id AND (up.expires_at IS NULL OR up.expires_at > $3)), '[]'::jsonb) AS extra

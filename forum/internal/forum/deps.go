@@ -84,4 +84,11 @@ type Deps struct {
 	// TZ 是站点时区（D7）：分区列表的「今日」按它算零点。nil = 兜底 Asia/Shanghai。
 	// 由 app 层从 config 解析好传进来 —— 本域不 import config（域与配置解耦，测试好造）。
 	TZ *time.Location
+	// InvalidateUser 由 auth 的 InvalidateUser 填（C2 的版主任免要用）。
+	//
+	// 为什么必须有：actor.BoardIDs 来自会话解析那条 SQL，缓存住的话刚被免掉的人在缓存过期前
+	// 仍然是该分区的版主（能锁主题、能关 Issue）—— 那是权限泄漏，不是显示延迟。
+	// 写 board_moderators 之后调它是 D2 定下的约定（见 ent 的 board_moderator.go 文件头）。
+	// nil = 没接线（测试台），按「本轮无缓存」处理。
+	InvalidateUser func(ctx context.Context, userID int64) error
 }

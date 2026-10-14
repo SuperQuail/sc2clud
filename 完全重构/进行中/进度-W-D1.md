@@ -90,6 +90,34 @@
     （先断言删之前是绿的 —— 不先绿一次，红可能是别的原因）。
   - 取舍：版本那条**只查「迁移过没有 / dirty」**，不比二进制里的最高迁移号 ——
     那个数字在 `migrations` 包，import 它会把认证域和部署动作绑在一起；严格比对在 `db.EnsureVersion`（拒绝启动）里。
-  - 下一步：C2a —— `GET/POST /admin/boards` + `PATCH /admin/boards/{id}` + `POST /admin/boards/reorder`
-    （`forum/internal/forum/admin_boards.go` + `pgsql/admin_boards.go`；权限 `board.manage`）。
+  - 下一步：C2 —— `/admin/boards*` 整组。
   - 阻塞：无
+
+- [ ] 第 5 步：C2 —— `/admin/boards*` 整组（代码已写完，**卡在别人在途的编译错误上手不了验证**）
+  - 做了什么：
+    - 迁移 `0025_boards_public_id.up/.down.sql`：boards 补 `public_id uuid NOT NULL DEFAULT gen_random_uuid()`
+      + `uq_boards_public_id`。**为什么必须补**：`httpx.ValidPathIDs("id","sid")` 是挂在 forum 域上的组中间件，
+      而 boards 是全站唯一只有自增主键的业务表 —— 不补这一列，`/admin/boards/{id}` 要么用可改的 slug
+      （改 slug = 废掉所有外链），要么违反「自增 id 不出 API」。
+    - 迁移 `0026_board_moderator_grown.up/.down.sql`：`board_moderators` 加 `grown_at`，
+      唯一约束 `(board_id,user_id)` 换成部分唯一索引 `WHERE grown_at IS NULL`。
+      卸任 = 置 `grown_at`（不删行：删了就答不出「谁什么时候被免的」），重复任命成为可能。
+      **连带改了三处判定 SQL 的 `grown_at IS NULL`**（`auth/pgsql/queries.go` 的 ResolveSessionSQL 与
+      LoadActorSQL、`forum/pgsql/access.go` 的 ACLRowFor）—— 漏一处就是权限泄漏。
+    - `forum/internal/forum/admin_boards.go`（DTO + 读）、`admin_boards_write.go`（建/改/重排）、
+      `admin_boards_acl.go`（ACL 全量替换 + 版主任免）、`handler_admin_boards.go`（9 条 handler）、
+      `pgsql/admin_boards.go` + `pgsql/admin_boards_write.go`（全部 SQL）、
+      `handler.go` 的 9 条路由（含 `ValidPathIDs("id")`）、`errors.go` 两条版主错误码、
+      `deps.go` 加 `InvalidateUser` 钩子、`app/modules.go` 把它接到 `m.Auth.InvalidateUser`。
+    - `admin_boards_test.go`：8 条用例（守卫 / 列表含归档+版主 / 建改 / 重排 / ACL 全量替换 / 版主任免闭环 /
+      权限快照失效钩子）。
+  - 证据（**目前只到编译前**）：`go vet ./internal/forum/` 的错误列表里**只剩别人的**
+    `internal\forum\cursor.go:52:26: undefined: badCursor`（L2「最热排序」在途改动，与我无关；
+    `git diff` 里 `cursor.go` 被删掉了 `badCursor()` 而替换还没写完），以及
+    `topics.go:136 unknown field Sort in struct literal of type TopicPage`。我的文件不再报错。
+  - 下一步：等 `internal/forum` 能编译后跑 `go test ./internal/forum/ -count=1`
+    （先单条 `-run TestAdminBoards|TestCreateAndUpdateBoard|TestReorderBoards|TestBoardACL|TestBoardModerator`
+    定位，再整包），把红转绿的证据补进这一条；然后跑 `gofmt -l .` 与 `go test ./internal/app/`。
+  - 阻塞：`forum/internal/forum/cursor.go` 与 `topics.go` 被**另一个在途工作包**（L2 最热排序）改坏，
+    `internal/forum` 整包编译不过。它的文件不在我的写作用域里（虽然同目录），我不动它。
+    需要那份工作包收尾，或在 Lead 确认后由我补 `badCursor`（一行：`apperr.Invalid(map[string]string{"cursor": "游标格式不正确"})`）。

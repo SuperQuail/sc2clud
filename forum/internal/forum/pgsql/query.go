@@ -9,6 +9,38 @@ import (
 // 事务内的写与读都走它们（把 *ent.Tx 传进来即可），所以同一段 SQL 在
 // 请求路径与事务里逐字相同。
 
+// Row 只需要一个 Scan：*sql.Row 与 rowScanner 都满足它。
+type Row interface {
+	Scan(dest ...any) error
+}
+
+// QueryRow 是「只取一行」的入口。ent 只给 QueryContext，没有 QueryRowContext，
+// 所以这里用 QueryContext 包一层 —— 否则每个调用点都要自己写一遍 rows.Next() 那五行。
+// 返回值必须 .Scan() 一次，Scan 会关掉底层的 Rows。
+func QueryRow(ctx context.Context, q Querier, sql string, args ...any) Row {
+	rows, err := q.QueryContext(ctx, sql, args...)
+	return rowScanner{rows: rows, err: err}
+}
+
+type rowScanner struct {
+	rows *sql.Rows
+	err  error
+}
+
+func (r rowScanner) Scan(dest ...any) error {
+	if r.err != nil {
+		return r.err
+	}
+	defer r.rows.Close()
+	if !r.rows.Next() {
+		if err := r.rows.Err(); err != nil {
+			return err
+		}
+		return ErrNoRows
+	}
+	return r.rows.Scan(dest...)
+}
+
 // queryQ 跑一条查询，把每一行交给 scan。
 func queryQ(ctx context.Context, q Querier, sql string, args []any, scan func(*sql.Rows) error) error {
 	rows, err := q.QueryContext(ctx, sql, args...)

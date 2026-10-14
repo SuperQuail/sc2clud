@@ -3,6 +3,7 @@ package forum
 import (
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -39,57 +40,70 @@ const (
 // 中间件只挂全局权限点；作用域权限（board.moderate）与归属判定在 service 里判（拍板 §1.2）。
 // **自带中间件的路由**（如收藏页要登录）用 rg.GET(path, requireLogin, h.xxx) 的三段式。
 func (h *Handler) Register(rg *gin.RouterGroup, requireLogin gin.HandlerFunc, perm func(string) gin.HandlerFunc) {
-	// 路径参数里的 {id} / {sid} 都是对外 ID（uuid），非 uuid 一律在这里挡成 400：
+	// 路径参数里的 {id} / {sid} 都是对外 ID（uuid），非 uuid 一律挡成 400：
 	// 它们会进 SQL 的 uuid 比较，放过去就是 PostgreSQL 22P02 → 500（D3）。
-	// 挂一组而不是每条路由一次，是因为「每条新路由都记得写」的规则等于没有规则。
-	rg = rg.Group("", httpx.ValidPathIDs("id", "sid"))
+	//
+	// **闸挂在读组上，写路由逐条挂在「身份 → 权限」之后**（拍板 08 · C9-3：先验身份再验路径 ID）。
+	// 这个顺序差决定未登录的非 uuid 请求拿 401 还是 400：
+	//   · 公开读没有身份可验，格式先判 → 400（C9-1：语义统一成 400）；
+	//   · 写路由先吃 requireLogin，未登录的非 uuid 请求 → **401**，登录了才轮到格式判定 → 400。
+	//
+	// 读组用 Group 一次挂完（「每条新路由都记得写」的规则等于没有规则）；写路由走 w() ——
+	// 路径闸是它的位置参数，漏写就是参数个数不对，不再是「忘了写一行」。
+	read := rg.Group("", httpx.ValidPathIDs("id", "sid"))
+	w := func(plate string, mw ...gin.HandlerFunc) []gin.HandlerFunc {
+		if !strings.HasPrefix(plate, "/") {
+			panic("forum: 路由模板必须以 / 开头：" + plate)
+		}
+		return mw
+	}
 
 	// ---- 公开读 ----
-	rg.GET("/boards", h.listBoards)
-	rg.GET("/boards/:slug", h.getBoard)
-	rg.GET("/topics", h.listTopics)
-	rg.GET("/topics/:id", h.getTopic)
-	rg.GET("/topics/:id/posts", h.listPosts)
-	rg.GET("/topics/:id/issues", h.listTopicIssues)
-	rg.GET("/issues", h.listIssues)
-	rg.GET("/issues/:id", h.getIssue)
-	rg.GET("/issues/:id/comments", h.listIssueComments)
-	rg.GET("/posts/:id/replies", h.listReplies)
-	rg.GET("/issue-comments/:id/replies", h.listIssueCommentReplies)
+	read.GET("/boards", h.listBoards)
+	read.GET("/boards/:slug", h.getBoard)
+	read.GET("/topics", h.listTopics)
+	read.GET("/topics/:id", h.getTopic)
+	read.GET("/topics/:id/posts", h.listPosts)
+	read.GET("/topics/:id/issues", h.listTopicIssues)
+	read.GET("/issues", h.listIssues)
+	read.GET("/issues/:id", h.getIssue)
+	read.GET("/issues/:id/comments", h.listIssueComments)
+	read.GET("/posts/:id/replies", h.listReplies)
+	read.GET("/issue-comments/:id/replies", h.listIssueCommentReplies)
 	// 个人主页的作品列表。**这条路由以前根本不存在** —— Service 有 ListUserTopics 的实现却没挂路由，
 	// 前端 GET /users/{handle}/topics 落到 NoRoute（返回 200 + SPA 壳），于是页面上「最近发布」
 	// 永远停在「正在加载帖子…」（2026-10-13 实测）。
-	rg.GET("/users/:handle/topics", h.listUserTopics)
+	read.GET("/users/:handle/topics", h.listUserTopics)
+	read.GET("/topics/:id/sources", h.listSources)
 	// 参数名必须与上面那组一致（gin 不允许同一层出现两个不同的通配名）。
-	rg.GET("/topics/:id/sources/:sid/go", h.goSource) // 302
+	read.GET("/topics/:id/sources/:sid/go", h.goSource) // 302
 
 	// ---- 写 ----
-	rg.POST("/topics", requireLogin, perm(authz.PermTopicCreate), httpx.BodyLimit(maxTopicBody), h.createTopic)
-	rg.PATCH("/topics/:id", requireLogin, perm(authz.PermTopicEditOwn), httpx.BodyLimit(maxTopicBody), h.updateTopic)
-	rg.DELETE("/topics/:id", requireLogin, perm(authz.PermTopicDeleteOwn), h.deleteTopic)
-	rg.POST("/topics/:id/lock", requireLogin, perm(authz.PermTopicLock), h.lockTopic)
-	rg.POST("/topics/:id/pin", requireLogin, perm(authz.PermTopicPin), h.pinTopic)
-	rg.POST("/topics/:id/feature", requireLogin, perm(authz.PermTopicPin), h.featureTopic)
-	rg.POST("/topics/:id/posts", requireLogin, perm(authz.PermTopicCreate), httpx.BodyLimit(maxWriteBody), h.createPost)
-	rg.PATCH("/posts/:id", requireLogin, perm(authz.PermTopicEditOwn), httpx.BodyLimit(maxWriteBody), h.updatePost)
-	rg.DELETE("/posts/:id", requireLogin, perm(authz.PermTopicDeleteOwn), h.deletePost)
-	rg.PUT("/posts/:id/vote", requireLogin, h.votePost)
-	rg.DELETE("/posts/:id/vote", requireLogin, h.unvotePost)
-	rg.PUT("/issue-comments/:id/vote", requireLogin, h.voteIssueComment)
-	rg.DELETE("/issue-comments/:id/vote", requireLogin, h.unvoteIssueComment)
-	rg.PUT("/topics/:id/like", requireLogin, h.likeTopic)
-	rg.DELETE("/topics/:id/like", requireLogin, h.unlikeTopic)
-	rg.PUT("/topics/:id/bookmark", requireLogin, h.bookmarkTopic)
-	rg.DELETE("/topics/:id/bookmark", requireLogin, h.unbookmarkTopic)
+	rg.POST("/topics", w("/topics", requireLogin, perm(authz.PermTopicCreate), httpx.ValidPathIDs("id", "sid"), httpx.BodyLimit(maxTopicBody), h.createTopic)...)
+	rg.PATCH("/topics/:id", w("/topics/:id", requireLogin, perm(authz.PermTopicEditOwn), httpx.ValidPathIDs("id", "sid"), httpx.BodyLimit(maxTopicBody), h.updateTopic)...)
+	rg.DELETE("/topics/:id", w("/topics/:id", requireLogin, perm(authz.PermTopicDeleteOwn), httpx.ValidPathIDs("id", "sid"), h.deleteTopic)...)
+	rg.POST("/topics/:id/lock", w("/topics/:id/lock", requireLogin, perm(authz.PermTopicLock), httpx.ValidPathIDs("id", "sid"), h.lockTopic)...)
+	rg.POST("/topics/:id/pin", w("/topics/:id/pin", requireLogin, perm(authz.PermTopicPin), httpx.ValidPathIDs("id", "sid"), h.pinTopic)...)
+	rg.POST("/topics/:id/feature", w("/topics/:id/feature", requireLogin, perm(authz.PermTopicPin), httpx.ValidPathIDs("id", "sid"), h.featureTopic)...)
+	rg.POST("/topics/:id/posts", w("/topics/:id/posts", requireLogin, perm(authz.PermTopicCreate), httpx.ValidPathIDs("id", "sid"), httpx.BodyLimit(maxWriteBody), h.createPost)...)
+	rg.PATCH("/posts/:id", w("/posts/:id", requireLogin, perm(authz.PermTopicEditOwn), httpx.ValidPathIDs("id", "sid"), httpx.BodyLimit(maxWriteBody), h.updatePost)...)
+	rg.DELETE("/posts/:id", w("/posts/:id", requireLogin, perm(authz.PermTopicDeleteOwn), httpx.ValidPathIDs("id", "sid"), h.deletePost)...)
+	rg.PUT("/posts/:id/vote", w("/posts/:id/vote", requireLogin, httpx.ValidPathIDs("id", "sid"), h.votePost)...)
+	rg.DELETE("/posts/:id/vote", w("/posts/:id/vote", requireLogin, httpx.ValidPathIDs("id", "sid"), h.unvotePost)...)
+	rg.PUT("/issue-comments/:id/vote", w("/issue-comments/:id/vote", requireLogin, httpx.ValidPathIDs("id", "sid"), h.voteIssueComment)...)
+	rg.DELETE("/issue-comments/:id/vote", w("/issue-comments/:id/vote", requireLogin, httpx.ValidPathIDs("id", "sid"), h.unvoteIssueComment)...)
+	rg.PUT("/topics/:id/like", w("/topics/:id/like", requireLogin, httpx.ValidPathIDs("id", "sid"), h.likeTopic)...)
+	rg.DELETE("/topics/:id/like", w("/topics/:id/like", requireLogin, httpx.ValidPathIDs("id", "sid"), h.unlikeTopic)...)
+	rg.PUT("/topics/:id/bookmark", w("/topics/:id/bookmark", requireLogin, httpx.ValidPathIDs("id", "sid"), h.bookmarkTopic)...)
+	rg.DELETE("/topics/:id/bookmark", w("/topics/:id/bookmark", requireLogin, httpx.ValidPathIDs("id", "sid"), h.unbookmarkTopic)...)
 	rg.GET("/me/bookmarks", requireLogin, h.listBookmarks)
-	rg.POST("/topics/:id/issues", requireLogin, perm(authz.PermTopicCreate), httpx.BodyLimit(maxWriteBody), h.createIssue)
-	rg.PATCH("/issues/:id", requireLogin, perm(authz.PermTopicEditOwn), httpx.BodyLimit(maxWriteBody), h.updateIssue)
-	rg.POST("/issues/:id/comments", requireLogin, perm(authz.PermTopicCreate), httpx.BodyLimit(maxWriteBody), h.createIssueComment)
-	rg.GET("/topics/:id/sources", h.listSources)
-	rg.POST("/topics/:id/sources", requireLogin, perm(authz.PermTopicEditOwn), httpx.BodyLimit(maxWriteBody), h.saveSource)
-	rg.PATCH("/topics/:id/sources/:sid", requireLogin, perm(authz.PermTopicEditOwn), httpx.BodyLimit(maxWriteBody), h.updateSource)
-	rg.DELETE("/topics/:id/sources/:sid", requireLogin, perm(authz.PermTopicEditOwn), h.deleteSource)
-	rg.POST("/topics/:id/sources/:sid/verify", requireLogin, perm(authz.PermTopicEditOwn), h.verifySource)
+	rg.POST("/topics/:id/issues", w("/topics/:id/issues", requireLogin, perm(authz.PermTopicCreate), httpx.ValidPathIDs("id", "sid"), httpx.BodyLimit(maxWriteBody), h.createIssue)...)
+	rg.PATCH("/issues/:id", w("/issues/:id", requireLogin, perm(authz.PermTopicEditOwn), httpx.ValidPathIDs("id", "sid"), httpx.BodyLimit(maxWriteBody), h.updateIssue)...)
+	rg.POST("/issues/:id/comments", w("/issues/:id/comments", requireLogin, perm(authz.PermTopicCreate), httpx.ValidPathIDs("id", "sid"), httpx.BodyLimit(maxWriteBody), h.createIssueComment)...)
+	rg.POST("/topics/:id/sources", w("/topics/:id/sources", requireLogin, perm(authz.PermTopicEditOwn), httpx.ValidPathIDs("id", "sid"), httpx.BodyLimit(maxWriteBody), h.saveSource)...)
+	rg.PATCH("/topics/:id/sources/:sid", w("/topics/:id/sources/:sid", requireLogin, perm(authz.PermTopicEditOwn), httpx.ValidPathIDs("id", "sid"), httpx.BodyLimit(maxWriteBody), h.updateSource)...)
+	rg.DELETE("/topics/:id/sources/:sid", w("/topics/:id/sources/:sid", requireLogin, perm(authz.PermTopicEditOwn), httpx.ValidPathIDs("id", "sid"), h.deleteSource)...)
+	rg.POST("/topics/:id/sources/:sid/verify", w("/topics/:id/sources/:sid/verify", requireLogin, perm(authz.PermTopicEditOwn), httpx.ValidPathIDs("id", "sid"), h.verifySource)...)
 	rg.PUT("/users/:handle/block", requireLogin, h.blockUser)
 	rg.DELETE("/users/:handle/block", requireLogin, h.unblockUser)
 
@@ -97,7 +111,23 @@ func (h *Handler) Register(rg *gin.RouterGroup, requireLogin gin.HandlerFunc, pe
 	// 挂在 /admin 下：判据是全局权限点 post.review，与「作者也能做」的那批动作不是一回事。
 	// 中间件只判权限点；「这条主题在不在、可不可判」在 service 里判（拍板 §1.2）。
 	rg.GET("/admin/topics", requireLogin, perm(authz.PermPostReview), h.listReviewQueue)
-	rg.POST("/admin/topics/:id/review", requireLogin, perm(authz.PermPostReview), h.reviewTopic)
+	rg.POST("/admin/topics/:id/review", w("/admin/topics/:id/review", requireLogin, perm(authz.PermPostReview), httpx.ValidPathIDs("id", "sid"), h.reviewTopic)...)
+
+	// ---- 分区管理（C2；界面需求 §5.3 + §5.10）。权限点一律 board.manage ----
+	//
+	// 路径参数 {id} 是分区的**对外 ID（uuid）**：boards 只有自增主键，0025 才补的 public_id。
+	// 所以这批路由与上面那批一样要过 ValidPathIDs —— 少了它，非 uuid 会进
+	// "WHERE public_id = $1" 的 uuid 比较，得到 PostgreSQL 22P02 → 500（D3 那一族）。
+	rg.GET("/admin/boards", requireLogin, perm(authz.PermBoardManage), h.adminListBoards)
+	rg.POST("/admin/boards", w("/admin/boards", requireLogin, perm(authz.PermBoardManage), httpx.BodyLimit(maxWriteBody), h.adminCreateBoard)...)
+	// 重排必须在 :id 之前注册：gin 的静态段优先，但把顺序写对也让读的人不必去想这件事。
+	rg.POST("/admin/boards/reorder", w("/admin/boards/reorder", requireLogin, perm(authz.PermBoardManage), httpx.BodyLimit(maxWriteBody), h.adminReorderBoards)...)
+	rg.PATCH("/admin/boards/:id", w("/admin/boards/:id", requireLogin, perm(authz.PermBoardManage), httpx.ValidPathIDs("id"), httpx.BodyLimit(maxWriteBody), h.adminUpdateBoard)...)
+	rg.GET("/admin/boards/:id/acl", requireLogin, perm(authz.PermBoardManage), httpx.ValidPathIDs("id"), h.adminBoardACL)
+	rg.PUT("/admin/boards/:id/acl", w("/admin/boards/:id/acl", requireLogin, perm(authz.PermBoardManage), httpx.ValidPathIDs("id"), httpx.BodyLimit(maxWriteBody), h.adminReplaceBoardACL)...)
+	rg.GET("/admin/boards/:id/moderators", requireLogin, perm(authz.PermBoardManage), httpx.ValidPathIDs("id"), h.adminBoardModerators)
+	rg.POST("/admin/boards/:id/moderators", w("/admin/boards/:id/moderators", requireLogin, perm(authz.PermBoardManage), httpx.ValidPathIDs("id"), httpx.BodyLimit(maxWriteBody), h.adminGrantBoardModerator)...)
+	rg.DELETE("/admin/boards/:id/moderators/:uid", w("/admin/boards/:id/moderators/:uid", requireLogin, perm(authz.PermBoardManage), httpx.ValidPathIDs("id", "uid"), h.adminRevokeBoardModerator)...)
 }
 
 // ---- 读 ----
