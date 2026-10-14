@@ -11,6 +11,21 @@ rg = rg.Group("", httpx.ValidPathIDs("id"))
 
 ## 步骤
 
+- [x] reward 挂闸 + 会红用例（这个域换了两次证法，见下）
+  - 做了什么：`reward.Register` 第一行加 `rg = rg.Group("", httpx.ValidPathIDs("id"))`；
+    本域 {id} 两条：`DELETE /rewards/{id}`、`POST /admin/rewards/{id}/verify`。新增 `reward/pathguard_test.go`。
+  - 证据（证法一，**证不出红，作废**）：先写成「真请求 + 断言 400」，结果挂闸前就 PASS ——
+    reward 的 `parsePublicID` 返回的 `ErrInvalidInput + {id: 格式不正确}` 与闸的 400 逐字节相同
+    （日志 `http fail code=common.invalid_input status=400`）。
+  - 证据（证法二，**红**）：改用「`requireLogin` 故意失败 + handler 接 nil `*Service`」：
+    挂闸前 `go test ./internal/reward/ -run TestNonUUIDPathIDIsRejectedBeforeService -v` →
+    `pathguard_test.go:44: 非 uuid 的路径 id 必须在鉴权与 service 之前被挡成 400，实际 401：{"error":{"code":"common.unauthorized"...}}`；
+    挂闸后同一命令 PASS（400，且 service 一次没碰）。
+    注：中途试过「nil service 会 panic」这条推理，实测**错** —— WithdrawDonation 在 nil 解引用之前
+    就 parse 返回了 400，也是 PASS，所以那条也证不出红。
+  - 下一步：八个域全部挂完，进入收工验证（见文末）。
+  - 阻塞：无
+
 - [x] site 挂闸 + 会红用例
   - 做了什么：`site.Register` 第一行加 `rg = rg.Group("", httpx.ValidPathIDs("id"))`；
     本域 {id} 三条：`POST /banners/{id}/dismiss`、`PATCH /admin/announcements/{id}`、

@@ -29,6 +29,9 @@ func NewHandler(svc *Service, actor ActorFunc) *Handler {
 //
 //	reward.NewHandler(svc, authAdapter).Register(v1, requireLogin, perm, limit)
 func (h *Handler) Register(rg *gin.RouterGroup, requireLogin, perm func(...string) gin.HandlerFunc, limit func(string, gin.HandlerFunc) gin.HandlerFunc) {
+	// 非 uuid 的 {id} 一律在进 service 之前挡成 400（见 platform/httpx.ValidPathIDs）。
+	rg = rg.Group("", httpx.ValidPathIDs("id"))
+
 	user := rg.Group("/users/:handle")
 	user.GET("/channels", h.channels)
 	user.GET("/rewards", h.userDonations)
