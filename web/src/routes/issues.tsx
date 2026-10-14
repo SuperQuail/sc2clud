@@ -14,7 +14,6 @@ import {
   updateIssue,
   type Issue,
   type IssueComment as ApiIssueComment,
-  type IssueDetail as ApiIssueDetail,
 } from '@/lib/api/issues';
 import type { TopicAuthorSummary } from '@/lib/api/forum';
 import { appPath, routePath } from '@/lib/url';
@@ -232,7 +231,6 @@ export function IssuesPage() {
     [rows, parsed, pickedLabels],
   );
 
-  const selectedRow = rows.find((r) => r.id === selectedId) ?? null;
   const labelOptions = useMemo(() => [...new Set(rows.flatMap((r) => r.tags))], [rows]);
   const topicTitle = rows[0]?.topic_title ?? '';
   const hasNext = sort !== 'comments' && list.hasNextPage;
@@ -413,11 +411,10 @@ export function IssuesPage() {
               <Loading what='反馈详情' className='py-16' />
             ) : detail.isError ? (
               <ErrorState what='反馈详情' error={detail.error} onRetry={() => void detail.refetch()} />
-            ) : selectedRow === null ? (
-              <ErrorState what='反馈详情' error={new Error('这条反馈不在当前列表里')} />
-            ) : (
+            ) : detail.data ? (
+              // 详情面板**只吃详情响应**：换页签把这条挤出列表时它照样在（列表那边只是筛选结果）
               <IssueDetail
-                issue={toDesignDetail(selectedRow, (detail.data as ApiIssueDetail).body_html)}
+                issue={toDesignDetail(detail.data, detail.data.body_html)}
                 comments={thread.data ?? []}
                 me={me}
                 // shortcut: 提及候选要一个 users 端点（lib/api 里还没有），与 routes/topic.tsx:279 同一处缺口
@@ -426,7 +423,7 @@ export function IssuesPage() {
                 onComment={(parentId, body) => comment.mutate({ parentId, body: body.json })}
                 onClose={() => setSelectedId(null)}
               />
-            )}
+            ) : null}
             {thread.isError ? (
               <div className='mt-3'>
                 <ErrorState what='评论区' error={thread.error} onRetry={() => void thread.refetch()} />
