@@ -12,6 +12,12 @@ import type { NoticeSources } from './notice-logic';
 // 数据是注入出来的（notice-logic 的 NoticeSources）：两边用**同一份**假数据，
 // 所以差别只剩数据之外的东西 —— 按 §0，那部分必须为零。
 
+// 这条用例要**动态 import 两个入口**（房间页 + 产品 View），而产品侧那块带懒加载。
+// 单独跑很快，**全量跑时 CPU 争抢会超过 vitest 默认的 5s**（2026-10-14 实测：单跑绿、全量连红两次，
+// 报的就是 `Test timed out in 5000ms`）—— 给这一份文件放宽，别让 flake 挡住全量门禁。
+// 只放宽这一份：别的文件仍按默认，真变慢会被照常抓到。
+vi.setConfig({ testTimeout: 20_000 });
+
 afterEach(() => {
   vi.doUnmock('@/devroom/pages/10-messages/mock-data');
   vi.resetModules();
