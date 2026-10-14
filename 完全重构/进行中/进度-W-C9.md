@@ -11,6 +11,21 @@ rg = rg.Group("", httpx.ValidPathIDs("id"))
 
 ## 步骤
 
+- [x] title 挂闸 + 会红用例
+  - 做了什么：`title.Register` 第一行加 `rg = rg.Group("", httpx.ValidPathIDs("id"))`；
+    本域 {id} 两条：`PATCH /admin/titles/{id}`、`POST|DELETE /admin/users/{id}/titles/{titleId}`。
+    闸只点名 "id" —— `titleId` 是另一条 ID，但本域 `AssignTitle`/`UpdateTitle` 早已各自
+    `checkPublicID`（语义是「找不到」404），不在这条任务的取舍里，所以不加第二个名字。
+    新增 `title/pathguard_test.go`。
+  - 证据：**先红**（没挂闸）`go test ./internal/title/ -run TestNonUUIDPathIDIsBadRequest -v` →
+    `pathguard_test.go:34: 非 uuid 的路径 id 必须是 400，实际 404：{"error":{"code":"common.not_found","message":"内容不存在"...}}`；
+    挂闸后 `go test ./internal/title/ -count=1` → `ok forum/internal/title 22.130s`（整包，含
+    `TestRegisterRoutesDoNotConflict` —— 闸没有把路由注册弄坏）。
+  - 下一步：report —— `forum/internal/report/handler.go` 的 `Register` 第一行加同一行
+    （本域 {id} 一条：`PATCH /admin/reports/{id}`），
+    用例打 `PATCH /api/v1/admin/reports/not-a-uuid`（body `{"state":"handled","note":"x"}`，要能让 Bind 过）。
+  - 阻塞：无
+
 - [x] mail 挂闸 + 会红用例
   - 做了什么：`mail.Register` 第一行加 `rg = rg.Group("", httpx.ValidPathIDs("id"))`；
     本域 {id} 三条都在 /admin 下：`PATCH /admin/mail/accounts/{id}`、`DELETE /admin/mail/accounts/{id}`、

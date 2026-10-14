@@ -26,6 +26,9 @@ func NewHandler(svc *Service, users UserLookup, actorOf ActorFromGin) *Handler {
 // Register 挂头衔相关的五条路由（d4 §3.4）。
 // {id} 一律是 public_id（v2 §21.1）：/admin/users/{id} 是用户，/admin/titles/{id} 是头衔。
 func (h *Handler) Register(rg *gin.RouterGroup, requireLogin gin.HandlerFunc, perm PermMiddleware) {
+	// 非 uuid 的 {id} 一律在进 service 之前挡成 400（见 platform/httpx.ValidPathIDs）。
+	rg = rg.Group("", httpx.ValidPathIDs("id"))
+
 	rg.GET("/titles", h.listTitles)
 	rg.GET("/users/:handle/titles", h.userTitles)
 	rg.PUT("/me/title", requireLogin, h.equip)
