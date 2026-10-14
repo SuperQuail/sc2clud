@@ -80,3 +80,43 @@ func TestBindErrorIsAppErr(t *testing.T) {
 		t.Fatalf("bindError 必须返回 *apperr.Error，实际 %T", err)
 	}
 }
+
+// 路径参数闸：非 uuid 的 {id} 必须在 handler 之前变成 400，而不是让它进 SQL
+// （PostgreSQL 22P02 → 500）。旧行为下这条用例红：handler 会收到 "not-a-uuid"。
+func TestValidPathIDsRejectsNonUUID(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	r := gin.New()
+	r.Use(RequestIDMiddleware(testLogger()))
+	// 与真实挂法一致：闸挂在一组上，handler 只负责回 200。
+	rg := r.Group("/api/v1", ValidPathIDs("id", "sid"))
+	reached := ""
+	rg.GET("/topics/:id", func(c *gin.Context) { reached = c.Param("id"); OK(c, gin.H{"id": c.Param("id")}) })
+	rg.GET("/topics/:id/sources/:sid/go", func(c *gin.Context) { reached = c.Param("sid"); OK(c, gin.H{"sid": c.Param("sid")}) })
+
+	for _, tc := range []struct{ name, path string }{
+		{"判定路由的 id", "/api/v1/topics/not-a-uuid"},
+		{"第二个参数 sid", "/api/v1/topics/00000000-0000-7000-8000-000000000000/sources/nope/go"},
+	} {
+		reached = ""
+		w := httptest.NewRecorder()
+		r.ServeHTTP(w, httptest.NewRequest(http.MethodGet, tc.path, nil))
+		if w.Code != http.StatusBadRequest {
+			t.Fatalf("%s：状态码 %d, want 400: %s", tc.name, w.Code, w.Body.String())
+		}
+		if reached != "" {
+			t.Fatalf("%s：闸放行了非 uuid，handler 被调用了", tc.name)
+		}
+		errObj := decode(t, w)["error"].(map[string]any)
+		if errObj["code"] != apperr.CodeInvalidInput {
+			t.Fatalf("%s：code=%v", tc.name, errObj["code"])
+		}
+	}
+
+	// 合法 uuid 照常进 handler（闸不能把好路径也挡了）
+	id := "018f0e60-0000-7000-8000-000000000001"
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/api/v1/topics/"+id, nil))
+	if w.Code != http.StatusOK || reached != id {
+		t.Fatalf("合法 uuid 应当进 handler：%d %s", w.Code, w.Body.String())
+	}
+}

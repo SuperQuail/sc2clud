@@ -12,6 +12,7 @@ import (
 	"github.com/go-playground/validator/v10"
 
 	"forum/internal/platform/apperr"
+	"forum/internal/platform/idgen"
 )
 
 // Bind 解析并校验请求体。失败时返回 *apperr.Error（handler 交给 httpx.Fail）。
@@ -28,6 +29,34 @@ func BindQuery(c *gin.Context, dst any) error {
 		return bindError(dst, err)
 	}
 	return nil
+}
+
+// ValidPathIDs 是路径参数里的对外 ID（uuid）的唯一一道闸，挂在**路由器组**上：
+//
+//	rg = rg.Group("", httpx.ValidPathIDs("id", "sid"))
+//
+// 为什么必须在进 handler 之前挡下：这些参数最终会进 SQL 的 uuid 比较
+// （pgsql 的 "WHERE public_id = $1"），非 uuid 会得到 PostgreSQL 22P02，
+// 而它到不了任何一层业务错误映射 —— 冒到 HTTP 就是 500 common.internal。
+// 2026-10-14 实测：POST /admin/topics/not-a-uuid/review 与 PATCH /topics/not-a-uuid 都是 500。
+//
+// 放在组上而不是每个 handler 里：这是一条**格式**规则（对外 ID 一律 uuid），
+// 每条新路由都记得写一遍的规则等于没有规则。值域与非 uuid 的取舍见各 service（404 由它出）。
+// 只校验点名的参数：:slug / :handle 不是 ID。
+func ValidPathIDs(names ...string) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		for _, name := range names {
+			v := c.Param(name)
+			if v == "" {
+				continue // 路由里没有这个参数（gin 对不同方法共用同一棵前缀树）
+			}
+			if _, err := idgen.ParsePublicID(v); err != nil {
+				Fail(c, apperr.Invalid(map[string]string{name: "格式不正确"}))
+				return
+			}
+		}
+		c.Next()
+	}
 }
 
 func bindError(dst any, err error) error {

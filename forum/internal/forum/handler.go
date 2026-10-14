@@ -39,6 +39,11 @@ const (
 // 中间件只挂全局权限点；作用域权限（board.moderate）与归属判定在 service 里判（拍板 §1.2）。
 // **自带中间件的路由**（如收藏页要登录）用 rg.GET(path, requireLogin, h.xxx) 的三段式。
 func (h *Handler) Register(rg *gin.RouterGroup, requireLogin gin.HandlerFunc, perm func(string) gin.HandlerFunc) {
+	// 路径参数里的 {id} / {sid} 都是对外 ID（uuid），非 uuid 一律在这里挡成 400：
+	// 它们会进 SQL 的 uuid 比较，放过去就是 PostgreSQL 22P02 → 500（D3）。
+	// 挂一组而不是每条路由一次，是因为「每条新路由都记得写」的规则等于没有规则。
+	rg = rg.Group("", httpx.ValidPathIDs("id", "sid"))
+
 	// ---- 公开读 ----
 	rg.GET("/boards", h.listBoards)
 	rg.GET("/boards/:slug", h.getBoard)

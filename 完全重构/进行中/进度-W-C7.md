@@ -14,15 +14,23 @@
     `asActorPost` 多收一个 `expectedUpdatedAt`；X1 从「记录 500」改成「必须是 400」。
     `gofmt -l .` 无输出、`go vet ./internal/forum/` 退出 0；
     `go test ./internal/forum/ -run 'TestReview|TestEditBody|TestHandler|TestService'` → ok。
-  - 下一步：D3 —— 在 `forum/internal/platform/httpx` 新增路径参数闸（名称待定，形如
-    `ValidPathIDs(names ...string) gin.HandlerFunc`，非 uuid → `apperr.Invalid` 400），
-    在 `forum/internal/forum/handler.go` 的 `Register` **第一行**用
-    `rg = rg.Group("", httpx.ValidPathIDs("id", "sid"))` 挂一次；handler_test 加一条会红的用例。
+  - 下一步：（已完成，见下一条 D3）
   - 阻塞：无
 
-- [ ] D3 非 uuid 路径参数 → 500（SQLSTATE 22P02 冒到 HTTP）
-  - 证据：
-  - 下一步：
+- [x] D3 非 uuid 路径参数 → 500（SQLSTATE 22P02 冒到 HTTP）
+  - 证据：修法 = 新增 `httpx.ValidPathIDs("id","sid")`（`forum/internal/platform/httpx/bind.go`，
+    非 uuid → `apperr.Invalid` 400），在 `forum/internal/forum/handler.go` 的 `Register` 第一行
+    `rg = rg.Group("", httpx.ValidPathIDs("id","sid"))` 挂一次。
+    **会红的证明**：把那一行临时换成 `_ = httpx.ValidPathIDs(...)` 后
+    `go test ./internal/forum/ -run TestBlindMalformedUUID -v` →
+    `blind_probe_test.go:737: 期望 HTTP 400，实际 500: {"code":"common.internal"}`；装回去 → PASS。
+    两条 `GET /topics/not-a-uuid` 与 `PATCH /topics/not-a-uuid` 断言现在都 400；
+    合法但不存在的 uuid 仍是 404（闸没把 404 变 400，`TestBlindInvalidParamsOnHTTP` 绿）。
+    `go test ./internal/platform/httpx/` ok（新增 `TestValidPathIDsRejectsNonUUID`，含 sid 与
+    「合法 uuid 照常进 handler」两侧）；`gofmt -l` 空、`go vet` 退出 0。
+  - 下一步：D4 —— `forum/internal/forum/topics.go` 的 `requireTopicEdit`（560 行）
+    把 `return apperr.ErrForbidden` 改成 `return ErrTopicNotFound`，让
+    `TestBlindGuardsOnHTTP` 那条「无权者改别人的正文」得到 404 topic.not_found。
   - 阻塞：无
 
 - [ ] D4 无权编辑别人的主题返回 403 vs errors.go 注释「不区分」
