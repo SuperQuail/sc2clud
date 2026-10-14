@@ -24,3 +24,29 @@
     幂等 = `ON CONFLICT DO NOTHING`、计数现算不落列、外键各一条非部分索引）；再写 `forum/internal/follow/{types,service,handler}.go`
     + `follow/pgsql/pgsql.go`（端点：`GET/PUT/DELETE /boards/{slug}/follow`、`GET/PUT/DELETE /users/{handle}/follow`、`GET /me/following`）
   - 阻塞：无
+
+- [x] L5 第一步 · 关注域落地：迁移 0040 + `forum/internal/follow/{types,service,handler}.go` + `follow/pgsql/pgsql.go` + 用例
+  - 做了什么：`follows` 表（user_id / board_id **恰好一个非空**，两条部分唯一索引做幂等，计数现算不落列）；
+    九条路由：`GET/PUT/DELETE /boards/{slug}/follow`、`GET/PUT/DELETE /users/{handle}/follow`、
+    `GET /me/following/{boards,users}`、公开读 `GET /boards/{slug}/followers`、`GET /users/{handle}/followers`；
+    **不发任何通知**（拍板：推送算备用），用例钉住这一点。
+  - 证据：`gofmt -l internal/follow` 空、`go vet ./internal/follow/...` 退出码 0、
+    `go test ./internal/follow/... -count=1` → `ok forum/internal/follow 17.676s`（11 条用例）。
+    **中途抓到一条真 bug**：游标取的是被关注者的 id，而排序键是 `(f.created_at, f.id)` —— 同一时间戳的分页里
+    第一行每页重复出现（实测 ccc 出现两次）。改成 `f.id` 后 3 条一页一条地翻完、无重复无遗漏。
+  - 下一步：`forum/internal/notify/stream.go` —— SSE `GET /api/v1/notifications/stream`（老站做法：`Sse` + `keep-alive` +
+    `X-Accel-Buffering: no`；进程内 broadcast 容量 256），service 写完后 `notifyChanged(userID)` 发信号；用例在 `notify/stream_test.go`。
+  - 阻塞：无（但**接线归 Lead**：`forum/internal/app/http.go:105` 要加一行
+    `follow.NewHandler(m.Follow, auth.FromGin).Register(v1, m.requireLogin())`，`m.Follow` 在 `modules.go` 里 `follow.NewService(followpgsql.New(in.DB))`。见本文件末尾。）
+## 需要 Lead 接线（我不碰 `forum/internal/app/**`）
+
+1. **follow 域挂路由**：`forum/internal/app/modules.go` 的 `Modules` 加 `Follow *follow.Service`，
+   装配处 `m.Follow = follow.NewService(followpgsql.New(in.DB))`；
+   `http.go:105` 那一排后面加一行 `follow.NewHandler(m.Follow, auth.FromGin).Register(v1, m.requireLogin())`。
+2. **SSE 已自带接线**（`notify.NewHandler` 里 `svc.publish = hub.Publish`），app 层**不需要改**。
+3. **分区页「成员」格（I6 的后半）**：`web/src/routes/topic.tsx:415-419` 的 `toDesignBoard()` 仍把
+   `member_count` 写死 0、`joined` 写死 false（那两行 `shortcut:` 注释现在已经是假话）。
+   数据源已经有了：`GET /api/v1/boards/{slug}/follow` → `{ target, slug, following, follower_count }`。
+   改法是给 `BoardSummary` 多传两个真值（该文件与 `topic.tsx` 都不在我的作用域）。
+4. **前端关注按钮的落点**：我加在 `web/src/routes/board.tsx`（分区页，我的作用域内）。
+   `topic.tsx` 右栏那颗 `BoardSummary` 的「关注分区」要接的话同第 3 条，同一个端点。
