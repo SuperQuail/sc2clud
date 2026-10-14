@@ -216,6 +216,24 @@ RETURNING image_hash`, []any{publicID, userID}, &hash)
 	return hash, nil
 }
 
+// topicImagePubliclyVisible 是图文帖那一条闸：这张 hash 是某个**已公开**主题的配图吗。
+// 判据与 forum 的公开流逐字一致（pgsql/topics.go 的 visibility='normal' AND review_state='approved'）——
+// 少一个谓词就等于「未过审的配图能被外人取到」（交接单 §5.2 那个病）。
+func topicImagePubliclyVisible(ctx context.Context, q sqlExec, hash string) (bool, error) {
+	var ok bool
+	err := row1(ctx, q, `
+SELECT EXISTS (
+  SELECT 1 FROM topic_images ti
+    JOIN topics t ON t.id = ti.topic_id
+   WHERE ti.image_hash = $1
+     AND t.visibility = 'normal' AND t.review_state = 'approved')
+		`, []any{hash}, &ok)
+	if err != nil {
+		return false, fmt.Errorf("media: read topic of image %s: %w", hash, err)
+	}
+	return ok, nil
+}
+
 // channelImageWithDisplayOn 是「按渠道显示」那一条闸（L1 拍板第二/三轮）：
 // 这张 hash 是**这个作者**的收款码，并且他开着展示开关（渠道列表也才回得了这一行）。
 //

@@ -33,3 +33,22 @@
     gofmt -l internal/media/ 空；go vet ./... exit 0。
   - 下一步：图文帖那一块的 AttachTopicImage（同一类问题：引用行写 private 且全仓无处翻档）。
   - 阻塞：无。
+- [x] **图文帖第 1 步（后端）：配图的可见性跟着主题的审核态走（未过审不外泄、过审后可见）**
+  - 现状核过：AttachTopicImage 的引用行写 VisibilityPrivate（service.go:259），而全仓**没有一处**翻档；
+    正文里的图与列表封面因此对作者以外的人（含游客）永远是占位图。接口回 200 + 占位图，
+    只看状态码发现不了（交接单 §5.2 那个病）。
+  - 改法：canView 的 private 那一支加一条 topicImageLive —— topicImagePubliclyVisible() 一条 EXISTS：
+    这张 hash 被 topic_images 引用，且所属主题 visibility='normal' AND review_state='approved'
+    （判据与 forum 的公开流逐字一致，少一个谓词就是「未过审的配图能被外人取到」）。
+    判定在**读路径**上，所以过审不需要重传图、也没有「翻档」要维护。
+  - 断言先红：forum/internal/media/topic_image_visibility_test.go（新文件）
+    TestTopicImageFollowsTopicReviewState（待审：作者拿得到 / 陌生人+游客拿不到；过审：四种身份都拿到；
+    主题被删：又收回去）+ TestPrivateImageWithoutTopicStaysPrivate（没被主题引用的私有图不许被带出去）。
+    旧行为下的红：topic_image_visibility_test.go:75: 无关登录用户 在主题过审后必须真拿到配图，
+    实际 &{... Placeholder:[137 80 78 71 ...] Cache:false}。
+  - 证据：go test ./internal/media/ -count=1 → ok forum/internal/media 25.388s；
+    go test ./internal/reward/ ./internal/user/ -count=1 → 两个包都 ok（可见性口径没有外溢）；
+    gofmt -l internal/media/ 空。
+  - 下一步：前端配图的**上传 → 附加（POST /topics/{id}/images）→ 正文节点**这一段（web/src 里 zero 调用方）。
+  - 阻塞：`web/src/routes/topic.tsx` 被 K2-C 拿着（它「下一步」写着要改它认 pending_draft）——
+    配图在主题详情里的**展示**落点（topic-view.tsx 的 images 至今零渲染）我在下面第 3 步再定。

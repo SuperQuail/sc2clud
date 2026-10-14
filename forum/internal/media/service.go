@@ -214,6 +214,11 @@ func (s *Service) ClearCover(ctx context.Context, actor *authz.Actor) error {
 
 // AttachTopicImage：作者本人或持 topic.delete.any；主题必须 normal；每帖 ≤9。
 // 数量闸门与插入**同一事务**，靠 topics 行锁串行化（两个并发请求各读 count=8 会双双插入）。
+//
+// 引用行写 VisibilityPrivate，但**它不是一堵死墙**：canView 的 private 那一支会问
+// topicImageLive —— 主题过审（visibility='normal' AND review_state='approved'）之后，
+// 这张图对所有人放行。所以「未过审不外泄、过审后可见」由读路径回答，
+// 帖子过审不需要重传图片，也不需要谁去翻档。
 func (s *Service) AttachTopicImage(ctx context.Context, actor *authz.Actor, in AttachTopicImageInput) (*AttachedImage, error) {
 	if err := requireActive(actor); err != nil {
 		return nil, err
@@ -528,15 +533,31 @@ func (s *Service) canView(ctx context.Context, actor *authz.Actor, img *imageRow
 		}
 		return s.channelDisplayed(ctx, img)
 	case VisibilityPrivate:
-		if actor == nil || actor.UserID == 0 {
-			return false
-		}
-		if actor.IsSuper || actor.Perms.Has(authz.PermRewardVerify) {
+		if actor != nil && (actor.IsSuper || actor.Perms.Has(authz.PermRewardVerify)) {
 			return true
 		}
-		return img.OwnerID != nil && *img.OwnerID == actor.UserID
+		if actor != nil && actor.UserID != 0 && img.OwnerID != nil && *img.OwnerID == actor.UserID {
+			return true
+		}
+		// 帖子配图随**主题的审核态**放行（拍板第三轮「图文帖整块做完」）：未过审只有作者与
+		// 管理员看得到，过审之后正文里的 <img> 与列表封面才对所有人成立 —— 判定在读路径上，
+		// 所以帖子过审不需要重传图片，也没有「翻档」这一步要维护。
+		return s.topicImageLive(ctx, img)
 	}
 	return false
+}
+
+// topicImageLive 回答「这张私有图是某个**已公开**主题的配图吗」。
+// 「已公开」与列表/详情用的是同一条判据（forum 的公开流）：visibility='normal' AND review_state='approved'。
+// 只 READ forum 域的两列，不写。
+func (s *Service) topicImageLive(ctx context.Context, img *imageRow) bool {
+	ok, err := topicImagePubliclyVisible(ctx, s.db, img.Hash)
+	if err != nil {
+		// 与收款码同一条口径：可见性是信任边界，读不出来就不放行。
+		s.log.Error("读配图所属主题的审核态失败，按不可见处理", "hash", img.Hash, "err", err.Error())
+		return false
+	}
+	return ok
 }
 
 // channelDisplayed 回答「这张登录可见的图，它的作者开着渠道展示开关吗」。
