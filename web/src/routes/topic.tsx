@@ -152,13 +152,17 @@ export function TopicPage() {
       setReceipt('举报已提交，进入「举报处理」队列（待处理）。你可以在「我的举报」里跟进。');
     },
   });
+  // 改过正文之后审没审过就作废了：后端的 PATCH 只要带 content_md 就把 review_state 打回 pending
+  // （forum/internal/forum/service.go 的 ResetTopicReview，597c4ac 修的）——所以「保存」=「重新提交审核」，
+  // 两件事是同一次请求。saved 只用来在回执里说实话，不参与渲染判断。
+  const [saved, setSaved] = useState<'idle' | 'draft' | 'resubmitted'>('idle');
   const save = useMutation({
     mutationFn: (next: { title: string; text: string }) =>
       updateTopic(topicId, { title: next.title, content_md: next.text }),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: qk.topic(topicId) });
       void queryClient.invalidateQueries({ queryKey: qk.posts(topicId) });
-      setReceipt('已保存 · 标题与正文都更新了。');
+      setSaved('draft');
     },
   });
   const remove = useMutation({
@@ -207,6 +211,16 @@ export function TopicPage() {
   //   赞助面板照常渲染（展开后是「作者还没开启收款码」那句话，不是一块假装有码的区域）。
   const channels: PaymentChannel[] = [];
   const review = toReview(t);
+  // 回执要说实话：改过正文之后，帖子是「已重新提交、正在重审」，还是只是被保存了？
+  //   reset：这次保存把 rejected 打回了 pending（服务端事实，不是推断——见上面 ResetTopicReview）。
+  //   still：正文改过了但服务端仍说 rejected（还没生效或这版没过），就别谎称已经重新提交。
+  const justSaved = saved === 'draft';
+  const reviewReset = justSaved && review.state === 'pending';
+  const receiptText = justSaved
+    ? reviewReset
+      ? '已保存 · 正文改动已重新提交审核（回到「审核中」），通过后其他人才能看到。'
+      : '已保存 · 标题与正文都更新了。'
+    : receipt;
 
   const comments = toComments(posts.data?.items ?? []);
   const loggedIn = session.isLoggedIn;
@@ -305,14 +319,13 @@ export function TopicPage() {
       }
       channels={channels}
       issueCount={wire.issue_open_count ?? 0}
-      // shortcut: 反馈页（13-issue）前端还没有那一页，所以不给 href（给了就是 404）、改成点一次给回执。
-      //   后端两个端点都在：GET /issues 与 GET /topics/{id}/issues?status=open。
-      onOpenFeedback={(kind) =>
-        setReceipt('反馈页还没有上线' + (kind ? '（已按「' + kind + '」预设类型）' : '') + '；后端接口已经在了，这一页还没做。')
-      }
-      onOpenIssue={() => setReceipt('反馈页还没有上线；后端接口已经在了（GET /topics/{id}/issues），这一页还没做。')}
+      // 反馈页已经上线（/issues，router.tsx:59），所以四个入口是**真链接**而不是回执：
+      //   kind 交给页面预设反馈类型，topic 限定列表范围与新建落点（issues.tsx:114-115）。
+      //   「看全部反馈」不带 kind（那一页自己按页签选），所以只给它 topic。
+      issueHrefFor={(kind) => appPath('issues?topic=' + encodeURIComponent(t.id) + '&kind=' + kind)}
+      feedbackHref={appPath('issues?topic=' + encodeURIComponent(t.id))}
       sourcesLinked
-      receipt={failed ? <ErrorState what={failed.what} error={failed.m.error} /> : receipt ? <DesignActionNote message={receipt} /> : null}
+      receipt={failed ? <ErrorState what={failed.what} error={failed.m.error} /> : receiptText ? <DesignActionNote message={receiptText} /> : null}
     />
   );
 }

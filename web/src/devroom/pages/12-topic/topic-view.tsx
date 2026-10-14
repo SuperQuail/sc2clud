@@ -98,8 +98,11 @@ export type TopicViewProps = {
   issueCount: number;
   /** 反馈页的地址；还没有那一页时改给 onOpenFeedback（点一下有回执，不留 404 死链） */
   feedbackHref?: string;
+  /** 四个类型入口各自的地址（带上 kind）。给了它就优先于 feedbackHref —— 那样每个入口才预设得上自己的类型 */
+  issueHrefFor?: (kind: IssueKind) => string;
   onOpenFeedback?: (kind?: IssueKind) => void;
-  onOpenIssue: () => void;
+  /** 页签上那个「问题反馈」入口要去哪；给了 href 就不需要它 */
+  onOpenIssue?: () => void;
 
   // —— 下载来源能不能点（房间没有转链端点）——
   sourcesLinked?: boolean;
@@ -151,6 +154,7 @@ export function TopicView({
   channels,
   issueCount,
   feedbackHref,
+  issueHrefFor,
   onOpenFeedback,
   onOpenIssue,
   sourcesLinked = false,
@@ -172,7 +176,7 @@ export function TopicView({
 
   return (
     <div className='flex w-full flex-col gap-4'>
-      <TopicTaskTabs value={tab} onChange={setTab} issueCount={issueCount} onOpenIssue={onOpenIssue} />
+      <TopicTaskTabs value={tab} onChange={setTab} issueCount={issueCount} onOpenIssue={onOpenIssue ?? (() => {})} />
 
       <div className='grid grid-cols-1 gap-x-5 gap-y-4 md:grid-cols-[minmax(0,1fr)_248px] xl:flex xl:items-start'>
         {/* 左栏：只在 ≥1200px 出现。用 hidden 而不是挪到底部——它是「常驻栏」，不该在窄屏抢首屏 */}
@@ -197,7 +201,12 @@ export function TopicView({
             candidates={candidates}
             me={me}
             issues={
-              <IssueNudge issueCount={issueCount} href={feedbackHref} onOpen={feedbackHref ? undefined : onOpenFeedback} />
+              <IssueNudge
+                issueCount={issueCount}
+                href={feedbackHref}
+                kindHref={issueHrefFor}
+                onOpen={feedbackHref ? undefined : onOpenFeedback}
+              />
             }
             reviewState={review.state}
             reviewPendingHuman={review.pendingHuman ?? false}
@@ -306,6 +315,7 @@ export function TopicView({
             variant='rail'
             issueCount={issueCount}
             href={feedbackHref}
+            kindHref={issueHrefFor}
             onOpen={feedbackHref ? undefined : onOpenFeedback}
           />
         </aside>

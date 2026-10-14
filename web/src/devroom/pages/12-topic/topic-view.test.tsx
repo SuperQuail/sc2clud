@@ -133,8 +133,9 @@ it('三栏与右栏四件都在，页签有两个', async () => {
   // 中栏：全文 + 下载来源 + 动作条 + 评论区
   const main = screen.getByTestId('topic-main');
   expect(main.querySelector('h1')?.textContent).toBe(TOPIC.title);
-  // 评论区是懒加载模块（Lexical 不进首屏），所以它会晚一拍出现
-  expect((await screen.findByTestId('comment-total')).textContent).toBe('3');
+  // 评论区是懒加载模块（Lexical 不进首屏），所以它会晚一拍出现；
+  // 全套并发跑时这一拍的抖动实测超过 1s（findBy 的默认窗口），给足 3s（与 949be1c 修 home.test 同一个处理）
+  expect((await screen.findByTestId('comment-total', undefined, { timeout: 3000 })).textContent).toBe('3');
   // 右栏四件（顺序照设计稿）
   expect(screen.getByTestId('topic-rail').children.length).toBe(4);
   expect(screen.getByTestId('issue-nudge-rail')).toBeTruthy();
@@ -181,6 +182,26 @@ it('审核态：rejected 显示理由与「重新提交审核」，approve 后�
   expect(onResubmit).toHaveBeenCalled();
   rerender(<TopicView {...viewProps()} />);
   expect(screen.queryByTestId('topic-resubmit')).toBeNull();
+});
+
+it('四个反馈入口各是一条带了各自类型的链接（B2）', async () => {
+  const issueHrefFor = vi.fn((kind: string) => '/issues?topic=t_1042&kind=' + kind);
+  render(<TopicView {...viewProps({ issueHrefFor, feedbackHref: '/issues?topic=t_1042' })} />);
+  // 每个类型一条地址：点哪一类就把哪一类带进去（原先四个按钮共用一条 href，kind 丢了）
+  for (const [name, kind] of [
+    [/^报个 Bug/, 'bug'],
+    [/^功能建议/, 'feature'],
+    [/^难度建议/, 'difficulty'],
+    [/^其他反馈/, 'other'],
+  ] as const) {
+    expect(screen.getByRole('link', { name }).getAttribute('href')).toBe('/issues?topic=t_1042&kind=' + kind);
+  }
+  // 两处入口（正文末尾 + 右栏）各四个按钮 —— 用容器的 testid 区分，别靠可访问名（两处同名）
+  expect(screen.getByTestId('issue-nudge-inline').querySelectorAll('a[href]')).toHaveLength(5); // 四类 + 「看全部反馈」
+  // 右栏那一格只有一个「去反馈页」（它不带类型）
+  expect(screen.getByTestId('issue-nudge-rail').querySelectorAll('a[href]')).toHaveLength(1);
+  // 「看全部反馈」不带 kind：那一页自己按页签选
+  expect(screen.getAllByRole('link', { name: '看全部反馈' })[0]!.getAttribute('href')).toBe('/issues?topic=t_1042');
 });
 
 it('编辑与删帖：不给回调就不渲染入口，给了就真的走宿主', async () => {
