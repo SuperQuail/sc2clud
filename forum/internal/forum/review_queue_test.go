@@ -4,6 +4,8 @@ import (
 	"testing"
 
 	"forum/internal/authz"
+	ent "forum/internal/ent"
+	"forum/internal/forum/pgsql"
 )
 
 // review_queue_test.go 钉住「审核队列能把 pending 变成 approved」这条闭环。
@@ -146,6 +148,97 @@ func TestReviewQueueGuards(t *testing.T) {
 
 // 改正文必须成功，并且把主题送回待审 —— 这条路径此前引用**不存在的列**
 // （ai_reviewed / ai_review_note，任何迁移里都没有），PATCH 带 content_md 必然 500。
+// H1：AI 复核 reject 会把 visibility 置 hidden，而全仓只有 AI 写 hidden、DeleteTopic 写 deleted ——
+// **没有任何路径能改回 normal**。放行时不还原它，「通过」的帖子谁也看不到，前端又只看 review_state
+// （连审核横幅都没有），管理员与作者都看不出哪里不对。H2 同一条用例一起钉：放行要投 search:index，
+// 否则帖子在搜索里永远不存在。
+func TestApproveUnhidesAndReindexes(t *testing.T) {
+	h := newHarness(t)
+	roleID := h.seedRole("user", false)
+	h.seedBoard("campaign", 0, false)
+	authorID := h.seedUser("author", roleID, 1, false)
+	d := h.mustTopic(h.actor(authorID, roleID, authz.PermTopicCreate),
+		CreateTopicInput{BoardSlug: "campaign", Title: "被 AI 藏起来的帖子", ContentMD: "x"})
+
+	// 复刻 AI 复核 reject 的落库（aireview/sql.go 的 sqlUpdateTopic 写的就是这一列）
+	if _, err := h.pool.Exec(h.ctx, "UPDATE topics SET visibility = 'hidden' WHERE public_id = $1", d.ID); err != nil {
+		t.Fatal(err)
+	}
+
+	mod := h.actor(h.seedUser("mod", roleID, 1, true), roleID, authz.PermPostReview)
+	h.queue.reset()
+	item, err := h.svc.ReviewTopic(h.ctx, mod, d.ID, ReviewApprove, "")
+	if err != nil {
+		t.Fatalf("放行失败: %v", err)
+	}
+	if item.ReviewState != "approved" {
+		t.Fatalf("review_state 应当是 approved，实际 %q", item.ReviewState)
+	}
+
+	var visibility string
+	if err := h.pool.QueryRow(h.ctx, "SELECT visibility FROM topics WHERE public_id = $1", d.ID).Scan(&visibility); err != nil {
+		t.Fatal(err)
+	}
+	if visibility != "normal" {
+		t.Fatalf("放行必须把 hidden 还原成 normal，实际 %q（这就是「通过了但谁也看不到」）", visibility)
+	}
+
+	feed, err := h.svc.ListTopics(h.ctx, nil, ListTopicsInput{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(feed.Items) != 1 {
+		t.Fatalf("放行后公开流应当有 1 条，实际 %d 条", len(feed.Items))
+	}
+
+	// H2：搜索索引靠 search:index 重建（indexTopic 对未过审主题是把索引行删掉）
+	found := false
+	for _, ty := range h.queue.types() {
+		if ty == "search:index" {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("放行必须投 search:index，实际任务: %v", h.queue.types())
+	}
+}
+
+// H3：判定只能落在「读到的那一版」上。这里直接钉 SQL 守卫 —— 期望状态与实际不符时必须是 0 行，
+// 而不是把新内容（作者刚改过的正文）写成 approved。
+func TestSetTopicReviewRejectsStaleState(t *testing.T) {
+	h := newHarness(t)
+	roleID := h.seedRole("user", false)
+	h.seedBoard("campaign", 0, false)
+	authorID := h.seedUser("author", roleID, 1, false)
+	d := h.mustTopic(h.actor(authorID, roleID, authz.PermTopicCreate),
+		CreateTopicInput{BoardSlug: "campaign", Title: "t", ContentMD: "x"})
+
+	var id int64
+	if err := h.pool.QueryRow(h.ctx, "SELECT id FROM topics WHERE public_id = $1", d.ID).Scan(&id); err != nil {
+		t.Fatal(err)
+	}
+	err := h.dbTx(func(tx *ent.Tx) error {
+		n, err := pgsql.SetTopicReview(h.ctx, tx, id, "approved", nil, authorID, true, "rejected", h.clk.Now())
+		if err != nil {
+			return err
+		}
+		if n != 0 {
+			t.Fatalf("期望状态不符时必须改 0 行，实际 %d 行", n)
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var state string
+	if err := h.pool.QueryRow(h.ctx, "SELECT review_state FROM topics WHERE id = $1", id).Scan(&state); err != nil {
+		t.Fatal(err)
+	}
+	if state != "pending" {
+		t.Fatalf("过期判定不该改状态，实际 %q", state)
+	}
+}
+
 func TestEditBodyResetsReview(t *testing.T) {
 	h := newHarness(t)
 	roleID := h.seedRole("user", false)

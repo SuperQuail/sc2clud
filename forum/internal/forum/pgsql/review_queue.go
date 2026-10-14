@@ -110,7 +110,7 @@ func (s *Store) ReviewQueueItem(ctx context.Context, topicID int64) (*ReviewQueu
 //   - $3 传 nil 表示「通过且不写理由」——review_note 被清空，上一版的拒绝理由不该留着；
 //   - reviewed_by/reviewed_at 是 notify:review 取「审核人是谁」的唯一来源（notify/tasks.go:126）。
 func SetTopicReview(ctx context.Context, tx Querier, topicID int64, state string, note *string,
-	reviewerID int64, now time.Time) (int, error) {
+	reviewerID int64, unhide bool, expectState string, now time.Time) (int, error) {
 	n, err := rowsAffected(ctx, tx, sqlJoin(
 		"UPDATE topics",
 		"   SET review_state  = $2,",
@@ -118,9 +118,17 @@ func SetTopicReview(ctx context.Context, tx Querier, topicID int64, state string
 		"       review_source = 'manual',",
 		"       reviewed_by   = $4,",
 		"       reviewed_at   = $5,",
+		// $6 放行时把 visibility 还原成 normal。**不能省**：AI 复核 reject 会写 visibility='hidden'
+		// （aireview/sql.go 的 sqlUpdateTopic），而全仓只有两处写 visibility —— AI 只写 hidden、
+		// DeleteTopic 只写 deleted，**没有任何路径能改回 normal**。少了它：管理员点「通过」→
+		// 队列里消失、作者收到「通过」通知、帖子在首页/分区/搜索/主页全看不到，前端又只看
+		// review_state（连横幅都没有）—— 一个谁也修不回来的死状态。
+		"       visibility    = CASE WHEN $6::boolean THEN 'normal' ELSE visibility END,",
 		"       updated_at    = $5",
-		" WHERE id = $1 AND visibility <> 'deleted'",
-	), topicID, state, note, reviewerID, now.UTC())
+		// $7 只判「我读到的那一版」：作者在管理员点通过之前改了正文（PATCH 带 content_md 会回
+		// pending 并换内容），这次判定就不该落到新内容上 —— 影响 0 行，service 换冲突错。
+		" WHERE id = $1 AND visibility <> 'deleted' AND review_state = $7",
+	), topicID, state, note, reviewerID, now.UTC(), unhide, expectState)
 	return int(n), err
 }
 

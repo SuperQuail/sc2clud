@@ -3,6 +3,7 @@ package forum
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"strings"
 	"time"
 
@@ -175,7 +176,22 @@ func (s *Service) ReviewTopic(ctx context.Context, actor *authz.Actor, publicID,
 	}
 
 	err = db.WithTx(ctx, s.db, func(tx *ent.Tx) error {
-		n, err := pgsql.SetTopicReview(ctx, tx, ref.ID, state, notePtr, actor.UserID, now)
+		// 判定必须基于**刚读到的那个状态**做。作者可能在上面那次无锁读之后改了正文
+		// （PATCH 带 content_md → ResetTopicReview 打回 pending），那时把新内容写成 approved
+		// 等于放行一份没人看过的内容。行锁 + 重读 + 把状态写进 UPDATE 的 WHERE：
+		// 两者不一致就是 0 行 → 冲突错，请管理员刷新队列重判。
+		locked, err := pgsql.TopicRefForUpdate(ctx, tx, ref.ID)
+		if err != nil {
+			if errors.Is(err, pgsql.ErrNoRows) {
+				return ErrTopicNotFound
+			}
+			return err
+		}
+		if locked.ReviewState != ref.ReviewState {
+			return invalid("state", "这条主题的审核状态刚刚变了（可能作者改了正文），请刷新队列后再判")
+		}
+		n, err := pgsql.SetTopicReview(ctx, tx, ref.ID, state, notePtr, actor.UserID,
+			action == ReviewApprove, locked.ReviewState, now)
 		if err != nil {
 			return err
 		}
@@ -183,6 +199,15 @@ func (s *Service) ReviewTopic(ctx context.Context, actor *authz.Actor, publicID,
 			return ErrTopicNotFound
 		}
 		if err := pgsql.InsertReviewAudit(ctx, tx, actor.UserID, AuditReviewAction, publicID, detail, now); err != nil {
+			return err
+		}
+		// 放行必须重建搜索索引：indexTopic 对「未过审」的主题是**把索引行删掉**（app/tasks.go），
+		// 而 search:index 只由发帖/改帖/删帖入队 —— 少了这一条，人工放行的帖子在搜索里
+		// **永远**不存在（只有作者再改一次正文才会补上）。
+		if err := s.enqueue(ctx, tx, queue.Task{
+			Type: queue.TypeSearchIndex, Payload: map[string]int64{"id": ref.ID},
+			UniqueKey: "topic:" + itoa64(ref.ID),
+		}); err != nil {
 			return err
 		}
 		// 通知作者（d4 §5.1 ⑤）：actor 由 notify 侧从 topics.reviewed_by 现读，
