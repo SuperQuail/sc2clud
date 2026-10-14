@@ -22,8 +22,8 @@ import {
 } from '@/lib/api/social';
 import { searchUsers } from '@/lib/api/user';
 import { NoticeCenterView } from '@/devroom/pages/10-messages/notice-center-view';
+import { NoticeHead } from '@/devroom/pages/10-messages/notice-head';
 import { resolveNoticeKind, type NoticeSources, type Panel } from '@/devroom/pages/10-messages/notice-logic';
-import { PageHeader } from './_parts/layout';
 
 // **信息中心**（DevRoom 10-messages 那一屏的产品宿主）。
 //
@@ -159,6 +159,20 @@ function CenterShell({ panel: fallback, header }: { panel: Panel; header: ReactN
   );
 }
 
+/** 页头包裹：取数（未读口径）在这一层，排版与文案在 NoticeHead（房间也用同一个）。 */
+function Head({
+  panel,
+  unread,
+  action,
+}: {
+  panel: Panel;
+  unread?: { count: number } | null;
+  action?: ReactNode;
+}) {
+  const data = panel === 'messages' ? { unreadMessages: unread?.count ?? null } : { unreadNotices: unread?.count ?? null };
+  return <NoticeHead panel={panel} data={data} action={action} />;
+}
+
 /** 「我的消息」的页头：未读私信口径（通知那套未读在通知档里，不能混着算）。 */
 function MessagesHeader() {
   const session = useSession();
@@ -167,13 +181,7 @@ function MessagesHeader() {
     queryFn: ({ signal }) => fetchUnreadMessages(signal),
     enabled: session.isLoggedIn,
   });
-  const count = unread.data?.count ?? 0;
-  return (
-    <PageHeader
-      title='我的消息'
-      description={unread.isSuccess ? (count > 0 ? '未读 ' + count + ' 条私信' : '没有未读私信') : '一对一私信'}
-    />
-  );
+  return <Head panel='messages' unread={unread.isSuccess ? unread.data : null} />;
 }
 
 /** 通知四档的页头：未读通知口径 + 「全部已读」。 */
@@ -190,13 +198,10 @@ function NoticesHeader() {
   });
   const count = unread.data?.count ?? 0;
   return (
-    <PageHeader
-      title='通知中心'
-      description={
-        (unread.isSuccess ? (count > 0 ? '未读 ' + count + ' 条' : '没有未读通知') : '别人回复、点赞、@ 你时会出现在这里') +
-        (live === 'live' ? ' · 实时' : ' · 每 30 秒刷新')
-      }
-      actions={
+    <NoticeHead
+      panel='notices'
+      data={{ unreadNotices: unread.isSuccess ? count : null, live: live === 'live' }}
+      action={
         <Button
           data-testid='notifications-read-all'
           inline={false}

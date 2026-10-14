@@ -90,6 +90,34 @@ export function noticeNav(panel: Panel, kind: string, counts?: { likes?: number 
   return { items, value };
 }
 
+/**
+ * 页头文案：**两个入口同一份**（真站与房间都调它，只是数据不同）。
+ * 为什么连页头都要收在一处：这一屏的两档页头口径不同（未读私信 vs 未读通知），
+ * 而「从哪一页进来」不该改变页面标题 —— 抄一份就会在某次改动后只剩一边更新。
+ */
+export function noticeHead(panel: Panel, data: { unreadMessages?: number | null; unreadNotices?: number | null; live?: boolean } = {}): {
+  title: string;
+  description: string;
+} {
+  if (panel === 'messages') {
+    const n = data.unreadMessages;
+    return {
+      title: '我的消息',
+      description: n == null ? '一对一私信' : n > 0 ? '未读 ' + n + ' 条私信' : '没有未读私信',
+    };
+  }
+  if (panel === 'settings') {
+    return { title: '消息设置', description: '别人回复、点赞、@ 你时怎么通知你（改动立即生效）' };
+  }
+  const n = data.unreadNotices;
+  return {
+    title: '通知中心',
+    description:
+      (n == null ? '别人回复、点赞、@ 你时会出现在这里' : n > 0 ? '未读 ' + n + ' 条' : '没有未读通知') +
+      (data.live ? ' · 实时' : ' · 每 30 秒刷新'),
+  };
+}
+
 /** 点击导航项 → 目标档（kind: 前缀是导航的命名空间，见 noticeNav 的注释）。 */
 export function panelOfNavKey(key: string): { panel: Panel; kind?: string } {
   if (key.startsWith('kind:')) return { panel: 'notices', kind: key.slice(5) };

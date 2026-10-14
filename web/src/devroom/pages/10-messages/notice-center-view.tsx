@@ -80,7 +80,7 @@ export function NoticeCenterView({
 }: NoticeCenterViewProps) {
   const nav = noticeNav(panel, kind);
   return (
-    <div className={className ?? 'flex flex-col gap-4'}>
+    <div data-testid='notice-center' className={className ?? 'flex flex-col gap-4'}>
       {header}
       <NoticeLayout nav={<NoticeNav items={nav.items} value={nav.value} onChange={onNav} />}>
         {panel === 'messages' ? (

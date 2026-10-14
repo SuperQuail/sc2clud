@@ -35,6 +35,7 @@ export const DIRECTORY: Peer[] = [MARINE, ZEALOT, HYDRALISK, QUEEN, SCIENCE, GHO
 
 type Draft = { from: 'me' | 'other'; body: string; time: string };
 
+
 const DOCS: Array<{ peer: Peer; unread: number; drafts: Draft[] }> = [
   {
     peer: MARINE,
@@ -131,6 +132,19 @@ export function roomMarkRead(handle: string) {
   if (doc) doc.unread = 0;
 }
 
+/** 标已读：未读数清零 + 那几条通知置成读过（真站是 POST read 与 /notifications/read 的对应物）。 */
+export function roomMarkNoticesRead(body: { ids: string[] } | { all: true }) {
+  for (const list of Object.values(NOTICES)) {
+    for (const n of list) {
+      if ('all' in body || body.ids.includes(n.id)) n.read_at = n.read_at ?? '2026-10-14T03:00:00Z';
+    }
+  }
+}
+
+export function roomDeleteNotice(id: string) {
+  for (const [kind, list] of Object.entries(NOTICES)) NOTICES[kind] = list.filter((n) => n.id !== id);
+}
+
 export function roomSend(handle: string, body: string) {
   DOCS.find((d) => d.peer.handle === handle)?.drafts.push({ from: 'me', body, time: '刚刚' });
 }
@@ -176,8 +190,15 @@ export const NOTICES: Record<string, Notification[]> = {
   ],
 };
 
+/** 静音是**类别级**的（PUT /notifications/mutes 只带 type）：这一类的通知从列表里消失。 */
+const MUTED = new Set<string>();
+export function roomMuteKind(kind: string) {
+  MUTED.add(kind);
+}
+export const roomMuted = () => MUTED;
+
 export function roomNotices(kind: string): Notification[] {
-  const kinds = kind.split(',');
+  const kinds = kind.split(',').filter((k) => !MUTED.has(k));
   return kinds.flatMap((k) => NOTICES[k] ?? []);
 }
 

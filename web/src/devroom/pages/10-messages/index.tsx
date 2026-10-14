@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { NoticeCenterView } from './notice-center-view';
+import { NoticeHead } from './notice-head';
 import { panelOfNavKey, resolveNoticeKind, type NoticeSources, type Panel } from './notice-logic';
 import {
   DIRECTORY,
@@ -7,7 +8,10 @@ import {
   NOTICES,
   NOTICE_SETTINGS,
   roomConversations,
+  roomDeleteNotice,
+  roomMarkNoticesRead,
   roomMarkRead,
+  roomMuteKind,
   roomNotices,
   roomRetract,
   roomSend,
@@ -76,6 +80,18 @@ function roomSources(peer: string | null): NoticeSources {
       roomMarkRead(handle);
       return delay(null);
     },
+    markNoticesRead: (body) => {
+      roomMarkNoticesRead(body);
+      return delay(null);
+    },
+    deleteNotice: (id) => {
+      roomDeleteNotice(id);
+      return delay(null);
+    },
+    muteKind: (kind) => {
+      roomMuteKind(kind);
+      return delay(null);
+    },
     // 房间不删通知、不静音（真站那两条打的是 DELETE /notifications/{id} 与 PUT /notifications/mutes）：
     // 不给动作槽位，而不是给一个点了只回执的按钮 ——「看起来成功了」正是这份清单要消灭的形态。
   };
@@ -110,9 +126,13 @@ export default function MessagesPage() {
     write({ panel: t.panel, kind: t.kind ?? kind, peer });
   }
 
+  const unreadMessages = roomConversations().reduce((n, c) => n + c.unread, 0);
+
   return (
     <div className='relative left-1/2 w-[min(1280px,calc(100vw-32px))] -translate-x-1/2'>
-      <p className='mb-2 px-1 text-[11px] leading-relaxed text-muted-foreground'>
+      {/* 页头与真站是同一个件（notice-head）——同一档看到的标题与未读口径逐字相同 */}
+      <NoticeHead panel={panel} data={{ unreadMessages, unreadNotices: null, live: false }} />
+      <p className='mt-3 mb-2 px-1 text-[11px] leading-relaxed text-muted-foreground'>
         本页的件都来自 <code>src/ui/message/</code>。其中
         <strong className='font-medium text-foreground'>CountBadge</strong>
         （未读数字角标）没有独立入口：它出现在会话列表的未读角标上。 档位与当前会话都写在地址栏（
