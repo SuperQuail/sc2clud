@@ -14,6 +14,18 @@ type UserBriefDTO struct {
 	Nickname    string `json:"nickname"`
 	AvatarHash  string `json:"avatar_hash"`
 	AvatarSmall string `json:"avatar_small_hash"`
+	// Role 是**基线角色**（一人一个，拍板 §1.4），只有主题详情的作者填它（拍板 08 §第三轮 3）：
+	// 右栏作者卡要显示徽标，而 UserBriefDTO 是那一格的唯一数据来源。
+	// 列表项与楼层上的作者留空（nil）—— 那里没有徽标位，为每一行多查一次角色是白花钱。
+	Role *RoleRefDTO `json:"role"`
+}
+
+// RoleRefDTO 是徽标要的三列：key 判等、name 显示、badge_color 上色
+// （roles.badge_color 可空，NULL = 徽标件自己回落主题色）。字段名照 admin 的 RoleItem。
+type RoleRefDTO struct {
+	Key        string  `json:"key"`
+	Name       string  `json:"name"`
+	BadgeColor *string `json:"badge_color"`
 }
 
 // BoardRefDTO 是卡片上的分区。

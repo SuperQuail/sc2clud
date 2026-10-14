@@ -16,7 +16,15 @@ const WIRE = {
   title: '第三章「余烬」平衡性改动说明',
   excerpt: '摘要',
   board: { slug: 'custom-campaign', name: '自制战役' },
-  author: { handle: 'Alenger', nickname: '爱兰琪尔', avatar_hash: 'a1b2c3', avatar_small_hash: 'd4e5f6' },
+  // role 是**详情**才下发的那一列（UserBriefDTO.Role，拍板 08 §第三轮 3）——
+  // 右栏作者卡上的徽标就靠它，列表项上没有这个键。
+  author: {
+    handle: 'Alenger',
+    nickname: '爱兰琪尔',
+    avatar_hash: 'a1b2c3',
+    avatar_small_hash: 'd4e5f6',
+    role: { key: 'creator', name: '认证创作者', badge_color: '#2563eb' },
+  },
   content_md: '正文',
   content_html: '<p>正文第一段。</p>',
   created_at: '2026-10-08T06:35:53Z',
@@ -156,6 +164,16 @@ it('整页画得出来：正文、四件右栏、审核横幅与理由、来源�
   expect(document.querySelector('img[src*="/img/a1b2c3"]')).toBeTruthy();
   // 反馈入口计数来自详情里的 issue_open_count
   expect(screen.getByTestId('issue-nudge-rail').textContent).toContain('7');
+  // 作者角色徽标（拍板 08 §第三轮 3）：详情回了 role 就必须画出来。
+  // 旧行为下这里是空的 —— 后端 UserBriefDTO 没有这一列，前端那行 shortcut 恒 null。
+  // 按正则找：Ring 的 Tag 渲染出来是 data-testid='ring-tag role-badge'（它自己会加前缀）
+  // 按**子串**查而不是 getByTestId：Ring 的 Tag 渲染出来是 data-testid='ring-tag role-badge'
+  // （它自己会加 'ring-tag' 前缀），精确匹配查不到 —— 那种「找不到」与「没渲染」长得一样。
+  // Ring 的 Tag 渲染出来是 **data-test**（不是 data-testid）：joinDataTestAttributes 只做拼接，
+  // 转成 data-testid 的是别的控件。所以这里按 data-test 查 —— 用 getByTestId 会「找不到」，
+  // 而那种找不到与「徽标根本没渲染」长得一模一样。
+  const badge = document.querySelector('[data-test*="role-badge"]');
+  expect(badge?.textContent).toBe('认证创作者');
 });
 
 // 任务 1+2（拍板 08 第三轮）：「关注分区」接真端点 + 那一格「成员」显真数。

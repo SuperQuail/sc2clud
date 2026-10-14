@@ -17,6 +17,9 @@ export function RoleBadge({ role, design = 1, className }: { role: UserRole; des
         backgroundColor={role.color ? 'color-mix(in srgb, ' + role.color + ' 14%, transparent)' : undefined}
         textColor={role.color ?? undefined}
         className={cn('shrink-0 text-[11px]', className)}
+        // 断言/出图按它找徽标。**必须是 data-test**：Ring 的 Tag 只认这个 prop 并把它拼成
+        // data-test="ring-tag role-badge"（传 data-testid 会被 Tag 丢掉 —— 那就是「明明写了却查不到」）。
+        data-test='role-badge'
       >
         {role.name}
       </Tag>

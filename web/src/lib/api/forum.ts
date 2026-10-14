@@ -43,7 +43,13 @@ export type TopicAuthorSummary = {
    *  两根头像列在 SQL 里就回落过 default_avatar_hash，所以这里拿到的是「有就用」。 */
   avatar_hash?: string | null;
   avatar_small_hash?: string | null;
-  role?: { key: string; name: string } | null;
+  /**
+   * 基线角色。**只有主题详情才下发这一列**（`UserBriefDTO.Role`，拍板 08 §第三轮 3）：
+   * 列表项与楼层上的作者没有徽标位，后端不为每一行多查一次角色 —— 所以它是可选的，
+   * 别拿它当「这个人没有角色」。
+   * `badge_color` 是 roles.badge_color（可为 null，界面回落主题色）。
+   */
+  role?: { key: string; name: string; badge_color?: string | null } | null;
   title?: { name: string; color?: string | null } | null;
 };
 

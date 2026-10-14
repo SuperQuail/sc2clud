@@ -7,10 +7,16 @@ import (
 // 行 → DTO 的全部转换都在这里。service 只做判定与编排，映射不掺业务。
 
 func userBriefDTO(u pgsql.UserRow) UserBriefDTO {
-	return UserBriefDTO{
+	d := UserBriefDTO{
 		Handle: u.Handle, Nickname: u.Nickname,
 		AvatarHash: deref(u.AvatarHash), AvatarSmall: deref(u.AvatarSmall),
 	}
+	// 角色只有**查得到的那几条路径**填（目前是主题详情；见 dto.go 的 Role 注释）：
+	// 没查的行 RoleKey 是 nil，这里就不给 role 这个键（而不是给一个空对象）。
+	if u.RoleKey != nil && u.RoleName != nil {
+		d.Role = &RoleRefDTO{Key: *u.RoleKey, Name: *u.RoleName, BadgeColor: u.RoleBadgeColor}
+	}
+	return d
 }
 
 func (s *Service) topicCard(r pgsql.TopicRow) TopicCardDTO {

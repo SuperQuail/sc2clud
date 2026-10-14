@@ -407,7 +407,8 @@ export function toDesignAuthor(t: ApiTopicDetail, ap?: UserProfile): TopicAuthor
     nickname: t.author.nickname,
     // 裸哈希没有 URL，统一走 mappers.imageUrl 拼 /img/<hash>；没有哈希就是空串（UserAvatar 自己回落首字母）
     avatar: imageUrl(t.author.avatar_hash) ?? '',
-    // shortcut: 主题详情不回角色；要显示角色徽标得让 forum 的 UserBriefDTO 带上 role
+    // 角色徽标：详情会带 role（UserBriefDTO.Role，只有详情那条查询选这三列）。
+    // 没带就是 null（列表项路径没有徽标位），不编一个默认角色出来。
     role: t.author.role ?? null,
     title: ap?.title ?? t.author.title ?? null,
     bio: ap?.bio ?? t.author.bio ?? '',

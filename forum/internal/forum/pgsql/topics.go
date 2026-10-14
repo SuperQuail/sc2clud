@@ -39,14 +39,22 @@ type TopicRow struct {
 }
 
 // UserRow 是卡片与楼层上的作者列。
+//
+// RoleKey / RoleName / RoleBadgeColor 是**可选**的三列（users.role_id → roles）：
+// 只有主题详情那条查询选它们（拍板 08 §第三轮 3 的角色徽标），别的六条作者查询不选 ——
+// 所以它们是 *string，nil 就是「这条路径没查角色」，不是「这个人没有角色」。
+// users.role_id 是 NOT NULL，查了就不可能是 NULL（除 NULLIF 掉空串的情况）。
 type UserRow struct {
-	ID          int64
-	PublicID    string
-	Handle      string
-	Nickname    string
-	AvatarHash  *string
-	AvatarSmall *string
-	Status      string
+	ID             int64
+	PublicID       string
+	Handle         string
+	Nickname       string
+	AvatarHash     *string
+	AvatarSmall    *string
+	Status         string
+	RoleKey        *string
+	RoleName       *string
+	RoleBadgeColor *string
 }
 
 // 封面 = sort = 0 的那张（D5 的 uq_topic_images_sort 保证主题内唯一）。
@@ -307,6 +315,9 @@ type TopicDetailRow struct {
 func (s *Store) TopicDetail(ctx context.Context, publicID string, viewerID int64, canSeePending bool) (*TopicDetailRow, error) {
 	sqlText := "SELECT " + topicColumns + " " + `,
        t.board_id, b.acl_enabled, b.min_post_level, t.review_note, t.resource_status,
+       -- 作者角色三列（拍板 08 §第三轮 3）：徽标要在**详情**上显示，列表项上没有那个位置。
+       -- NULLIF 空串：roles.badge_color 允许 ''，而空串与 NULL 在界面上是同一件事（回落主题色）。
+       r.key, r.name, NULLIF(r.badge_color, ''),
        (SELECT count(*) FROM post_issues i
          WHERE i.topic_id = t.id AND i.status = 'keep_open'),
        COALESCE((SELECT l.value FROM likes l
@@ -314,6 +325,7 @@ func (s *Store) TopicDetail(ctx context.Context, publicID string, viewerID int64
        EXISTS (SELECT 1 FROM bookmarks bk WHERE bk.user_id = $2 AND bk.topic_id = t.id),
        COALESCE(p.content_md, ''), COALESCE(p.content_html, ''), COALESCE(p.visibility <> 'normal', false)
   FROM topics t` + boardJoin + authorJoin + coverJoin + `
+  JOIN roles r ON r.id = a.role_id
   LEFT JOIN posts p ON p.topic_id = t.id AND p.floor = 1
  WHERE t.public_id = $1
    AND ( (t.visibility = 'normal' AND t.review_state = 'approved')
@@ -323,6 +335,7 @@ func (s *Store) TopicDetail(ctx context.Context, publicID string, viewerID int64
 	err := s.query(ctx, sqlText, []any{publicID, viewerID, canSeePending}, func(rows *sql.Rows) error {
 		var r TopicDetailRow
 		var cover, avatar, avatarSmall sql.NullString
+		var roleKey, roleName, roleBadge sql.NullString
 		var w, h sql.NullInt64
 		dest := []any{
 			&r.ID, &r.PublicID, &r.Kind, &r.Title, &r.Excerpt,
@@ -335,6 +348,7 @@ func (s *Store) TopicDetail(ctx context.Context, publicID string, viewerID int64
 		}
 		extra := []any{
 			&r.BoardID, &r.BoardACL, &r.MinPostLevel, &r.ReviewNote, &r.ResourceStatus,
+			&roleKey, &roleName, &roleBadge,
 			&r.IssueOpenCount, &r.MyVote, &r.Bookmarked,
 			&r.ContentMD, &r.ContentHTML, &r.ContentDeleted,
 		}
@@ -351,6 +365,9 @@ func (s *Store) TopicDetail(ctx context.Context, publicID string, viewerID int64
 		}
 		r.Author.AvatarHash = scanNullString(avatar)
 		r.Author.AvatarSmall = scanNullString(avatarSmall)
+		r.Author.RoleKey = scanNullString(roleKey)
+		r.Author.RoleName = scanNullString(roleName)
+		r.Author.RoleBadgeColor = scanNullString(roleBadge)
 		d = &r
 		return nil
 	})
