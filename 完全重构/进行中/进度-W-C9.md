@@ -11,6 +11,19 @@ rg = rg.Group("", httpx.ValidPathIDs("id"))
 
 ## 步骤
 
+- [x] mail 挂闸 + 会红用例
+  - 做了什么：`mail.Register` 第一行加 `rg = rg.Group("", httpx.ValidPathIDs("id"))`；
+    本域 {id} 三条都在 /admin 下：`PATCH /admin/mail/accounts/{id}`、`DELETE /admin/mail/accounts/{id}`、
+    `POST /admin/mail/accounts/{id}/test`。新增 `mail/pathguard_test.go`。
+  - 证据：**先红**（没挂闸）`go test ./internal/mail/ -run TestNonUUIDPathIDIsBadRequest -v` →
+    `pathguard_test.go:34: 非 uuid 的路径 id 必须是 400，实际 404：{"error":{"code":"common.not_found","message":"内容不存在"...}}`；
+    挂闸后 `go test ./internal/mail/ -count=1` → `ok forum/internal/mail 32.269s`（整包）。
+  - 下一步：title —— `forum/internal/title/handler.go` 的 `Register` 第一行加同一行
+    （本域 {id} 两条：`PATCH /admin/titles/{id}`、`POST|DELETE /admin/users/{id}/titles/{titleId}`；
+    只点名 "id"，`titleId` 保持 service 里的 `checkPublicID`），
+    用例打 `PATCH /api/v1/admin/titles/not-a-uuid`（body `{"name":"x"}`）。
+  - 阻塞：无
+
 - [x] message 挂闸 + 会红用例
   - 做了什么：`message.Register` 第一行加 `rg = rg.Group("", httpx.ValidPathIDs("id"))`；
     本域 {id} 路径一条：`DELETE /messages/{id}`（`GET/POST /messages/{handle}` 与 `/messages/{handle}/read`

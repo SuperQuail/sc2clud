@@ -26,6 +26,9 @@ func NewHandler(svc *Service, actor ActorFunc) *Handler {
 //
 //	mail.NewHandler(svc, auth.FromGin).Register(v1, authSvc.RequireLogin, authSvc.Perm)
 func (h *Handler) Register(rg *gin.RouterGroup, requireLogin func() gin.HandlerFunc, perm func(...string) gin.HandlerFunc) {
+	// 非 uuid 的 {id} 一律在进 service 之前挡成 400（见 platform/httpx.ValidPathIDs）。
+	rg = rg.Group("", httpx.ValidPathIDs("id"))
+
 	admin := rg.Group("/admin", requireLogin())
 	admin.GET("/mail/accounts", perm(authz.PermMailManage), h.list)
 	admin.POST("/mail/accounts", perm(authz.PermMailManage), h.create)
