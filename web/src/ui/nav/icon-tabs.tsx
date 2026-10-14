@@ -35,8 +35,12 @@ export function IconTabs({
         const active = value === item.key;
         return (
           <span key={item.key} className='relative flex'>
+            {/* inline={false}：图标是**子元素**而不是 icon prop，Ring 的 isInline 判据也因此拿不到它，
+                但同一套 .ring-button-inline 会照样把 display 变成 inline —— 与同一个 className 里的
+                inline-flex 打架，h-12 的口袋高度和 gap 都不生效（registry 的 button 条目同一条坑）。 */}
             <Button
               data-testid={'icon-tab-' + item.key}
+              inline={false}
               ghost
               active={active}
               onClick={() => onChange(item.key)}

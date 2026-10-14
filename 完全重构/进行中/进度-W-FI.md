@@ -88,8 +88,28 @@
     出图台用 `node shots/wfi-shot.mjs inline`（走 `/devroom/?page=08-comments|09-rich|10-messages`）。
   - 阻塞：无
 
-- [ ] F2（已完成，见上）
-- [ ] I1 `inline={false}` 统一收口
+- [x] 第 4 步：I1 `inline={false}` 收口 —— **登记表过期了：真正缺的只有 3 处**
+  - 做了什么：逐处核 registry 点的那五个地方。**comment-actions（3 个）/ markdown-editor（7 个工具栏）/
+    image-uploader（添加图片 + 移除缩略图）/ 11-profile 的「关注 / 发私信」当时都已经写过** `inline={false}`；
+    真正缺的是：① `src/ui/message/notice-settings.tsx` 的「添加」；② `src/ui/rich/image-uploader.tsx`
+    **头像态**的「移除」（它**只有文字没图标**，但 Ring 是 `isInline = inline ?? text ?? !!icon`，照样走 inline）；
+    ③ `src/ui/nav/icon-tabs.tsx` 的三个页签（图标是**子元素**不是 icon prop → isInline 拿不到它，
+    但 `.ring-button-inline` 照样生效，与同一个 className 里的 `inline-flex` 打架）。三处都补了 `inline={false}`
+    （前两处另给 `height={ControlsHeight.S}` 对齐旁边的按钮）。`registry.ts` 那条「已知欠账」改成实测结论。
+  - 证据：**会红**（临时把 notice-settings 的 `inline={false}` 去掉、重建、量同一颗按钮）→
+    `measure [data-testid=setting-add] -> {"display":"inline","pad":"0px","w":90,"cls":"…ring-button-inline…"}`；
+    **绿**（加回去）→ `{"display":"block","pad":"4px 16px","w":112,"cls":"…ring-button-block…"}`。
+    同一轮量到 `[data-testid=icon-tab-posts]` → `{"display":"block","pad":"4px 16px","cls":"…ring-button-block…"}`。
+    页面：`/devroom/?page=11-profile` 点「设置」档（`node shots/wfi-shot.mjs inline`）。图：`shots/wfi/i1-profile-settings.png`
+    （第 4 档页签与「+ 添加屏蔽词」都是真按钮，不是蓝字链接）。
+    `pnpm typecheck` exit 0；`pnpm lint` 19 warnings 0 errors（全是 Fast-refresh/exhaustive-deps 旧账）；
+    `npx vitest run` → **28 文件 148 用例全过**（基线 146，另 2 条是别人的在途改动带来的）。
+  - 下一步：I2/I3 去重（`GRID` 三处 → 一处；`Empty` 与 `EmptyState` → 一份）。
+  - 阻塞：`web/src/devroom/registry.ts` 有**别人在途改动**（`15-admin/screens/users.tsx`、`routes/admin.tsx` 等同时被改），
+    edit 工具连报两次「file changed since it was read」。我只改了自己那一行**备注文字**，如果对方在我之后覆盖，
+    这条备注会丢 —— 由 Lead 合并时确认（不影响任何门禁）。
+
+- [ ] I1（已完成，见上）
 - [ ] I1 `inline={false}` 统一收口（comment-actions / markdown-editor / image-uploader / notice-settings + 11-profile 的「关注/发私信」）
 - [ ] I2 `GRID` 三处收一处（routes/home.tsx、routes/board.tsx、devroom/pages/14-home/index.tsx）
 - [ ] I3 `Empty`（routes/_parts/state.tsx）与 `EmptyState`（14-home/states.tsx）收一份

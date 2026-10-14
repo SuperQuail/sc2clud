@@ -27,7 +27,7 @@ export const VERIFIED: VerifiedControl[] = [
       '不许覆盖 Ring UI 的尺寸变量：曾覆盖 --ring-unit（8→4px），按钮高度是 calc(3 * var(--ring-unit))，所有控件缩一半、文字被挤出按钮。',
       '**icon + 文字时 Ring UI 会自动改走 inline 排版**（button.js: isInline = inline ?? text ?? !!icon），而 primaryBlock = primary && !inline，于是 primary 被吃掉：按钮变成蓝字链接、选中态看不出来。要「图标 + 文字 + 填充」必须显式 inline={false}。（2026-10-12 由 W1 在帖子页双按钮上实测：不写 inline={false} 时两个页签都是蓝字。）',
       '**同一个 inline 还会吞掉 height**：.ring-button-inline 是 display:inline; padding:0; color:var(--ring-link-color)，所以 height={ControlsHeight.L} 也不生效（2026-10-13 实测：带 icon 的「换一张」先给了 height=L 仍是 24px、看着像链接；显式 inline={false} 之后才变成 32px 的真按钮）。**只有图标没有文字的按钮默认就是这种 inline 小链接** —— 「图标按钮让人不知道是什么」的根子在这里，要真按钮就 inline={false} + 可见文字。',
-      '已知欠账（未清）：src/ui/comment/comment-actions.tsx、src/ui/rich/markdown-editor.tsx、src/ui/rich/image-uploader.tsx、src/ui/message/notice-settings.tsx、以及 11-profile 的「关注 / 发私信」等带图标又带文字的按钮都还没写 inline={false}。它们是既有代码、渲染出来只是变成链接样式（不报错），单独一次改动统一收口，别顺手改。',
+      '**已知欠账（2026-10-14 W-FI 清完）**：这条原先点名 comment-actions / markdown-editor / image-uploader / notice-settings 与 11-profile 的「关注 / 发私信」都还没写 inline={false}。逐处核过后：前四个文件当时**已经写过**（登记表过期了），真正缺的是 notice-settings 的「添加」、image-uploader 头像态的「移除」、@/ui/nav/icon-tabs 的三个页签（图标是**子元素**，Ring 的 isInline 判据拿不到它，但 .ring-button-inline 照样生效、与 className 里的 inline-flex 打架）。三处已补，实测：不写 inline 时 class 是 ring-button-inline + padding:0px（「添加屏蔽词」宽 90），写了是 ring-button-block + padding:4px 16px（宽 112）。**残留**：icon-tabs 的 h-12（48px 口袋高度）与 text-[16px] 被库的未分层 CSS 压住 —— .ring-button-heightM 实测 28px，与 inline 无关，是另一件事（见上面「不许覆盖控件库尺寸变量」那条）。',
     ],
   },
   {

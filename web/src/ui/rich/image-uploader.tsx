@@ -151,7 +151,13 @@ export function ImageUploader({
             >
               {busy ? '处理中…' : current ? '更换' : label}
             </Button>
-            {current ? <Button onClick={() => onChange([])}>移除</Button> : null}
+            {/* 「移除」也要 inline={false}：Ring 的 isInline = inline ?? text ?? !!icon —— **只有文字**同样走 inline，
+                于是它和左边的「更换」一颗有内边距、一颗没有，两个动作看着不是一套控件。 */}
+            {current ? (
+              <Button inline={false} height={ControlsHeight.S} onClick={() => onChange([])}>
+                移除
+              </Button>
+            ) : null}
           </div>
           <span className='text-[11px] text-muted-foreground'>
             建议正方形；{compress ? '自动压缩' : '保留原图'}，上限 1 张、{'≤' + formatBytes(sizeLimit)}
