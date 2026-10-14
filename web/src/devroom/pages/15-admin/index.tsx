@@ -1,11 +1,12 @@
 import { useState } from 'react';
 import { CURRENT_ADMIN } from './mock/perms';
-import { DEMO_AI_CONFIG, DEMO_AI_TEST, DEMO_PERMISSIONS, DEMO_ANNOUNCEMENTS, DEMO_AUDIT, DEMO_BANNERS, DEMO_DOMAINS, DEMO_DONATIONS, DEMO_DONATION_STATS, DEMO_MAIL, DEMO_NOTICE_DEFAULTS, DEMO_REPORTS, DEMO_REVIEW, DEMO_ROLES, DEMO_SETTINGS, DEMO_TITLES, DEMO_USERS } from './mock/fixtures';
+import { DEMO_AI_CONFIG, DEMO_AI_TEST, DEMO_PERMISSIONS, DEMO_ANNOUNCEMENTS, DEMO_AUDIT, DEMO_BANNERS, DEMO_DOMAINS, DEMO_DONATIONS, DEMO_DONATION_STATS, DEMO_MAIL, DEMO_NOTICE_DEFAULTS, DEMO_REPORTS, DEMO_REVIEW, DEMO_ROLES, DEMO_SETTINGS, DEMO_TITLES, DEMO_USER_DETAIL, DEMO_USERS } from './mock/fixtures';
 import { AdminShell } from './shell';
 import { SCREEN_KEYS, type ScreenKey } from './nav';
+import { ADMIN_ACLS, ADMIN_BOARDS, DIAGNOSTICS_ROOM } from './room-data';
 import { AiReviewScreen } from './screens/ai-review';
 import { AuditScreen, type AuditFilter } from './screens/audit';
-import { BoardsScreen } from './screens/boards';
+import { BoardsScreen, type BoardPatch } from './screens/boards';
 import { DiagnosticsScreen } from './screens/diagnostics';
 import { MailScreen } from './screens/mail';
 import { ReportsScreen, type ReportFilter } from './screens/reports';
@@ -27,7 +28,7 @@ import { UsersScreen, type UsersFilter } from './screens/users';
 const SCREENS: Record<ScreenKey, () => React.ReactNode> = {
   users: () => <UsersRoom />,
   roles: () => <RolesRoom />,
-  boards: () => <BoardsScreen />,
+  boards: () => <BoardsRoom />,
   review: () => <ReviewRoom />,
   reports: () => <ReportsRoom />,
   rewards: () => <RewardsRoom />,
@@ -36,8 +37,50 @@ const SCREENS: Record<ScreenKey, () => React.ReactNode> = {
   settings: () => <SettingsRoom />,
   ai: () => <AiRoom />,
   audit: () => <AuditRoom />,
-  diagnostics: () => <DiagnosticsScreen />,
+  diagnostics: () => <DiagnosticsRoom />,
 };
+
+/** 分区管理屏的房间版（数据在 ./room-data）。 */
+function BoardsRoom() {
+  const [boards, setBoards] = useState(ADMIN_BOARDS);
+  const [boardId, setBoardId] = useState<string | null>(ADMIN_BOARDS[0]?.id ?? null);
+  const [savedAt, setSavedAt] = useState(0);
+  const [receipt, setReceipt] = useState<string | null>(null);
+  const say = (msg: string) => setReceipt('（房间演示：这里不发请求）' + msg);
+  const board = boards.find((b) => b.id === boardId) ?? boards[0] ?? null;
+  const id = board?.id ?? '';
+  return (
+    <BoardsScreen
+      key={id}
+      boards={boards}
+      boardId={board?.id ?? null}
+      onSelect={(next) => { setBoardId(next); setReceipt(null); }}
+      savedAt={savedAt}
+      onSave={(patch: Partial<BoardPatch>) => {
+        setBoards((prev) => prev.map((b) => (b.id === id ? { ...b, ...patch } as typeof b : b)));
+        setSavedAt((n) => n + 1);
+        say('已保存 ' + Object.keys(patch).join('、'));
+      }}
+      onMove={(next) => { setBoards((prev) => next.map((x) => prev.find((b) => b.id === x)!)); say('顺序已保存（' + next.length + ' 个分区，全量顺序）'); }}
+      roles={DEMO_ROLES}
+      acl={ADMIN_ACLS[id] ?? []}
+      onAclSave={(acls) => say('矩阵已保存（全量替换：' + acls.length + ' 行）')}
+      moderators={board ? board.moderators.map((m, i) => ({ ...m, grown_at: i === board.moderators.length - 1 && board.moderators.length > 1 ? '2026-08-01T00:00:00Z' : null })) : []}
+      candidates={DEMO_USERS.slice(0, 6).map((u) => ({ id: u.id, username: u.username, nickname: u.nickname }))}
+      onGrantModerator={(userId) => say('任命 ' + userId + ' 为版主')}
+      onRevokeModerator={(userId) => say('免掉 ' + userId)}
+      onCreate={(b) => { say('新建分区 /' + b.slug + '（slug 建后不可改）'); setBoards((prev) => [...prev, { ...ADMIN_BOARDS[0]!, id: 'b-new', slug: b.slug, name: b.name, description: b.description, topic_count: 0, post_count: 0, today_count: 0, moderators: [] }]); }}
+      onSetStatus={(status, reason) => { setBoards((prev) => prev.map((b) => (b.id === id ? { ...b, status } : b))); say('状态改成 ' + status + (reason ? '（说明：' + reason + '）' : '')); }}
+      canManage
+      receipt={receipt ? <p className='text-[12px] text-muted-foreground'>{receipt}</p> : null}
+    />
+  );
+}
+
+/** 自检面板的房间版（只读屏，给一份本地结果）。 */
+function DiagnosticsRoom() {
+  return <DiagnosticsScreen data={DIAGNOSTICS_ROOM} canSetting />;
+}
 
 /** AI 审核屏的房间版。 */
 function AiRoom() {
@@ -206,11 +249,15 @@ function UsersRoom() {
   const can = (perm: string) => (CURRENT_ADMIN.extra_permissions as readonly { key: string }[]).some((p) => p.key === perm)
     || ['post.review', 'report.handle', 'reward.verify'].includes(perm);
   const [filter, setFilter] = useState<UsersFilter>({ q: '', status: 'all', role: 'all' });
+  const [activeId, setActiveId] = useState<string | null>(null);
   const [receipt, setReceipt] = useState<string | null>(null);
   const say = (msg: string) => setReceipt('（房间演示：这里不发请求）' + msg);
   return (
     <UsersScreen
       users={DEMO_USERS}
+      // 房间里的「详情」就是本地的三张表（真站那一份由 GET /admin/users/{id} 给，见 routes/admin/users.tsx）
+      detail={activeId ? DEMO_USER_DETAIL[activeId] ?? null : null}
+      onSelect={setActiveId}
       total={DEMO_USERS.length}
       filter={filter}
       onFilterChange={setFilter}

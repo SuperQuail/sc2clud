@@ -28,6 +28,12 @@ export const qk = {
   releaseLatest: (channel: string) => ['launcher', 'latest', channel] as const,
   /** 管理后台（routes/admin.tsx）：筛选参数进 key，换一档就是另一次查询 */
   adminUsers: (f: unknown) => ['admin', 'users', f] as const,
+  adminUserDetail: (id: string) => ['admin', 'users', id, 'detail'] as const,
+  /** 分区管理（C2）：列表不翻页；ACL 与版主按分区取，所以对象（分区 id）进 key */
+  adminBoards: () => ['admin', 'boards'] as const,
+  adminBoardAcl: (id: string) => ['admin', 'boards', id, 'acl'] as const,
+  adminBoardModerators: (id: string) => ['admin', 'boards', id, 'moderators'] as const,
+  adminDiagnostics: () => ['admin', 'diagnostics'] as const,
   adminRoles: () => ['admin', 'roles'] as const,
   adminPermissions: () => ['admin', 'permissions'] as const,
   adminReview: (f: unknown) => ['admin', 'review', f] as const,

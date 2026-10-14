@@ -1,4 +1,4 @@
-import type { BoardAcl } from '../mock';
+import type { AdminACLItem } from '@/lib/api/admin';
 
 // D6 判定的展示模型：判定顺序与「结论」都是纯函数/常量，所以单独放一个**数据文件**——
 // 组件文件里混着常量导出会触发 react-refresh/only-export-components 告警。
@@ -16,7 +16,7 @@ export type Conclusion = { step: number; tone: 'ok' | 'danger' | 'warn'; text: s
 
 // 结论必须**带上 acl_enabled 这个前提**：上一版不看它，开关关掉时每行还写着「第 4 步先拒绝」，
 // 与面板顶部的横幅自相矛盾。
-export function aclConclusion(a: BoardAcl, field: AclField, aclEnabled: boolean, roleKey: string): Conclusion {
+export function aclConclusion(a: AdminACLItem, field: AclField, aclEnabled: boolean, roleKey: string): Conclusion {
   // 超管在 D6 第 1 步就短路了：这一行的勾选永远不生效，所以结论不能写「第 6 步拒绝」
   if (roleKey === 'superadmin') return { step: 1, tone: 'ok', text: '第 1 步放行（超管短路）' };
   if (!aclEnabled) return { step: 3, tone: 'warn', text: '第 3 步放行（ACL 未启用）' };

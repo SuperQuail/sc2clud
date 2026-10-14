@@ -6,9 +6,10 @@ import { SCREEN_KEYS, type ScreenKey } from '@/devroom/pages/15-admin/nav';
 import { AdminShell } from '@/devroom/pages/15-admin/shell';
 import { appPath, routePath } from '@/lib/url';
 import { can, useSession } from '@/lib/perms';
-import { PendingScreen } from './admin/_shared';
 import { AiReviewScreenContainer } from './admin/ai';
 import { AuditScreenContainer } from './admin/audit';
+import { BoardsScreenContainer } from './admin/boards';
+import { DiagnosticsScreenContainer } from './admin/diagnostics';
 import { MailScreenContainer } from './admin/mail';
 import { ReportsScreenContainer } from './admin/reports';
 import { ReviewScreenContainer } from './admin/review';
@@ -26,8 +27,9 @@ import { Empty, ErrorState, Loading } from './_parts/state';
 //
 // 接线形状：**路由只声明权限点与布局**，取数在 ./admin/ 目录里（一屏一个容器文件）；
 //（一个屏一个容器，容器把 /admin/* 变成屏的 props；屏里不 import mock、不发请求）。
-// 这样「一屏接完」的判据只有一条：它的容器在不在。没有容器的屏渲染 PendingScreen，
-// **不拿示例数据兜底** —— 界面看着正常、其实什么都没发生，正是本仓库要消灭的形态。
+// 这样「一屏接完」的判据只有一条：**12 屏的映射表里都是容器，没有一个是占位屏**。
+// 曾经有过一个 PendingScreen（端点没到时渲染「这一屏还没有可以对接的端点」），C1/C2/C3 落地后
+// 它已经没有使用者，所以连工厂一起删了 —— 留着它，下一个人就会以为还有哪一屏没接。
 
 /** 每屏所需的权限点。**照后端 authz 常量写**（forum/internal/authz），不再有第二套命名。 */
 const PERM_BY_SCREEN: Record<ScreenKey, string> = {
@@ -54,7 +56,7 @@ type AnyScreen = ComponentType<Record<string, never>>;
 const SCREEN_COMPONENT: Record<ScreenKey, AnyScreen> = {
   users: UsersScreenContainer,
   roles: RolesScreenContainer,
-  boards: PendingScreen('boards'),
+  boards: BoardsScreenContainer,
   review: ReviewScreenContainer,
   reports: ReportsScreenContainer,
   rewards: RewardsScreenContainer,
@@ -63,7 +65,7 @@ const SCREEN_COMPONENT: Record<ScreenKey, AnyScreen> = {
   settings: SettingsScreenContainer,
   ai: AiReviewScreenContainer,
   audit: AuditScreenContainer,
-  diagnostics: PendingScreen('diagnostics'),
+  diagnostics: DiagnosticsScreenContainer,
 };
 
 export function AdminLayout() {
