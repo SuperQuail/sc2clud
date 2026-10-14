@@ -1,6 +1,8 @@
 package forum
 
 import (
+	"encoding/json"
+	"strings"
 	"testing"
 	"time"
 
@@ -318,5 +320,80 @@ func TestEditBodyResetsReview(t *testing.T) {
 	}
 	if source != "" || note != "" || by != "" || at != nil {
 		t.Fatalf("回到待审时必须清掉上一版判定：source=%q note=%q by=%q at=%v", source, note, by, at)
+	}
+}
+
+// D2（交接单 M7）：队列 DTO 缺 reviewer / reviewed_at —— 设计稿的审核屏要显示「谁判的、什么时候判的」。
+// 这两个字段只能来自 topics.reviewed_by / reviewed_at（review_events 是判定历史，不是当前那一版）。
+func TestReviewQueueDTOCarriesReviewerAndVerdict(t *testing.T) {
+	h := newHarness(t)
+	roleID := h.seedRole("user", false)
+	h.seedBoard("campaign", 0, false)
+	authorID := h.seedUser("author", roleID, 1, false)
+	author := h.actor(authorID, roleID, authz.PermTopicCreate)
+	mod := h.actor(h.seedUser("mod", roleID, 1, true), roleID, authz.PermPostReview)
+
+	d := h.mustTopic(author, CreateTopicInput{BoardSlug: "campaign", Title: "待审", ContentMD: "正文"})
+
+	// 还没人判过：三样都必须是「没有」，不能拿零值把「没判过」说成 1970 年
+	queue, err := h.svc.ListReviewQueue(h.ctx, mod, ReviewQueueInput{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if it := queue.Items[0]; it.Reviewer != nil || it.ReviewedAt != nil || it.ReviewVerdict != nil {
+		t.Fatalf("未判定时 reviewer/reviewed_at/review_verdict 都该是 nil，实际 %+v", it)
+	}
+
+	// 判过之后：审阅人 = 审核员、时间 = 判定时间、结论 = approve
+	if _, err := h.svc.ReviewTopic(h.ctx, mod, d.ID, ReviewApprove, ""); err != nil {
+		t.Fatal(err)
+	}
+	queue, err = h.svc.ListReviewQueue(h.ctx, mod, ReviewQueueInput{State: ReviewQueueAll})
+	if err != nil {
+		t.Fatal(err)
+	}
+	it := queue.Items[0]
+	// JSON 字段名就是契约（前端照它取值），三个键逐个钉住
+	raw, err := json.Marshal(it)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, key := range []string{"\"reviewer\"", "\"reviewed_at\"", "\"review_verdict\""} {
+		if !strings.Contains(string(raw), key) {
+			t.Fatalf("队列项 JSON 里缺 %s：%s", key, raw)
+		}
+	}
+	if it.Reviewer == nil || it.Reviewer.Handle != "mod" {
+		t.Fatalf("放行后 reviewer 应当是审核员 mod，实际 %+v", it.Reviewer)
+	}
+	if it.ReviewedAt == nil || !it.ReviewedAt.Equal(h.clk.T.UTC()) {
+		t.Fatalf("放行后 reviewed_at 应当是判定时间 %v，实际 %v", h.clk.T, it.ReviewedAt)
+	}
+	if it.ReviewVerdict == nil || *it.ReviewVerdict != ReviewApprove {
+		t.Fatalf("放行后 verdict 应当是 approve，实际 %v", it.ReviewVerdict)
+	}
+
+	// 改判成拒绝：结论跟着变，审阅人仍是同一个人
+	if _, err := h.svc.ReviewTopic(h.ctx, mod, d.ID, ReviewReject, "来源不明"); err != nil {
+		t.Fatal(err)
+	}
+	queue, err = h.svc.ListReviewQueue(h.ctx, mod, ReviewQueueInput{State: ReviewQueueRejected})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if it := queue.Items[0]; it.ReviewVerdict == nil || *it.ReviewVerdict != ReviewReject {
+		t.Fatalf("rejected 档的 verdict 应当是 reject，实际 %v", it.ReviewVerdict)
+	}
+
+	// AI 判定（reviewed_by 为空）时 reviewer 必须是 nil，而不是一个空壳对象
+	if _, err := h.pool.Exec(h.ctx, "UPDATE topics SET reviewed_by = NULL WHERE public_id = $1", d.ID); err != nil {
+		t.Fatal(err)
+	}
+	queue, err = h.svc.ListReviewQueue(h.ctx, mod, ReviewQueueInput{State: ReviewQueueRejected})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if it := queue.Items[0]; it.Reviewer != nil {
+		t.Fatalf("reviewed_by 为空时 reviewer 必须是 nil（AI 判的没有审阅人），实际 %+v", it.Reviewer)
 	}
 }

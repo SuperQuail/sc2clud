@@ -78,9 +78,17 @@ type ReviewQueueItemDTO struct {
 	ReviewState string       `json:"review_state"`
 	// ReviewNote 是当前生效的那条理由：AI 判的与人工写的都落在这一列（谁写的看 review_source）。
 	// 没有第三列可读 —— topics 表从来就没有 ai_review_note。
-	ReviewNote   *string   `json:"review_note"`
-	ReviewSource *string   `json:"review_source"`
-	CreatedAt    time.Time `json:"created_at"`
+	ReviewNote   *string `json:"review_note"`
+	ReviewSource *string `json:"review_source"`
+	// Reviewer 是**上一次判定人**（AI 判的 → null），ReviewedAt 是那一次的时间。
+	// 设计稿的审核屏要显示「谁判的、判过几次」；判定历史本身在 review_events，这里只带上最近一次。
+	Reviewer   *UserBriefDTO `json:"reviewer"`
+	ReviewedAt *time.Time    `json:"reviewed_at"`
+	// ReviewVerdict 是最近一次的结论 approve | reject | null（没判过）。
+	// **从 review_state 推导**，不是新的一列：topics 只有三态，rejected 之外的判定都是放行；
+	// 完整历史（含 ai 判定）在 review_events 里。
+	ReviewVerdict *string   `json:"review_verdict"`
+	CreatedAt     time.Time `json:"created_at"`
 	// UpdatedAt 是内容的版本号：**判定时必须原样回传**（expected_updated_at）。
 	// 不回传就退化成「只比 review_state」，而作者在你读队列之后改正文时状态不变、内容变了。
 	UpdatedAt time.Time `json:"updated_at"`
@@ -255,7 +263,7 @@ func reviewStale() error {
 }
 
 func reviewQueueItemDTO(r pgsql.ReviewQueueRow) ReviewQueueItemDTO {
-	return ReviewQueueItemDTO{
+	d := ReviewQueueItemDTO{
 		ID:           r.PublicID,
 		Board:        BoardRefDTO{Slug: r.BoardSlug, Name: r.BoardName},
 		Author:       userBriefDTO(r.Author),
@@ -269,4 +277,18 @@ func reviewQueueItemDTO(r pgsql.ReviewQueueRow) ReviewQueueItemDTO {
 		// UpdatedAt 就是「我看到的是哪一版」，判定时原样回传（HTTP 层必填）
 		UpdatedAt: r.UpdatedAt.UTC(),
 	}
+	if r.Reviewer != nil {
+		rv := userBriefDTO(*r.Reviewer)
+		d.Reviewer = &rv
+	}
+	if r.ReviewedAt != nil {
+		at := r.ReviewedAt.UTC()
+		d.ReviewedAt = &at
+		verdict := ReviewApprove
+		if r.ReviewState == "rejected" {
+			verdict = ReviewReject
+		}
+		d.ReviewVerdict = &verdict
+	}
+	return d
 }

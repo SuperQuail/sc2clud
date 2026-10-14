@@ -18,12 +18,16 @@ const reviewQueueColumns = `t.id, t.public_id::text, t.title, t.kind, COALESCE(t
        a.id, a.public_id, a.username, COALESCE(NULLIF(a.nickname, ''), a.username),
        COALESCE(NULLIF(a.avatar_hash, ''), a.default_avatar_hash, ''),
        COALESCE(NULLIF(a.avatar_small_hash, ''), NULLIF(a.avatar_hash, ''), a.default_avatar_hash, ''), a.status,
-       t.created_at, t.updated_at`
+       t.created_at, t.updated_at, t.reviewed_at,
+       r.id, r.public_id, r.username, COALESCE(NULLIF(r.nickname, ''), r.username),
+       COALESCE(NULLIF(r.avatar_hash, ''), r.default_avatar_hash, ''),
+       COALESCE(NULLIF(r.avatar_small_hash, ''), NULLIF(r.avatar_hash, ''), r.default_avatar_hash, ''), r.status`
 
 const reviewQueueFrom = `
   FROM topics t
   JOIN boards b ON b.id = t.board_id
-  JOIN users  a ON a.id = t.author_id`
+  JOIN users  a ON a.id = t.author_id
+  LEFT JOIN users r ON r.id = t.reviewed_by`
 
 // ReviewQueueRow 是队列的一行：一屏要能判断「这是什么、谁写的、AI 说了什么」。
 type ReviewQueueRow struct {
@@ -40,7 +44,11 @@ type ReviewQueueRow struct {
 	BoardSlug    string
 	BoardName    string
 	Author       UserRow
-	CreatedAt    time.Time
+	// ReviewedAt 是**上一次判定**的时间（NULL = 还没人判过）；Reviewer 是判定人，
+	// AI 判定时 reviewed_by 为空 → nil（设计稿的审核屏要显示「谁判的、判过几次」）。
+	ReviewedAt *time.Time
+	Reviewer   *UserRow
+	CreatedAt  time.Time
 	// UpdatedAt 是**内容的版本**：作者改正文会经 ResetTopicReview 把它推新。
 	// 判定时必须把它带回来（$8），否则「审核员看到的」与「他批的」可以是两份不同的正文。
 	UpdatedAt time.Time
@@ -49,19 +57,33 @@ type ReviewQueueRow struct {
 // scanReviewQueueRow 是那一列清单的唯一扫描器。
 func scanReviewQueueRow(rows *sql.Rows, r *ReviewQueueRow) error {
 	var note, source, avatar, avatarSmall sql.NullString
+	// 判定人是可空的外键：LEFT JOIN + 一组可空标量，扫完再拼成一个可空的 UserRow
+	// （与 issues.go 的指派人是同一套做法）。
+	var (
+		rvID                                 sql.NullInt64
+		rvPublic, rvHandle, rvNick, rvStatus sql.NullString
+		rvAvatar, rvAvatarSmall              sql.NullString
+	)
 	if err := rows.Scan(
 		&r.ID, &r.PublicID, &r.Title, &r.Kind, &r.Excerpt,
 		&r.ReviewState, &note, &source,
 		&r.BoardSlug, &r.BoardName,
 		&r.Author.ID, &r.Author.PublicID, &r.Author.Handle, &r.Author.Nickname,
 		&avatar, &avatarSmall, &r.Author.Status,
-		&r.CreatedAt, &r.UpdatedAt,
+		&r.CreatedAt, &r.UpdatedAt, &r.ReviewedAt,
+		&rvID, &rvPublic, &rvHandle, &rvNick, &rvAvatar, &rvAvatarSmall, &rvStatus,
 	); err != nil {
 		return err
 	}
 	r.ReviewNote, r.ReviewSource = scanNullString(note), scanNullString(source)
 	r.Author.AvatarHash = scanNullString(avatar)
 	r.Author.AvatarSmall = scanNullString(avatarSmall)
+	if rvID.Valid {
+		r.Reviewer = &UserRow{
+			ID: rvID.Int64, PublicID: rvPublic.String, Handle: rvHandle.String, Nickname: rvNick.String,
+			AvatarHash: scanNullString(rvAvatar), AvatarSmall: scanNullString(rvAvatarSmall), Status: rvStatus.String,
+		}
+	}
 	return nil
 }
 

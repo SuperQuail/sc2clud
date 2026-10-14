@@ -61,7 +61,20 @@
   - 下一步：
   - 阻塞：无
 
-- [ ] M7 审核队列 DTO 缺 reviewer / reviewed_at
-  - 证据：
-  - 下一步：
+- [x] M7 审核队列 DTO 缺 reviewer / reviewed_at
+  - 证据：`pgsql/review_queue.go` 的 `reviewQueueColumns` 加 `t.reviewed_at` + 判 定人 6 列、
+    `reviewQueueFrom` 加 `LEFT JOIN users r ON r.id = t.reviewed_by`、`ReviewQueueRow` 加
+    `ReviewedAt *time.Time` / `Reviewer *UserRow`（可空外键照 issues.go 的指派人的写法），
+    `ReviewQueueItemDTO` 加 `reviewer`（null = AI 判的）、`reviewed_at`、`review_verdict`
+    （approve/reject/**null**；从 review_state 推导，不是新列 —— topics 只有三态）。
+    **会红的证明**：把 LEFT JOIN 注释掉 → 新用例 `TestReviewQueueDTOCarriesReviewerAndVerdict`
+    在 `丢失FROM子句项 (SQLSTATE 42P01)` 上红（说明它真的在取审阅人那一列）；
+    旧 DTO 里根本没有 reviewer 字段，同一断言也会红在 `reviewer 应当是审核员 mod, 实际 <nil>`。
+    用例同时钉住 JSON 三个键、未判定时三个字段都是 null、改判后 verdict 跟着变、
+    `reviewed_by` 为空时 reviewer 是 null 而不是空壳对象。
+    `go test ./internal/forum/ -run TestReviewQueue -count=1`：4 条全 PASS；`gofmt -l` 空、`go vet` 退出 0。
+  - 下一步：M4 —— `forum/internal/forum/pgsql/review_queue.go` 新增
+    `InsertReviewEvent(ctx, tx, topicID, trigger, source, verdict, reason string, actorID *int64, now)`，
+    在 `forum/internal/forum/review_queue.go` 的 `ReviewTopic` 事务里（`InsertReviewAudit` 之后）
+    调一次：trigger='manual'、source='manual'、verdict=action、reason=note、actor_id=审核员。
   - 阻塞：无
