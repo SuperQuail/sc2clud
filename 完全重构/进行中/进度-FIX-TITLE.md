@@ -59,6 +59,10 @@
     （样板逐字照 `routes/profile.tsx`）；已把这段发给 Lead。
   - 阻塞：无（上面那处是交接，不是阻塞：View 侧三态与出图都已就绪）
 
+- 收尾补：Lead 用我交回的那段把 `routes/topic.tsx` 接上了（`0ac3877`），我照 His 的宿主 + 本包 View 又出了两张产品页图：
+  `shots/fix-title/d19-author-follow-product-1440.png`、`d19-author-followed-product-1440.png`（/t/tp-1 右栏作者卡：关注 → 已关注，含 MARKER-PRODUCT-LOGIN）。
+  即 **D19 的四个落点（作者卡 / 个人主页 × 房间 / 产品页）都出过图了**。
+
 ## 收工验证（FIX-TITLE）
 
 - `pnpm typecheck` = 0 错；`pnpm lint` = 0 error（17 warnings，全是仓库既有的 react-refresh / exhaustive-deps）。
