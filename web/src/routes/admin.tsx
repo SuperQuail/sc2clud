@@ -109,6 +109,15 @@ export function AdminLayout() {
     <AdminShell
       screen={screen}
       onScreen={(key) => void navigate(routePath('admin/' + key))}
+      // D14：喂**真 session**（昵称 / @handle / 基线角色 / 头像）。session 为空时 AdminShell 整块不画 ——
+      // 以前这里没有这一行，AdminShell 就显示自己写死的「示范管理员 @demo-admin」，
+      // 于是每个登录者看到的都是同一个人（那是 DevRoom 时期的 mock 漏进了产品）。
+      me={session.session ? {
+        nickname: session.session.nickname,
+        handle: session.session.handle,
+        role: session.session.role ?? null,
+        avatar: session.session.avatar ?? null,
+      } : null}
       // **后端 /me 的 extra 只有 key 与 expires_at，没有 reason**（读接口不回显理由）——
       // 所以这里不编一个理由出来，缺就是缺（权限明细里那一段会空着）。
       meExtra={(session.session?.extra ?? []).map((p) => ({ key: p.key, reason: '', expires_at: p.expires_at }))}

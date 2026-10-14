@@ -7,7 +7,7 @@ import { ControlsHeight } from '@jetbrains/ring-ui-built/components/global/contr
 import { Clock, KeyRound, PlugZap } from 'lucide-react';
 import { icon16 } from '@/ui/icons';
 import type { AiConfig, AiTestView } from '@/lib/api/admin';
-import { TestResult } from './ai-bits';
+import { TestFail, TestResult, type AiTestFailure } from './ai-bits';
 import { ConfirmDialog } from '../confirm';
 import { DisabledReason, GateNote, KV, Panel, Pill, ScreenHead, Stat, StatRow, Toolbar } from '../bits';
 
@@ -51,13 +51,15 @@ export type AiReviewScreenProps = {
   onTest: () => void;
   /** 最近一次连通测试的回执 */
   testResult?: AiTestView | null;
+  /** 最近一次连通测试的**失败**：四档就地显示，不落进错误边界（D12） */
+  testFailure?: AiTestFailure | null;
   busy?: boolean;
   receipt?: ReactNode;
 };
 
 export function AiReviewScreen({
   config, loading = false, error = null, canSetting,
-  onPatch, onSaveSecret, onTest, testResult = null, busy = false, receipt,
+  onPatch, onSaveSecret, onTest, testResult = null, testFailure = null, busy = false, receipt,
 }: AiReviewScreenProps) {
   const [draft, setDraft] = useState<Partial<AiConfig>>({});
   const [secret, setSecret] = useState('');
@@ -225,7 +227,8 @@ export function AiReviewScreen({
               </Button>
             }
           >
-            {testResult ? <TestResult result={testResult} /> : (
+            {/* 失败**就地**说（D12）：四档各一句实话 + 后端原话，绝不落进错误边界 */}
+            {testFailure ? <TestFail failure={testFailure} /> : testResult ? <TestResult result={testResult} /> : (
               <p className='text-[12px] text-muted-foreground'>
                 点一下就走一次真外呼，回执里给 verdict / reason / categories / model / latency_ms / 原始输出。
               </p>

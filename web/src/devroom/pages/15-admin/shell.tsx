@@ -13,9 +13,23 @@ import { SideNav } from './side-nav';
 // 后台骨架：左侧分组导航 + 中栏 + 右栏（各屏自己组装中/右两栏），顶部面包屑与「当前管理员」。
 // 权限点只在**导航项**上做粗筛：没权限的屏在真实实现里直接 403（前端方案 §6），
 // 这里仍然列出来并标注，方便一次看全后台的信息架构。
-export function AdminShell({ screen, onScreen, meExtra, children }: {
+//
+// **D14**：右上角那张卡以前写死「示范管理员 @demo-admin / 管理员」—— 那是 DevRoom 时期的 mock，
+// 于是每个登录者看到的都是同一个人。现在只吃宿主喂进来的**真 session**；喂不到就**整块不画**，
+// 绝不拿一个示例用户顶上（界面上显示一个不存在的管理员，比空着危险得多：出问题时人会去找他）。
+export type AdminSelf = {
+  nickname: string;
+  handle: string;
+  /** /me 的 role 只有 key 与 name（**没有颜色**）——所以徽标走 design 2（ours 的令牌色） */
+  role?: { key: string; name: string } | null;
+  avatar?: string | null;
+};
+
+export function AdminShell({ screen, onScreen, me, meExtra, children }: {
   screen: ScreenKey;
   onScreen: (key: ScreenKey) => void;
+  /** 当前登录者（真 session）。**没有就不画那张卡** */
+  me?: AdminSelf | null;
   /** 当前管理员的追加权限（/api/v1/me 的 extra：含到期与理由） */
   meExtra: { key: string; reason: string; expires_at: string | null }[];
   children: ReactNode;
@@ -32,24 +46,32 @@ export function AdminShell({ screen, onScreen, meExtra, children }: {
             <span>{current?.title ?? '用户管理'}</span>
           </Breadcrumbs>
         </span>
-        <div className='flex items-center gap-2 rounded-md border border-border bg-card px-2 py-1'>
-          <UserAvatar name='示范管理员' size='sm' />
-          <span className='flex flex-col leading-tight'>
-            <Username nickname='示范管理员' handle='demo-admin' badge='none' size='sm' strong />
-            <span className='text-[11px] text-muted-foreground'>当前管理员 · 基线角色</span>
+        {me ? (
+          <div className='flex items-center gap-2 rounded-md border border-border bg-card px-2 py-1'>
+            <UserAvatar name={me.nickname} src={me.avatar} size='sm' />
+            <span className='flex flex-col leading-tight'>
+              <Username nickname={me.nickname} handle={me.handle} badge='none' size='sm' strong />
+              <span className='text-[11px] text-muted-foreground'>当前管理员</span>
+            </span>
+            {me.role ? <RoleBadge role={me.role} design={2} /> : null}
+            <DropdownMenu
+              anchor={<Button>权限明细</Button>}
+              data={[
+                ...(me.role ? [{ key: 'base', label: '基线角色：' + me.role.name + '（role_permissions 已展开）' }] : []),
+                ...meExtra.map((p) => ({
+                  key: p.key,
+                  label: p.key + (p.expires_at ? '（' + fmtDate(p.expires_at) + ' 到期）' : '（永久）') + ' · ' + p.reason,
+                })),
+              ]}
+            />
+          </div>
+        ) : (
+          // 拿不到登录者时**不画人**（不编一个示例管理员），但也不留一片沉默：
+          // 这一行说明它为什么空着 —— 空白与「这个人没有名字」在界面上长得一样。
+          <span data-testid='admin-self-missing' className='rounded-md border border-dashed border-border px-2 py-1 text-[11px] text-muted-foreground'>
+            没拿到当前登录者（/me 还没回来）——这里不显示任何人，刷新后自动出现。
           </span>
-          <RoleBadge role={{ key: 'admin', name: '管理员', color: '#7c3aed' }} />
-          <DropdownMenu
-            anchor={<Button>权限明细</Button>}
-            data={[
-              { key: 'base', label: '基线角色：管理员（role_permissions 已展开）' },
-              ...meExtra.map((p) => ({
-                key: p.key,
-                label: p.key + (p.expires_at ? '（' + fmtDate(p.expires_at) + ' 到期）' : '（永久）') + ' · ' + p.reason,
-              })),
-            ]}
-          />
-        </div>
+        )}
       </div>
 
       <div className='grid items-start gap-3 lg:grid-cols-[164px_minmax(0,1fr)]'>

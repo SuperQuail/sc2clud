@@ -5,6 +5,9 @@ import { Pill } from '../bits';
 // AI 屏的两个纯展示件与三个小工具（从 ai-review.tsx 拆出来：gate:size 单文件 ≤ 500 行）。
 // 拆的边界是「有没有 hook / 有没有请求」：这里是纯函数与纯展示，那一边是带状态的表单。
 
+/** 连通测试失败的**就地**回执（D12）：哪一档 + 后端原话，一行说清，不落进错误边界。 */
+export type AiTestFailure = { kind: string; label: string; message: string };
+
 /** 连通测试的回执：三种形态一眼分得开（成功 / 鉴权 / 网络超时）。 */
 export function TestResult({ result }: { result: AiTestView }) {
   const kind = kindOf(result.reason || result.raw);
@@ -38,6 +41,30 @@ export function TestResult({ result }: { result: AiTestView }) {
       <p className='mt-1.5 break-all font-mono text-[10px] text-muted-foreground'>{result.raw}</p>
       <p className='mt-1 text-[11px] leading-relaxed text-muted-foreground'>
         失败只影响这一篇（留 pending 进人工队列）——AI 挂了不能挡住发帖。
+      </p>
+    </div>
+  );
+}
+
+/**
+ * 连通测试失败的**就地**回执（D12）。四档各一句实话 —— 缺 key / 401 / 超时 / 500 是四种不同的处理动作，
+ * 一句「测试失败」等于让管理员自己猜。后端原话跟着一起显示：界面上的结论要能被后端日志对上。
+ */
+export function TestFail({ failure }: { failure: AiTestFailure }) {
+  const danger = failure.kind === 'auth' || failure.kind === 'no_key';
+  return (
+    <div
+      data-testid='ai-test-fail'
+      role='alert'
+      className={'rounded-md border px-2 py-2 ' + (danger ? 'border-destructive/40 bg-destructive/8' : 'border-border bg-muted/50')}
+    >
+      <span className='flex flex-wrap items-center gap-1.5'>
+        <AlertTriangle size={14} aria-hidden className={danger ? 'text-destructive' : 'text-muted-foreground'} />
+        <Pill tone={danger ? 'danger' : 'warn'}>{failure.label}</Pill>
+        <span className='text-[12px] text-foreground'>{failure.message}</span>
+      </span>
+      <p className='mt-1 text-[11px] leading-relaxed text-muted-foreground'>
+        失败只影响这一篇（留 pending 进人工队列）——<b>AI 挂了不能挡住发帖</b>。
       </p>
     </div>
   );

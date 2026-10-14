@@ -30,3 +30,26 @@
   - 下一步：第 2 步做 D12（`screens/ai-review.tsx` 的连通测试：先写会红的断言 → 加失败态 prop → DevRoom 出图 → 宿主 `routes/admin/ai.tsx` 跟着改），
     然后 D14（`screens/shell.tsx` 的 AdminShell 改吃真 session）、最后 D15 把「dev 制品必须带入口」做成 `check-bundle.ts` 的门禁。
   - 阻塞：无（`web/src/main.tsx` 与 `app/shell.tsx` 是 Lead 专属，本包没碰）
+
+- [x] 第 2 步：D12 连通测试失败**就地**显示 + D14 管理员卡喂真 session（两个入口同一份 View）
+  - 做了什么：**① D12**：`screens/ai-bits.tsx` 新增 `AI 测试失败回执`（`AiTestFailure` + `TestFail`，`data-testid=ai-test-fail`、`role=alert`），
+    `screens/ai-review.tsx` 新增 `testFailure` prop 并优先渲染它；`routes/admin/ai.tsx` 新增 `classifyTestFailure()`（401/403→auth、
+    408/网络层(status 0)→timeout、5xx→server）＋ `onError` 改 `setTestFailure`（原来写的是 `setReceipt`，而回执区在屏幕**最上方**、
+    按钮在下面的「连通测试」面板里 → 点了像没反应）；**没配 key 时用配置里的 has_secret 在点之前判掉、不发那次必然失败的请求**。
+    **② D14**：`screens/shell.tsx` 的 `AdminShell` 改成吃 `me: AdminSelf | null`，去掉写死的「示范管理员 @demo-admin / 管理员」，
+    拿不到 session 时**不画人**、只留一句 `admin-self-missing`；`routes/admin.tsx` 喂真 session；DevRoom 页喂演示者（`?me=0` 演没有那一态）。
+    `preview/admin-fixtures.ts` 加 `?aitest=nokey|401|timeout|500` 与 `?debug=0`（出图用）。
+  - 证据：`npx vitest run src/routes/admin/ai.test.tsx`：**改前 5 failed**（`ai-test-fail` 查不到、成功态也查不到回执）→ **改后 4 passed**；
+    `npx vitest run src/devroom/pages/15-admin/shell.test.tsx` **3 passed**；合跑 `2 files / 7 passed`。
+    **会红验证**（不只说「已通过」）：把宿主里「没配 key 就不发请求」那段临时改成 `if (false && …)` →
+    `✗ AssertionError: expected '服务端内部错误后端在执行这次外呼时挂了：服务端内部错误（HTTP 500）…' to contain 'API Key'`
+    —— 证明这条断言真的钉住了「缺 key 不能说成服务端内部错误」；改回去即绿。
+    图（1440 与 390）：`shots/fixadmin/d12-ai-nokey.png`（「还没配密钥」+ 去配 key 的指引）、`d12-ai-ok.png`（连通成功 + verdict/延迟/原始输出）、
+    `d12-ai-401.png`、`d12-ai-timeout.png`（「按拿不准转人工，**不是放行**」）、`d12-ai-500.png`（带 req-shot 编号）、`d12-ai-nokey-390.png`；
+    `d14-devroom-session.png` 与 `d14-product-session.png`（**同一份 AdminShell**：管理后台 / 用户管理 + 右上角卡一模一样）、
+    `d14-devroom-no-session.png` 与 `d14-devroom-no-session-390.png`（没 session：不画人，只留一句为什么空着）。
+  - 下一步：第 3 步做 D15 —— ① `web/scripts/check-bundle.ts` 第 4) 段加一条「`dist/devroom/` 在 ⇒ 产品侧必须有 DevRoom 入口」
+    （这正是线上 /dev/ 那份坏制品的形状），先证明它会红再证明它绿；② 复跑出图确认 1440/390 都 insideViewport+hitTest。
+  - 阻塞：**`pnpm typecheck` 与 `pnpm lint` 现在整体是红的，但与我无关**：`web/scripts/cdp-shot.ts`（FIX-MSG 在 1938cd6 提交的）
+    typecheck 22 条错、eslint 2 条错；`web/src/routes/issues.new-issue.test.tsx`（FIX-TOPIC 在途）eslint 1 条错（手写 `<input>`）。
+    我的文件：`pnpm typecheck` 过滤掉 cdp-shot.ts 后 **0 条**；`pnpm lint` 的 27 条里 0 条出自我改的文件。**请 Lead 让那两位收口。**

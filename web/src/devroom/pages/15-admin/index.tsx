@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { CURRENT_ADMIN } from './mock/perms';
 import { DEMO_AI_CONFIG, DEMO_AI_TEST, DEMO_PERMISSIONS, DEMO_ANNOUNCEMENTS, DEMO_AUDIT, DEMO_BANNERS, DEMO_DOMAINS, DEMO_DONATIONS, DEMO_DONATION_STATS, DEMO_MAIL, DEMO_NOTICE_DEFAULTS, DEMO_REPORTS, DEMO_REVIEW, DEMO_ROLES, DEMO_SETTINGS, DEMO_TITLES, DEMO_USER_DETAIL, DEMO_USERS } from './mock/fixtures';
-import { AdminShell } from './shell';
+import { AdminShell, type AdminSelf } from './shell';
 import { SCREEN_KEYS, type ScreenKey } from './nav';
 import { ADMIN_ACLS, ADMIN_BOARDS, DIAGNOSTICS_ROOM } from './room-data';
 import { AiReviewScreen } from './screens/ai-review';
@@ -282,10 +282,20 @@ function initialScreen(): ScreenKey {
 
 export default function AdminPage() {
   const [screen, setScreen] = useState<ScreenKey>(initialScreen);
+  // 当前登录者：房间给**演示用的一个人**（CURRENT_ADMIN），角色名从 DEMO_ROLES 取（那一份才是角色的唯一出处）。
+  // `?me=0` 是「拿不到 session」那一态 —— 卡整块不画（D14 的两态都要出图，房间与产品页同一套判据）。
+  const role = DEMO_ROLES.find((r) => r.key === CURRENT_ADMIN.role_key) ?? null;
+  const me: AdminSelf | null = new URLSearchParams(location.search).get('me') === '0' ? null : {
+    nickname: CURRENT_ADMIN.nickname,
+    handle: CURRENT_ADMIN.handle,
+    role: role ? { key: role.key, name: role.name } : null,
+    avatar: null,
+  };
   return (
     <AdminShell
       screen={screen}
       onScreen={setScreen}
+      me={me}
       meExtra={CURRENT_ADMIN.extra_permissions.map((p) => ({ ...p }))}
     >
       {SCREENS[screen]()}

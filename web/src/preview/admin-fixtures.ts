@@ -321,8 +321,21 @@ export function adminFixtureFor(u: string): Reply | undefined {
     return { body: { data: DIAG } };
   }
   if (p.endsWith('/api/v1/admin/audit-logs')) return { body: { data: AUDIT, next_cursor: null } };
-  if (p.endsWith('/api/v1/admin/ai/config')) return { body: { data: AI_CONFIG } };
+  if (p.endsWith('/api/v1/admin/ai/config')) {
+    // ?aitest=nokey 换一份**没配密钥**的配置：那一档必须不点外呼、就地说明（D12）
+    if (page.get('aitest') === 'nokey') {
+      return { body: { data: { ...AI_CONFIG, has_secret: false, secret_updated_at: null, last_ok_at: null } } };
+    }
+    return { body: { data: AI_CONFIG } };
+  }
+  // 连通测试（D12）：默认成功；?aitest=nokey|401|timeout|500 出四档失败态（每一种都要出一张图）。
+  // 桩要照后端**真实的**形状给：没 key 时后端回的是 500 common.internal（不是 400），所以 nokey 那一档
+  // 前端必须靠配置里的 has_secret 判掉它，而不是靠错误码 —— 桩照实给，图才不会骗人。
   if (p.endsWith('/api/v1/admin/ai/test')) {
+    const postal = page.get('aitest');
+    if (postal === '401') return { status: 401, body: { error: { code: 'common.unauthorized', message: '鉴权失败：上游拒绝了这把 key', request_id: 'req-shot' } } };
+    if (postal === 'timeout') return { status: 408, body: { error: { code: 'common.timeout', message: '请求超时', request_id: 'req-shot' } } };
+    if (postal === '500') return { status: 500, body: { error: { code: 'common.internal', message: '服务端内部错误', request_id: 'req-shot' } } };
     return { body: { data: { verdict: 'review', reason: '拿不准是否有外站导流', categories: ['spam'], model: 'deepseek-chat', latency_ms: 812, raw: '{"verdict":"review"}' } } };
   }
   // 其余 /admin/* 照真后端的行为回 404（未知路径就是 404 JSON，见 app/http.go 的 NoRoute）。
