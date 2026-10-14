@@ -199,12 +199,6 @@ for (const action of actions) {
     if (!w || !h) throw new Error('size 要写成 宽x高: ' + action);
     await cdp.send('Emulation.setDeviceMetricsOverride', { width: w, height: h, deviceScaleFactor: 1, mobile: false });
     await sleep(400);
-  } else if (kind === 'scroll') {
-    // 窄屏整页很长，要拍的那一块往往在视口外；滚到它再拍，图才看得清（6000px 的整页图缩到读不出字）
-    const sel = rest.join(':');
-    const ok = await cdp.eval<boolean>(`(() => { const el = document.querySelector(\`${sel}\`); if (!el) return false; el.scrollIntoView({ block: 'center' }); return true; })()`);
-    if (!ok) throw new Error('滚不到: ' + sel);
-    await sleep(300);
   } else if (kind === 'mark') {
     const text = rest.join(':');
     await cdp.eval(
