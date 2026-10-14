@@ -277,3 +277,34 @@ it('J3：后端不下发 dislike_count 时，非特权用户看到的是「我�
   expect(screen.queryByRole('button', { name: '点踩' })).toBeNull();
   mocks.posts.current = null;
 });
+
+// J3 的另一半（**守门**用例：改之前就是绿的，它防的是把「只有 number 才渲染」做成「永远不渲染」）：
+// 后端下发了计数时（管理员以上 / 内容作者视角，PostDTO 的 dislike_count 存在），数字必须照旧在 ——
+// 拍板说的是「点踩数据只对管理员及以上权限与内容发布者可见」，不是「谁都不给看」。
+it('J3：后端下发了 dislike_count 时（管理员 / 作者视角），踩数照旧显示', async () => {
+  mocks.posts.current = {
+    items: [
+      {
+        id: 'p-3',
+        parent_id: null,
+        floor: 3,
+        author: { handle: 'tang', nickname: '唐', avatar_hash: null },
+        content_md: '这条被踩了七次。',
+        content_html: '<p>这条被踩了七次。</p>',
+        created_at: '2026-10-13T02:00:00Z',
+        updated_at: '2026-10-13T02:00:00Z',
+        like_count: 3,
+        // 特权视角才有这个键（后端 ShowDislikeCount：管理员以上，或这一条是作者自己的）
+        dislike_count: 7,
+        my_vote: -1,
+      },
+    ],
+    next: null,
+  };
+  renderPage();
+  await screen.findByTestId('topic-main');
+  const down = await screen.findByRole('button', { name: '取消点踩' });
+  expect(down.textContent).toBe('7');
+  expect(down.className).toContain('ring-button-active');
+  mocks.posts.current = null;
+});
