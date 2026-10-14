@@ -57,12 +57,15 @@ rmSync(stage, { recursive: true, force: true });
 mkdirSync(join(stage, 'bin'), { recursive: true });
 cpSync(join(out, 'forum'), join(stage, 'bin', 'forum'));
 cpSync(join(web, 'dist'), join(stage, 'dist'), { recursive: true });
+// 迁移素材跟着产物走：生产端要跑 `forum board-covers -manifest …` 才能把分区封面写进库，
+// 而部署只搬 bin + dist（2026-10-14 MIG-ART 报的：清单不在产物里，生产上得自己带仓库路径）。
+cpSync(join(repo, '完全重构', '迁移素材'), join(stage, 'migration'), { recursive: true });
 const pkg = join(out, 'forum-' + sha + '-dev.tar.gz');
-run('打包', 'tar', ['-czf', pkg, 'bin', 'dist'], stage);
+run('打包', 'tar', ['-czf', pkg, 'bin', 'dist', 'migration'], stage);
 
 // 回读校验：包内容不对就不许部署
 const listing = spawnSync('tar', ['-tzf', pkg], { encoding: 'utf8' }).stdout ?? '';
-for (const must of ['bin/forum', 'dist/index.html', 'dist/devroom/index.html']) {
+for (const must of ['bin/forum', 'dist/index.html', 'dist/devroom/index.html', 'migration/board-covers.json']) {
   assert(listing.includes(must), '包内缺少 ' + must);
 }
 const devCount = listing.split('\n').filter((l) => l.includes('dist/devroom/')).length;

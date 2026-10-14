@@ -8,7 +8,6 @@ import Panel from '@jetbrains/ring-ui-built/components/panel/panel';
 import { Tab, Tabs } from '@jetbrains/ring-ui-built/components/tabs/tabs';
 import { Card, Row } from '@/devroom/kit';
 import { protoTitle, roomHref } from '@/devroom/room-links';
-import { assetUrl } from '@/lib/url';
 import { cn } from '@/lib/utils';
 import { BoardRail, type BoardSummary, type RailLink } from './board-rail';
 
