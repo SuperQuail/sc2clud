@@ -79,8 +79,13 @@ type TitleItem struct {
 }
 
 // SearchItem 是 @ 提及候选的一行。
+//
+// ID 是**数字 user id**（users.id），不是 public_id：它要直接填进提及的存储格式
+// `[@昵称](mention:<user_id>)`，而 platform/mention 的 BodyRe 只收 \d{1,18}
+// —— 原来是 uuid，于是从候选里选人插进去的是 `mention:<uuid>`（存得下、渲染不出来、
+// 通知也发不出去，而两侧测试各看各的都不会红）。判据见 mention_search_test.go。
 type SearchItem struct {
-	ID        string `json:"id"`
+	ID        int64  `json:"id"`
 	Handle    string `json:"handle"`
 	Nickname  string `json:"nickname"`
 	Avatar    string `json:"avatar"`
@@ -148,7 +153,7 @@ func (s *Service) Search(ctx context.Context, q string, limit int) ([]SearchItem
 	out := make([]SearchItem, 0, len(rows))
 	for _, r := range rows {
 		it := SearchItem{
-			ID: r.PublicID, Handle: r.Username, Nickname: displayName(r.Nickname, r.Username),
+			ID: r.ID, Handle: r.Username, Nickname: displayName(r.Nickname, r.Username),
 			Level: r.Level, Ambiguous: r.Ambiguous,
 		}
 		if s.avatars != nil {

@@ -17,7 +17,10 @@ import {
   type IssueComment as ApiIssueComment,
 } from '@/lib/api/issues';
 import type { TopicAuthorSummary } from '@/lib/api/forum';
+import { searchUsers, type SearchUser } from '@/lib/api/user';
+import type { MentionCandidate } from '@/ui/comment/mention-types';
 import { appPath, routePath } from '@/lib/url';
+import { qk } from '@/lib/query/keys';
 import { formatTime } from '@/lib/format';
 import { useSession } from '@/lib/perms';
 import { cn } from '@/lib/utils';
@@ -89,6 +92,19 @@ function toDesignDetail(i: Issue, bodyHtml: string): DesignIssueDetail {
   };
 }
 
+/** 提及候选：后端 `SearchItem` → 编辑器吃的 `MentionCandidate`（与 routes/topic.tsx 同一份映射：
+ *  id 后端就是数字 user id，正是 `mention:<id>` 里那个真源；avatar 已拼成 /img/<hash>；
+ *  ambiguous（按显示名判的重名）就是编辑器要的 duplicate 标记）。 */
+export function toMentionCandidates(items: SearchUser[]): MentionCandidate[] {
+  return items.map((u) => ({
+    id: String(u.id),
+    handle: u.handle,
+    nickname: u.nickname,
+    avatar: u.avatar,
+    duplicate: u.ambiguous,
+  }));
+}
+
 /** IssueCommentDTO → @/ui/comment 的 CommentData（与 routes/_parts/mappers.ts 的 toComments 同一套映射）。 */
 function toComment(c: ApiIssueComment, replies: ApiIssueComment[]): CommentData {
   const one = (x: ApiIssueComment): CommentData => ({
@@ -137,6 +153,16 @@ export function IssuesPage() {
   const [pickedLabels, setPickedLabels] = useState<string[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [receipt, setReceipt] = useState<string | null>(null);
+  // @ 提及候选（拍板 08 §第三轮 4）：与帖子页同一条端点（GET /search?type=users），
+  // 同一个规矩 —— **敲 @ 才去取**（后端对空词回 400，而且每次进页面都发是白花钱）。
+  // 反馈评论的编辑器就是 @/ui/comment 的 ReplyBox（MarkdownEditor），所以候选从这里喂进去。
+  const [mentionQuery, setMentionQuery] = useState('');
+  const mentions = useQuery({
+    queryKey: qk.search('users', mentionQuery),
+    queryFn: ({ signal }) => searchUsers(mentionQuery, 20, signal),
+    enabled: mentionQuery !== '',
+    staleTime: 30_000,
+  });
 
   const parsed = useMemo(() => parseQuery(query), [query]);
   const meHandle = session.session?.handle ?? '';
@@ -453,8 +479,8 @@ export function IssuesPage() {
                 issue={toDesignDetail(detail.data, detail.data.body_html)}
                 comments={thread.data ?? []}
                 me={me}
-                // shortcut: 提及候选要一个 users 端点（lib/api 里还没有），与 routes/topic.tsx:279 同一处缺口
-                candidates={[]}
+                candidates={toMentionCandidates(mentions.data ?? [])}
+                onMentionQuery={setMentionQuery}
                 onSetStatus={(next) => toggle.mutate(next)}
                 onComment={(parentId, body) => comment.mutate({ parentId, body: body.json })}
                 // on = 已经在同向投过 -> 这一次是取消（CommentList 的约定与帖子页一致）

@@ -21,6 +21,7 @@ export function IssueDetail({
   comments,
   me,
   candidates,
+  onMentionQuery,
   onSetStatus,
   onComment,
   onVote,
@@ -30,6 +31,8 @@ export function IssueDetail({
   comments: CommentData[];
   me: { nickname: string; avatar?: string | null };
   candidates: MentionCandidate[];
+  /** 提及时已经打出来的那串字：向上报给宿主（它去打候选端点），编辑器自己不认识 lib/api */
+  onMentionQuery?: (q: string) => void;
   onSetStatus: (next: IssueDetail['status']) => void;
   onComment: (parentId: string | null, body: { json: string; html: string }) => void;
   /** 评论的赞 / 踩：不传就是只显示两个数字（后端 PUT /issue-comments/{id}/vote 一直在） */
@@ -101,6 +104,7 @@ export function IssueDetail({
         total={issue.commentCount}
         me={me}
         candidates={candidates}
+        onMentionQuery={onMentionQuery}
         onSubmit={onComment}
         onVote={onVote}
       />

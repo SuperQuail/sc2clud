@@ -15,6 +15,7 @@ export function CommentList({
   total,
   me,
   candidates,
+  onMentionQuery,
   onSubmit,
   onVote,
 }: {
@@ -22,6 +23,8 @@ export function CommentList({
   total?: number;
   me: { nickname: string; avatar?: string | null };
   candidates?: MentionCandidate[];
+  /** 提及时已经打出来的那串字（空串 = 查询关了）：候选数据在宿主手里，所以由它去查 */
+  onMentionQuery?: (q: string) => void;
   onSubmit?: (parentId: string | null, body: { json: string; html: string }) => void;
   /** 赞 / 踩 / 取消。少了它，赞踩按钮就只是两个数字（踩过的坑）。 */
   onVote?: (id: string, value: 1 | -1) => void;
@@ -47,7 +50,7 @@ export function CommentList({
         </span>
       </header>
 
-      <ReplyBox me={me} candidates={candidates} onSubmit={(body) => onSubmit?.(null, body)} />
+      <ReplyBox me={me} candidates={candidates} onMentionQuery={onMentionQuery} onSubmit={(body) => onSubmit?.(null, body)} />
 
       <div className='flex flex-col gap-6'>
         {comments.map((c) => (
@@ -66,6 +69,7 @@ export function CommentList({
                 <ReplyBox
                   me={me}
                   candidates={candidates}
+                  onMentionQuery={onMentionQuery}
                   replyingTo={c.author.nickname}
                   onSubmit={(body) => {
                     onSubmit?.(c.id, body);

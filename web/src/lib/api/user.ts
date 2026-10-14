@@ -49,7 +49,13 @@ export type UserProfile = {
  * avatar 是完整路径 /img/<hash>，可能为空串（该用户没有头像且默认池为空）→ 界面回落首字占位。
  */
 export type SearchUser = {
-  id: string;
+  /**
+   * **数字 user id**（users.id），不是 public_id —— 它要直接填进提及的存储格式
+   * `[@昵称](mention:<user_id>)`（platform/mention 的 BodyRe 只收 \d{1,18}）。
+   * 后端 `SearchItem.ID` 因此是 int64；两个端点（`/users/search` 与 `/search?type=users`）
+   * 共用同一份查询，改一处两边一起变。
+   */
+  id: number;
   handle: string;
   nickname: string;
   /** /img/<hash>；**空串 = 没有头像**（与 Profile.avatar 同一条约定）；拼装结果行时换成 null */

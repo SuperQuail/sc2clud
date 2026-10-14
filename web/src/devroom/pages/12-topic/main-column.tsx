@@ -27,6 +27,7 @@ export function MainColumn({
   comments,
   commentTotal,
   candidates,
+  onMentionQuery,
   me,
   issues,
   reviewState = 'approved',
@@ -66,6 +67,8 @@ export function MainColumn({
   comments: CommentData[];
   commentTotal: number;
   candidates: MentionCandidate[];
+  /** 提及时已经打出来的那串字：向上报给宿主，由它去打候选端点（组件不认识 lib/api） */
+  onMentionQuery?: (q: string) => void;
   me: { nickname: string; avatar?: string | null; handle: string };
   /** 正文末尾的问题反馈入口（房间指房间里的反馈页，真站指线上或给回执）：由宿主给，位置由这里定 */
   issues?: ReactNode;
@@ -189,6 +192,7 @@ export function MainColumn({
             total={commentTotal}
             me={me}
             candidates={candidates}
+            onMentionQuery={onMentionQuery}
             onSubmit={onSubmitComment}
             onVote={onVote}
             onDelete={onDeleteComment}

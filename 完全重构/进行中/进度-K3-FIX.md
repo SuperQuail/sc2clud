@@ -41,3 +41,30 @@
     所以候选件拿到的 id 填进去**渲染不出提及**——要么后端把这一列改成数字 id，要么候选件另取一个字段（在下一小步定）。
   - 阻塞：`gofmt -l .` 目前有两处**别人的在途文件**红（`internal/user/pgsql/queries.go`、`internal/user/service.go`
     —— K2-B 的 users.cover_hash 那一批），本包自己的文件是干净的；收工前若它们还没提交，本包的 `gofmt -l` 收尾要在进度里注明。
+- [x] §第三轮 4：@ 提及候选 —— 端点**早就有**（`GET /search?type=users`，设计稿定的那个），
+  本步做的是①修掉一处**候选根本不能用**的契约缺陷、②把候选接进两个 composer
+  - 做了什么：
+    · **契约缺陷**：`user.SearchItem.ID` 原来是 `public_id`（uuid），而提及的存储格式是
+      `[@昵称](mention:<user_id>)`、`platform/mention.BodyRe` 只收 `\d{1,18}` —— 从候选里选人
+      插进正文的是 `mention:<uuid>`：**存得下、渲染不出、通知也发不出去**，而两侧测试各看各的都不红。
+      改成**数字 user id**（`SearchItem.ID int64`、`SearchSQL` 选 `u.id`、`SearchRow.PublicID int64`）。
+      `lib/api/user.ts` 的 `SearchUser.id` 同步改 `number`；`routes/home.tsx` 那一处转发给 19-search
+      设计件的地方补 `String(u.id)`（设计件的类型是展示串，与 topics 档走 toTopicRow 同一条规矩）。
+    · **接线**：`MarkdownEditor` 加 `onQueryChange`（@ 之后已经打出来的那串字，**组件不认识 lib/api**，
+      所以只上报、由宿主查）；`ReplyBox`/`CommentList`/`TopicComments`/`MainColumn`/`TopicView` 与
+      `IssueDetail` 各加一个可选 `onMentionQuery` 往下传；宿主（`routes/topic.tsx`、`routes/issues.tsx`）
+      用 `qk.search('users', q)` + `searchUsers` 取候选，`enabled: q !== ''`（**后端对空词回 400**，
+      而「敲了 @ 还没打一个字」是最常见的一瞬间），两个页面各有一个 `toMentionCandidates` 把
+      `id/handle/nickname/avatar/ambiguous` 映射成候选件（ambiguous → duplicate）。
+  - 证据：后端新用例 `TestSearchCandidatesCarryNumericMentionID`（`forum/internal/user/mention_search_test.go`）
+    改前**编译即红**（`items[0].ID != wantID (mismatched types string and int64)`），改后
+    `go test ./internal/user/ -count=1` → `ok`；它的判据是**端到端**的：拿候选的 ID 拼一条
+    `[@昵称](mention:<id>)` 再交给 `mention.Parse`，必须取回同一个人（只断言 wantID 证明不了「这条 ID 能用」）。
+    前端 `topic.test.tsx` 新用例断言「没敲 @ 不发查询」，把 `enabled` 临时改成 `true` 实测红
+    （`expected "vi.fn()" to not be called at all, but actually been called 1 times`），恢复后绿；
+    全量 `npx vitest run` → **37 文件 / 187 用例全绿**，`pnpm typecheck` 0 错、`pnpm lint` 0 错 22 警。
+  - 下一步：§第三轮 5（编辑正文换 `MarkdownEditor`）——`12-topic/edit-dialog.tsx` 现在是纯文本 `Input`，
+    而 `MarkdownEditor` 吃的是 `content_md`（Lexical JSON，`compose.tsx` 就是这个用法），
+    而 `topic-view.tsx` 现在传给弹层的是 `toText(topic.content_html)` —— 要改成传 `content_md`
+    并把回执字段从 `text` 改成 `json`（`PATCH /topics/{id}` 的 `content_md` 就是它）。
+  - 阻塞：无。

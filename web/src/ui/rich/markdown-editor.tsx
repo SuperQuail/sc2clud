@@ -163,6 +163,7 @@ export function MarkdownEditor({
   compress = true,
   maxLength = 20000,
   onLengthChange,
+  onQueryChange,
 }: {
   value: string;
   /** json = SerializedEditorState；html = 只读展示用（已由调用方决定是否再清洗） */
@@ -186,6 +187,12 @@ export function MarkdownEditor({
   maxLength?: number;
   /** 把当前字数报给使用方（发布按钮要用） */
   onLengthChange?: (length: number) => void;
+  /**
+   * 提及查询词（@ 之后已经打出来的那串字；菜单关掉时回空串）。**候选数据不在本组件手里** ——
+   * 编辑器不认识 lib/api（依赖方向），所以它只把这个词报上去，由宿主去查、再用 candidates 传回来。
+   * 不给它就是老行为：候选由调用方一次性给全（DevRoom 与样板间那种用法）。
+   */
+  onQueryChange?: (q: string) => void;
 }) {
   const [query, setQuery] = useState<string | null>(null);
   const [dragging, setDragging] = useState(false);
@@ -368,7 +375,10 @@ export function MarkdownEditor({
           enabled={import.meta.env.DEV && new URLSearchParams(window.location.search).get('demo') === 'mention'}
         />
         <LexicalTypeaheadMenuPlugin<MentionOption>
-          onQueryChange={setQuery}
+          onQueryChange={(q) => {
+            setQuery(q);
+            onQueryChange?.(q ?? '');
+          }}
           onSelectOption={onSelectOption}
           triggerFn={triggerFn}
           options={options}

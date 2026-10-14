@@ -23,12 +23,13 @@ import {
   type TopicDetail as ApiTopicDetail,
   type TopicSource as ApiSource,
 } from '@/lib/api/forum';
-import { fetchUserProfile, searchUsers, type UserProfile } from '@/lib/api/user';
+import { fetchUserProfile, searchUsers, type SearchUser, type UserProfile } from '@/lib/api/user';
 import { createDonation, fetchUserChannels } from '@/lib/api/rewards';
 import { fetchBoardFollow, followBoard, unfollowBoard } from '@/lib/api/follow';
 import { formatCents, formatTime } from '@/lib/format';
 import { DesignActionNote } from '@/devroom/pages/12-topic/design-action';
 import { TopicView, type TopicReview } from '@/devroom/pages/12-topic/topic-view';
+import type { MentionCandidate } from '@/ui/comment/mention-types';
 import type {
   Board,
   BoardNav,
@@ -132,6 +133,18 @@ export function TopicPage() {
     queryFn: ({ signal }) => fetchUserProfile(authorHandle, signal),
     enabled: authorHandle !== '',
     staleTime: 60_000,
+  });
+
+  // @ 提及候选（拍板 08 §第三轮 4）：编辑器里敲 @ 才去取，取回来给两个 composer（主楼 + 楼中楼）。
+  // 端点一直就有 —— `GET /search?type=users` 就是设计稿定的那个（user.Service.Search：
+  // 昵称/登录名前缀、q 1–32 字、limit ≤20、不分页）。**q 为空不发**：后端对空词回 400，
+  // 而「敲了 @ 还没打一个字」是最常见的一瞬间。
+  const [mentionQuery, setMentionQuery] = useState('');
+  const mentions = useQuery({
+    queryKey: qk.search('users', mentionQuery),
+    queryFn: ({ signal }) => searchUsers(mentionQuery, 20, signal),
+    enabled: mentionQuery !== '',
+    staleTime: 30_000,
   });
 
   // 打赏（L1）：右栏那一格的收款码来自 GET /users/{handle}/channels（reward 域）。
@@ -341,7 +354,7 @@ export function TopicPage() {
       comments={comments}
       commentTotal={t.reply_count}
       // shortcut: 提及候选要 GET /users/mention-candidates 之类的端点（lib/api 里还没有），先不给候选
-      candidates={[]}
+      candidates={toMentionCandidates(mentions.data ?? [])}
       me={me}
       commentsFallback={
         posts.isPending ? (
@@ -350,6 +363,7 @@ export function TopicPage() {
           <ErrorState what='回复' error={posts.error} onRetry={() => void posts.refetch()} />
         ) : undefined
       }
+      onMentionQuery={setMentionQuery}
       onSubmitComment={(parentId, body) => reply.mutate({ parentId, body })}
       onDeleteComment={(_parentId, id) => removeReply.mutate(id)}
       onVoteComment={(id, value) => {
@@ -457,6 +471,20 @@ export function toReview(t: ApiTopicDetail): TopicReview {
     pendingHuman: false,
     note: raw.review_note ?? null,
   };
+}
+
+/** 提及候选：后端 `SearchItem` → 编辑器吃的 `MentionCandidate`。
+ *  **id 直接用**（后端已经是数字 user id，就是 `mention:<id>` 里那个真源）；
+ *  avatar 后端已经拼成 `/img/<hash>`（与个人主页同一条约定），别再套一层 imageUrl；
+ *  ambiguous（后端按显示名判的重名）就是编辑器要的 duplicate 标记。 */
+export function toMentionCandidates(items: SearchUser[]): MentionCandidate[] {
+  return items.map((u) => ({
+    id: String(u.id),
+    handle: u.handle,
+    nickname: u.nickname,
+    avatar: u.avatar,
+    duplicate: u.ambiguous,
+  }));
 }
 
 /** 后端回的是 /api/v1/...（不带 /dev 前缀），必须过 appPath 才能同时活在 / 与 /dev/ 两个前缀下。 */

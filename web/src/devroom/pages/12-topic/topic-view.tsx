@@ -93,6 +93,10 @@ export type TopicViewProps = {
   comments: CommentData[];
   commentTotal: number;
   candidates: MentionCandidate[];
+  /** 提及时**已经打出来的那串字**（敲 @ 之后每变一次报一次，空串 = 查询关了）。
+   *  为什么向上报而不是在这一层取：候选要打端点，而组件不认识 lib/api（依赖方向 §4.1）——
+   *  宿主拿这个词去查，再把结果从 candidates 传回来。 */
+  onMentionQuery?: (q: string) => void;
   me: { handle: string; nickname: string; avatar?: string | null };
   newSeqs?: Record<string, number>;
   onSubmitComment: (parentId: string | null, body: { json: string; html: string }) => void;
@@ -165,6 +169,7 @@ export function TopicView({
   comments,
   commentTotal,
   candidates,
+  onMentionQuery,
   me,
   newSeqs,
   onSubmitComment,
@@ -290,6 +295,7 @@ export function TopicView({
             }
             onVote={onVoteComment}
             onDeleteComment={onDeleteComment}
+            onMentionQuery={onMentionQuery}
             onSubmitComment={onSubmitComment}
             reportedIds={reportedIds}
             onReportComment={(t) => openReport(t)}

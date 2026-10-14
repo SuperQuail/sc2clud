@@ -120,7 +120,13 @@ export function HomePage() {
   // **只把当前档的结果交给面板**：两档是同一个位置的两份数据，串档会让一次搜索结果出现在另一档里
   // （react-query 的 data 缓存住上一次的响应，切回主题档时那一瞬看到的是用户档的结果）。
   const topicRows: TopicRowData[] = tab === 'topics' ? toSearchRows(items) : [];
-  const userRows = tab === 'users' ? (userSearch.data ?? []) : [];
+  // 用户档：接口的 SearchItem.id 是**数字 user id**（提及的真源），而 19-search 设计件的
+  // 那一份类型 id 是展示用的串（它的假数据是 'u_01'）。这一层只做形状转换 —— 与 topics 档
+  // 走 toTopicRow 是同一条规矩（设计件不认识接口类型）。
+  const userRows =
+    tab === 'users'
+      ? (userSearch.data ?? []).map((u) => ({ ...u, id: String(u.id) }))
+      : [];
 
   /** 把输入框的值落到 URL；空串 = 退出搜索 */
   function commitQuery() {

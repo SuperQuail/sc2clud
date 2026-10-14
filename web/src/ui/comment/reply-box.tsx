@@ -11,6 +11,7 @@ export function ReplyBox({
   me,
   replyingTo,
   candidates = [],
+  onMentionQuery,
   onSubmit,
   // 与后端 MaxPostContent 一致（**老站的设计**：帖子 20000 / 评论 8000 字）。
   // 后端在写入边界也会卡（forum/limits.go），这里只是提前告诉用户，不是唯一防线。
@@ -19,6 +20,8 @@ export function ReplyBox({
   me: { nickname: string; avatar?: string | null };
   replyingTo?: string | null;
   candidates?: MentionCandidate[];
+  /** 提及时已经打出来的那串字（空串 = 查询关了）：宿主持有候选数据，所以由它去查 */
+  onMentionQuery?: (q: string) => void;
   onSubmit?: (payload: { json: string; html: string }) => void;
   /** 评论字数上限，默认 8000（与后端 MaxPostContent 一致） */
   maxLength?: number;
@@ -49,6 +52,7 @@ export function ReplyBox({
           value={body.json}
           onChange={(json, html) => setBody({ json, html })}
           candidates={candidates}
+          onQueryChange={onMentionQuery}
           maxLength={maxLength}
           onLengthChange={setLength}
         />

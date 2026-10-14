@@ -39,7 +39,7 @@ SELECT u.id, u.public_id, u.username, COALESCE(NULLIF(u.nickname, ''), u.usernam
 // SearchSQL 是 GET /users/search?q= 的前缀候选（设计 §11.4）。
 // ambiguous 用窗口函数在同一次扫描里算出，不额外查一次。
 const SearchSQL = `
-SELECT u.public_id, u.username, COALESCE(NULLIF(u.nickname, ''), u.username), u.avatar_hash, u.avatar_small_hash, u.level,
+SELECT u.id, u.username, COALESCE(NULLIF(u.nickname, ''), u.username), u.avatar_hash, u.avatar_small_hash, u.level,
        -- 判重按**显示名**（昵称留空 = 显示登录名），否则两个「没设昵称、登录名相同」的人不会被标重
        (count(*) OVER (PARTITION BY lower(COALESCE(NULLIF(u.nickname, ''), u.username)))) > 1 AS ambiguous
   FROM users u
@@ -91,8 +91,9 @@ func Profile(ctx context.Context, q pgsql.Querier, handle string) (*ProfileRow, 
 }
 
 // SearchRow 是搜索候选项。
+// ID 是**自增 id**（不是 public_id）：它要填进 mention:<user_id>（见 user.SearchItem 的注释）。
 type SearchRow struct {
-	PublicID        string
+	ID              int64
 	Username        string
 	Nickname        string
 	AvatarHash      *string
@@ -111,7 +112,7 @@ func Search(ctx context.Context, q pgsql.Querier, prefix string, limit int) ([]S
 	var out []SearchRow
 	for rows.Next() {
 		var r SearchRow
-		if err := rows.Scan(&r.PublicID, &r.Username, &r.Nickname,
+		if err := rows.Scan(&r.ID, &r.Username, &r.Nickname,
 			&r.AvatarHash, &r.AvatarSmallHash, &r.Level, &r.Ambiguous); err != nil {
 			return nil, err
 		}

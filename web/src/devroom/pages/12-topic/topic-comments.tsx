@@ -28,6 +28,7 @@ export function TopicComments({
   total,
   me,
   candidates,
+  onMentionQuery,
   onSubmit,
   onVote,
   onDelete,
@@ -42,6 +43,8 @@ export function TopicComments({
   /** me.handle 用来判「这条是不是我的」——只有自己的回复才给删除入口 */
   me: { nickname: string; avatar?: string | null; handle: string };
   candidates: MentionCandidate[];
+  /** 提及时已经打出来的那串字：向上报给宿主（它去打候选端点），编辑器自己不认识 lib/api */
+  onMentionQuery?: (q: string) => void;
   /** parentId 为 null = 主楼；非空 = 楼中楼 */
   onSubmit: (parentId: string | null, body: { json: string; html: string }) => void;
   onVote: (id: string, value: 1 | -1) => void;
@@ -73,7 +76,9 @@ export function TopicComments({
         <h2 className='text-lg font-semibold text-foreground'>
           评论 <span data-testid='comment-total' className='tabular-nums'>{total}</span>
         </h2>
-        {replyPrompt ?? <ReplyBox me={me} candidates={candidates} onSubmit={(body) => onSubmit(null, body)} />}
+        {replyPrompt ?? (
+          <ReplyBox me={me} candidates={candidates} onMentionQuery={onMentionQuery} onSubmit={(body) => onSubmit(null, body)} />
+        )}
         <p className='rounded-lg border border-dashed border-border px-3 py-6 text-center text-[13px] text-muted-foreground'>
           还没有人回复。玩法与设计的问题直接在这下面问；卡住、崩溃、难度不合适请走上面的反馈入口。
         </p>
@@ -100,7 +105,9 @@ export function TopicComments({
         </span>
       </header>
 
-      {replyPrompt ?? <ReplyBox me={me} candidates={candidates} onSubmit={(body) => onSubmit(null, body)} />}
+      {replyPrompt ?? (
+        <ReplyBox me={me} candidates={candidates} onMentionQuery={onMentionQuery} onSubmit={(body) => onSubmit(null, body)} />
+      )}
       {receipt}
 
       <div className='flex flex-col gap-6'>
@@ -151,6 +158,7 @@ function Replies({
   parent,
   me,
   candidates,
+  onMentionQuery,
   replyingTo,
   setReplyingTo,
   replyBoxFor,
@@ -168,6 +176,8 @@ function Replies({
   parent: CommentData;
   me: { nickname: string; avatar?: string | null; handle: string };
   candidates: MentionCandidate[];
+  /** 提及查询词（继续往下传给那三个内联输入框） */
+  onMentionQuery?: (q: string) => void;
   replyingTo: string | null;
   setReplyingTo: (v: string | null) => void;
   replyBoxFor: string | null;
@@ -192,6 +202,7 @@ function Replies({
       <ReplyBox
         me={me}
         candidates={candidates}
+        onMentionQuery={onMentionQuery}
         replyingTo={name}
         onSubmit={(body) => {
           onSubmit(parent.id, body);

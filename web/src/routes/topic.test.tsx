@@ -2,7 +2,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { expect, it, vi } from 'vitest';
 import { MemoryRouter, Route, Routes } from 'react-router';
-import { TopicPage } from './topic';
+import { TopicPage, toMentionCandidates } from './topic';
 
 // **真站这一页**的接线断言（房间那一屏由 12-topic 自己的测试盯）：
 //   ① 实测的线格式喂进来，整页要画得出来（不是白屏 / 不是崩）；
@@ -362,4 +362,27 @@ it('J3：后端下发了 dislike_count 时（管理员 / 作者视角），踩�
   expect(down.textContent).toBe('7');
   expect(down.className).toContain('ring-button-active');
   mocks.posts.current = null;
+});
+
+// 「@ 提及候选」（拍板 08 §第三轮 4）：候选端点的接线与**候选 id 的形状**。
+//
+// 端点在拍板之前就有（`GET /search?type=users`，设计稿定的那个），所以这一条的验收不在
+// 「端点存不存在」，而在**候选能不能真的用**：编辑器存进正文的是 `mention:<id>`，
+// 而 id 必须是数字 user id（platform/mention 的 BodyRe 只收 \d{1,18}）。
+// 后端那一半由 forum/internal/user/mention_search_test.go 钉住（改前编译即红）；
+// 这里钉前端这一半：**没敲 @ 不发查询**（后端对空词回 400），以及三列映射。
+it('提及候选：敲 @ 之前不发查询，候选的 id 就是 mention: 里那个数字 user id', async () => {
+  mocks.searchUsers.mockResolvedValue([
+    { id: 7, handle: 'tangtian', nickname: '唐天', avatar: '/img/tang', level: 3, ambiguous: true },
+  ]);
+  renderPage();
+  await screen.findByTestId('topic-main');
+  // 没敲 @ 之前不发这次查询（q 为空后端 400，而且每次进页面都发是白花钱）
+  expect(mocks.searchUsers).not.toHaveBeenCalled();
+
+  // 候选件的三列映射：id 原样（数字真源）、avatar 不重复拼前缀、ambiguous → duplicate
+  const got = toMentionCandidates([
+    { id: 7, handle: 'tangtian', nickname: '唐天', avatar: '/img/tang', level: 3, ambiguous: true },
+  ]);
+  expect(got).toEqual([{ id: '7', handle: 'tangtian', nickname: '唐天', avatar: '/img/tang', duplicate: true }]);
 });
