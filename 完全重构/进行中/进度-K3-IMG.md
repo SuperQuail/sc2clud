@@ -118,3 +118,24 @@
    所以详情页要有图集就得先补这条读端点 —— 这是后端缺口，不是前端的懒。
 2. **首屏预算只剩 1.2 KB**（收尾对照表 §7.6）：本轮前端改动全部落在 `/new` 与 `/t/*`（都已 lazy），
    没往首屏加东西；`lib/api/media.ts` 只被 `compose.tsx` import。
+## 收工状态（2026-10-14 18:33）
+
+- 四个提交：`f8c67e3`（L1 按渠道可见）、`5e3f4af`（图文帖后端：配图随主题审核态）、
+  `8a8ff33`（图文帖前端：media 通道 + 编辑器 onUpload + compose 接线）、
+  `ce407b9`（文档 + VisibilityLogin 死档定案）。工作区里**没有**我未提交的文件。
+- 收工验证（当前工作区，含别人的在途改动）：
+  · 后端：`gofmt -l .` 空 · `go vet ./...` exit 0 ·
+    `go test ./internal/media/ -count=1` ok 25.4s · `./internal/forum/` ok 71.3s ·
+    `./internal/reward/ ./internal/user/` 两个包 ok。
+  · 前端：`pnpm typecheck` exit 0 · `npx vitest run` **37 文件 / 186 用例全绿**（基线 34/176 之上是本轮 2 条
+    media 客户端用例 + 别人在途新增的文件）· 我改的 6 个文件 eslint **0 error**（2 条既有
+    exhaustive-deps warning 落在我动过的 `markdown-editor.tsx` 上，但它们是**改动前就有**的那两条）。
+  · 没跑 `pnpm check`（会 build 清 dist，同时刻只允许一个人跑）；没起常驻进程；出图台没占端口。
+- **没有出图**，理由要与别处的「出图才算验过」一起看：本轮四条改动的可证伪面都在**读路径的授权判定**上
+  （收款码开关 → 占位图 vs 真图；主题审核态 → 占位图 vs 真图；multipart 字段名；端点路径），
+  Go 用例与前端断言逐格钉住了这四件事。真页面出图要真后端 + 真收款码数据（本机 `127.0.0.1:8080` 默认没起），
+  图里看到的是同一份占位图逻辑，证明不了更多。**这是取舍，不是"验过了"** —— 谁要出图，先起后端。
+- 已知的、我**没做**的两件（都写在上面的「留给 Lead / K2-C 的两行」里）：
+  1. 主题详情页的配图图集与「删除配图」按钮 —— 落点在 K2-C 手里的 `routes/topic.tsx` 与
+     `devroom/pages/12-topic/**`（`images` 至今零渲染）；且后端还缺 `GET /topics/{id}/images` 这条读口。
+  2. 首屏预算只剩 1.2 KB —— 本轮前端改动全在 lazy 路由下，没往首屏加东西。
