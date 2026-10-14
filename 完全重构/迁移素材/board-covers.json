@@ -1,0 +1,35 @@
+{
+  "note": "新站五个分区（boards.slug）的侧栏图标 —— 老站硬编码分区 PostSection 的迁移落点。file 相对 web.dist_dir（产物根），source 是老站唯一的真源（模板里那段 nav-{{ section.value }}.webp 的引用处）。",
+  "covers": [
+    {
+      "slug": "announcement",
+      "file": "art/starcraft/nav-announcement.webp",
+      "legacy_section": "announcement",
+      "source": "site/crates/sc2clud-web/templates/index.html:38（home-side-nav 与 home-channel-tiles 两处同一表达式）"
+    },
+    {
+      "slug": "vanilla-mod",
+      "file": "art/starcraft/nav-vanilla_mod.webp",
+      "legacy_section": "vanilla_mod",
+      "source": "site/crates/sc2clud-web/templates/index.html:38"
+    },
+    {
+      "slug": "custom-campaign",
+      "file": "art/starcraft/nav-custom_campaign.webp",
+      "legacy_section": "custom_campaign",
+      "source": "site/crates/sc2clud-web/templates/index.html:38"
+    },
+    {
+      "slug": "tool-player",
+      "file": "art/starcraft/nav-tool_player.webp",
+      "legacy_section": "tool_player",
+      "source": "site/crates/sc2clud-web/templates/index.html:38"
+    },
+    {
+      "slug": "tool-dev",
+      "file": "art/starcraft/nav-tool_dev.webp",
+      "legacy_section": "tool_dev",
+      "source": "site/crates/sc2clud-web/templates/index.html:38 与 :49（首页「从玩家，到创造者」大卡）"
+    }
+  ]
+}

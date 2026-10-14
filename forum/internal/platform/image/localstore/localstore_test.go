@@ -91,12 +91,12 @@ func TestPutExactlyMaxBytesAllowed(t *testing.T) {
 }
 
 // 磁盘闸门：阈值大到不可能满足时必须 ErrDiskFull，且**连临时文件都不建**。
-// free_other.go 返回 0（不判），所以这条只能在能读到剩余空间的平台上断言。
+// free_other.go 返回 -1（这个平台量不出来），所以这条只能在能读到剩余空间的平台上断言。
 func TestPutDiskGate(t *testing.T) {
 	s := newStore(t, 0)
 	free, err := freeBytes(s.root)
 	if err != nil || free <= 0 {
-		t.Skip("这个平台不判剩余空间（freeBytes 返回 0）")
+		t.Skip("这个平台量不出剩余空间（freeBytes 返回 -1）")
 	}
 	s.minFreeBytes = free + 1<<40
 	if _, _, err := put(t, s, []byte("z"), 1024); !errors.Is(err, image.ErrDiskFull) {
@@ -105,6 +105,20 @@ func TestPutDiskGate(t *testing.T) {
 	entries, _ := os.ReadDir(s.tmp)
 	if len(entries) != 0 {
 		t.Fatalf("预检不过时不许建临时文件，实际 %d 个", len(entries))
+	}
+}
+
+// 「量不出来就不拦」：freeBytes 的 -1 不是「磁盘空了」。
+//
+// 这条是 2026-10-14 MIG-ART 补的：在此之前 free_other.go 返回 0，而 Put 的判据是
+// `free >= 0 && free < minFreeBytes` —— 于是在量不出剩余空间的平台（Windows）上，
+// **任何 minFreeBytes > 0 的写入都报 image.ErrDiskFull**（app 装配传的是 512MiB），
+// 表现为「导入命令与所有图片上传一律 media.disk_full」。用例只断言 Put 那一侧：
+// 阈值必须失效，而不是「0 字节可用时仍然拒收」。
+func TestPutDiskGateIsNoopWhenFreeSpaceUnknown(t *testing.T) {
+	s := newStore(t, 512<<20)
+	if _, n, err := put(t, s, []byte("unknown-free"), 1024); err != nil || n != int64(len("unknown-free")) {
+		t.Fatalf("量不出剩余空间时闸门必须失效，实际 n=%d err=%v", n, err)
 	}
 }
 

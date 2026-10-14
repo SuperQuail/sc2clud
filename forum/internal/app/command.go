@@ -12,12 +12,13 @@ import (
 )
 
 // Usage 是给用户看的用法；退出码 2 表示用法错误（与运行期失败的 1 区分）。
-const Usage = "usage: forum <run|migrate|check|seed|reindex|create-admin|backup> [-config path]\n" +
+const Usage = "usage: forum <run|migrate|check|seed|reindex|board-covers|create-admin|backup> [-config path]\n" +
 	"  run           -listen addr -web dir\n" +
 	"  migrate\n" +
 	"  check\n" +
 	"  seed                                         （写入演示数据；可重复执行，不是迁移）\n" +
 	"  reindex                                      （重建 topic_search：数据导入/迁移之后必须跑一次）\n" +
+	"  board-covers  -manifest file.json [-dry-run] （内置分区图标：落盘 → 登记 images → 设 boards.cover_hash）\n" +
 	"  create-admin  -username name [-email addr]   （口令从 stdin 读；-password 仅供开发）\n" +
 	"  backup        -out file.dump\n"
 
@@ -37,12 +38,21 @@ func Main(args []string, version string) int {
 	username := fs.String("username", "", "create-admin: 用户名")
 	email := fs.String("email", "", "create-admin: 邮箱（默认 <username>@sc2clud.local）")
 	password := fs.String("password", "", "create-admin: 口令（默认从 stdin 读）")
+	manifest := fs.String("manifest", "完全重构/迁移素材/board-covers.json", "board-covers: 分区图标 manifest")
+	dryRun := fs.Bool("dry-run", false, "board-covers: 只打印将要写入的 slug → hash，不碰库、不落盘")
 	if err := fs.Parse(args[2:]); err != nil {
 		return 2
 	}
 
 	cfg, err := config.Load(*cfgPath)
-	if err != nil {
+	switch {
+	case err == nil:
+	case cmd == "board-covers" && *dryRun:
+		// 干跑**不碰库**，而它唯一要的配置是 web.dist_dir（默认值就够）：连不上/没配 DSN 时
+		// 不该连一次「将要写什么」都看不到。报错照旧留给真跑。
+		fmt.Fprintln(os.Stderr, "board-covers: 配置没加载成功（干跑只用到默认的 web.dist_dir）:", err)
+		cfg = config.Default()
+	default:
 		fmt.Fprintln(os.Stderr, "load config:", err)
 		return 1
 	}
@@ -67,6 +77,8 @@ func Main(args []string, version string) int {
 		err = Seed(ctx, cfg)
 	case "reindex":
 		err = Reindex(ctx, cfg)
+	case "board-covers":
+		err = BoardCovers(ctx, cfg, *manifest, *dryRun)
 	case "create-admin":
 		pw := *password
 		if pw == "" {

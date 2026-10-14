@@ -426,6 +426,47 @@ func (s *Service) FetchImage(ctx context.Context, actor *authz.Actor, hash strin
 	return resp, nil
 }
 
+// EnsureAsset 把一份**站点自带的素材**写进内容寻址存储并登记 images 行，**不碰引用计数**。
+//
+// 为什么需要它：内置素材（分区图标）是运维/代码带进来的字节，不是用户上传 —— 没有 actor，
+// 也就走不了 PutImage（那里要求已激活用户，因为上传是信任边界）。判类型与尺寸仍然照做（判字节）。
+//
+// created=false 表示这一行本来就在库里（内容寻址：同一份内容只落一行、只写一次）。
+//
+// 与 refTx 的差别只有一处，但正是它把这件事做成幂等的：**已存在就不动引用计数**
+// （`ON CONFLICT DO NOTHING`，不是 `refcount + 1`）。「再登记一次素材」不是一次新引用 ——
+// 素材的引用只来自域表（boards.cover_hash 由 forum 域用 IncRefTx 维护，d5 §4.3）。
+// 用 refTx 的话每跑一次导入就多一次引用，而 refcount 只增不减 → 那张图永远不被 image:gc 回收。
+//
+// owner_id = NULL：站点素材没有作者（owner_id 是 FK，写 0 会直接违反 fk_images_owner）。
+//
+// 用法唯一：forum board-covers 导入命令（app/board_covers.go）。它只处理**仓库里带过来的**固定素材。
+func (s *Service) EnsureAsset(ctx context.Context, body []byte, maxBytes int64) (image.Hash, bool, error) {
+	mime, w, h, err := sniff(body, maxBytes, int64(len(body)))
+	if err != nil {
+		return "", false, err
+	}
+	hsh, size, err := s.store.Put(ctx, bytes.NewReader(body), maxBytes)
+	if err != nil {
+		return "", false, mapStoreErr(err)
+	}
+	// 用 QueryContext 而不是 ExecContext：CTE 的 RETURNING 有行 = 这次真的插进去了。
+	// 「行早就有了」与「这次新建」对调用方是两件事（导入命令靠它报 images_created）。
+	rows, err := s.db.QueryContext(ctx, `
+WITH ins AS (
+  INSERT INTO images (hash, size, mime, width, height, refcount, visibility, owner_id, created_at, updated_at)
+  VALUES ($1, $2, $3, $4, $5, 0, $6, NULL, now(), now())
+  ON CONFLICT (hash) DO NOTHING
+  RETURNING hash)
+SELECT hash FROM ins`,
+		string(hsh), size, mime, w, h, VisibilityPublic)
+	if err != nil {
+		return "", false, fmt.Errorf("media: ensure asset %s: %w", hsh, err)
+	}
+	defer rows.Close()
+	return hsh, rows.Next(), nil
+}
+
 // IncRefTx / DecRefTx 是给别的域的唯一两个方法（d5 §4.3）：
 // 引用行在谁的表里，谁负责在同一事务里调它们。±1 不许自己写 SQL。
 func (s *Service) IncRefTx(ctx context.Context, tx *ent.Tx, h image.Hash) error {
