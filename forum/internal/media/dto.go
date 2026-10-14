@@ -46,7 +46,7 @@ type AddPaymentChannelInput struct {
 	Body  []byte
 }
 
-// PaymentChannel 是收款码渠道（可见性固定 private，不接受请求里传）。
+// PaymentChannel 是收款码渠道（图的可见性由服务端定成 public，不接受请求里传）。
 type PaymentChannel struct {
 	ID    string `json:"id"`
 	Label string `json:"label"`

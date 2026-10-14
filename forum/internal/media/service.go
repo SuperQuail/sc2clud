@@ -233,7 +233,7 @@ func (s *Service) DetachTopicImage(ctx context.Context, actor *authz.Actor, in D
 	})
 }
 
-// AddPaymentChannel：每用户 ≤5，行锁串行化；visibility 固定 private（d5 §3.2）。
+// AddPaymentChannel：每用户 ≤5，行锁串行化；引用行的可见性是 public（L1，见下面那行）。
 func (s *Service) AddPaymentChannel(ctx context.Context, actor *authz.Actor, in AddPaymentChannelInput) (*PaymentChannel, error) {
 	if err := requireActive(actor); err != nil {
 		return nil, err
@@ -256,8 +256,15 @@ func (s *Service) AddPaymentChannel(ctx context.Context, actor *authz.Actor, in 
 		if n >= maxPaymentChannels {
 			return ErrLimitReached.WithMsg(fmt.Sprintf("最多只能添加 %d 个收款码", maxPaymentChannels))
 		}
+		// L1（拍板第二轮）：收款码是**给人扫的**图 —— 扫码付款不需要账号，所以陌生人（登录的无关用户）
+		// 与游客都必须真拿到它。旧口径把它写死成 private，canView 只放行所有者 / 超管 / 持 reward.verify，
+		// 于是打赏面板上永远是一张占位图（扫不出码）。
+		// **要不要对外展示这个码**由作者侧的 show_channels 开关管（reward 域的列表闸：关着就回空数组），
+		// 不是把图本身锁上 —— 先上传码、之后再打开展示开关是常规顺序，档位跟着开关走的话那一步就漏了。
+		// 代价：知道 hash 的人都能取图；hash 不可猜，且它本来就是给打赏者看的（老站 AGENTS §9 同一结论）。
+		// shortcut: 不做每渠道的可见性列，作者要更细的控制时再给 payment_channels 加一列。
 		owner := actor.UserID
-		if _, err := refTx(ctx, tx, string(hsh), size, mime, w, h, VisibilityPrivate, &owner); err != nil {
+		if _, err := refTx(ctx, tx, string(hsh), size, mime, w, h, VisibilityPublic, &owner); err != nil {
 			return err
 		}
 		newID, err := idgen.NewPublicID()
@@ -278,7 +285,8 @@ func (s *Service) AddPaymentChannel(ctx context.Context, actor *authz.Actor, in 
 }
 
 // ListPaymentChannels 列出某个用户的收款码。userPublicID 为空时就是自己。
-// 图片 URL 与「这张图对访客可不可见」是两件事：判定在 /img/{hash} 那一处（d5 §3.3 的已知取舍）。
+// 收款码的图是 public（L1），所以列表里的 URL 拿给谁都能真取到 —— 列表本身要不要对外给，
+// 由 reward 域的 show_channels 开关决定（那条端点回空数组）。
 func (s *Service) ListPaymentChannels(ctx context.Context, actor *authz.Actor, userPublicID string) ([]PaymentChannel, error) {
 	userID := int64(0)
 	if userPublicID == "" || (actor != nil && userPublicID == actor.PublicID) {

@@ -39,3 +39,41 @@
   - 下一步（L1）：`forum/internal/media/service.go:260` 的 `AddPaymentChannel` 写引用行时不再固定
     `VisibilityPrivate`；先在 `media_test.go` 加「游客能取到收款码图」的红用例。
   - 阻塞：无（`forum/internal/media/**` 有别的 agent 的在途改动，见下面第 3 条记录）。
+- [x] **L1：收款码的图不再固定 private —— 陌生人（登录的无关用户）与游客都真能取到**
+  - 断言先红：**新文件** `forum/internal/media/channel_visibility_test.go`
+    （没有写进 `media_test.go`：那个文件正被另一个 agent 在途修改，见下面「协作」一节）。
+    一条用例量四种身份取同一张收款码：无关登录用户 / 游客 / 所有者 / 超管，都必须**不是占位图**。
+    证据：`cd forum && go test ./internal/media/ -count=1` →
+    `--- FAIL: TestPaymentChannelImageIsFetchableByStrangers`，
+    `channel_visibility_test.go:52: 无关登录用户 必须真拿到收款码图（打赏面板要能扫），实际 &{Mime:image/png Size:69 Path: Placeholder:[137 80 78 71 ...] Body:<nil> Cache:false}`
+    （旧口径只放行所有者 / 超管 / 持 `reward.verify`）。
+  - 改法：`media/service.go` 的 `AddPaymentChannel` 写引用行时 `VisibilityPrivate` → `VisibilityPublic`，
+    并把三处「可见性固定 private」的注释一并订正（`service.go` 的 `AddPaymentChannel` / `ListPaymentChannels`、
+    `channel.go` 文件头、`dto.go` 的 `PaymentChannel`）。
+  - **为什么不按 `show_channels` 选 `VisibilityLogin`/`VisibilityPublic`**：先上传码、之后再打开展示开关
+    是常规顺序（前端设置页两块是分开的），档位若在**上传那一刻**定死，那一步之后游客拿到的仍然是占位图 ——
+    正是本轮要修的现象。收款码本就是给人扫的公开图（老站 `AGENTS.md §9` 同一结论）；
+    **要不要对外展示这个码**由作者侧 `show_channels` 开关管（reward 域列表闸：关着就回空数组），
+    这才是「按渠道展示开关」真正管得住的那一半。代价：知道 hash 的人都能取图（hash 不可猜，
+    且它本来就要给打赏者看），已在代码里留了 `shortcut:` 一行（将来要更细的控制再加一列）。
+  - **09 收尾对照表 §8.4 说的「`media_test.go:246` 那两格」**：那张图是 **private 档**（帖子草稿图：
+    未过审主题的配图，hash 只在作者手上），量的是「草稿图不许给陌生人」——新口径只把**收款码**那一档
+    改成 public，private 档不放宽，所以那两格**保持 false 才是对的**（把它们改成 true 等于让所有草稿配图
+    对陌生人开放）。收款码那一档由新用例量，两条口径各自钉住。
+  - 证据：`go fmt ./internal/media/`（无输出）· `go vet ./...` → exit 0 ·
+    `go test ./internal/media/ -count=1` → `ok  forum/internal/media  21.983s`。
+  - 下一步：无（J3 与 L1 都做完）。
+  - 阻塞：无。
+
+## 协作（同一工作区里还有别的 agent 在跑）
+
+- 我做 L1 时，`forum/internal/media/**` **正被另一个 agent 在途修改**（个人主页封面 / 背景上传：
+  `UploadCover`/`ClearCover`、`/me/cover`、`users.cover_hash`，还带着它自己的 `media_test.go` 新用例；
+  迁移文件在工作区里还是未跟踪的）。所以：
+  · 我的用例写成**新文件**，不去动它的 `media_test.go`；
+  · 提交时对 `service.go` / `dto.go` 这两个**共享文件**用
+    `git hash-object -w --path … ` + `git update-index --cacheinfo` 只把我的 hunk 放进索引，
+    **它的在途改动留在工作区**（`git diff` 里仍看得到），不会被我的提交带走。
+    验证：`git show --stat HEAD` 只有我的文件；`git status` 里它的在途文件仍是 modified。
+- **迁移号 0029 已被占**（工作区未跟踪的 `0029_topic_revisions_pending.up/down.sql`，是 6.2 那一轮的工作），
+  本轮 **L1 不需要任何迁移**（`images.visibility` 这一列早就在，只是写引用行时选错了档）。

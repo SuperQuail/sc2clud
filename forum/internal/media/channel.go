@@ -9,8 +9,8 @@ import (
 	"github.com/google/uuid"
 )
 
-// 收款码渠道的读路径。可见性固定 private（images.visibility=2），
-// 所以列表里的 URL 对访客会渲染成占位图——那是 d5 §3.3 记录在案的取舍。
+// 收款码渠道的读路径。图的可见性是 public（L1，拍板第二轮：收款码是给人扫的，游客也要扫得到），
+// 所以这里给的 URL 对谁都直出 —— 要不要把渠道列表对外展示是 reward 域 show_channels 开关的事。
 
 // channelPublicID 取刚插入那行的 public_id 与 sort。
 // payment_channels 的 public_id 由应用生成（DB 无默认值），所以插入时就带上。
