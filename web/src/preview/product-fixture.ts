@@ -1,3 +1,4 @@
+import { adminFixtureFor, ME_ADMIN } from './admin-fixtures';
 // 产品预览入口的数据桩（`web/product.html`，只在 vite.preview.config.ts 里构建 —— 不进产品产物）。
 //
 // 为什么要它：产品路由页（/ 、/messages 、/issues …）此前**出不了图** —— vite.preview.config.ts 只收
@@ -12,6 +13,8 @@
 //   到那时更该做的是给这个桩加一个 ?state= 参数，而不是继续往里堆分支。
 type Reply = { status?: number; body?: unknown };
 type FixtureRequest = { url: string; method: string; body?: unknown };
+
+// 管理后台的桩在同目录的 admin-fixtures.ts（product-fixture.ts 已经接近体量上限）。
 
 const USER = (handle: string, nickname: string, role?: unknown) => ({
   handle,
@@ -180,9 +183,11 @@ const CONVERSATION = {
 
 const THREAD = {
   peer: USER('demo-admin', '示范管理员'),
+  // 字段名照 message/types.go 的 MessageDTO：**必须有 mine**（不是从 from 推出来的）——
+  // 真实 DTO 里 mine 是独立字段，桩少给一个就等于把「撤回」那条界面分支永远遮住了（G2 出图要它）。
   items: [
-    { id: 'm-1', from: 'demo-admin', body: '第三章的隐藏结局已经修好了。', created_at: '2026-10-14T01:00:00Z' },
-    { id: 'm-2', from: 'demo-marine', body: '好，我今晚过一遍。', created_at: '2026-10-14T01:30:00Z' },
+    { id: 'm-1', body: '第三章的隐藏结局已经修好了。', mine: false, read: true, created_at: '2026-10-14T01:00:00Z' },
+    { id: 'm-2', body: '好，我今晚过一遍。', mine: true, read: true, created_at: '2026-10-14T01:30:00Z' },
   ],
 };
 
@@ -190,8 +195,15 @@ const THREAD = {
 export function fixtureFor(u: string, method: string): Reply | undefined {
   const url = new URL(u, 'http://stub');
   const p = url.pathname;
+  // 管理后台（/admin/*）：自己的桩，具体路径写在那一份里
+  const admin = adminFixtureFor(u);
+  if (admin !== undefined) return admin;
   // 游客态：?me=0（真后端「没登录」也是 200 + data:null，不是报错）
-  if (p.endsWith('/api/v1/me')) return { body: { data: new URLSearchParams(location.search).get('me') === '0' ? null : ME } };
+  // ?asAdmin=1 换成管理员身份：后台每一屏都要 perms，而这里的默认身份是普通成员。
+  if (p.endsWith('/api/v1/me')) {
+    const q = new URLSearchParams(location.search);
+    return { body: { data: q.get('me') === '0' ? null : q.get('asAdmin') === '1' ? ME_ADMIN : ME } };
+  }
   if (p.endsWith('/api/v1/site')) return { body: { data: SITE } };
   if (p.endsWith('/api/v1/boards')) return { body: { data: BOARDS } };
   if (p.includes('/api/v1/topics/tp-1/sources/')) return { status: 302 };

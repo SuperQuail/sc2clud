@@ -28,10 +28,11 @@ import { UsersScreen, type UsersFilter } from '@/devroom/pages/15-admin/screens/
 // 容器与屏都在（而不是在 admin.tsx 里 switch）：**hooks 不能条件渲染**，而 useQuery 的 enabled
 // 只能按屏开 —— 写成「一个组件里十个 useQuery」会让「打开用户屏」顺手打 8 个不相干的请求。
 
-/** 容器把任何失败翻成一句人话（不吞错误，也不把 500 说成「没有数据」）。 */
+/** 容器把任何失败翻成一句人话（不吞错误，也不把 500 说成「没有数据」）。
+ *  **不带状态码**：屏上的模板已经在写「（HTTP 404）」，带上就成了「HTTP 404 HTTP 404 接口不存在」。 */
 export function errorLine(e: unknown): string | null {
   if (!e) return null;
-  if (isApiError(e)) return 'HTTP ' + e.status + ' ' + e.message + (e.requestId ? '（编号 ' + e.requestId + '）' : '');
+  if (isApiError(e)) return e.message + (e.requestId ? '（编号 ' + e.requestId + '）' : '');
   return String(e);
 }
 

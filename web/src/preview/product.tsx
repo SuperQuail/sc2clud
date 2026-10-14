@@ -67,6 +67,9 @@ const router = createMemoryRouter(
         { path: 'issues', lazy: () => import('@/routes/issues').then((m) => ({ Component: m.IssuesPage })) },
         { path: 't/:topicId', lazy: () => import('@/routes/topic').then((m) => ({ Component: m.TopicPage })) },
         { path: 'notifications', lazy: () => import('@/routes/notifications').then((m) => ({ Component: m.NotificationsPage })) },
+        // 管理后台（12 屏）：B8 的出图入口要把**真页面**也覆盖到，否则 /admin/* 永远出不了图
+        { path: 'admin', lazy: () => import('@/routes/admin').then((m) => ({ Component: m.AdminIndex })) },
+        { path: 'admin/*', lazy: () => import('@/routes/admin').then((m) => ({ Component: m.AdminLayout })) },
       ],
     },
   ],

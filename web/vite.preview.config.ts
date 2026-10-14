@@ -21,7 +21,10 @@ export default defineConfig({
     outDir: 'preview-dist',
     emptyOutDir: true,
     rollupOptions: {
-      input: { preview: 'preview.html', devroom: 'devroom.html', isolate: 'isolate.html', product: 'product.html' },
+      // admin 是**管理后台的出图入口**（web/admin.html + src/preview/admin-preview.tsx，W-D2）：
+      // /admin/* 不在 product.html 的 route 表里，而那个文件是共享写入点、当时还有人在改，
+      // 所以后台自己一个入口（同样是真壳 + 真路由 + 真屏，只换桩数据）。
+      input: { preview: 'preview.html', devroom: 'devroom.html', isolate: 'isolate.html', product: 'product.html', admin: 'admin.html' },
     },
   },
 });
