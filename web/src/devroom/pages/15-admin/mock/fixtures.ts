@@ -1,4 +1,4 @@
-import type { AdminUser, Donation, DonationStats, MailAccount, NoticeDefault, Report, ReviewQueueItem, Role, Title } from '@/lib/api/admin';
+import type { AdminUser, Announcement, Banner, Donation, DonationStats, Domain, MailAccount, NoticeDefault, Report, ReviewQueueItem, Role, SettingItem, Title } from '@/lib/api/admin';
 
 // DevRoom 15-admin 的演示数据（**只给房间用**；产品路由由 ./admin-screens.tsx 的容器喂真端点）。
 //
@@ -284,4 +284,25 @@ export const DEMO_MAIL: MailAccount[] = [
     secret_updated_at: null, last_ok_at: null, last_error: '连接超时', last_error_at: '2026-09-20T00:00:00Z',
     created_at: '2026-02-01T00:00:00Z', updated_at: '2026-09-20T00:00:00Z',
   },
+];
+
+/** 站点设置：`SettingItem` 自带 label / kind / options / value / hint（键值目录是后端给的）。 */
+export const DEMO_SETTINGS: SettingItem[] = [
+  { key: 'site.tagline', label: '副标题', group: '站点', kind: 'text', value: '星际争霸 II 战役与地图社区', hint: '首页标题下的一行', updated_at: '2026-10-01T00:00:00Z' },
+  { key: 'site.footer_note', label: '页脚说明', group: '站点', kind: 'multiline', value: '本站与暴雪娱乐无关。', hint: '支持多行', updated_at: null },
+  { key: 'review.auto_approve_trusted', label: 'trusted 作者免审', group: '审核', kind: 'toggle', options: ['on', 'off'], value: 'on', hint: '关掉后所有人都进人工队列', updated_at: null },
+  { key: 'review.mode', label: '审核模式', group: '审核', kind: 'select', options: ['auto', 'manual', 'off'], value: 'auto', hint: 'auto = AI 判定 + 人工兜底', updated_at: null },
+  { key: 'topic.min_post_level', label: '发帖最低等级', group: '审核', kind: 'text', value: '1', hint: '0 = 不限', updated_at: null },
+];
+
+export const DEMO_DOMAINS: Domain[] = [{ domain: 'sc2clud.example' }, { domain: 'www.sc2clud.example' }];
+
+export const DEMO_ANNOUNCEMENTS: Announcement[] = [
+  { id: 'a-1', title: '第三章「余烬」已上线', body_md: '## 章节更新', body_html: '<h2>章节更新</h2>', enabled: true, published_at: '2026-10-12T00:00:00Z', created_at: '2026-10-12T00:00:00Z', updated_at: '2026-10-12T00:00:00Z' },
+  { id: 'a-2', title: '维护通知（草稿）', body_md: '本周日凌晨维护', body_html: '<p>本周日凌晨维护</p>', enabled: false, published_at: null, created_at: '2026-10-13T00:00:00Z', updated_at: '2026-10-13T00:00:00Z' },
+];
+
+export const DEMO_BANNERS: Banner[] = [
+  { id: 'b-1', kind: 'info', text: '编辑器 5.0.14 兼容性说明已更新', url: '/t/t-2', starts_at: '2026-10-10T00:00:00Z', ends_at: null, enabled: true, roles: [], created_at: '2026-10-10T00:00:00Z', updated_at: '2026-10-10T00:00:00Z' },
+  { id: 'b-2', kind: 'warning', text: '资源区下载链接失效请点「反馈」', url: '', starts_at: '2026-10-01T00:00:00Z', ends_at: '2026-11-01T00:00:00Z', enabled: true, roles: ['creator'], created_at: '2026-10-01T00:00:00Z', updated_at: '2026-10-01T00:00:00Z' },
 ];

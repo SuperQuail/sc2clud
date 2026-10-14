@@ -102,7 +102,8 @@ const MAIL = [
 const SETTINGS = {
   items: [
     { key: 'site.tagline', label: '副标题', group: '站点', kind: 'text', value: '星际争霸 II 战役与地图社区', hint: '首页标题下的一行', updated_at: '2026-10-01T00:00:00Z' },
-    { key: 'review.auto_approve_trusted', label: 'trusted 作者免审', group: '审核', kind: 'bool', options: ['true', 'false'], value: 'true', hint: '关掉后所有人都进人工队列', updated_at: null },
+    { key: 'review.auto_approve_trusted', label: 'trusted 作者免审', group: '审核', kind: 'toggle', options: ['on', 'off'], value: 'on', hint: '关掉后所有人都进人工队列', updated_at: null },
+    { key: 'review.mode', label: '审核模式', group: '审核', kind: 'select', options: ['auto', 'manual', 'off'], value: 'auto', hint: 'auto = AI 判定 + 人工兜底', updated_at: null },
     { key: 'topic.min_post_level', label: '发帖最低等级', group: '审核', kind: 'int', value: '1', hint: '0 = 不限', updated_at: null },
   ],
 };

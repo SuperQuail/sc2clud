@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { CURRENT_ADMIN } from './mock/perms';
-import { DEMO_DONATIONS, DEMO_DONATION_STATS, DEMO_MAIL, DEMO_NOTICE_DEFAULTS, DEMO_REPORTS, DEMO_REVIEW, DEMO_ROLES, DEMO_TITLES, DEMO_USERS } from './mock/fixtures';
+import { DEMO_ANNOUNCEMENTS, DEMO_BANNERS, DEMO_DOMAINS, DEMO_DONATIONS, DEMO_DONATION_STATS, DEMO_MAIL, DEMO_NOTICE_DEFAULTS, DEMO_REPORTS, DEMO_REVIEW, DEMO_ROLES, DEMO_SETTINGS, DEMO_TITLES, DEMO_USERS } from './mock/fixtures';
 import { AdminShell } from './shell';
 import { SCREEN_KEYS, type ScreenKey } from './nav';
 import { AiReviewScreen } from './screens/ai-review';
@@ -33,11 +33,33 @@ const SCREENS: Record<ScreenKey, () => React.ReactNode> = {
   rewards: () => <RewardsRoom />,
   titles: () => <TitlesRoom />,
   mail: () => <MailRoom />,
-  settings: () => <SettingsScreen />,
+  settings: () => <SettingsRoom />,
   ai: () => <AiReviewScreen />,
   audit: () => <AuditScreen />,
   diagnostics: () => <DiagnosticsScreen />,
 };
+
+/** 站点设置屏的房间版。 */
+function SettingsRoom() {
+  const [settings, setSettings] = useState(DEMO_SETTINGS);
+  const [announcements, setAnnouncements] = useState(DEMO_ANNOUNCEMENTS);
+  const [banners, setBanners] = useState(DEMO_BANNERS);
+  const [receipt, setReceipt] = useState<string | null>(null);
+  return (
+    <SettingsScreen
+      settings={settings}
+      domains={DEMO_DOMAINS}
+      announcements={announcements}
+      banners={banners}
+      canSetting
+      onSave={(values) => { setSettings((p) => p.map((s) => (values[s.key] !== undefined ? { ...s, value: values[s.key]! } : s))); setReceipt('（房间演示：这里不发请求）已保存 ' + Object.keys(values).join('、')); }}
+      onToggleAnnouncement={(id, enabled) => setAnnouncements((p) => p.map((a) => (a.id === id ? { ...a, enabled } : a)))}
+      onPublishAnnouncement={(id) => setAnnouncements((p) => p.map((a) => (a.id === id ? { ...a, published_at: '2026-10-12T13:45:00Z' } : a)))}
+      onToggleBanner={(id, enabled) => setBanners((p) => p.map((b) => (b.id === id ? { ...b, enabled } : b)))}
+      receipt={receipt ? <p className='text-[12px] text-muted-foreground'>{receipt}</p> : null}
+    />
+  );
+}
 
 /** 发信账号屏的房间版。 */
 function MailRoom() {
