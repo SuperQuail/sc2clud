@@ -34,6 +34,8 @@ const MePage = lazy(() => import('@/routes/me').then((m) => ({ default: m.MePage
 const SearchRedirect = () => <Navigate to={routePath('')} replace />;
 const MessagesPage = lazy(() => import('@/routes/messages').then((m) => ({ default: m.MessagesPage })));
 const DownloadPage = lazy(() => import('@/routes/download').then((m) => ({ default: m.DownloadPage })));
+// 问题反馈整页（DevRoom 13-issue 接真端点）。入口参数：?topic=<资源帖 public id> 定范围与新建落点，?kind= 预设类型。
+const IssuesPage = lazy(() => import('@/routes/issues').then((m) => ({ default: m.IssuesPage })));
 
 const router = createBrowserRouter(
   [
@@ -54,6 +56,7 @@ const router = createBrowserRouter(
         { path: 'settings', element: <SettingsPage /> },
         { path: 'notifications', element: <NotificationsPage /> },
         { path: 'me', element: <MePage /> },
+        { path: 'issues', element: <IssuesPage /> },
         // /messages 与 /messages/:handle 是同一屏：左边会话列表 + 右边会话（后者是 URL 里的选中态）
         { path: 'messages', element: <MessagesPage /> },
         { path: 'messages/:handle', element: <MessagesPage /> },
