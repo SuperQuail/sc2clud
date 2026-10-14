@@ -27,6 +27,30 @@
     选一张 1.3MB 的图 → 应看见缩略图 + **一行**提示）；产品页 `/settings#payment-channels` 出图对照。
   - 阻塞：无。
 
+- [x] **D3（左侧分区列表没有图片 / 非分区页面没有图片）：先分清数据与渲染，两边都动了**
+  - **数据侧（实测，不是推的）**：`Invoke-WebRequest http://191.40.41.97/dev/api/v1/boards` →
+    五个分区的 `cover_hash` **全是空串**（announcement / vanilla-mod / custom-campaign / tool-player / emperor）。
+    后端 DTO 的字段名是 `cover_hash`（`forum/internal/forum/dto.go:43`，**裸哈希**，空串 = 没有封面）。
+    ⇒ 「左侧列表没有任何图片」这一半**首先是数据**：迁移没迁分区封面。回填方案写在下面「阻塞/交接」里。
+  - **渲染侧**：`BoardRail` 原先长在 `routes/_parts/layout.tsx` 里 —— **查询 + 版面混在一个产品文件**里，
+    既违反清单 §0（版面只应出现在 View 里），也导致 DevRoom 根本没法渲染它（它自己 fetch）。
+    改成：View `web/src/devroom/pages/03-navigation/board-rail.tsx`（`BoardRail` + `BoardCover`，只吃 props）
+    + 极薄宿主 `routes/_parts/layout.tsx` 的 `BoardRail`（只 useQuery + 形状对齐 + 传参，一行 JSX 都没有版面）。
+    封面位：有 `cover_hash` 画 `/img/<hash>`；**为空时落稳定占位**（首字 + 由 slug 定的色相，与
+    `@/ui/user/avatar` 同一套取色公式），不再是空白。
+  - 「非分区页面没有图片」：核实为**同一件事的下游** —— 首页卡片视图（`?view=card`，SquareTopicCard）本来就有
+    封面位与占位块，是 `cover_hash` 为空（`posts` 的 3 张配图没迁进 `topic_images`，交接单 §4.G6 第一笔）
+    才看不到图。**这一条不是渲染缺陷**，写进阻塞。
+  - 断言先红：`web/src/devroom/pages/03-navigation/board-rail.test.tsx`（新文件，3 条）。
+    改之前 **1 红 2 不能编译**（旧 `BoardRail` 不接 props、也没有 `BoardCover` 这个导出）；
+    改后 3 绿：有封面画 `/img/<hash>`、无封面落首字占位、当前分区 `aria-current='page'`。
+  - 证据：`npx vitest run src/devroom/pages/03-navigation` → 1 文件 / 3 用例绿；
+    `npx eslint src/devroom/pages/03-navigation src/routes/_parts/layout.tsx` exit 0；
+    `npx tsc --noEmit` 里**我的文件 0 错**（剩下的 11 条是别人在途的
+    `routes/admin/ai.test.tsx` 与 `ui/rich/markdown-editor.tsx`）。
+  - 下一步：DevRoom 03-navigation 出图（有封面 / 无封面 / 空数据三态）→ 产品首页与分区页出图对照。
+  - 阻塞：分区封面的**数据回填**在数据侧（迁移/脚本），不在前端作用域 —— 详见下面「阻塞与交接」。
+
 ## 待办
 
 - [ ] **D1 出图**：DevRoom 11-profile（上传 1.3MB 的收款码）→ 产品 `/settings#payment-channels` 对照。

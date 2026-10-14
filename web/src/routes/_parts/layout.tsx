@@ -5,10 +5,10 @@ import { ControlsHeight } from '@jetbrains/ring-ui-built/components/global/contr
 import { useQuery } from '@tanstack/react-query';
 import { ArrowLeft, Plus } from 'lucide-react';
 import { icon16 } from '@/ui/icons';
-import { appPath, routePath } from '@/lib/url';
+import { appPath } from '@/lib/url';
 import { qk } from '@/lib/query/keys';
 import { fetchBoards } from '@/lib/api/forum';
-import { cn } from '@/lib/utils';
+import { BoardRail as BoardRailView, type BoardSummary } from '@/devroom/pages/03-navigation/board-rail';
 
 // 页面级的两个小件（**不是控件**，是版式）：页头（标题 + 描述 + 动作）与分区侧栏。
 // 它们放在 routes/_parts 而不是 src/ui：src/ui 是「控件库」，加控件要走 DevRoom 验证 + 登记
@@ -64,33 +64,29 @@ export function ComposeButton({ board, label = '发帖' }: { board?: string; lab
 }
 
 /**
- * 分区侧栏：只在一档窄宽度以上出现（贴吧式常驻左栏）。
+ * 分区侧栏的**宿主**：只取数、把数据喂给 View（清单 §0：版面在 View 里，这里只传参）。
+ *
+ * 版式与占位在 `@/devroom/pages/03-navigation/board-rail`（DevRoom 03-navigation 与产品页渲染的是**同一个文件**）。
  * 分区列表走 GET /boards（全站只有这一处请求它，staleTime 10 分钟在 lib/query/client.ts 里定）。
- * 拿不到分区时**整块消失**而不是画骨架：它是辅助导航，不该在首屏抢走内容的注意力。
+ *
+ * 字段名照后端 BoardDTO（forum/internal/forum/dto.go:38）：**cover_hash 是裸哈希**（不是路径），
+ * 空串 = 这个分区没有封面（真站五个分区现在全是空串 —— 迁移没迁封面，见进度-FIX-IMG 的 D3）。
  */
 export function BoardRail({ current, className }: { current?: string; className?: string }) {
   const boards = useQuery({ queryKey: qk.boards(), queryFn: ({ signal }) => fetchBoards(signal), staleTime: 10 * 60_000 });
   if (!boards.data || boards.data.length === 0) return null;
-  return (
-    <nav aria-label='分区' className={cn('flex flex-col gap-0.5', className)}>
-      <h2 className='px-2 pb-1 text-[11px] font-medium tracking-wide text-muted-foreground'>分区</h2>
-      {boards.data.map((b) => {
-        const isCurrent = b.slug === current;
-        return (
-          <Link
-            key={b.slug}
-            to={routePath('b/' + encodeURIComponent(b.slug))}
-            aria-current={isCurrent ? 'page' : undefined}
-            className={cn(
-              'flex items-center gap-2 rounded-md px-2 py-1.5 text-[13px] outline-none transition-colors focus-visible:ring-[3px] focus-visible:ring-ring/50',
-              isCurrent ? 'bg-primary/10 font-semibold text-primary ring-1 ring-primary/40' : 'text-foreground hover:bg-muted',
-            )}
-          >
-            <span className='min-w-0 flex-1 truncate'>{b.name}</span>
-            <span className='shrink-0 text-[11px] tabular-nums text-muted-foreground'>{b.topic_count}</span>
-          </Link>
-        );
-      })}
-    </nav>
-  );
+  // 这里只做**形状对齐**，不画任何东西：后端回的是 cover_hash，而 lib/api/forum.ts 的 Board
+  // 还停在上一次收口的 cover（= I5 那类欠账的另一处），所以两个形状都接着。
+  // 后端的 BoardDTO 里根本没有 cover 这个字段，所以线上走的是 cover_hash 那半边。
+  const rows: BoardSummary[] = boards.data.map((b) => {
+    const raw = b as { cover?: string | null; cover_hash?: string };
+    return {
+      slug: b.slug,
+      name: b.name,
+      description: b.description,
+      topic_count: b.topic_count,
+      cover_hash: raw.cover_hash ?? raw.cover ?? '',
+    };
+  });
+  return <BoardRailView boards={rows} current={current} className={className} />;
 }
