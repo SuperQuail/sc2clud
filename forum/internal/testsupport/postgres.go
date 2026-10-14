@@ -29,6 +29,12 @@ var (
 	instance *embeddedpostgres.EmbeddedPostgres
 	dsn      string
 	schemaN  atomic.Int64
+	// 本次进程建的临时目录。**必须在 stop() 里删掉**：
+	// 2026-10-14 实测，不删的后果是 %TEMP%\forum-pg-* 积到 **412 个目录 / 38.44 GB**，
+	// C 盘只剩 21 GB，上一次部署就是死在 WriteAllBytes: not enough space。
+	// 注意：这只在进程正常退出时生效；进程被强杀时仍会留（那种情况靠人工清 + 下面的注释）。
+	dataDir string
+	runDir  string
 )
 
 // Main 是测试进程的统一入口：起实例 → 跑用例 → 停实例。
@@ -102,14 +108,17 @@ func start() error {
 		dsn = url
 		return nil
 	}
-	dataDir, err := os.MkdirTemp("", "forum-pg-data-")
+	dir, err := os.MkdirTemp("", "forum-pg-data-")
 	if err != nil {
 		return err
 	}
-	runDir, err := os.MkdirTemp("", "forum-pg-run-")
+	dataDir = dir
+	runDirTmp, err := os.MkdirTemp("", "forum-pg-run-")
 	if err != nil {
+		_ = os.RemoveAll(dataDir)
 		return err
 	}
+	runDir = runDirTmp
 	port := 20000 + rand.Intn(20000)
 	instance = embeddedpostgres.NewDatabase(
 		embeddedpostgres.DefaultConfig().
@@ -131,5 +140,15 @@ func stop() {
 	if instance != nil {
 		_ = instance.Stop()
 		instance = nil
+	}
+	// 顺序必须是「先停库、再删盘」：库还在写的时候删，删不干净还看不出来。
+	// 不删的后果见 dataDir 的注释（412 个目录 / 38GB → 部署死在磁盘不足）。
+	if dataDir != "" {
+		_ = os.RemoveAll(dataDir)
+		dataDir = ""
+	}
+	if runDir != "" {
+		_ = os.RemoveAll(runDir)
+		runDir = ""
 	}
 }
