@@ -13,6 +13,7 @@ import (
 	"forum/internal/appeal"
 	"forum/internal/auth"
 	"forum/internal/config"
+	"forum/internal/follow"
 	"forum/internal/forum"
 	"forum/internal/mail"
 	"forum/internal/media"
@@ -111,6 +112,8 @@ func registerAPIRoutes(r *gin.Engine, cfg *config.Config, m *Modules) {
 	reward.NewHandler(m.Reward, auth.FromGin).Register(v1, m.requireLoginFn, m.perm, m.limit)
 	notify.NewHandler(m.Notify, auth.FromGin).Register(v1, m.requireLogin())
 	message.NewHandler(m.Message, auth.FromGin).Register(v1, m.requireLogin())
+	// 关注（L5）：关注/取关要登录，读关注数与列表游客也能看（following 恒 false）。
+	follow.NewHandler(m.Follow, auth.FromGin).Register(v1, m.requireLogin())
 	title.NewHandler(m.Title, m.titleUsers(), auth.FromGin).Register(v1, m.requireLogin(), m.perm)
 	site.NewHandler(m.Site, auth.FromGin).Register(v1, m.requireLogin, m.perm)
 	mail.NewHandler(m.Mail, auth.FromGin).Register(v1, m.requireLogin, m.perm)

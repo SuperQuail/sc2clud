@@ -11,6 +11,8 @@ import (
 	"forum/internal/aireview"
 	"forum/internal/auth"
 	"forum/internal/config"
+	"forum/internal/follow"
+	followpgsql "forum/internal/follow/pgsql"
 	"forum/internal/forum"
 	forumpgsql "forum/internal/forum/pgsql"
 	"forum/internal/mail"
@@ -55,6 +57,8 @@ type Modules struct {
 	Report  *report.Service
 	// AIReview 是 AI 审核域（d7）：它同时是 report 的 ReviewTrigger 实现（举报到阈值 → ai:review）。
 	AIReview *aireview.Service
+	// Follow 是关注域（2026-10-14 拍板 L5）：关注分区与用户，**不发通知**（推送算备用）。
+	Follow *follow.Service
 	// Captcha 是图形验证码的出题器（platform，不是业务域）：auth 消费它的结论。
 	Captcha *captcha.Service
 
@@ -127,6 +131,7 @@ func newModules(ctx context.Context, cfg *config.Config, in *Infra) (*Modules, e
 		rewardAudit{m.audit}, in.Clock, in.Log)
 	notifyDB := notifypgsql.New(in.DB)
 	m.Notify = notify.NewService(in.DB, in.Clock, notifyDB, notify.NewNoticeSettings(notifyDB))
+	m.Follow = follow.NewService(followpgsql.New(in.DB))
 	m.Message = message.NewService(in.DB, in.Clock, messagepgsql.New(in.DB), msgUsers{m}, m.Forum)
 	m.Title = title.NewService(in.DB, in.DB, in.Clock, titleAudit{m})
 
