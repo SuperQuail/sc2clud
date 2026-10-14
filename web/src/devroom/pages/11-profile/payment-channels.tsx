@@ -7,6 +7,7 @@ import Toggle from '@jetbrains/ring-ui-built/components/toggle/toggle';
 import { Trash2 } from 'lucide-react';
 import { icon16 } from '@/ui/icons';
 import { ImageUploader, type UploadedImage } from '@/ui/rich/image-uploader';
+import { AVATAR_MAX_BYTES } from '@/ui/rich/image-pipeline';
 import { qk } from '@/lib/query/keys';
 import { formatCents, formatTime } from '@/lib/format';
 import { isApiError } from '@/lib/api/errors';
@@ -35,16 +36,25 @@ import {
 // 每用户上限 5 张、单图 512KB 都是**服务端**的硬约束（`media/service.go:39` 与 config.Image.PaymentMax），
 // 这里只是把同一批数字显示出来 —— 前端自己再定一套会让「还能传几张」与后端不一致。
 
-/** 收款码是给人扫的：压缩到长边 256（头像位那一档）会糊掉码点，所以用配图位的 1600 与 512KB 目标。 */
+/** 收款码是给人扫的：压缩到长边 256（头像位那一档）会糊掉码点，所以用配图位的 1600。 */
 const CHANNEL_MAX = 5;
-/** 后端的 request body 上限，前端只能更小不能更大（超了是 413，用户看不出为什么）。 */
+/** 服务端的硬上限（config.Image.PaymentMax = 512KB），前端只能更小不能更大（超了是 413，用户看不出为什么）。 */
 const CHANNEL_BYTES = 512 * 1024;
+/**
+ * 交出去**之前**要压到的目标，留出 32KB 余量。
+ *
+ * 这里曾经把 CHANNEL_BYTES 直接当 maxSize 用 —— 那是「这一步收到的原图」的上限，
+ * 于是 1.3MB 的收款码图在解压/压缩**之前**就被判「不能超过 0.5MB」当场退掉（D1）。
+ * 上限与压缩目标是两个数：上限是「还救不救得动」（AVATAR_MAX_BYTES 那一档，与头像同一个道理），
+ * 目标才是成品要压到多少。
+ */
+const CHANNEL_TARGET = CHANNEL_BYTES - 32 * 1024;
 
 export function PaymentChannelsPanel() {
   const qc = useQueryClient();
   const [label, setLabel] = useState('');
   const [picked, setPicked] = useState<UploadedImage[]>([]);
-  const [error, setError] = useState<string | null>(null);
+  // 体积与张数的提示**只有上传器那一份**（它的 onError 已透出）。这里再画一行 = 同一句话出现两次（D1）。
 
   // 本人管理自己的码走 /me/payment-channels（不是 /users/{handle}/channels：那条要过作者的展示开关）
   const channels = useQuery({ queryKey: qk.paymentChannels(), queryFn: ({ signal }) => fetchMyChannels(signal) });
@@ -57,7 +67,6 @@ export function PaymentChannelsPanel() {
     onSuccess: () => {
       setPicked([]);
       setLabel('');
-      setError(null);
       void qc.invalidateQueries({ queryKey: qk.paymentChannels() });
     },
   });
@@ -144,14 +153,13 @@ export function PaymentChannelsPanel() {
                 const f = next[0];
                 if (f) add.mutate({ file: f.file, label });
               }}
-              maxSize={CHANNEL_BYTES}
-              onError={setError}
+              maxSize={AVATAR_MAX_BYTES}
+              targetBytes={CHANNEL_TARGET}
             />
             {/* 已满时说清为什么点不动，而不是让按钮静默无效 */}
             {full ? (
               <span className='text-[12px] text-muted-foreground'>已经有 {CHANNEL_MAX} 张了，删一张才能再传。</span>
             ) : null}
-            {error ? <span role='alert' className='text-[12px] text-destructive'>{error}</span> : null}
             {add.isError ? (
               <span role='alert' className='text-[12px] text-destructive'>
                 {isApiError(add.error) ? add.error.message : '上传失败'}

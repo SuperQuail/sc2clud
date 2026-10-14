@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react';
+import { useState, type ReactNode } from 'react';
 import { ImageUploader, type UploadedImage } from '@/ui/rich/image-uploader';
 import { COMPRESS_LABEL } from '@/ui/rich/image-pipeline';
 import { imagePath } from '@/lib/url';
@@ -18,12 +18,16 @@ export type AvatarSettingProps = {
 };
 
 export function AvatarSetting({ avatar, onChange, onReady, actions }: AvatarSettingProps) {
+  // 提示归宿主画（上传器内部不再画那一行，否则同一句话会出现两次 —— D1）。
+  // 这条正好是「12MB 的图塞进头像位要说清是体积问题」那个用例的落点。
+  const [error, setError] = useState<string | null>(null);
   return (
     <div className='flex flex-col gap-3'>
       <ImageUploader
         variant='avatar'
         label='上传头像'
         compress
+        onError={setError}
         // 现头像塞进唯一的预览位：image-uploader 对 avatar 形态是**换掉**它，不是「名额已满」
         images={avatar ? [{ id: 'me', name: 'avatar.webp', size: 0, url: imagePath(avatar), original: false, file: new Blob() }] : []}
         onChange={onChange}
@@ -32,6 +36,11 @@ export function AvatarSetting({ avatar, onChange, onReady, actions }: AvatarSett
       <span className='text-[11px] leading-relaxed text-muted-foreground'>
         方形图最好看。{COMPRESS_LABEL}；头像成品目标 ≤64KB（服务端硬上限 128KB），所以原图大一点也传得进来。
       </span>
+      {error ? (
+        <span role='alert' className='text-[12px] text-destructive'>
+          {error}
+        </span>
+      ) : null}
       {actions ? <span className='flex flex-wrap items-center gap-2'>{actions}</span> : null}
     </div>
   );

@@ -38,6 +38,7 @@ export function ImageUploader({
   existingCount,
   onError,
   maxSize,
+  targetBytes,
   onReady,
   headless = false,
 }: {
@@ -45,8 +46,14 @@ export function ImageUploader({
   onChange: (next: UploadedImage[]) => void;
   variant?: 'list' | 'avatar' | 'cover';
   max?: number;
-  /** 单个体积上限（默认按形态取：头像 10MB / 配图 20MB，见 image-pipeline） */
+  /**
+   * **这一步收到的原图**的体积上限（「这张还救不救得动」的边界，见 image-pipeline 的两个常量）。
+   * 它**不是**成品目标：成品目标走 targetBytes（或 avatar 形态自带的 AVATAR_TARGET）。
+   * 曾经把两者混成一个数，于是「1.3MB 的收款码」被当场拒掉 —— 它本来压得进上限。
+   */
   maxSize?: number;
+  /** 压缩后的成品目标字节；不传按形态取（avatar 走 AVATAR_TARGET，其余不设目标） */
+  targetBytes?: number;
   compress?: boolean;
   allowOriginal?: boolean;
   label?: string;
@@ -72,7 +79,8 @@ export function ImageUploader({
   const input = useRef<HTMLInputElement>(null);
   const [useOriginal, setUseOriginal] = useState(false);
   const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  // **提示只有宿主那一份**（onError）。控件自己再画一行的话，宿主照约定画出来就是**同一句话出现两次**
+  // —— D1 就是这么被用户看见的。控件内部因此不留 error state。
 
   // 头像位只有**一个槽**：已有的那张是「现在这张」，再选一张是**换掉它**，不是「名额已满」。
   // （旧写法 used=images.length 会让头像位 free=0，换头像点了没反应 —— 房间里没人上传所以没暴露。）
@@ -98,7 +106,6 @@ export function ImageUploader({
         : over > 0
           ? '最多 ' + limit + ' 张，已忽略多出的 ' + over + ' 张'
           : null;
-    setError(msg);
     onError?.(msg ?? '');
     // 过大的先剔掉，再按余额截断：否则一张超大图会把名额占掉，后面正常的图反而进不来
     const usable = list.filter((f) => f.size <= sizeLimit);
@@ -107,7 +114,11 @@ export function ImageUploader({
     const out: UploadedImage[] = [];
     for (const f of usable.slice(0, free)) {
       // 封面用默认长边（1600）：它是横幅，压到头像那一档就糊了；服务端上限 2MiB 够装
-      const blob = await processImage(f, { ...opts, maxEdge: variant === 'avatar' ? AVATAR_EDGE : undefined, targetBytes: variant === 'avatar' ? AVATAR_TARGET : undefined });
+      const blob = await processImage(f, {
+        ...opts,
+        maxEdge: variant === 'avatar' ? AVATAR_EDGE : undefined,
+        targetBytes: targetBytes ?? (variant === 'avatar' ? AVATAR_TARGET : undefined),
+      });
       out.push({
         id: Math.random().toString(36).slice(2),
         name: f.name,
@@ -186,7 +197,6 @@ export function ImageUploader({
           <span className='text-[11px] text-muted-foreground'>
             {cover ? '建议横幅（16:9 或更宽）' : '建议正方形'}；{compress ? '自动压缩' : '保留原图'}，上限 1 张、{'≤' + formatBytes(sizeLimit)}
           </span>
-          {error ? <span className='text-[12px] text-destructive'>{error}</span> : null}
         </div>
       </div>
     );
@@ -212,7 +222,6 @@ export function ImageUploader({
           {used} / {limit}{compress && !useOriginal ? '　' + COMPRESS_LABEL : ''}
         </span>
       </div>
-      {error ? <span className='text-[12px] text-destructive'>{error}</span> : null}
       {showThumbnails && images.length > 0 ? (
         <ul className='flex flex-wrap gap-2'>
           {images.map((im) => (
