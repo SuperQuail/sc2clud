@@ -15,5 +15,13 @@ export default defineConfig({
     // Chrome 锁着文件就 EBUSY，把 dev server 搞死——所以显式忽略
     watch: { ignored: ['**/.tmp-*/**', '**/node_modules/**', '**/dist/**', '**/preview-dist/**'] },
   },
-  build: { outDir: 'preview-dist', emptyOutDir: true, rollupOptions: { input: { preview: 'preview.html', devroom: 'devroom.html', isolate: 'isolate.html' } } },
+  // product 是**产品路由页**的预览入口（真壳 + 真页面，桩数据见 src/preview/product-fixture.ts）：
+  // 没有它，产品页只能过 typecheck/单测、出不了图（交接单 §4.B.8 / 开发必读 §8）。
+  build: {
+    outDir: 'preview-dist',
+    emptyOutDir: true,
+    rollupOptions: {
+      input: { preview: 'preview.html', devroom: 'devroom.html', isolate: 'isolate.html', product: 'product.html' },
+    },
+  },
 });

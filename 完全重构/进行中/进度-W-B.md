@@ -70,3 +70,31 @@
   - 下一步：B8 —— 产品页出图脚手架：新建 `web/product.html` + `web/src/preview/product.tsx`（真 Shell + MemoryRouter，可切路由）、
     `web/vite.preview.config.ts` 的 `rollupOptions.input` 加 `product: 'product.html'`，再写进 `开发必读 §8`。
   - 阻塞：无
+- [x] 第 4 步：B8 产品页出图脚手架（长期件，不再是临时改配置）
+  - 做了什么：新建 `web/product.html` + `web/src/preview/product.tsx`（**真壳** `app/shell.tsx` + 真页面，
+    `MemoryRouter` 所以静态服务与 vite dev 都能直接打开；参数 `route=` 切路由、`stub=0` 走真后端、`me=0` 游客、`theme=` 主题）
+    + `web/src/preview/product-fixture.ts`（桩：字段名照 `forum/internal/**`、`notify/types.go`、`message/types.go` 的 DTO 抄；
+    请求流水留在 `window.__PRODUCT_FETCH_LOG`）；`web/vite.preview.config.ts` 的 `rollupOptions.input` 加 `product: 'product.html'`；
+    `完全重构/开发必读.md` 新增 §8.1（用法 + 为什么 + 出图命令）。
+  - 证据：
+    ① **dev 出图**（`shots/wb-shot.mjs`，vite dev 5229 / Chrome 9233）：三页都出了图且**看图确认没塌** ——
+       `shots/preview/wb-product-home.png`（顶栏 SC2clud/首页/搜索 + 左栏五个分区 + 三张帖子卡片带真实标题与计数）、
+       `shots/preview/wb-product-messages.png`（顶栏 + 信息中心五档 + 会话列表「示范管理员 … 补丁已经推上去了」）、
+       `shots/preview/wb-product-issues.png`（顶栏 + 两个页签 + 四类入口 + 检索条 + #128/#126/#125 三条反馈）。
+       每张图左下角都有可见标记 `MARKER-PRODUCT-LOGIN <route>`（交接单 §5.4 的固定动作），脚本同时断言它与 `<header>` 存在；
+       控制台问题 0 条（只有 react-router 的 HydrateFallback 警告，已确认不影响渲染）。
+    ② **B2 的实测**（同一套脚本读 DOM）：`issueLinks: ["/issues?topic=tp-1", "/issues?topic=tp-1&kind=bug",
+       "/issues?topic=tp-1&kind=feature", "/issues?topic=tp-1&kind=difficulty", "/issues?topic=tp-1&kind=other", "/issues?topic=tp-1"]`
+       —— 四个入口各带自己的 kind，两处「看全部/去反馈页」不带 kind。
+    ③ **B3/B4 的实测**：`shots/preview/wb-product-issues-sort.png`（排序下拉打开着，三档是「最新更新/评论最多/**最新创建**」）、
+       `shots/preview/wb-product-issues-dialog.png`（新建弹窗那句话已是「提交后会存到服务端，并立刻出现在左边的列表里」）。
+    ④ 窄屏 390：`shots/preview/wb-product-{home,messages,issues,topic}-390.png`，无横向滚动（脚本读 `scrollWidth === clientWidth`）。
+    ⑤ **构建产物也验过**（不能只验 dev）：`npx vite build --config vite.preview.config.ts` → `preview-dist/` 里有四个入口
+       （`devroom.html / isolate.html / preview.html / product.html`）；`shots/wb-built-check.mjs` 用静态服务（5230）打开构建版的
+       `product.html` → 三页 `header:true`、marker 正确、正文长度 368/184/499（与 dev 一致）。
+    ⑥ `pnpm typecheck` 无输出；`npx vitest run` → `Test Files 28 passed (28) / Tests 145 passed (145)`；
+       静态门禁：`check-ui-usage`「没有手写 HTML 控件」/ `check-controls`「只用了已登记的 45 个控件」/ `check-urls`「路径都走统一入口」/
+       `check-security`「无 sourcemap 上线、无密钥入库、无未受控调试开关」/ `check-size`「通过（超限 1 个，已登记）」。
+  - 下一步：等 Lead 串行跑一次全量 `cd web && pnpm check`（**我没跑**：它会 `pnpm build` 清空 dist，交接单禁止并发跑）；
+    另外 B1/B2/B3/B4/B5 的渲染改动都已在第 4 步一并出图（见上），不需要再补图。
+  - 阻塞：见下（两条）。
