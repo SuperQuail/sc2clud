@@ -1,5 +1,5 @@
 import { useSearchParams } from 'react-router';
-import { useEffect, useState } from 'react';
+import { Suspense, lazy, useEffect, useState } from 'react';
 import { useInfiniteQuery, useQuery } from '@tanstack/react-query';
 import Button from '@jetbrains/ring-ui-built/components/button/button';
 import ButtonSet from '@jetbrains/ring-ui-built/components/button-set/button-set';
@@ -18,7 +18,7 @@ import { CompactTopicRow } from '@/devroom/pages/14-home/topic-compact-row';
 import { SquareTopicCard } from '@/devroom/pages/14-home/topic-square-card';
 import { ListEnd, SquareCardSkeleton } from '@/devroom/pages/14-home/states';
 import { KIND_TAG, TOPIC_KIND_LABEL } from '@/devroom/pages/14-home/topic-kind';
-import { SearchPanel, type SearchState, type SearchTab } from '@/devroom/pages/19-search/search-panel';
+import type { SearchState, SearchTab } from '@/devroom/pages/19-search/search-panel';
 
 import { BoardRail, ComposeButton, PageHeader } from './_parts/layout';
 import { Empty, ErrorState } from './_parts/state';
@@ -27,6 +27,26 @@ import { toCardTopic } from './_parts/mappers';
 // 首页信息流（契约：GET /topics + GET /boards）。**公开首屏，不做代码分割**（前端方案 §6）。
 // URL 即状态（§6 规则一）：board / sort / view 全在查询串里，可分享、可后退、刷新不丢。
 // 卡片与紧凑行直接复用 DevRoom 14-home 的房子件（同一个实现，不是抄一份）。
+// 搜索面板（19-search 的房子件）**懒加载**：它为了两档页签静态拖进了 Ring 的 Tabs →
+// collapsible-tabs → list → react-virtualized + sniffr + combokeys —— 实测这一串占首屏 gzip **53.0 KB**
+// （把 search-panel 换成空实现重打包：197.1 → 144.1），而首屏预算只有 150 KB。
+// 那一整条链是给「可滚动的虚拟列表」用的，两块页签的搜索栏根本用不上。
+// 照仓库既有的做法（12-topic/main-column 的评论区、report-dialog）走 lazy + Suspense。
+const LazySearchPanel = lazy(() =>
+  import('@/devroom/pages/19-search/search-panel').then((m) => ({ default: m.SearchPanel })),
+);
+
+// 懒加载期间的占位：形状照着 SearchPanel 的搜索栏 + 页签行画，**不能是空的** ——
+// 空占位会让下面的信息流在 chunk 到达时往上跳一次（出图时看得见的那种抖动）。
+function SearchPanelSkeleton() {
+  return (
+    <div className='flex flex-col gap-2' aria-hidden>
+      <div className='h-8 w-full max-w-[520px] rounded-md border border-border bg-muted/40' />
+      <div className='h-6 w-[220px] rounded-md bg-muted/40' />
+    </div>
+  );
+}
+
 const GRID = {
   card: 'grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4',
   compact: 'flex flex-col gap-0.5',
@@ -144,10 +164,11 @@ const sort = (SORTS.find((s) => s.key === params.get('sort'))?.key ?? 'latest') 
 
         {/* 搜索那一块是 DevRoom 19-search 的 <SearchPanel>（登记在 registry，注释写明「真站把搜索内嵌在首页」）。
             它自带搜索栏、两档页签、四态与窄屏折叠，所以这里不再手写第二份搜索行。 */}
-        <SearchPanel
-          q={draft}
-          onQChange={setDraft}
-          onSubmit={commitQuery}
+        <Suspense fallback={<SearchPanelSkeleton />}>
+          <LazySearchPanel
+            q={draft}
+            onQChange={setDraft}
+            onSubmit={commitQuery}
           onClear={() => {
             setDraft('');
             setParam('q', null);
@@ -157,9 +178,10 @@ const sort = (SORTS.find((s) => s.key === params.get('sort'))?.key ?? 'latest') 
           state={searchState}
           topics={topicRows}
           users={userRows}
-          error={searchState === 'error' ? errorText(active.error) : undefined}
-          onRetry={() => void Promise.all([searchFeed.refetch(), userSearch.refetch()])}
-        />
+            error={searchState === 'error' ? errorText(active.error) : undefined}
+            onRetry={() => void Promise.all([searchFeed.refetch(), userSearch.refetch()])}
+          />
+        </Suspense>
         {/* 帖子档的「加载更多」：SearchPanel 只画结果，翻页由调用方给 —— 一次只发下一个游标请求。
             用户档没有游标，所以这里不会出现。 */}
         {searching && tab === 'topics' ? (
