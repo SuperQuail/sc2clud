@@ -45,7 +45,8 @@ const chrome = spawn(
     '--no-first-run',
     '--hide-scrollbars',
     '--force-device-scale-factor=1',
-    '--window-size=1440,900',
+    // 视口可用 CDP_SIZE=390x844 覆盖 —— 版面缺陷只在窄屏出现，能拍窄屏是刚需
+    '--window-size=' + (process.env.CDP_SIZE ?? '1440,900'),
     '--remote-debugging-port=' + port,
     '--user-data-dir=' + profile,
     url,
@@ -161,6 +162,14 @@ for (const action of actions) {
     const sel = rest.join(':');
     const ok = await cdp.eval<boolean>(`(() => { const el = document.querySelector(\`${sel}\`); if (!el) return false; el.click(); return true; })()`);
     if (!ok) throw new Error('点不到: ' + sel);
+  } else if (kind === 'scroll') {
+    // 首屏之下的元素拍不到（截图是视口大小，不是整页）：先把目标滚到中间
+    const sel = rest.join(':');
+    const ok = await cdp.eval<boolean>(
+      `(() => { const el = document.querySelector(\`${sel}\`); if (!el) return false; el.scrollIntoView({ block: 'center' }); return true; })()`,
+    );
+    if (!ok) throw new Error('滚不到: ' + sel);
+    await sleep(250);
   } else if (kind === 'type') {
     const sel = rest[0];
     const text = rest.slice(1).join(':');
