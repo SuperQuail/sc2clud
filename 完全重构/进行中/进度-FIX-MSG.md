@@ -68,3 +68,13 @@
     <HeaderSearch />
     ```
     接线后建议把「首页那一条」保留（首页内嵌搜索不动，用户明确说过保持现状）。
+- [x] 收尾：产品页出图对照（真壳 + 桩数据）—— D10 的缺陷态与修好后的态都拍到了
+  - 证据：`shots/fixmsg/pr-notices-settings.png`：在真站 /notifications 点「消息设置」后，
+    **URL 是 ?panel=settings、选中态在「消息设置」、右栏是设置四行**（三者同时变）；
+    修之前正是这一屏红：地址栏 `?panel=settings` 而选中态还停在「回复我的」。
+    另外三张：`pr-notices-default.png`（回复我的）、`pr-notices-messages.png`（从通知档点「我的消息」切过去）、
+    `pr-msg-chat-900.png`（/messages/demo-admin 的私信两栏，串消息撤回都在）。
+    房间侧同一档：`dr-msg-like2-900.png` / `dr-msg-settings-900.png` —— 与产品侧的标题、导航、
+    行内容与动作槽位一致，差别只有数据（同源断言 `same-source.test.tsx` 把它钉成机器判据）。
+  - 下一步：无（D10 / D11 我这一侧的活干完了；D11 只差 Lead 把 shell.tsx 那一行换掉）。
+  - 阻塞：无新增。
