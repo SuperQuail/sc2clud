@@ -29,6 +29,7 @@ import {
   type SourceInput,
   type TopicKind,
 } from '@/lib/api/forum';
+import { attachTopicImage } from '@/lib/api/media';
 import { PageHeader } from './_parts/layout';
 import { Empty, ErrorState, Loading } from './_parts/state';
 
@@ -123,6 +124,16 @@ export function ComposePage() {
     onSuccess: refreshTopic,
   });
   const sourceError = saveSource.error ?? removeSource.error ?? checkSource.error;
+
+  // 配图（拍板第三轮「图文帖整块做完」）：media 的通道是 POST /topics/{id}/images —— **帖 id 是必须的**，
+  // 所以发新帖时传不上去（那时还没有 id）。这是端点的形状，不是前端偷懒：与其画一个点了必失败的入口，
+  // 不如在编辑态真接上、在新帖态说清「发布之后从帖子页点编辑回来配图」。
+  // 传上去的图由编辑器插成**正文节点**（图片是正文的一部分），而 sort=0 的那张**自动成为列表封面**
+  // （后端 pgsql/topics.go:60 取的就是它），所以没有第二个「设封面」的动作。
+  const uploadImage = (file: Blob): Promise<string> => {
+    if (!editing) return Promise.reject(new Error('配图要等这篇发布之后才能加'));
+    return attachTopicImage(editId, file).then((a) => a.url);
+  };
 
   if (session.isLoading) return <Loading what='账号信息' />;
   if (session.error) return <ErrorState what='账号信息' error={session.error} />;
@@ -248,10 +259,27 @@ export function ComposePage() {
               onLengthChange={(length) => setDoc((d) => ({ ...d, length }))}
               images={[]}
               onImagesChange={() => undefined}
+              // 编辑态才给上传口：新帖还没有 topic id，图片挂不上去（见上面 uploadImage 的注释）。
+              onUpload={editing ? uploadImage : undefined}
             />
             <span data-testid='compose-count' className='text-[11px] text-muted-foreground'>
               正文字数 {doc.length} / {BODY_MAX}（正文里插的图算节点，不计入字数）
             </span>
+            {/* 新帖态说清「配图什么时候能加」——不能传的原因是端点绑在主题上，不是这里没做 */}
+            {!editing ? (
+              <p
+                data-testid='compose-images-later'
+                className='m-0 rounded-lg border border-dashed border-border px-3 py-2 text-[11px] leading-relaxed text-muted-foreground'
+              >
+                配图要等这篇发布之后：上传端点按帖子挂（POST /topics/{'{'}id{'}'}/images），发新帖时还没有 id。
+                发布后从帖子页点「编辑」回来，正文里就多出「添加图片」与拖拽落点；第一张会自动成为列表封面。
+              </p>
+            ) : (
+              <p className='m-0 text-[11px] leading-relaxed text-muted-foreground'>
+                配图直接插在正文光标处（图片是正文节点，不是另一个字段）。每帖最多 9 张、单张压缩后上限 2MiB；
+                排序第一张（sort=0）就是列表封面。图片对别人的可见性跟着**这篇的审核态**走：过审之后才对外可见。
+              </p>
+            )}
 
             {/* 新建时还没有 topic id，来源挂不上 —— 明说，别让人找不到入口（设计稿的这一件在编辑态） */}
             {!editing && kind === 'resource' ? (

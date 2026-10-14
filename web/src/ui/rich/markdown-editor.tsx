@@ -157,6 +157,7 @@ export function MarkdownEditor({
   compact = false,
   images,
   onImagesChange,
+  onUpload,
   maxImages = 10,
   allowOriginal = false,
   compress = true,
@@ -171,6 +172,13 @@ export function MarkdownEditor({
   compact?: boolean;
   images?: UploadedImage[];
   onImagesChange?: (next: UploadedImage[]) => void;
+  /**
+   * 把压缩后的图**传到服务端**并回一个可以直接存进正文的 URL（配图走 media 的
+   * `POST /topics/{id}/images`）。给了它，正文节点里写的才是服务端地址；
+   * 不给就是老行为 —— 插一个 `blob:` 预览地址（**它一刷新就失效，不能发布**），
+   * 只有 DevRoom 这类不落库的演示场景才该这么用。
+   */
+  onUpload?: (file: Blob) => Promise<string>;
   maxImages?: number;
   allowOriginal?: boolean;
   compress?: boolean;
@@ -261,11 +269,13 @@ export function MarkdownEditor({
       const accepted: UploadedImage[] = [];
       for (const f of usable.slice(0, room)) {
         const blob = await processImage(f, { existing: docImages, max: maxImages, compress });
+        // 有上传口就先传：正文节点里写服务端地址，而不是一刷新就没的 blob: 预览地址。
+        const url = onUpload ? await onUpload(blob) : URL.createObjectURL(blob);
         accepted.push({
           id: Math.random().toString(36).slice(2),
           name: f.name,
           size: blob.size,
-          url: URL.createObjectURL(blob),
+          url,
           original: false,
           file: blob,
         });
@@ -273,7 +283,7 @@ export function MarkdownEditor({
       onImagesChange?.([...(images ?? []), ...accepted]);
       insertImages(accepted);
     },
-    [docImages, insertImages, maxImages, onImagesChange],
+    [docImages, insertImages, maxImages, onImagesChange, onUpload],
   );
 
   const onEditorChange = useCallback(
@@ -381,7 +391,22 @@ export function MarkdownEditor({
         <ImageUploader
           images={[]}
           existingCount={docImages}
-          onChange={(added) => insertImages(added)}
+          // 点选与拖拽走同一条路：有上传口就先传，拿到服务端地址再插节点
+          // （blob: 只留给没有上传口的演示场景 —— 它一刷新就失效，不能发布）。
+          onChange={(added) => {
+            if (!onUpload) {
+              insertImages(added);
+              return;
+            }
+            void (async () => {
+              const uploaded: UploadedImage[] = [];
+              for (const im of added) {
+                uploaded.push({ ...im, url: await onUpload(im.file) });
+              }
+              onImagesChange(uploaded);
+              insertImages(uploaded);
+            })();
+          }}
           max={maxImages}
           allowOriginal={allowOriginal}
           compress={compress}

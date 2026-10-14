@@ -400,6 +400,10 @@ function DraftFields({
           onLengthChange={(length) => onDoc((d) => ({ ...d, length }))}
           images={[]}
           onImagesChange={() => undefined}
+          // 房间里也要走**真**上传这条路（给 onUpload 才会把服务端地址写进正文节点）。
+          // 这一页不落库、没有后端，所以回一个本地预览地址：真页面是 POST /topics/{id}/images，
+          // 回的是 /img/<hash>（见 routes/compose.tsx 的 uploadImage 与 lib/api/media.ts）。
+          onUpload={(file) => Promise.resolve(URL.createObjectURL(file))}
         />
         <p data-testid='compose-body-count' className='m-0 text-[11px] text-muted-foreground'>
           正文字数 {doc.length} / {BODY_MAX}（正文里插的图算图片节点，不计入字数）

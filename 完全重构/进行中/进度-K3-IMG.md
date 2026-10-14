@@ -52,3 +52,33 @@
   - 下一步：前端配图的**上传 → 附加（POST /topics/{id}/images）→ 正文节点**这一段（web/src 里 zero 调用方）。
   - 阻塞：`web/src/routes/topic.tsx` 被 K2-C 拿着（它「下一步」写着要改它认 pending_draft）——
     配图在主题详情里的**展示**落点（topic-view.tsx 的 images 至今零渲染）我在下面第 3 步再定。
+- [x] **图文帖第 2 步（前端）：配图的上传链路接通（lib/api/media.ts + MarkdownEditor.onUpload + compose 编辑态）**
+  - 现状核过：`web/src` 里 **零调用方** —— 没有 media 客户端、编辑器插进正文的是 `blob:` 预览地址
+    （刷新即失效，发布出去必然裂图）、compose 对编辑器传 `images={[]} onImagesChange={()=>undefined}`。
+    所以「上传 → 附加到主题 → 正文节点」这一段是断的。
+  - 改法：
+    · **新文件** `web/src/lib/api/media.ts`：`attachTopicImage(topicId, file)`（multipart 字段名 `file`，
+      与 `media/handler.go:170` 逐字一致）与 `detachTopicImage(topicId, hash)`；
+    · `web/src/ui/rich/markdown-editor.tsx` 加一个可选 `onUpload`：给了它，点选与拖拽**两条路**都先传，
+      正文节点里写的是**服务端地址**；不给就是老行为（`blob:` 预览，只留给不落库的演示场景）。
+      这是最小改法：没有新控件、没有第二份上传实现（点选与拖拽本来就共用一条管线）；
+    · `web/src/routes/compose.tsx` 编辑态接上 `onUpload`（上传 → `POST /topics/{id}/images` → 回 `/img/<hash>`），
+      新帖态**不画**上传入口并写清原因（端点绑 topic，发新帖时还没有 id）；
+    · `web/src/devroom/pages/18-compose/index.tsx` 也给它一个 `onUpload`（本地预览地址），
+      让房间里的行为与真页面同形。
+  - 为什么不做「通用图片通道」：那要给 media 加第二条上传端点 + 一个不绑主题的引用语义，
+    而**产品上并不需要** —— 图片本来就是正文节点、sort=0 自动成为列表封面（后端 pgsql/topics.go:60），
+    所以「先发帖、再回来配图」是端点的形状，不是缺功能。要补是另一块活，本轮不假造入口。
+  - 断言：`web/src/lib/api/media.test.ts`（新文件，2 条）钉路径 / 方法与字段名 ——
+    `POST /api/v1/topics/tp-1/images` + multipart `file` + 无 content-type（套 JSON 会让后端 readFormFile 400）；
+    `DELETE /api/v1/topics/tp%2F1/images/<hash>`。另在 `routes/compose.test.tsx` 补一条
+    「新帖态说清配图什么时候能加」（`compose-images-later`）。
+  - 证据：`npx vitest run src/lib/api/media.test.ts` → 1 文件 / 2 用例通过；
+    `npx vitest run src/routes/compose.test.tsx` → 3/3；`npx vitest run src/devroom/pages/18-compose` → 3 文件 / 16 用例。
+  - 下一步：d5-content.md 的 §3.3 / §12.3 未决 1（与新拍板冲突那句）要改。
+  - 阻塞：**`pnpm typecheck` 当前红，不是我的**：`src/routes/topic.tsx(26,28): error TS6133: 'searchUsers'
+    is declared but its value is never read` —— 该文件在 **HEAD 里就已经**是坏的（K2-C 的提交 d019c4e 带的），
+    K2-C 正在改它（它的「下一步」就是这一块），按规矩不抢。
+  - 阻塞二：配图在**主题详情页的展示与删除**落点在 `web/src/routes/topic.tsx`（K2-C 拿着）与
+    `devroom/pages/12-topic/types.ts`（`images: string[]` 目前**零渲染**）。我没碰这两个文件，
+    在下面「留给 Lead / K2-C 的两行」里写清落点。

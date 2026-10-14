@@ -101,6 +101,9 @@ it('新建页：提交区说清缺什么（设计稿的 SubmitBar）+ 预览与�
   expect(screen.queryByTestId('compose-sources')).toBeNull();
   fireEvent.click(screen.getByTestId('compose-kind-resource'));
   expect(screen.getByTestId('compose-sources-later').textContent).toContain('发布');
+  // 配图同理：上传端点绑在主题上（POST /topics/{id}/images），发新帖时还没有 id。
+  // 说清「发布之后从帖子页点编辑回来配图」，而不是画一个点了必失败的入口。
+  expect(screen.getByTestId('compose-images-later').textContent).toContain('发布');
 });
 
 it('编辑资源帖：SourceEditor 用的是服务端那份 sources（真字段：站点 / 提取码 / 归档 / 链接原文）', async () => {
