@@ -1,0 +1,34 @@
+你是 SC2clud 的施工者，任务是**修用户报的线上问题**。**按步步提交协议做**（见 `完全重构/进行中/README.md`，先读它）。
+
+## 你的进度文件（第一步就建它，之后每步更新并一起提交）
+`完全重构/进行中/线上问题.md` —— 三个小步，每步做完就 commit（只 add 你改的文件），**不许攒到最后**。
+
+## 三个小步（顺序做，每步一步一提交）
+
+### 第 1 步：后端按空哈希回落默认头像
+现象：`GET /api/v1/topics?limit=1` 的 `author.avatar_hash` 是**空串**（用户 Alenger），所以列表/帖子/评论里全是首字占位。
+而站点有**默认头像**：`default_avatars` 表 + `users.default_avatar_hash`（审计那条线已给 13 个用户分派过；
+站点资源 `/static/art/miyin-chibi-160.webp` 的字节就是已迁进 `images` 的 blob `8bec38b0`）。
+要做的：**forum 的 UserBriefDTO 在 `avatar_hash` 为空时回落到该用户的 `default_avatar_hash`**（后端改，前端不动语义）。
+证据要求：改完用 `curl` 打真接口，贴出 `author.avatar_hash` 从空串变成真哈希的那一行输出（dev 已部署的版本可以用 `deploy.ps1 dev` ❌ 不行 —— 部署归 Lead，
+你只能跑 `go test` 与本地 `go run` 起一个临时实例，或用**单元测试**断言 DTO 的回落行为）。
+
+### 第 2 步：下载跳转与所有站内绝对路径的核对
+现象：后端给的 `go_path` 是 `/api/v1/...`（**站内绝对路径，不带 /dev/ 前缀**），点它跳到站外 → 404。
+`routes/topic.tsx` 已改成 `appPath(s.go_path)` ✓，你要做的是：
+- 全仓搜所有**直接渲染后端给的站内路径**的地方（`/img/`、`/api/v1/`、`avatar`、`avatar_small`、`cover`、`href=` 等），逐个确认是否补了 base；
+- 用 `appPath`（`@/lib/url`）统一补；**已经补了的不要重复补**（会变成 `/dev//dev/...`）。
+证据要求：列出你查到并修掉的每一处（文件:行 + 改前改后各一行），并跑 `cd web && pnpm check` 全绿。
+
+### 第 3 步：个人主页「设置背景/更换封面」
+现象：设计稿 `devroom/pages/11-profile` 的 hero 有更换封面入口，产品页没有。
+**先判定后端能不能支持**（`users` 有没有封面列、有没有上传端点 —— 去 `forum/internal/user/**`、`dto.go`、迁移里查）。
+- 能支持（例如复用 `images` 存封面哈希）：先写方案再动手，做完整（列 + 上传端点 + 前端入口）。
+- 不能支持：**在 devroom 里把这一屏改成后端真能支持的样子**，封面入口标注「未实现」，**绝不在真站上放点了没反应的假入口**。
+证据要求：说明你走了哪条路 + 依据（哪个文件/表证明能或不能）。
+
+## 纪律（违反会被打回）
+- **不要跑 `deploy.ps1`**；**不要 `git add -A`**；改动一律用 edit 工具（不许整文件覆盖）；不要动 `forum/internal/platform/ai/**`、`forum/migrations/**`、`deploy/**`。
+- 门禁：`cd web && pnpm check` 与 `cd forum && gofmt -l . && go vet ./... && go test ./...`（Go 用 `C:\Users\ROG\sdk\go1.26.3\bin\go.exe`，不在 PATH）。
+- 每步的 commit 信息写清「这一步做了什么 + 证据是什么」。
+- 全部做完后**一段话**回报：三个小步各自的状态 · 证据一行 · 门禁结果 · 还剩什么。

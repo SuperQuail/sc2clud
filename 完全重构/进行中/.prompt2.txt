@@ -1,0 +1,23 @@
+你是 SC2clud 的施工者，任务是**把产品页对齐 Devroom 设计稿**。**按步步提交协议做**（先读 `完全重构/进行中/README.md`）。
+
+## 你的进度文件（第一步就建它，之后每步更新并一起提交）
+`完全重构/进行中/设计对齐.md` —— **这是一份逐页清单**，每对齐一页就 commit 一次，并在清单里打勾 + 写证据。
+
+## 第 1 步（必须先做）：差异清单
+逐个比对 `web/src/routes/*.tsx` 与 `web/src/devroom/pages/*`，产出一张表写进进度文件：
+`页面 | 设计稿在哪 | 产品页在哪 | 差什么（结构/控件/文案/字段） | 严重度`。
+**这一步只写清单 + commit**，不要急着改。
+
+## 第 2 步起：逐页对齐（**一页一提交**）
+规矩（前几轮已定，别自创）：**真站必须渲染 devroom 里原样的件** —— 把设计屏改成 **prop 驱动**，房间与真站共用同一份实现
+（照 `devroom/pages/12-topic/topic-view.tsx` 与 `devroom/pages/11-profile/profile-hero.tsx` 已经做过的模式）。
+字段名一律**照后端 DTO 抄**（`forum/internal/forum/dto.go`、`internal/user`、`user.Profile`），不照设计稿 mock
+（这一轮已经因此出过：封面 `cover` vs `cover_hash`、精华 `featured_at` vs `featured`、`stats{}` vs 平铺 —— 全站首屏都因此渲染不出东西）。
+优先级：**首页 → 帖子页 → 分区页 → 个人主页 → 设置页 → 消息/通知**，其余按清单顺序。
+每页的证据：真 Chrome 的 DOM 断言或截图（**不接受「HTTP 200」**），加上 `cd web && pnpm check` 全绿（首屏 JS ≤150KB，注意要把点击才出现的件做成懒加载）。
+
+## 纪律（违反会被打回）
+- **不要跑 `deploy.ps1`**（部署归 Lead）；**不要 `git add -A`**；改动一律用 edit 工具定点改（不许整文件覆盖 ✗）。
+- 不要动 `forum/**`、`deploy/**`、`web/src/app/router.tsx`、`app/shell.tsx`、`lib/url.ts`（这几个要么归 Lead，要么别动）。
+- 干不完就**停下并提交**：进度文件里写清下一页面是什么，下一个 agent 接手。
+- 每完成一页**一段话**回报（做了哪页 · 证据 · 门禁 · 下一页是什么），不要长篇。
