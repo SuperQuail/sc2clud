@@ -34,6 +34,7 @@ export function MainColumn({
   reviewAppeal,
   reviewResubmit,
   reviewPendingHuman = false,
+  reviewResubmitted = false,
   reported = false,
   reportDialog,
   editDialog,
@@ -77,6 +78,8 @@ export function MainColumn({
   reviewResubmit?: ReactNode;
   /** 后端 review_pending_human：pending 是否已转人工（决定两档文案） */
   reviewPendingHuman?: boolean;
+  /** L7：这一次 pending 是作者改完正文重提上来的（同一 state 下的另一档文案） */
+  reviewResubmitted?: boolean;
   /** 举报过这篇帖子：动作条上的按钮变「已举报」 */
   reported?: boolean;
   /** 举报 / 编辑弹层与删除确认（受控），由页面给 */
@@ -133,6 +136,7 @@ export function MainColumn({
           appeal={reviewAppeal}
           resubmit={reviewResubmit}
           pendingHuman={reviewPendingHuman}
+          resubmitted={reviewResubmitted}
         />
         <div className='border-b border-border pb-3'>
           <UserBadge

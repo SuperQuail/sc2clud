@@ -220,12 +220,15 @@ export function TopicPage() {
     hint: '',
   };
   const designAuthor = toDesignAuthor(t, ap);
-  const review = toReview(t);
   // 回执要说实话：改过正文之后，帖子是「已重新提交、正在重审」，还是只是被保存了？
   //   reset：这次保存把 rejected 打回了 pending（服务端事实，不是推断——见上面 ResetTopicReview）。
   //   still：正文改过了但服务端仍说 rejected（还没生效或这版没过），就别谎称已经重新提交。
   const justSaved = saved === 'draft';
-  const reviewReset = justSaved && review.state === 'pending';
+  // L7：把「这一次 pending 是重提上来的」也交给横幅 —— 作者刚按下保存，回执与页头横幅说同一件事。
+  // shortcut: 只看**本次会话里的保存**（刷新后 pending 与首次投稿同形，界面上分不出来）——
+  //   要跨刷新区分得让后端在上传时记一笔（例如 topics.review_resubmitted_at），那是变更单里的事。
+  const reviewReset = justSaved && wire.review_state === 'pending';
+  const review = reviewReset ? { ...toReview(t), resubmitted: true } : toReview(t);
   const receiptText = justSaved
     ? reviewReset
       ? '已保存 · 正文改动已重新提交审核（回到「审核中」），通过后其他人才能看到。'

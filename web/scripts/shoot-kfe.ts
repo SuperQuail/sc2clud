@@ -33,6 +33,11 @@ const shots: Shot[] = [
   { name: 'profile-sponsor-open-390', url: '?stub=1&route=/u/demo-admin', width: 390, height: 844, full: true, before: openSponsor },
   // 帖子页 · 右栏赞助格（RewardPanel）：同一份 DonateBox
   { name: 'topic-reward-open-1440', url: '?stub=1&route=/t/tp-1', width: 1440, height: 900, full: false, before: openSponsor },
+  // L7：**真链路**走一遍「编辑 → 保存 → 服务端打回 pending」，拍下横幅与回执。
+  // 不是摆一个 pending 的桩：桩里 review_state 是 approved，是这次 PATCH 把它改掉的。
+  // asAdmin=1 是**必须的**：tp-1 的作者是 demo-admin，而默认桩身份是 demo-marine ——
+  // 作者不是自己时页头根本没有「编辑」按钮（topic-edit 是按 can_edit 渲不渲染的）。
+  { name: 'topic-resubmitted-1440', url: '?stub=1&me=author&route=/t/tp-1', width: 1440, height: 900, full: false, before: resubmitFlow, main: 'main' },
   // 个人设置 · 赞赏与收款码（上传 / 删除 / 两个开关 / 我的打赏记录）
   { name: 'settings-rewards-1440', url: '?stub=1&route=/settings', width: 1440, height: 1200, full: true },
   { name: 'settings-rewards-390', url: '?stub=1&route=/settings', width: 390, height: 1200, full: true },
@@ -43,6 +48,26 @@ async function openSponsor(page: Page) {
   await page.wait(700);
   await page.clickByText('赞助');
   await page.wait(400);
+}
+
+/** L7：作者改正文 → 保存 → 服务端把审核态从 approved 打回 pending，页头横幅要说「已重新提交复审」。 */
+async function resubmitFlow(page: Page) {
+  await page.wait(900);
+  // 按 testid 点，不按文案：「编辑」这两个字在页面上不止一处（动作条那颗才是）
+  if (!(await page.click('[data-testid=topic-edit]'))) throw new Error('找不到「编辑」按钮');
+  await page.wait(800);
+  // 正文框是受控 textarea：必须走原生 setter + input 事件，否则 dirty=false、保存按钮是灰的
+  const changed = await page.eval<boolean>(
+    "(() => { const ta = [...document.querySelectorAll('textarea')].find((x) => x.closest('[role=dialog]'));" +
+      " if (!ta) return false;" +
+      " const setter = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value').set;" +
+      " setter.call(ta, ta.value + '（补充：隐藏结局的触发条件已核对）');" +
+      " ta.dispatchEvent(new Event('input', { bubbles: true })); return true; })()",
+  );
+  if (!changed) throw new Error('编辑弹层里没找到正文框');
+  await page.wait(300);
+  await page.click('[data-testid=edit-save]');
+  await page.wait(1200);
 }
 
 /** 展开 + 填 10 元：按钮文案要变成「我已完成 ¥10.00 的打赏」（金额校验真的在起作用）。 */

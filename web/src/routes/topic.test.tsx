@@ -184,6 +184,12 @@ it('B6：编辑保存发的 PATCH 带 content_md（后端凭它把 review_state 
   );
   // B6 的那句实话：保存 = 重新提交审核，回执必须说出来（旧回执只会说「更新了」，作者不知道自己在重审）
   await waitFor(() => expect(screen.getAllByTestId('design-action-note')[0]!.textContent).toContain('已重新提交审核'));
+  // L7：页头横幅也要说同一件事 —— 「正在审核中」这一档原先与**首次投稿**完全同形，
+  // 作者改完正文唯一的反馈就是动作条下面那行回执（滚上去就看不见了）。
+  const banner = screen.getByTestId('review-banner');
+  expect(banner.getAttribute('data-state')).toBe('pending');
+  expect(banner.getAttribute('data-resubmitted')).toBe('1');
+  expect(banner.textContent).toContain('已重新提交复审');
   mocks.topic.current = null;
 });
 

@@ -39,6 +39,8 @@ export type TopicReview = {
   state: ReviewState;
   /** 后端还没有这个字段（shortcut）：真站先恒 false，等于「正在自动检查」那一档 */
   pendingHuman?: boolean;
+  /** L7：这一次 pending 是作者改完正文重提上来的（真站由「刚保存 + 服务端回了 pending」推出） */
+  resubmitted?: boolean;
   /** topics.review_note：AI 给的中文理由，**只有 rejected 才有值** */
   note?: string | null;
 };
@@ -231,6 +233,7 @@ export function TopicView({
             }
             reviewState={review.state}
             reviewPendingHuman={review.pendingHuman ?? false}
+            reviewResubmitted={review.resubmitted ?? false}
             reviewNote={review.note ?? null}
             reviewAppeal={rejected && onAppeal ? <ReviewAppealButton onAppeal={onAppeal} /> : null}
             reviewResubmit={rejected && onResubmit ? <ReviewResubmitButton onResubmit={onResubmit} /> : null}

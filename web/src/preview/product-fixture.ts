@@ -96,12 +96,19 @@ const TOPIC_DETAIL = {
     },
   ],
   author: { ...USER('demo-admin', '示范管理员', { key: 'admin', name: '管理员' }), bio: '战役作者。', level: 27, joined_at: '2024-03-02T00:00:00Z' },
-  review_state: 'approved',
-  review_note: null,
+  // 这两个字段会被下面的 PATCH 分支改写（演「保存 → 打回 pending」），所以显式注成 string
+  review_state: 'approved' as string,
+  review_note: null as string | null,
   issue_open_count: 2,
-  can_edit: false,
   can_reply: true,
+  // can_edit 照**作者视角**给：L7 的出图要真的走一遍「编辑 → 保存 → 打回 pending」，
+  // 而「能不能编辑」后端是靠这个字段说的（路由用 wire.can_edit ?? 权限兜底）。
+  can_edit: true,
 };
+
+/** 第二个帖子详情：**只给出图用的第二态** —— 作者刚保存过、服务端把审核态打回了 pending（L7 的横幅）。
+ *  真站的 pending 只有作者本人拿得到（后端过滤），桩照这个口径给。 */
+const TOPIC_RESUBMITTED = { ...TOPIC_DETAIL, id: 'tp-2', review_state: 'pending', review_note: null, can_edit: true };
 
 const POSTS = [
   {
@@ -192,10 +199,21 @@ const THREAD = {
   ],
 };
 
-/** 一条请求 → 一条响应；undefined = 不拦（交回真实的 fetch）。顺序敏感：具体路径写在前面。 */
-export function fixtureFor(u: string, method: string): Reply | undefined {
+/** 一条请求 → 一条响应；undefined = 不拦（交回真实的 fetch）。顺序敏感：具体路径写在前面。
+ *  body 只有写请求才有（出图脚本要演「保存 = 重新提交审核」那条链路，见下面的 PATCH tp-1）。 */
+export function fixtureFor(u: string, method: string, body?: unknown): Reply | undefined {
   const url = new URL(u, 'http://stub');
   const p = url.pathname;
+  // L7 出图：作者保存正文 → 后端把 review_state 打回 pending（forum 的 ResetTopicReview）。
+  // 桩要**跟着变**，否则拍到的还是「已通过」那一屏，等于没验。
+  if (method === 'PATCH' && p.endsWith('/api/v1/topics/tp-1')) {
+    const b = (body ?? {}) as { title?: string; content_md?: string };
+    if (b.title) TOPIC_DETAIL.title = b.title;
+    if (b.content_md) TOPIC_DETAIL.content_html = '<p>' + b.content_md + '</p>';
+    TOPIC_DETAIL.review_state = 'pending';
+    TOPIC_DETAIL.review_note = null;
+    return { body: { data: { ...TOPIC_DETAIL } } };
+  }
   // 管理后台（/admin/*）：自己的桩，具体路径写在那一份里
   const admin = adminFixtureFor(u);
   if (admin !== undefined) return admin;
@@ -203,12 +221,16 @@ export function fixtureFor(u: string, method: string): Reply | undefined {
   // ?asAdmin=1 换成管理员身份：后台每一屏都要 perms，而这里的默认身份是普通成员。
   if (p.endsWith('/api/v1/me')) {
     const q = new URLSearchParams(location.search);
-    return { body: { data: q.get('me') === '0' ? null : q.get('asAdmin') === '1' ? ME_ADMIN : ME } };
+    const me = q.get('me');
+    // ?me=author 用**帖子作者**身份（L7 的出图要走「作者改自己的帖子」：
+    // can_edit 是后端按作者算的，认错人就没有「编辑」按钮）
+    return { body: { data: me === '0' ? null : me === 'author' ? { ...ME, handle: 'demo-admin', nickname: '示范管理员' } : q.get('asAdmin') === '1' ? ME_ADMIN : ME } };
   }
   if (p.endsWith('/api/v1/site')) return { body: { data: SITE } };
   if (p.endsWith('/api/v1/boards')) return { body: { data: BOARDS } };
   if (p.includes('/api/v1/topics/tp-1/sources/')) return { status: 302 };
   if (p.endsWith('/api/v1/topics/tp-1')) return { body: { data: TOPIC_DETAIL } };
+  if (p.endsWith('/api/v1/topics/tp-2')) return { body: { data: TOPIC_RESUBMITTED } };
   if (p.endsWith('/api/v1/topics/tp-1/posts')) return { body: { data: POSTS, next_cursor: null } };
   if (p.endsWith('/api/v1/topics/tp-1/issues')) {
     const status = url.searchParams.get('status') ?? 'open';
@@ -295,7 +317,16 @@ export function installFixture(): FixtureRequest[] {
     const u = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
     const method = init?.method ?? 'GET';
     log.push({ url: u, method, body: init?.body });
-    const hit = fixtureFor(u, method);
+    // body 可能是 JSON，也可能是 FormData（头像上传）——只有 JSON 才解，解不开就当没有
+    let sent: unknown;
+    if (typeof init?.body === 'string') {
+      try {
+        sent = JSON.parse(init.body);
+      } catch {
+        sent = undefined;
+      }
+    }
+    const hit = fixtureFor(u, method, sent);
     if (!hit) return real(input as RequestInfo, init);
     // 转链端点：出图时不该真跳外站，给一个 302（页面自己不消费这个响应，只保证不发真请求）
     if (hit.status === 302) return new Response(null, { status: 302, headers: { location: 'about:blank' } });

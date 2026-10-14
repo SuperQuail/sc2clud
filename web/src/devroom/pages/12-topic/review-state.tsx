@@ -34,6 +34,7 @@ export function ReviewStateBanner({
   appeal,
   resubmit,
   pendingHuman = false,
+  resubmitted = false,
 }: {
   state: ReviewState;
   note?: string | null;
@@ -43,20 +44,33 @@ export function ReviewStateBanner({
   resubmit?: ReactNode;
   /** 后端 review_pending_human：pending 是否已转人工。**只说「在不在等人」，不暴露谁判的** */
   pendingHuman?: boolean;
+  /**
+   * L7：**这一次 pending 是作者改完正文之后重提上来的**（不是首次投稿），由宿主给。
+   * 为什么需要它：两种 pending 在 `review_state` 里是同一个值，而作者改完正文最想知道的恰恰是
+   * 「我的改动到底有没有送去重审」—— 没有这一档，界面只回一句「正在审核中」，与首次投稿无法区分。
+   */
+  resubmitted?: boolean;
 }) {
   if (state === 'approved') return null; // 正常帖：什么都不显示
   const tone = TONE[state];
-  // 两档文案：AI 在跑就说几十秒，已转人工就别说几十秒（d7 §1 第 3 条：调用失败/拿不准 → 人工队列）
-  const pendingTitle = pendingHuman
-    ? '这篇正在审核中，已转人工审核，通过后其他人才能看到'
-    : '这篇正在审核中，通过后其他人才能看到';
-  const pendingNote = pendingHuman
-    ? '已转人工审核，通常 1 个工作日内有结果；期间你可以继续编辑。'
-    : '正在自动检查，通常几十秒内完成；期间你可以继续编辑。';
+  // 三档文案：重提 > 已转人工 > 自动检查。重提优先，因为它是**作者刚做过的动作**的结果；
+  // 「已转人工」与「几十秒」都是对「谁在判」的描述（d7 §1 第 3 条：调用失败/拿不准 → 人工队列）。
+  const pendingTitle = resubmitted
+    ? '已重新提交复审，通过后其他人才能看到'
+    : pendingHuman
+      ? '这篇正在审核中，已转人工审核，通过后其他人才能看到'
+      : '这篇正在审核中，通过后其他人才能看到';
+  const pendingNote = resubmitted
+    ? '正文改动已送回审核队列（服务端把审核态从「未通过」打回了「审核中」）；等结果出来之前你可以继续编辑。'
+    : pendingHuman
+      ? '已转人工审核，通常 1 个工作日内有结果；期间你可以继续编辑。'
+      : '正在自动检查，通常几十秒内完成；期间你可以继续编辑。';
   return (
     <section
       data-testid='review-banner'
       data-state={state}
+      // 出图/断言用：resubmitted 是**同一 state 下的另一档**，只靠 data-state 分不出来
+      data-resubmitted={state === 'pending' && resubmitted ? '1' : undefined}
       aria-label={state === 'pending' ? '审核中' : '未通过审核'}
       className={'flex flex-col gap-1 rounded-lg border px-3 py-2.5 ' + tone.box}
     >

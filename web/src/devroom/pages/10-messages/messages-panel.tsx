@@ -1,7 +1,7 @@
 import Button from '@jetbrains/ring-ui-built/components/button/button';
 import { ControlsHeight } from '@jetbrains/ring-ui-built/components/global/controls-height';
 import type { ReactNode } from 'react';
-import { ArrowLeft, Image, MessageSquarePlus, Smile, UserPlus } from 'lucide-react';
+import { ArrowLeft, Image, MessageSquarePlus, UserPlus } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { icon16 } from '@/ui/icons';
 import { NoticeChat, type ChatMessage } from '@/ui/message/notice-chat';
@@ -105,10 +105,22 @@ export function MessagesPanel({
                     maxLength={500}
                     placeholder={placeholder ?? (messages.length === 0 ? '还没有消息，先打个招呼吧' : '请输入消息内容')}
                     onSubmit={busy ? undefined : onSend}
+                    // L8（拍板 §L8）：允许发图片、**不做表情按钮**。两颗按钮原先都是**假的**——
+                    // 点了什么都不发生，而界面上看不出「其实没接」。
+                    //   ① 「发送图片」：后端没有通用图片上传端点（media 只有头像 / 收款码 / 帖子配图三条，
+                    //      后者绑 topic），且私信体是 varchar(2000) 纯文本 —— 所以**看得见、按不动、说清原因**。
+                    //      留形状而不是删掉：删了的话「以后接通道」这件事就从界面上消失了。
+                    //   ② 「表情」：**按拍板不画**。用户自己粘 Unicode 表情即可，
+                    //      正文链路不破坏它这件事由 messages-panel.test.ts 钉住。
                     toolSlot={
                       <span className='flex items-center gap-1'>
-                        <Button ghost icon={icon16(Image)} aria-label='发送图片' />
-                        <Button ghost icon={icon16(Smile)} aria-label='表情' />
+                        <Button
+                          ghost
+                          disabled
+                          icon={icon16(Image)}
+                          aria-label='发送图片'
+                          title='后端还没有私信的图片通道（媒体上传只支持头像 / 收款码 / 帖子配图），所以这里先不给点'
+                        />
                       </span>
                     }
                     // 发送者只影响 aria 提示，真站的头像与昵称由宿主的会话数据给

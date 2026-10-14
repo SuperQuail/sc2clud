@@ -96,7 +96,9 @@ export default function ProfilePage() {
   const cover = assetUrl('starcraft/sc2-battle.webp');
   const [visibility, setVisibility] = useState('public');
   const [showTitle, setShowTitle] = useState(true);
-  const [blocked, setBlocked] = useState<string[]>([]);
+  // G5：屏蔽词**不实现**（拍板），所以这里没有 setter —— 见下面那一行的 onAdd/onRemove 为什么是空的。
+  // 留一个非空数组是为了让「以后长在这里」那行有条目可看（它读起来就是示例数据）。
+  const [blocked] = useState<string[]>([]);
 
   const settings: SettingRow[] = [
     {
@@ -113,15 +115,17 @@ export default function ProfilePage() {
       onChange: setVisibility,
     },
     { key: 'showTitle', kind: 'toggle', title: '在主页展示我的头衔', value: showTitle, onChange: setShowTitle },
+    // G5（拍板记录 §G5）：「消息屏蔽词 —— **不实现**；**前端 UI 上显示 WIP 标记**（不要假装能用）」。
+    // 所以这一行保留形状（它要示范的是「以后长在这里」），但**三点都写清它不工作**：
+    //   ① 标题带 WIP 后缀；② hint 明说没有承载；③ onAdd / onRemove **移掉** ——
+    // 原先它们往本地列表里塞「屏蔽词1」这种假词，那正是「假装能用」（W-GE 交接时点名的形态）。
     {
       key: 'blocked',
       kind: 'tags',
-      title: '屏蔽词',
-      hint: '默认是空的，只由你自己添加',
+      title: '屏蔽词（WIP · 未实现）',
+      hint: '后端没有这张表、也没有端点，所以这一行现在**不工作**：加不进、也删不掉。',
       items: blocked,
-      addLabel: '添加屏蔽词',
-      onAdd: () => setBlocked((v) => [...v, '屏蔽词' + (v.length + 1)]),
-      onRemove: (t) => setBlocked((v) => v.filter((x) => x !== t)),
+      addLabel: 'WIP · 暂不可用',
     },
   ];
 
