@@ -52,9 +52,11 @@ export function toCardTopic(t: ApiTopic): Topic {
 
 /** 回复（§21.2 的 posts）→ 评论区的 CommentData；楼中楼按 parent_id 归并（只允许一级，后端保证）。 */
 export function toComments(posts: Post[]): CommentData[] {
+  // 楼里的作者也是**裸哈希**（UserBriefDTO），不换算的话评论区的头像一个都不显示 ——
+  // 与列表同一个坑，所以同一个换算：imageUrl(hash)。
   const toComment = (p: Post): CommentData => ({
     id: p.id,
-    author: p.author,
+    author: { ...p.author, avatar: imageUrl((p.author as TopicCardRaw['author']).avatar_hash) ?? p.author.avatar ?? null },
     body: p.content_html,
     createdAt: p.created_at,
     likes: p.like_count,

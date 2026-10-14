@@ -35,6 +35,23 @@ export function fetchUserProfile(handle: string, signal?: AbortSignal): Promise<
   return api<UserProfile>('users/' + encodeURIComponent(handle), { signal });
 }
 
+/**
+ * 换头像：**全站唯一走 multipart 的请求**（POST /me/avatar，字段名 file）。
+ * 服务端按内容哈希落盘、写回 users.avatar_hash，所以同一张图重传是 200 + created:false。
+ * 前端在 image-pipeline 里已经压到 ≤64KB（服务端硬上限 128KB，见 media 的配置）。
+ */
+export function uploadAvatar(file: Blob): Promise<{ hash: string; url: string }> {
+  const form = new FormData();
+  // 文件名只是给服务端的提示；落盘名按内容哈希算，不是它
+  form.append('file', file, 'avatar.webp');
+  return api<{ hash: string; url: string }>('me/avatar', { method: 'POST', body: form });
+}
+
+/** 移除头像（DELETE /me/avatar）：之后回落到站点默认头像池里分给这个人的那张。 */
+export function clearAvatar(): Promise<void> {
+  return api<void>('me/avatar', { method: 'DELETE' });
+}
+
 export function fetchUserTopics(handle: string, q: PageQuery = {}, signal?: AbortSignal): Promise<Paged<Topic>> {
   return apiPage<Topic>('users/' + encodeURIComponent(handle) + '/topics', { query: pageQuery(q), signal });
 }

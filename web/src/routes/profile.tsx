@@ -4,7 +4,7 @@ import { useInfiniteQuery, useQuery } from '@tanstack/react-query';
 import Button from '@jetbrains/ring-ui-built/components/button/button';
 import Island from '@jetbrains/ring-ui-built/components/island/island';
 import { ControlsHeight } from '@jetbrains/ring-ui-built/components/global/controls-height';
-import { Flag, MessageSquare } from 'lucide-react';
+import { Flag, ImagePlus, MessageSquare } from 'lucide-react';
 import { icon16 } from '@/ui/icons';
 import { TopicRow } from '@/ui/topic/topic-row';
 import { ProfileHero, type ProfileStat } from '@/devroom/pages/11-profile/profile-hero';
@@ -79,6 +79,25 @@ export function ProfilePage() {
         avatar={u.avatar || null}
         title={u.title}
         stats={stats}
+        // 设计稿（11-profile）的 hero 右上角是「更换头像 + 更换封面」一对。真站点**只有头像这一半**：
+        // POST/DELETE /me/avatar 都在，落点是设置页里那块真上传控件（压缩 → multipart → 刷会话）。
+        // 封面**没有任何后端承载**（users 没有封面列、也没有端点），所以这里不画那颗按钮 ——
+        // 画一颗点了没反应的假入口比缺一个入口更糟（见回报的缺口清单）。
+        topActions={
+          isSelf ? (
+            <span className='rounded-md bg-background/85 backdrop-blur-sm'>
+              <Button
+                data-testid='change-avatar'
+                inline={false}
+                height={ControlsHeight.S}
+                icon={icon16(ImagePlus)}
+                href={appPath('settings')}
+              >
+                更换头像
+              </Button>
+            </span>
+          ) : undefined
+        }
         actions={
           <>
             {isSelf ? (

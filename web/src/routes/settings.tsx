@@ -6,6 +6,8 @@ import { ControlsHeight } from '@jetbrains/ring-ui-built/components/global/contr
 import { Lock } from 'lucide-react';
 import { UserBadge } from '@/ui/user/user-badge';
 import { PasswordField } from '@/ui/password-field';
+import { type UploadedImage } from '@/ui/rich/image-uploader';
+import { AvatarSetting } from '@/devroom/pages/11-profile/avatar-setting';
 import { FormAlert } from '@/devroom/pages/16-auth/form-alert';
 import { appPath, routePath } from '@/lib/url';
 import { qk } from '@/lib/query/keys';
@@ -13,13 +15,15 @@ import { useSession } from '@/lib/perms';
 import { api } from '@/lib/api/client';
 import { isApiError } from '@/lib/api/errors';
 import { logout } from '@/lib/api/auth';
+import { clearAvatar, uploadAvatar } from '@/lib/api/user';
 import { PageHeader } from './_parts/layout';
 import { Empty, ErrorState, Loading } from './_parts/state';
 
 // 个人设置（契约：PATCH /me、POST /me/password、POST /auth/logout）。
-// 只做**有三个态、有真实端点**的几块：资料、密码、会话退出。
-// 头像（POST /me/avatar，要字节与压缩管线）、收款码（/me/payment-channels）、登录设备列表
-// （GET /me/sessions 有契约但本轮不排）都没做，记进回报 —— 不画点了没反应的入口。
+// 只做**有三个态、有真实端点**的几块：头像、资料、密码、会话退出。
+// 头像（POST/DELETE /me/avatar）2026-10-14 接上：压缩走 image-pipeline、上传走 client 的 multipart 出口。
+// 封面**没接**：库里没有 users 封面列、也没有对应端点，所以这一屏上没有那颗按钮（不做点了没反应的入口）。
+// 收款码（/me/payment-channels）、登录设备列表（GET /me/sessions 有契约但本轮不排）同样没做，记进回报。
 // 20 = users.nickname varchar(20) / auth.nicknameMaxLen（写死 32 会让 21-32 字的昵称在服务端被拒）
 const NICK_MAX = 20;
 const BIO_MAX = 200;
@@ -31,6 +35,8 @@ export function SettingsPage() {
   const [bio, setBio] = useState<string | null>(null);
   const [oldPassword, setOldPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
+  // 选好但还没上传的那张（ImageUploader 给的是压过的 blob + 本地预览 URL）
+  const [picked, setPicked] = useState<UploadedImage[]>([]);
 
   const save = useMutation({
     mutationFn: (body: { nickname?: string; bio?: string }) => api<void>('me', { method: 'PATCH', body }),
@@ -44,6 +50,21 @@ export function SettingsPage() {
       setNewPassword('');
       // 改密码会删掉该用户的全部会话（§21.2）：清干净缓存，别让界面停在「还登录着」的假象上
       queryClient.clear();
+    },
+  });
+  // 上传成功后**清掉 picked**：预览换回服务端那张 /img/<hash>，避免停在「本地已选」的假象上。
+  const saveAvatar = useMutation({
+    mutationFn: (file: Blob) => uploadAvatar(file),
+    onSuccess: () => {
+      setPicked([]);
+      void queryClient.invalidateQueries({ queryKey: qk.me() });
+    },
+  });
+  const removeAvatar = useMutation({
+    mutationFn: () => clearAvatar(),
+    onSuccess: () => {
+      setPicked([]);
+      void queryClient.invalidateQueries({ queryKey: qk.me() });
     },
   });
   const signOut = useMutation({
@@ -108,6 +129,51 @@ export function SettingsPage() {
       </section>
 
       <section className='flex flex-col gap-3 rounded-lg border border-border bg-card p-4'>
+        <h2 className='m-0 text-[15px] font-semibold text-foreground'>头像</h2>
+        {saveAvatar.isSuccess ? (
+          <FormAlert tone='success' title='头像已更新' description='列表、帖子页与评论区的作者头像现在都是新的了。' />
+        ) : null}
+        {saveAvatar.isError ? <FormAlert tone='error' title='没能上传' description={errorText(saveAvatar.error)} /> : null}
+        {removeAvatar.isError ? <FormAlert tone='error' title='没能移除' description={errorText(removeAvatar.error)} /> : null}
+        {/* 与 DevRoom 11-profile 的「头像」是**同一份实现**（avatar-setting.tsx）；差别只在这里多两颗
+            真站才有的按钮：选中之后要点「保存头像」才发 POST /me/avatar。 */}
+        <AvatarSetting
+          avatar={picked[0]?.url ?? me.avatar ?? null}
+          onChange={setPicked}
+          actions={
+            <>
+              <Button
+                data-testid='avatar-save'
+                primary
+                inline={false}
+                height={ControlsHeight.S}
+                loader={saveAvatar.isPending}
+                disabled={saveAvatar.isPending || picked.length === 0}
+                onClick={() => {
+                  const f = picked[0];
+                  if (f) saveAvatar.mutate(f.file);
+                }}
+              >
+                保存头像
+              </Button>
+              {me.avatar ? (
+                <Button
+                  data-testid='avatar-remove'
+                  inline={false}
+                  height={ControlsHeight.S}
+                  loader={removeAvatar.isPending}
+                  disabled={removeAvatar.isPending}
+                  onClick={() => removeAvatar.mutate()}
+                >
+                  移除头像
+                </Button>
+              ) : null}
+            </>
+          }
+        />
+      </section>
+
+      <section className='flex flex-col gap-3 rounded-lg border border-border bg-card p-4'>
         <h2 className='m-0 text-[15px] font-semibold text-foreground'>资料</h2>
         {save.isSuccess ? (
           <FormAlert tone='success' title='已保存' description='主页上的昵称与简介现在就是新的了。' />
@@ -144,7 +210,6 @@ export function SettingsPage() {
             <Button type='submit' primary inline={false} loader={save.isPending} disabled={save.isPending}>
               保存资料
             </Button>
-            <span className='text-[11px] text-muted-foreground'>换头像还没接（POST /me/avatar），见回报的端点清单。</span>
           </span>
         </form>
       </section>

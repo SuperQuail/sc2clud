@@ -145,7 +145,6 @@ func applyMigrations(t *testing.T, ctx context.Context, pool *pgxpool.Pool) {
 	}
 }
 
-
 // putImage 落一张图并登记引用行：与上传端点同一条路径（落盘走 service，登记走 SQL）。
 // 不为测试在生产代码里开一个 RefTx 导出——那会多一个没人调的导出。
 func (h *harness) putImage(actor *authz.Actor, body []byte, visibility int) error {

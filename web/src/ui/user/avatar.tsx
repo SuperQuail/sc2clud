@@ -1,4 +1,5 @@
 import { cn } from '@/lib/utils';
+import { imagePath } from '@/lib/url';
 
 // 用户头像（设计语言 B：用户向）。**不用 Ring UI 的 Avatar**：那是给开发者看的控件，
 // 尺寸白名单死、alt 写死英文；头像是普通用户天天看的东西，必须我们自己控。
@@ -35,7 +36,8 @@ export function UserAvatar({ name, src, size = 'md', alt = '', className }: User
       }}
     >
       {src ? (
-        <img src={src} alt={alt ?? name} width={px} height={px} loading='lazy' decoding='async' className='size-full object-cover' />
+        // 后端给的 '/img/<hash>' 是站根路径，必须过 imagePath 才落在本实例前缀下（否则 /dev 下是坏图）
+        <img src={imagePath(src)} alt={alt ?? name} width={px} height={px} loading='lazy' decoding='async' className='size-full object-cover' />
       ) : (
         <span aria-hidden>{[...name][0] ?? '?'}</span>
       )}

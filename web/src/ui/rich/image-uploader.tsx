@@ -5,6 +5,7 @@ import Toggle from '@jetbrains/ring-ui-built/components/toggle/toggle';
 import { ImagePlus, X } from 'lucide-react';
 import { icon16 } from '@/ui/icons';
 import { UserAvatar } from '@/ui/user/avatar';
+import { imagePath } from '@/lib/url';
 import { AVATAR_EDGE, AVATAR_MAX_BYTES, AVATAR_TARGET, COMPRESS_LABEL, formatBytes, IMAGE_ACCEPT, planImages, POST_IMAGE_MAX_BYTES, processImage } from './image-pipeline';
 
 // 图片上传控件（可复用）。**点选与拖拽共用同一条管线**（image-pipeline），所以限额与压缩只有一份规则。
@@ -62,7 +63,9 @@ export function ImageUploader({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const used = existingCount ?? images.length;
+  // 头像位只有**一个槽**：已有的那张是「现在这张」，再选一张是**换掉它**，不是「名额已满」。
+  // （旧写法 used=images.length 会让头像位 free=0，换头像点了没反应 —— 房间里没人上传所以没暴露。）
+  const used = existingCount ?? (variant === 'avatar' ? 0 : images.length);
   const { room } = planImages({ existing: used, max: limit });
 
   // 句柄只在挂载期有效（input 是同一个 DOM 节点）；卸载时收回，避免页面拿着已失效的引用去点
@@ -103,7 +106,7 @@ export function ImageUploader({
       });
     }
     setBusy(false);
-    onChange([...images, ...out]);
+    onChange(variant === 'avatar' ? out.slice(0, 1) : [...images, ...out]);
     if (input.current) input.current.value = '';
   }
 
@@ -125,7 +128,7 @@ export function ImageUploader({
         {fileInput}
         {current ? (
           <img
-            src={current.url}
+            src={imagePath(current.url)}
             alt='已选头像'
             width={72}
             height={72}

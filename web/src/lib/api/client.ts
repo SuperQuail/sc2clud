@@ -59,13 +59,15 @@ export async function apiEnvelope<T>(path: string, req: Req = {}): Promise<T> {
 async function request(path: string, req: Req = {}): Promise<unknown> {
   const url = buildUrl(path, req.base ?? DEFAULT_BASE, req.query);
 
+  // multipart（头像上传）**不能**套 JSON：content-type 必须留给浏览器带 boundary，body 也不能序列化。
+  const form = req.body instanceof FormData;
   let res: Response;
   try {
     res = await fetch(url, {
       method: req.method ?? 'GET',
       credentials: 'include', // 会话是 HttpOnly Cookie，前端不存 token
-      headers: req.body === undefined ? undefined : { 'content-type': 'application/json' },
-      body: req.body === undefined ? undefined : JSON.stringify(req.body),
+      headers: req.body === undefined || form ? undefined : { 'content-type': 'application/json' },
+      body: form ? (req.body as FormData) : req.body === undefined ? undefined : JSON.stringify(req.body),
       signal: req.signal,
     });
   } catch {

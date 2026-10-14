@@ -4,9 +4,8 @@ import Island from '@jetbrains/ring-ui-built/components/island/island';
 import { LogOut, ShieldCheck, UserRound } from 'lucide-react';
 import { icon16 } from '@/ui/icons';
 import { PasswordField } from '@/ui/password-field';
-import { ImageUploader } from '@/ui/rich/image-uploader';
-import { COMPRESS_LABEL } from '@/ui/rich/image-pipeline';
 import { roomHref } from '@/devroom/room-links';
+import { AvatarSetting } from './avatar-setting';
 
 // 本人主页 · 账号面板（**只有 isSelf 才渲染**，看别人主页时一行都不出现）。
 // 补的是盲审二号报的第 ③ 类：控件都在、用户找不到入口（改密码 / 上传头像 / 退出登录）。
@@ -83,21 +82,9 @@ export function AccountPanel({ avatar, onAvatar, onAvatarReady, onLogout, logged
             <UserRound aria-hidden className='size-4 text-muted-foreground' />
             <h3 className='text-[15px] font-medium text-foreground'>头像</h3>
           </span>
-          <ImageUploader
-            variant='avatar'
-            label='上传头像'
-            compress
-            images={
-              avatar
-                ? [{ id: 'me', name: 'avatar.webp', size: 0, url: avatar, original: false, file: new Blob() }]
-                : []
-            }
-            onChange={(list) => onAvatar(list[0]?.url ?? null)}
-            onReady={onAvatarReady}
-          />
-          <span className='text-[11px] leading-relaxed text-muted-foreground'>
-            方形图最好看。{COMPRESS_LABEL}；头像成品目标 ≤64KB（服务端硬上限 128KB），所以原图大一点也传得进来。
-          </span>
+          {/* 与真站 /settings 的「头像」是**同一份实现**（avatar-setting.tsx）：房间选中即预览，
+              真站选中后还要点「保存头像」才发 POST /me/avatar —— 差别只在调用方给的那一半。 */}
+          <AvatarSetting avatar={avatar} onChange={(list) => onAvatar(list[0]?.url ?? null)} onReady={onAvatarReady} />
         </div>
       </Island>
       )}

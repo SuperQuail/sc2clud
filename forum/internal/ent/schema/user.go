@@ -22,7 +22,7 @@ import (
 //   - uq_users_email_lower     UNIQUE (lower(email))
 //   - idx_users_nickname_lower (lower(nickname))         —— d4 §4.14 昵称前缀搜索 + dup 子查询（拍板 U4）
 //   - ck_users_status             CHECK (status IN ('active','banned','deleted'))
-//   （不再有 activation_pending：模式由 site_settings 的 auth.registration.auto_activate 决定，
+//     （不再有 activation_pending：模式由 site_settings 的 auth.registration.auto_activate 决定，
 //     它是**全局配置**不是每用户状态 —— 拍板 §12.2）
 //   - ck_users_exp_nonneg         CHECK (exp >= 0)
 //   - ck_users_level_min          CHECK (level >= 1)

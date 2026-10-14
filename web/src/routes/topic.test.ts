@@ -103,8 +103,9 @@ it('下载来源：provider 是开放词表（不许收窄成两个），go_path
   expect(s.id).toBe('s1');
   expect(s.extraction_code).toBe('c2c');
   expect(s.upkeep).toBe('archived');
-  // 后端回的是 /api/v1/...（不带 /dev 前缀），必须过 appPath 才能同时在 / 与 /dev/ 下跑
-  expect(s.go_path.endsWith('/api/v1/topics/01a13540/sources/s1/go')).toBe(true);
+  // 后端回的是**站根绝对地址** /api/v1/...（不带 /dev 前缀），必须过 appPath 才能同时在 / 与 /dev/ 下跑。
+  // **不能用 endsWith**：那样丢了前缀（点下去跳站外 404）也是绿的，见 lib/url.test.ts 那条。
+  expect(s.go_path).toBe('/api/v1/topics/01a13540/sources/s1/go');
   expect(s.verified_at).not.toBe('2026-10-12T01:20:00Z');
 });
 

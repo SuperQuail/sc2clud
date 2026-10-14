@@ -89,10 +89,11 @@ export default function ProfilePage() {
   // 这里必须写 selfView.isSelf —— 写成 !selfView 是在判那个对象，永假，
   // 于是别人态仍然渲染账号面板（账号入口在别人主页上放出来，是要害）。
   const activeTab = !selfView.isSelf && tab === 'settings' ? 'posts' : tab;
-  // 封面可自定义：默认给一张，之后接入用户上传（与头像同一个上传控件）
   // 封面素材必须是**横构图**：原来用 starcraft/zerg.webp（64x64）拉到 1440x160 只能放大裁剪 → 一块糊色。
-  // 现在默认 sc2-battle.webp（1200x953 插画），「更换封面」在它和 sc2-logo.webp（240x101 横幅）之间切。
-  const [cover, setCover] = useState<string>(assetUrl('starcraft/sc2-battle.webp'));
+  // 现在默认 sc2-battle.webp（1200x953 插画）。
+  // **后端不支持自定义封面**（users 没有封面列、也没有上传端点），所以这一屏不给「点了能换」的假动作：
+  // 壁纸是这一张固定的，右上那颗入口保留形状但标成未实现（2026-10-14 用户要求：别在真站上放假入口）。
+  const cover = assetUrl('starcraft/sc2-battle.webp');
   const [visibility, setVisibility] = useState('public');
   const [showTitle, setShowTitle] = useState(true);
   const [blocked, setBlocked] = useState<string[]>([]);
@@ -223,15 +224,18 @@ export default function ProfilePage() {
                 </Button>
               </span>
             ) : null}
+            {/* 封面入口**标注为未实现**：后端没有承载它的列与端点，所以这颗是 disabled 的，
+                名字里直接写出来 —— 房间里不留「点了没反应」的动作，也不假装它能用。 */}
             <span className='rounded-md bg-background/85 backdrop-blur-sm'>
               <Button
                 inline={false}
                 height={ControlsHeight.S}
                 data-testid='change-cover'
                 icon={icon16(ImageIcon)}
-                onClick={() => setCover((c) => (c.includes('sc2-battle') ? assetUrl('starcraft/sc2-logo.webp') : assetUrl('starcraft/sc2-battle.webp')))}
+                disabled
+                title='后端还没有用户封面列与上传端点，这一颗还没接'
               >
-                更换封面
+                更换封面（未实现）
               </Button>
             </span>
           </>
