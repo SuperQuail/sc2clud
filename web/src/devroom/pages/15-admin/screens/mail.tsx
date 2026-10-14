@@ -1,30 +1,52 @@
-import { useState } from 'react';
+import { useState, type ReactNode } from 'react';
 import Button from '@jetbrains/ring-ui-built/components/button/button';
+import Dialog from '@jetbrains/ring-ui-built/components/dialog/dialog';
 import Input from '@jetbrains/ring-ui-built/components/input/input';
 import ProgressBar from '@jetbrains/ring-ui-built/components/progress-bar/progress-bar';
 import Toggle from '@jetbrains/ring-ui-built/components/toggle/toggle';
+import { ControlsHeight } from '@jetbrains/ring-ui-built/components/global/controls-height';
 import { Send } from 'lucide-react';
 import { icon16 } from '@/ui/icons';
+import type { MailAccount } from '@/lib/api/admin';
 import { DataTable } from '../data-table';
 import { ConfirmDialog, DangerAction } from '../confirm';
 import { GateNote, KV, Panel, Pill, ScreenHead, Stat, StatRow } from '../bits';
-import { fmtDate, MAIL_ACCOUNTS, relTime, type MailAccount } from '../mock';
-import { useCan } from '../mock/perms';
-import { ControlsHeight } from '@jetbrains/ring-ui-built/components/global/controls-height';
 
 // 13.9 发信账号管理（§8.2 + DB §4.8）。多账号按 priority 轮换，日额度用 mail_quota 记账。
 // 凭据（secret_cipher）**只写不回读**：界面只能说「已配置 + 更新时间」，永远不显示密钥。
-export function MailScreen() {
-  const canMail = useCan('mail.manage');
-  const canSystem = useCan('system.settings');
-  const [enabled, setEnabled] = useState<Record<string, boolean>>(() => Object.fromEntries(MAIL_ACCOUNTS.map((a) => [a.id, a.enabled])));
-  const [testing, setTesting] = useState<string | null>(null);
-  const [archive, setArchive] = useState<MailAccount | null>(null);
-  const [activeId, setActiveId] = useState<string | null>(MAIL_ACCOUNTS[0]!.id);
+//
+// **prop 驱动**：取数在 routes/admin-screens.tsx 的容器里。
+//
+// 三处与旧版（mock）不同、必须照后端来的：
+//   ① **密钥只写不回显**（mail/dto.go 的 AdminAccount 只有 `secret_configured` + `secret_updated_at`）
+//      —— 所以「编辑」里不出现密钥输入框的「当前值」，只有一个「换密钥」的写入口。
+//   ② `PATCH` **只写传进来的字段**（AccountPatch 全是指针，nil = 不动）—— 所以每一项都是**显式保存**，
+//      不是「改完一起提交」；没改的字段一个都不发。
+//   ③ 测试发信要一个**收件地址**（`SendTestInput.to` 是 `binding:"required,email"`）：
+//      必须由人填，**不能默认发给当前管理员**（那会把「测试」变成给人发垃圾邮件）。
+//   ④ mock 里的 `status: 'active' | 'archived'` 是编的：后端的 `status` 是账号健康态字符串，
+//      这里**原样显示**，不编中文标签。
 
-  const rows = MAIL_ACCOUNTS.map((a) => ({ ...a, enabled: enabled[a.id] ?? a.enabled }));
-  const active = rows.find((a) => a.id === activeId) ?? null;
-  const sentToday = rows.filter((a) => a.status === 'active').reduce((s, a) => s + a.sent_today, 0);
+export type MailScreenProps = {
+  accounts: MailAccount[];
+  loading?: boolean;
+  error?: ReactNode;
+  canManage: boolean;
+  /** 只改传进来的字段（PATCH 的语义：nil = 不动） */
+  onPatch: (id: string, patch: { priority?: number; daily_limit?: number; from_name?: string; from_address?: string; reset_tz?: string; enabled?: boolean }) => void;
+  onDelete: (id: string) => void;
+  onTest: (id: string, to: string) => void;
+  busy?: boolean;
+  receipt?: ReactNode;
+};
+
+export function MailScreen({ accounts, loading = false, error = null, canManage, onPatch, onDelete, onTest, busy = false, receipt }: MailScreenProps) {
+  const [activeId, setActiveId] = useState<string | null>(null);
+  const [archive, setArchive] = useState<MailAccount | null>(null);
+  const [testFor, setTestFor] = useState<MailAccount | null>(null);
+
+  const active = accounts.find((a) => a.id === activeId) ?? null;
+  const sentToday = accounts.filter((a) => a.enabled).reduce((s, a) => s + a.sent_today, 0);
 
   const columns = [
     {
@@ -32,7 +54,7 @@ export function MailScreen() {
       render: (a: MailAccount) => (
         <span className='flex min-w-0 flex-col leading-tight'>
           <span className='truncate text-[13px] font-medium text-foreground'>{a.name}</span>
-          <span className='truncate text-[11px] text-muted-foreground'>{a.from_name} &lt;{a.from_address}&gt;</span>
+          <span className='truncate text-[11px] text-muted-foreground'>{a.from_name ? a.from_name + ' ' : ''}&lt;{a.from_address}&gt;</span>
         </span>
       ),
     },
@@ -41,8 +63,8 @@ export function MailScreen() {
       key: 'quota', title: '今日 / 日额度', track: 'minmax(136px,1.2fr)',
       render: (a: MailAccount) => (
         <span className='flex w-full min-w-0 flex-col gap-1'>
-          <ProgressBar value={a.sent_today} max={a.daily_limit} />
-          <span className='text-[11px] text-muted-foreground'>{a.sent_today} / {a.daily_limit}</span>
+          <ProgressBar value={a.sent_today} max={Math.max(a.daily_limit, 1)} />
+          <span className='text-[11px] text-muted-foreground'>{a.sent_today} / {a.daily_limit} · {a.reset_tz}</span>
         </span>
       ),
     },
@@ -62,38 +84,19 @@ export function MailScreen() {
       key: 'enabled', title: '启用', track: '84px',
       render: (a: MailAccount) => (
         <span className='flex items-center' onClick={(e) => e.stopPropagation()}>
-          <Toggle
-            checked={a.enabled}
-            disabled={!canMail || a.status === 'archived'}
-            onChange={(e) => setEnabled((p) => ({ ...p, [a.id]: e.target.checked }))}
-          >
+          <Toggle checked={a.enabled} disabled={!canManage || busy} onChange={(e) => onPatch(a.id, { enabled: e.target.checked })}>
             {a.enabled ? '启用' : '停用'}
           </Toggle>
         </span>
       ),
     },
     {
-      key: 'actions', title: '就地操作', track: 'minmax(172px,1.3fr)',
+      key: 'actions', title: '就地操作', track: 'minmax(190px,1.3fr)',
       render: (a: MailAccount) => (
         <span className='flex flex-wrap items-center gap-1.5' onClick={(e) => e.stopPropagation()}>
-          <Button
-            inline={false}
-            height={ControlsHeight.S}
-            icon={icon16(Send)}
-            loader={testing === a.id}
-            disabled={!canMail || a.status === 'archived'}
-            onClick={() => { setTesting(a.id); window.setTimeout(() => setTesting(null), 900); }}
-          >
-            测试发信
-          </Button>
-          <Button disabled={!canMail} onClick={() => setActiveId(a.id)}>编辑</Button>
-          <DangerAction
-            disabled={!canMail || a.status === 'archived'}
-            why={a.status === 'archived' ? '已经归档' : undefined}
-            onClick={() => setArchive(a)}
-          >
-            归档
-          </DangerAction>
+          <Button inline={false} height={ControlsHeight.S} icon={icon16(Send)} disabled={!canManage || busy} onClick={() => setTestFor(a)}>测试发信</Button>
+          <Button disabled={!canManage} onClick={() => setActiveId(a.id)}>编辑</Button>
+          <DangerAction disabled={!canManage || busy} why={!canManage ? '本账号没有 mail.manage' : undefined} onClick={() => setArchive(a)}>删除</DangerAction>
         </span>
       ),
     },
@@ -103,23 +106,29 @@ export function MailScreen() {
     <div className='flex flex-col gap-3'>
       <ScreenHead
         title='发信账号'
-        note='13.9：多账号（provider 中立）、优先级轮换、日额度、启用/归档、测试发信；凭据加密存储且只写不回读。'
+        note='13.9：多账号（provider 中立）、优先级轮换、日额度、启用/停用、测试发信；凭据加密存储且**只写不回读**。'
       />
 
       <StatRow>
-        <Stat label='账号' value={rows.length} />
-        <Stat label='启用中' value={rows.filter((a) => a.enabled && a.status === 'active').length} tone='info' />
+        <Stat label='账号' value={accounts.length} />
+        <Stat label='启用中' value={accounts.filter((a) => a.enabled).length} tone='info' />
         <Stat label='今日已发' value={sentToday} hint='mail_quota 记账，跨天按 reset_tz 重置' />
-        <Stat label='失败账号' value={rows.filter((a) => a.last_error).length} tone='danger' />
+        <Stat label='失败账号' value={accounts.filter((a) => a.last_error).length} tone='danger' />
+        <Stat label='已配密钥' value={accounts.filter((a) => a.secret_configured).length} hint='没配的账号发不出信' />
       </StatRow>
+
+      {!canManage ? <GateNote perm='mail.manage'>整屏只读：本账号没有 mail.manage。</GateNote> : null}
+      {receipt}
+      {error}
 
       <DataTable
         columns={columns}
-        rows={rows}
+        rows={accounts}
         rowKey={(a) => a.id}
         rowLabel={(a) => a.name}
         activeKey={activeId}
         onRowClick={(a) => setActiveId(a.id)}
+        loading={loading}
         minWidth={872}
         density='compact'
         empty='还没有发信账号'
@@ -127,20 +136,7 @@ export function MailScreen() {
 
       <div className='grid items-start gap-3 lg:grid-cols-[minmax(0,1fr)_268px]'>
         <Panel title='账号详情' note='secret_cipher / secret_nonce 的界面表现：只有「已配置」与更新时间'>
-          {active ? (
-            <>
-              <Input label='账号名' defaultValue={active.name} disabled={!canMail} />
-              <Input label='发信人地址' defaultValue={active.from_address} disabled={!canMail} />
-              <Input label='发信人名称' defaultValue={active.from_name} disabled={!canMail} />
-              <Input label='优先级（越大越先用）' defaultValue={String(active.priority)} disabled={!canMail} />
-              <Input label='日额度 daily_limit' defaultValue={String(active.daily_limit)} disabled={!canMail} />
-              <KV k='provider' v={active.provider} />
-              <KV k='reset_tz' v='Asia/Shanghai' hint='额度按这个时区跨天重置' />
-              <KV k='凭据' v={active.secret_configured ? '已配置' : '未配置'} hint={active.secret_updated_at ? fmtDate(active.secret_updated_at) + ' 更新' : '密钥永不回读'} />
-              <KV k='最近成功' v={relTime(active.last_ok_at)} />
-              <KV k='最近失败' v={active.last_error ?? '—'} />
-            </>
-          ) : (
+          {active ? <AccountForm key={active.id} account={active} canManage={canManage} busy={busy} onPatch={onPatch} /> : (
             <p className='text-[12px] text-muted-foreground'>在左侧点一行查看详情。</p>
           )}
         </Panel>
@@ -149,33 +145,126 @@ export function MailScreen() {
           <Panel title='轮换与冷却' note='§8.3：按 priority 取第一个未超额度的账号；失败进冷却，不阻塞下一次发送'>
             <ol className='flex flex-col gap-1 text-[12px] text-muted-foreground'>
               <li>1 按 priority 降序挑账号</li>
-              <li>2 跳过 enabled=false / 已归档 / 今日超额度 / 冷却中的</li>
+              <li>2 跳过 enabled=false / 今日超额度 / 冷却中的</li>
               <li>3 失败写 last_error + 冷却窗口</li>
               <li>4 额度用 mail_quota(account_id, day) 记账</li>
             </ol>
+            <p className='mt-2 text-[11px] leading-relaxed text-muted-foreground'>
+              `status` 是账号健康态字符串，这一屏**原样显示**（不编中文标签，也不假设它只有两个值）。
+            </p>
           </Panel>
-          <Panel title='系统级发信配置'>
-            {canSystem ? (
-              <p className='text-[12px] text-muted-foreground'>（本页不重复实现：站点设置屏里是 mail.enabled 与 mail.from_name）</p>
-            ) : (
-              <GateNote perm='system.settings'>
-                「轮换密钥 / 重置冷却窗口 / 全局发信开关」不渲染：这些属系统级配置，本账号没有 system.settings。
-              </GateNote>
-            )}
+          <Panel title='新建账号'>
+            <p className='text-[12px] text-muted-foreground'>
+              `POST /admin/mail/accounts` 要 `name / provider / from_address` 三项必填，
+              provider 值域 `resend | smtp | log`。这一版还没有那个表单 ——
+              现有账号的启用/停用/额度/测试发信已经能用。
+            </p>
           </Panel>
         </div>
       </div>
 
       <ConfirmDialog
         show={archive !== null}
-        label='归档这个发信账号？'
+        label='删除这个发信账号？'
         danger
-        confirmText='归档账号'
-        body={<span>归档 <b>{archive?.name}</b> 后它不再参与轮换；历史 mail_logs 保留可查（额度账也随之停止计数）。</span>}
-        reasonLabel='归档理由（可选，进审计）'
+        confirmText='删除账号'
+        body={<span>删除 <b>{archive?.name}</b> 后它不再参与轮换；历史 mail_logs 保留可查（额度账也随之停止计数）。</span>}
+        reasonLabel='删除理由（可选，进审计）'
         onClose={() => setArchive(null)}
-        onConfirm={() => { if (archive) setEnabled((p) => ({ ...p, [archive.id]: false })); setArchive(null); }}
+        onConfirm={() => { if (archive) onDelete(archive.id); setArchive(null); }}
       />
+
+      <TestSendDialog account={testFor} busy={busy} onClose={() => setTestFor(null)} onSend={onTest} />
     </div>
   );
+}
+
+/** 部分更新：**每一项显式保存**（PATCH 只写传进来的字段，nil = 不动）。 */
+function AccountForm({ account, canManage, busy, onPatch }: {
+  account: MailAccount;
+  canManage: boolean;
+  busy: boolean;
+  onPatch: MailScreenProps['onPatch'];
+}) {
+  const [priority, setPriority] = useState(String(account.priority));
+  const [dailyLimit, setDailyLimit] = useState(String(account.daily_limit));
+  const [fromName, setFromName] = useState(account.from_name);
+  const [fromAddress, setFromAddress] = useState(account.from_address);
+  const dirty = priority !== String(account.priority) || dailyLimit !== String(account.daily_limit)
+    || fromName !== account.from_name || fromAddress !== account.from_address;
+  return (
+    <>
+      <Input label='账号名（不可改）' value={account.name} disabled onChange={() => {}} />
+      <Input label='发信人地址' value={fromAddress} disabled={!canManage} onChange={(e) => setFromAddress(e.target.value)} />
+      <Input label='发信人名称' value={fromName} disabled={!canManage} onChange={(e) => setFromName(e.target.value)} />
+      <Input label='优先级（越大越先用）' value={priority} disabled={!canManage} onChange={(e) => setPriority(e.target.value)} />
+      <Input label='日额度 daily_limit' value={dailyLimit} disabled={!canManage} onChange={(e) => setDailyLimit(e.target.value)} />
+      <KV k='provider' v={account.provider} />
+      <KV k='status' v={account.status || '—'} hint='后端原样给的健康态字符串' />
+      <KV k='reset_tz' v={account.reset_tz || '—'} hint='额度按这个时区跨天重置' />
+      <KV k='凭据' v={account.secret_configured ? '已配置' : '未配置'} hint={account.secret_updated_at ? fmtDate(account.secret_updated_at) + ' 更新' : '密钥永不回读'} />
+      <KV k='最近成功' v={relTime(account.last_ok_at)} />
+      <KV k='最近失败' v={account.last_error || '—'} />
+      <div className='mt-2 flex justify-end gap-2'>
+        <Button disabled={!dirty} onClick={() => { setPriority(String(account.priority)); setDailyLimit(String(account.daily_limit)); setFromName(account.from_name); setFromAddress(account.from_address); }}>放弃</Button>
+        <Button
+          primary
+          disabled={!canManage || !dirty || busy}
+          onClick={() => {
+            // 只发改过的字段 —— 没改的一个都不发（PATCH 的语义就是「出现的字段才写」）
+            const patch: Parameters<MailScreenProps['onPatch']>[1] = {};
+            if (priority !== String(account.priority)) patch.priority = Number(priority);
+            if (dailyLimit !== String(account.daily_limit)) patch.daily_limit = Number(dailyLimit);
+            if (fromName !== account.from_name) patch.from_name = fromName;
+            if (fromAddress !== account.from_address) patch.from_address = fromAddress;
+            onPatch(account.id, patch);
+          }}
+        >
+          保存改动
+        </Button>
+      </div>
+    </>
+  );
+}
+
+/** 测试发信：**收件地址必须由人填**（后端 binding 要 email），不默认发给当前管理员。 */
+function TestSendDialog({ account, busy, onClose, onSend }: {
+  account: MailAccount | null;
+  busy: boolean;
+  onClose: () => void;
+  onSend: (id: string, to: string) => void;
+}) {
+  const [to, setTo] = useState('');
+  if (!account) return null;
+  const ok = /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(to.trim());
+  return (
+    <Dialog show label='测试发信' onCloseAttempt={onClose} onOverlayClick={onClose} onEscPress={onClose}>
+      <div className='flex w-[420px] max-w-full flex-col gap-3 p-4'>
+        <p className='text-[13px] text-foreground'>
+          用 <b>{account.name}</b> 发一封测试信。<b>收件地址必须自己填</b>：默认发给当前管理员
+          会把「测试」变成给人发垃圾邮件，而且看不出这个账号到底通不通。
+        </p>
+        <Input label='收件地址' value={to} onChange={(e) => setTo(e.target.value)} placeholder='you@example.com' />
+        <div className='flex justify-end gap-2'>
+          <Button onClick={onClose}>取消</Button>
+          <Button primary disabled={!ok || busy} onClick={() => { onSend(account.id, to.trim()); onClose(); }}>发送测试信</Button>
+        </div>
+      </div>
+    </Dialog>
+  );
+}
+
+function fmtDate(iso: string | null): string {
+  return iso ? iso.slice(0, 10) : '—';
+}
+
+function relTime(iso: string | null): string {
+  if (!iso) return '—';
+  const mins = Math.round((Date.now() - new Date(iso).getTime()) / 60000);
+  if (mins < 1) return '刚刚';
+  if (mins < 60) return mins + ' 分钟前';
+  const hours = Math.round(mins / 60);
+  if (hours < 24) return hours + ' 小时前';
+  const days = Math.round(hours / 24);
+  return days < 31 ? days + ' 天前' : iso.slice(0, 10);
 }

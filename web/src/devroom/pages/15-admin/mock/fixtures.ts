@@ -1,4 +1,4 @@
-import type { AdminUser, Donation, DonationStats, NoticeDefault, Report, ReviewQueueItem, Role, Title } from '@/lib/api/admin';
+import type { AdminUser, Donation, DonationStats, MailAccount, NoticeDefault, Report, ReviewQueueItem, Role, Title } from '@/lib/api/admin';
 
 // DevRoom 15-admin 的演示数据（**只给房间用**；产品路由由 ./admin-screens.tsx 的容器喂真端点）。
 //
@@ -266,4 +266,22 @@ export const DEMO_NOTICE_DEFAULTS: NoticeDefault[] = [
   { channel: 'wechat', text: '微信收款码已更新，打赏后请回来申报单号。' },
   { channel: 'alipay', text: '支付宝收款码同上。' },
   { channel: 'other', text: '' },
+];
+
+/** 发信账号的演示数据：字段名照 mail/dto.go 的 AdminAccount（密钥只有「已配置 + 更新时间」）。 */
+export const DEMO_MAIL: MailAccount[] = [
+  {
+    id: 'm-1', name: '主发信', provider: 'resend', priority: 10, daily_limit: 2000, sent_today: 143,
+    reset_tz: 'Asia/Shanghai', from_address: 'noreply@sc2clud.example', from_name: 'SC2clud',
+    options_json: null, enabled: true, status: 'ok', secret_configured: true,
+    secret_updated_at: '2026-10-01T00:00:00Z', last_ok_at: '2026-10-12T13:00:00Z',
+    last_error: '', last_error_at: null, created_at: '2026-01-01T00:00:00Z', updated_at: '2026-10-01T00:00:00Z',
+  },
+  {
+    id: 'm-2', name: '备用 SMTP', provider: 'smtp', priority: 20, daily_limit: 500, sent_today: 0,
+    reset_tz: 'Asia/Shanghai', from_address: 'backup@sc2clud.example', from_name: '',
+    options_json: null, enabled: false, status: 'disabled', secret_configured: false,
+    secret_updated_at: null, last_ok_at: null, last_error: '连接超时', last_error_at: '2026-09-20T00:00:00Z',
+    created_at: '2026-02-01T00:00:00Z', updated_at: '2026-09-20T00:00:00Z',
+  },
 ];

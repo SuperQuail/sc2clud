@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { CURRENT_ADMIN } from './mock/perms';
-import { DEMO_DONATIONS, DEMO_DONATION_STATS, DEMO_NOTICE_DEFAULTS, DEMO_REPORTS, DEMO_REVIEW, DEMO_ROLES, DEMO_TITLES, DEMO_USERS } from './mock/fixtures';
+import { DEMO_DONATIONS, DEMO_DONATION_STATS, DEMO_MAIL, DEMO_NOTICE_DEFAULTS, DEMO_REPORTS, DEMO_REVIEW, DEMO_ROLES, DEMO_TITLES, DEMO_USERS } from './mock/fixtures';
 import { AdminShell } from './shell';
 import { SCREEN_KEYS, type ScreenKey } from './nav';
 import { AiReviewScreen } from './screens/ai-review';
@@ -32,12 +32,28 @@ const SCREENS: Record<ScreenKey, () => React.ReactNode> = {
   reports: () => <ReportsRoom />,
   rewards: () => <RewardsRoom />,
   titles: () => <TitlesRoom />,
-  mail: () => <MailScreen />,
+  mail: () => <MailRoom />,
   settings: () => <SettingsScreen />,
   ai: () => <AiReviewScreen />,
   audit: () => <AuditScreen />,
   diagnostics: () => <DiagnosticsScreen />,
 };
+
+/** 发信账号屏的房间版。 */
+function MailRoom() {
+  const [accounts, setAccounts] = useState(DEMO_MAIL);
+  const [receipt, setReceipt] = useState<string | null>(null);
+  return (
+    <MailScreen
+      accounts={accounts}
+      canManage
+      onPatch={(id, p) => { setAccounts((prev) => prev.map((a) => (a.id === id ? { ...a, ...p } : a))); setReceipt('（房间演示：这里不发请求）已保存 ' + Object.keys(p).join('、')); }}
+      onDelete={(id) => { setAccounts((prev) => prev.filter((a) => a.id !== id)); setReceipt('（房间演示：这里不发请求）账号已删除'); }}
+      onTest={(id, to) => setReceipt('（房间演示：这里不发请求）给 ' + to + ' 发一封测试信（账号 ' + id + '）')}
+      receipt={receipt ? <p className='text-[12px] text-muted-foreground'>{receipt}</p> : null}
+    />
+  );
+}
 
 /** 头衔目录屏的房间版。 */
 function TitlesRoom() {
