@@ -312,7 +312,14 @@ export function adminFixtureFor(u: string): Reply | undefined {
   }
   if (p.endsWith('/api/v1/admin/boards')) return { body: { data: empty ? [] : BOARDS2 } };
   if (/\/api\/v1\/admin\/boards\/[0-9a-f-]+$/.test(p)) return { body: { data: BOARDS2.find((x) => p.endsWith(x.id)) ?? BOARDS2[0] } };
-  if (p.endsWith('/api/v1/admin/diagnostics')) return { body: { data: DIAG } };
+  // ?debug=0 —— debug 关闭那一档（D13）：后端回 404 common.not_found，**不是空 200**。
+  // 桩必须照这个形状给，否则出图看到的是「有数据的自检面板」，验不到「只留一句说明」。
+  if (p.endsWith('/api/v1/admin/diagnostics')) {
+    if (page.get('debug') === '0') {
+      return { status: 404, body: { error: { code: 'common.not_found', message: '内容不存在', request_id: 'req-shot' } } };
+    }
+    return { body: { data: DIAG } };
+  }
   if (p.endsWith('/api/v1/admin/audit-logs')) return { body: { data: AUDIT, next_cursor: null } };
   if (p.endsWith('/api/v1/admin/ai/config')) return { body: { data: AI_CONFIG } };
   if (p.endsWith('/api/v1/admin/ai/test')) {

@@ -23,8 +23,9 @@ export function DiagnosticsScreenContainer() {
       error={q.error ? {
         message: errorLine(q.error) ?? '',
         status,
-        // 404 在这里是**预期内的两件事之一**：debug 关闭（后端刻意的错误码），或者这条路由真的不在
-        disabled: status === 404,
+        // **错误码**才是判据（View 里 isDebugOff 读它）：debug 关闭回的是 common.not_found，
+        // 而「这条路由真的不在」是 common.route_not_found —— 状态码都是 404，屏上却是两种话。
+        code: isApiError(q.error) ? q.error.code : '',
       } : null}
       canSetting={can(session.session, 'site.setting')}
     />

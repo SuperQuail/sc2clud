@@ -17,15 +17,16 @@ export function ScreenHead({ title, note, actions }: { title: string; note: stri
   );
 }
 
-export function Panel({ title, note, actions, children, className }: {
+export function Panel({ title, note, actions, children, className, 'data-testid': testId }: {
   title?: string;
   note?: string;
   actions?: ReactNode;
   children: ReactNode;
   className?: string;
+  'data-testid'?: string;
 }) {
   return (
-    <section className={cn('rounded-lg border border-border bg-card p-3', className)}>
+    <section data-testid={testId} className={cn('rounded-lg border border-border bg-card p-3', className)}>
       {title || actions ? (
         <div className='mb-2 flex flex-wrap items-start justify-between gap-2'>
           <div className='min-w-0'>
@@ -61,8 +62,8 @@ export function Stat({ label, value, hint, tone = 'neutral' }: {
   );
 }
 
-export function StatRow({ children }: { children: ReactNode }) {
-  return <div className='flex flex-wrap gap-2'>{children}</div>;
+export function StatRow({ children, 'data-testid': testId }: { children: ReactNode; 'data-testid'?: string }) {
+  return <div data-testid={testId} className='flex flex-wrap gap-2'>{children}</div>;
 }
 
 export function Pill({ tone = 'neutral', children, className }: {

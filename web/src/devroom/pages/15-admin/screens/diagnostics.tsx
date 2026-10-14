@@ -14,14 +14,38 @@ import { DisabledReason, GateNote, Panel, Pill, ScreenHead, Stat, StatRow } from
 export type DiagnosticsProps = {
   data: Diagnostics | null;
   loading?: boolean;
-  /** 拿不到时：404 在这里是预期内的（debug 关闭），不是「系统坏了」 */
-  error?: { message: string; status: number; disabled: boolean } | null;
+  /** 拿不到时：404 **common.not_found** 在这里是预期内的（debug 关闭），不是「系统坏了」 */
+  error?: { message: string; status: number; code: string } | null;
   canSetting: boolean;
 };
+
+/**
+ * debug 关闭时后端给的就是 404 **common.not_found**（C3 的设计，不是坏）—— 判据只能是错误**码**：
+ * 状态码 404 不够，路由真的不在也是 404（common.route_not_found），那一档必须如实报错、不能拿「关掉了」糊过去。
+ */
+export function isDebugOff(error: { code: string } | null | undefined): boolean {
+  return error?.code === 'common.not_found';
+}
 
 type Check = Diagnostics['checks'][number];
 
 export function DiagnosticsScreen({ data, loading = false, error = null, canSetting }: DiagnosticsProps) {
+  // debug 关闭这一档**只留一句说明**（D13）：原来画的 404 红卡 + 一排「—」的空指标格，
+  // 给人看到的是「面板坏了」，而它其实是「这扇门本来就关着」。
+  if (isDebugOff(error)) {
+    return (
+      <div className='flex flex-col gap-3'>
+        <ScreenHead title='自检面板' note='13.12：debug 开关门控的只读结果。这里只回答「系统现在自洽吗」，不提供修改入口。' />
+        <Panel title='debug 开关关闭' data-testid='diag-debug-off'>
+          <p className='text-[12px] leading-relaxed text-muted-foreground'>
+            自检面板默认关闭，需在后端打开 debug 开关。开启之前这里不显示任何检查结果 ——
+            后端这时回的就是 404 common.not_found，不是「跑了没问题」，也不是系统坏了。
+          </p>
+        </Panel>
+      </div>
+    );
+  }
+
   const rows = data?.checks ?? [];
   const failed = rows.filter((r) => r.status === 'fail');
   const skipped = rows.filter((r) => r.status === 'skipped');
@@ -33,25 +57,21 @@ export function DiagnosticsScreen({ data, loading = false, error = null, canSett
         note='13.12：debug 开关门控的只读结果。这里只回答「系统现在自洽吗」，不提供修改入口。'
       />
 
-      <StatRow>
-        <Stat label='检查项' value={data ? data.total : '—'} />
-        <Stat label='通过' value={data ? rows.filter((r) => r.status === 'ok').length : '—'} tone='info' />
-        <Stat label='异常' value={data ? data.failed : '—'} tone={failed.length ? 'danger' : 'neutral'} />
-        <Stat label='没查（skipped）' value={data ? skipped.length : '—'} hint='与「通过」是两件事：没查的显示成通过就是假绿' />
-        <Stat label='版本' value={data?.version || '—'} hint={data?.started_at ? '启动于 ' + fmtTime(data.started_at) + ' UTC' : '这个部署没注入构建信息'} />
-      </StatRow>
+      {/* 指标格只在**真拿到结果**时画：拿不到时那一排「—」正是 D13 要消灭的东西（它看着像坏了） */}
+      {data ? <StatRow data-testid='diag-stats'>
+        <Stat label='检查项' value={data.total} />
+        <Stat label='通过' value={rows.filter((r) => r.status === 'ok').length} tone='info' />
+        <Stat label='异常' value={data.failed} tone={failed.length ? 'danger' : 'neutral'} />
+        <Stat label='没查（skipped）' value={skipped.length} hint='与「通过」是两件事：没查的显示成通过就是假绿' />
+        <Stat label='版本' value={data.version || '—'} hint={data.started_at ? '启动于 ' + fmtTime(data.started_at) + ' UTC' : '这个部署没注入构建信息'} />
+      </StatRow> : null}
 
       {!canSetting ? <GateNote perm='site.setting'>GET /admin/diagnostics 需要 site.setting：本账号没有，面板不渲染。</GateNote> : null}
 
+      {/* 走到这里的 error 已经**不是** debug 关闭那一档（上面提前返回了）：就是我们真没取到，如实报 */}
       {error ? (
         <div role='alert' className='rounded-md border border-destructive/40 bg-destructive/8 px-3 py-2 text-[12px] leading-relaxed text-foreground'>
-          自检结果没能取到（HTTP {error.status}）：{error.message}
-          {error.disabled ? (
-            <span className='mt-1 block text-muted-foreground'>
-              这一档是预期内的：debug 关闭时后端给的就是 404 common.not_found（不是空 200）——
-              空 200 会让「生产上关掉了」和「跑了但没结果」长得一模一样。打开 debug 之后刷新本页。
-            </span>
-          ) : null}
+          自检结果没能取到（HTTP {error.status}{error.code ? ' ' + error.code : ''}）：{error.message}
         </div>
       ) : null}
 
