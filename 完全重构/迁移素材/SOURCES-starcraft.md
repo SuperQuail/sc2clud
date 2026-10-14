@@ -1,6 +1,6 @@
-# 老站图标素材出处与授权（迁自 \`site/crates/sc2clud-web/static/art/starcraft/SOURCES.md\`）
+# 老站图标素材出处与授权（迁自 `site/crates/sc2clud-web/static/art/starcraft/SOURCES.md`）
 
-> **这份是新仓里那份的镜像**（\`web/public/art/starcraft/SOURCES.md\` 逐字相同），
+> **这份是新仓里那份的镜像**（`web/public/art/starcraft/SOURCES.md` 逐字相同），
 > 放在迁移素材目录里是为了让「迁移资料自带出处」——迁移号与授权不依赖新仓的目录结构。
 
 # 星际争霸 II 素材来源

@@ -73,6 +73,8 @@
       5299 node(10204) —— 三个端口现在都是「已释放」；CDP 端口 19411/19412 也已释放。
     · `git status --short` 里只剩**别人的**在途文件（`web/src/devroom/pages/12-topic/author-card.tsx`、
       `web/scripts/cdp-shot.ts` 的 size/mark 两个新动作）—— 我一个都没 add。
+    · 收工前发现 `迁移素材/SOURCES-starcraft.md` 的标题里反引号被我多转义了一层（原样是 \`），
+      已修；修完把**镜像段与原文件逐字比对过**：30 行 30 行，JSON 字符串相等（true）。
   - 下一步：无（本包四条任务全部完成）。若要真上线：照 `完全重构/迁移素材/README.md` 在目标实例上跑
     `forum board-covers -manifest <仓库里的 board-covers.json>`（先 `-dry-run` 看一遍）。
   - 阻塞：无。**遗留三点**（都不属本包文件作用域，写在审计 §6 里等拍板）：
