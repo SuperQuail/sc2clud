@@ -71,6 +71,12 @@ forum ai-config -manifest /path/to/完全重构/迁移素材/ai-config.json
 ```
 
 密钥不在 manifest 里，配完再跑 `POST /api/v1/admin/ai/test` 看连通（后台「AI 审核」屏那颗按钮）。
+`-manifest` 的路径**相对当前工作目录**（默认值 `完全重构/迁移素材/ai-config.json` 只在仓库根跑得对；
+线上 `完全重构/` 不在部署产物里，所以那边**必须带绝对路径**——与 `board-covers` 同一条约定）。
+
+干跑回执（本机实测，2026-10-14）：`provider=deepseek base_url=https://api.deepseek.com model=deepseek-flash`、
+`enabled=false thinking=false strict_mode=false temperature=0 timeout_ms=30000 max_output_tokens=2048`、
+`prompt=89 字` / `prompt_report=51 字`（两段都逐字打出来给你对）。
 
 ## 授权
 

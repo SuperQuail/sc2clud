@@ -49,9 +49,12 @@ func TestBoardCoversImportIsVisibleAndIdempotent(t *testing.T) {
 		t.Fatalf("newModules: %v", err)
 	}
 	// 分区是运营数据（迁移里没有），照 seed 那五行的 slug 建。
+	// ON CONFLICT DO NOTHING：同包的用例共用这一个库，任何先跑过 `Seed` 的用例都已经把这五个分区建好了
+	// （2026-10-14：加公告区 ACL 用例时踩到 —— 全包一起跑必炸，单跑那条则看不到）。
 	for _, slug := range []string{"announcement", "vanilla-mod", "custom-campaign", "tool-player", "tool-dev"} {
 		if _, err := in.Pool.Exec(ctx,
-			"INSERT INTO boards (slug, name, description) VALUES ($1, $1, '导入用例的分区')", slug); err != nil {
+			"INSERT INTO boards (slug, name, description) VALUES ($1, $1, '导入用例的分区') "+
+				"ON CONFLICT (slug) DO NOTHING", slug); err != nil {
 			t.Fatalf("建分区 %s: %v", slug, err)
 		}
 	}

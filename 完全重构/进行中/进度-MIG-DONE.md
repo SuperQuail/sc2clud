@@ -75,3 +75,24 @@
     然后按 PID 关掉本轮起的进程。
   - 阻塞：无。**本步不改代码，只改盘点**；两处「不是逐字迁移」的偏差（\`thinking\` / \`timeout_ms\`）留在
     \`ai-config.json\` 的 \`traced\` 里，没有为了让表格好看而改写成「等价」。
+
+- [x] 第5步：收尾自查（改过的包整包跑）+ 修一处**跨用例**的脏（别人写的件也没放过）
+  - 做了什么：①全包跑 \`go test ./internal/app/\`（不过滤）—— 逮到一条**只在整包跑时才会炸**的脏：
+    \`TestBoardCoversImportIsVisibleAndIdempotent\` 与 \`e2e_test.go\` 用的是**不带 ON CONFLICT 的 INSERT boards**，
+    而我的用例先跑过 \`Seed\` 就把那五个分区建好了 → \`重复键违反唯一约束 boards_slug_key\`。两处都改成
+    \`ON CONFLICT (slug) DO NOTHING\`（分区是运营数据，用例不该假设库是空的），并各留一行注释记这次的根因。
+    ②顺手把 \`ai-config\` 的 CLI 路径实测了一遍（干跑）；③给迁移素材 README 补上 \`-manifest\` 的相对路径约定与干跑回执。
+  - 证据：\`go fmt ./...\` 空输出、\`go vet ./...\` → \`VET=0\`；\`go test ./internal/app/ -count=1\` → \`ok forum/internal/app 15.343s\`、
+    \`TEST=0\`（**整包 12 条全绿**，不是 -run 过滤）；另跑了**没改过**的 \`go test ./internal/forum/ -count=1\` →
+    \`ok forum/internal/forum 82.469s\`、\`TEST=0\`（ACL 判定六步那条路径的回归）。
+    CLI 干跑（真二进制、假 DSN，不接库）：
+    \`forum ai-config -dry-run -ai-manifest <abs> -config <.tools/tmp-aiconfig-dry.yaml>\` →
+    \`ai-config: dry-run\` + \`provider=deepseek base_url=https://api.deepseek.com model=deepseek-flash\` +
+    \`enabled=false thinking=false strict_mode=false temperature=0 timeout_ms=30000 max_output_tokens=2048\` +
+    \`prompt=89 字…\` / \`prompt_report=51 字…\`，\`EXIT=0\`。
+  - 下一步：无（四条拍板全部落地）。**没跑 \`pnpm check\`**：本包一行 \`web/src/**\` 都没碰，而那条门禁会清 \`dist/\`、
+    与正在改前端的并发包互踩（交接单 §3.5 / §5.8 明写同一时刻只允许一个人跑）。
+  - 阻塞：无。**遗留两处（都不在文件作用域里，报给 Lead）**：①\`seed_data.go\` 公告帖正文里还写着
+    「**工具（玩家）**」「**工具（开发者）**」（那是**帖子正文**不是分区名，本轮只按拍板改分区名）；
+    ②\`完全重构/进行中/09-收尾对照表.md\` 第 75–76 行那份**历史实测记录**里写着 \`name=工具（玩家）\`
+    —— 是当时的真实回执，不该改；下次实测会把新名记进去。

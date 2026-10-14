@@ -174,8 +174,9 @@ func TestEndToEndMainChain(t *testing.T) {
 		t.Fatalf("建 log 发信账号: %v", err)
 	}
 	// 前置 3：一个分区（0017 只播角色与权限，分区是运营数据，迁移里没有）。
-	if _, err := in.Pool.Exec(ctx, "INSERT INTO boards (slug, name, description) VALUES ($1, $2, $3)",
-		"general", "综合", "端到端用例的分区"); err != nil {
+	// ON CONFLICT DO NOTHING：同包用例共用一个库，别的用例（Seed）可能已经建过它。
+	if _, err := in.Pool.Exec(ctx, "INSERT INTO boards (slug, name, description) VALUES ($1, $2, $3) "+
+		"ON CONFLICT (slug) DO NOTHING", "general", "综合", "端到端用例的分区"); err != nil {
 		t.Fatalf("建分区: %v", err)
 	}
 
