@@ -280,7 +280,7 @@ export default function IssuePage() {
               <div className='flex flex-col items-center gap-2 px-6 py-20 text-center'>
                 <p className='text-sm font-medium text-foreground'>从左边选一条反馈看详情</p>
                 <p className='max-w-[46ch] text-[12px] leading-relaxed text-muted-foreground'>
-                  详情里有正文、状态开关（Open / Closed）、以及复用 @/ui/comment 的评论区——评论、楼中楼、赞踩都在那里。
+                  详情里有正文、状态开关（{ISSUE_STATUS_LABEL.open} / {ISSUE_STATUS_LABEL.closed}）、以及评论区——评论、楼中楼、赞踩都在那里。
                 </p>
               </div>
             )}

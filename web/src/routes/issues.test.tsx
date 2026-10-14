@@ -341,6 +341,43 @@ describe('问题反馈页（真端点）', () => {
     expect(calls.every((c) => !c.url.includes('author='))).toBe(true);
   });
 
+  // 第三轮拍板后的排查：产品页同样不许把「写给人看的内部串」漏到用户界面 ——
+  // Markdown 星号字面量（`**`）、后端错误码（forum.*）、查询参数名（author= / assignee=me）。
+  it('检索提示与未登录空态：不出现 Markdown 星号 / 后端错误码 / 查询参数名', async () => {
+    mockApi((u) => {
+      if (u.includes('/api/v1/me')) return { body: { data: null } };
+      return { body: { data: [], next_cursor: null } };
+    });
+    renderIssues('/issues?topic=tp-1');
+    await screen.findByRole('region', { name: '反馈列表' });
+    // 一敲检索词就展开「哪一部分在服务端筛」那段说明
+    fireEvent.change(screen.getByLabelText('搜索反馈'), { target: { value: 'is:open' } });
+    // 游客点「我创建的」→ 出空态（那两个范围要登录），那也是用户要读的一段话
+    fireEvent.click(await screen.findByRole('button', { name: '我创建的' }));
+
+    const text = document.body.textContent ?? '';
+    expect(text).not.toContain('**');
+    expect(text).not.toContain('forum.');
+    expect(text).not.toContain('author=');
+  });
+
+  it('没有 ?topic= 时给的是人话：回执里没有后端错误码，也没有查询参数', async () => {
+    mockApi((u) => {
+      if (u.includes('/api/v1/me')) return { body: { data: ME } };
+      return { body: { data: [], next_cursor: null } };
+    });
+    renderIssues('/issues');
+    // 点一次就断言**会抢跑**：会话还没落定时拿到的是「未登录」那一句，而那不是这条要测的分支
+    // （页面上没有别的信号能看出登录态）。所以重试到回执换成人话为止 —— 重试的是测试，不是页面。
+    await waitFor(() => {
+      fireEvent.click(screen.getByRole('button', { name: /^汇报 Bug/ }));
+      expect(screen.getByRole('status').textContent).toContain('帖子页');
+    });
+    const status = screen.getByRole('status');
+    expect(status.textContent).not.toContain('forum.');
+    expect(status.textContent).not.toContain('?topic=');
+  });
+
   it('列表 500：出的是错误态（带「哪一步没加载」），不是白屏、也不是空列表', async () => {
     mockApi((u) => {
       if (u.includes('/api/v1/me')) return { body: { data: ME } };

@@ -88,8 +88,8 @@ export function IssueDetail({
             )}
           </span>
           <span className='ml-auto'>
-            <Toggle checked={open} onChange={(e) => onSetStatus(e.target.checked ? 'open' : 'closed')} help={'当前：' + ISSUE_STATUS_LABEL[issue.status] + '（关掉即 Closed）'}>
-              {open ? '待处理 Open' : '已关闭 Closed'}
+            <Toggle checked={open} onChange={(e) => onSetStatus(e.target.checked ? 'open' : 'closed')} help={'当前：' + ISSUE_STATUS_LABEL[issue.status] + '（关掉就是已关闭）'}>
+              {ISSUE_STATUS_LABEL[issue.status]}
             </Toggle>
           </span>
         </div>

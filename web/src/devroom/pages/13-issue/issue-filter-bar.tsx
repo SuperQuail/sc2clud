@@ -118,14 +118,14 @@ export function IssueFilterBar({
       <Input
         value={query}
         onChange={(e) => onQuery(e.target.value)}
-        placeholder='搜索：标题、正文，或 is:open kind:bug label:界面 author:demo-marine'
+        placeholder='搜索：标题、正文，或 is:open kind:bug label:界面'
         aria-label='搜索反馈'
         inputRef={boxRef}
         icon={icon16(Search)}
         onClear={() => onQuery('')}
       />
       <p className='text-[11px] leading-relaxed text-muted-foreground'>
-        限定词：<code>is:open|closed</code> · <code>kind:bug|feature|difficulty|other</code> · <code>label:标签</code> ·{' '}
+        检索语法：<code>is:open|closed</code> · <code>kind:bug|feature|difficulty|other</code> · <code>label:标签</code> ·{' '}
         <code>author:handle</code>（可组合，值含空格用引号；认不出的词留在自由文本里搜）
         {parsed.unknown.length > 0 ? (
           <span className='ml-1 text-destructive'>

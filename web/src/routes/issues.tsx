@@ -268,7 +268,7 @@ export function IssuesPage({
       return;
     }
     if (!topicId) {
-      setReceipt('反馈必须挂在某张资源帖下面（后端 forum.not_resource）：从帖子页的「问题反馈」入口点进来，链接里就会带上 ?topic=<帖子 id>。');
+      setReceipt('反馈要挂在某张资源帖下面：请从帖子页的「问题反馈」入口点进来。');
       return;
     }
     setReceipt(null);
@@ -290,7 +290,7 @@ export function IssuesPage({
             if (v !== 'content') return;
             // 「帖子内容」这一格要回帖子页；全站列表（没有 ?topic=）不属于任何帖子，点了给一句实话
             if (topicId) void navigate(routePath('t/' + topicId));
-            else setReceipt('当前是全站反馈列表（没有 ?topic=），没有对应的帖子内容可回；从帖子页的「问题反馈」入口进来才有。');
+            else setReceipt('当前是全站反馈列表，没有对应的帖子内容可回；从帖子页的「问题反馈」入口进来才有。');
           }}
           onOpenIssue={() => {
             // 重复点这一格 = 「回到全部反馈列表」：清筛选 + 收掉入参 kind（把地址也擦干净）
@@ -334,9 +334,9 @@ export function IssuesPage({
 
         {query !== '' ? (
           <p className='mt-2 text-[11px] leading-relaxed text-muted-foreground'>
-            自由词（<code>?q=</code>）与 <code>is:</code> / <code>kind:</code> / <code>author:</code> 都是**服务端筛选** ——
-            自由词匹配标题与正文（后端字面匹配，中文两字词也命中），所以**还没翻到的页也搜得到**。
-            只有 <code>label:</code> 与 <code>#编号</code> 还在本页 {rows.length} 条里筛（本项目还没有标签表）。
+            自由词与 <code>is:</code> / <code>kind:</code> / <code>author:</code> 都发给服务端筛 ——
+            自由词匹配标题与正文，所以还没翻到的页也搜得到。
+            只有 <code>label:</code> 与 <code>#编号</code> 还在本页 {rows.length} 条里筛（本站还没有标签功能）。
           </p>
         ) : null}
 
@@ -372,7 +372,7 @@ export function IssuesPage({
             {!scopeReady ? (
               <Empty
                 title='按「我创建的 / 指派给我」筛要先登录'
-                hint='这两个范围是服务端筛选（author= / assignee=me），游客没有「我」。'
+                hint='这两个范围要按登录身份筛，游客没有「我」。'
                 action={<Button href={loginHref}>去登录</Button>}
               />
             ) : list.isPending ? (
@@ -417,7 +417,7 @@ export function IssuesPage({
               <div className='flex flex-col items-center gap-2 px-6 py-20 text-center'>
                 <p className='text-sm font-medium text-foreground'>从左边选一条反馈看详情</p>
                 <p className='max-w-[46ch] text-[12px] leading-relaxed text-muted-foreground'>
-                  详情里有正文、状态开关（Open / Closed）、以及复用 @/ui/comment 的评论区——评论、楼中楼、赞踩都在那里。
+                  详情里有正文、状态开关（{ISSUE_STATUS_LABEL.open} / {ISSUE_STATUS_LABEL.closed}）、以及评论区——评论、楼中楼、赞踩都在那里。
                 </p>
               </div>
             ) : detail.isPending ? (

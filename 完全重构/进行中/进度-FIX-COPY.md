@@ -23,3 +23,36 @@
     `routes/issues.tsx:420` 的 `状态开关（Open / Closed）` + `复用 @/ui/comment`、
     `routes/issues.tsx:337-339` 的 Markdown `**` 字面量、`routes/issues.tsx:271` 的 `forum.not_resource`。
   - 阻塞：无
+
+- [x] 步骤2：用户可见处的裸枚举/语法串排查与收口（**含用户截图里 `|difficulty|other·label:` 那个形状**）
+  - 结论（**保留 + 说清**，不是删掉）：那个形状就是 `13-issue/issue-filter-bar.tsx` 检索条下的一行提示
+    `限定词：is:open|closed · kind:bug|feature|difficulty|other · label:标签 · author:handle`。
+    **它是给用户看的**：检索框真的实现了 GitHub 那套限定词（`query.ts` 解析 `is:/kind:/label:/author:`），
+    而且旁边就靠它解释「没识别：xxx」那句回执；删了这行等于把一个真功能变成猜谜。
+    但它当时**没自报家门**（「限定词」是行话），所以读起来就像漏出来的枚举 —— 改法是把话说清：
+    `限定词：` → `检索语法：`。同一条提示里的样例 `author:demo-marine` 是**假名单**（产品页上并不存在这个人），
+    一并从 placeholder 去掉（`author:handle` 的写法在那行提示里照旧有）。
+  - 同一轮**真的该收口**的裸串（都改了，且都是「内部串漏进用户界面」）：
+    · `13-issue/issue-detail.tsx:91-92`：状态开关的可见文字是 `待处理 Open` / `已关闭 Closed`，help 里还有「关掉即 Closed」
+      —— 裸枚举，改走 `ISSUE_STATUS_LABEL`（开启中 / 已关闭），与上面那枚状态药丸、页签同一份文案；
+    · `13-issue/index.tsx:283` 与 `routes/issues.tsx:420`（详情空态那一句）：`状态开关（Open / Closed）` + `复用 @/ui/comment 的评论区`
+      —— 裸枚举 + **源码路径**，改成 `（{ISSUE_STATUS_LABEL.open} / {ISSUE_STATUS_LABEL.closed}）` + 「以及评论区」；
+    · `routes/issues.tsx:337-339`：`**服务端筛选**`、`**还没翻到的页也搜得到**` —— **Markdown 星号字面量**直接显示给用户
+      （外加「本项目还没有标签表」这种内部黑话），去掉星号与黑话；
+    · `routes/issues.tsx:271`：回执里写着后端错误码 `forum.not_resource` 与 `?topic=<帖子 id>`，改成一句人话；
+    · `routes/issues.tsx:293`：同类回执里的 `（没有 ?topic=）` 一并去掉；
+    · `routes/issues.tsx:375`：空态提示里的查询参数名 `author= / assignee=me` 改成「要按登录身份筛」。
+  - 证据（**先证明断言会红**）：先只加两条守卫断言（`13-issue/index.test.tsx` 整页 textContent 不含 `@/`、`\bOpen\b`、`\bClosed\b`
+    且含「检索语法」；`routes/issues.test.tsx` 不含 `**`、`forum.`、`author=` 与回执里没有 `forum.`/`?topic=`）→
+    `npx vitest run src/devroom/pages/13-issue/index.test.tsx src/routes/issues.test.tsx`
+    → `Test Files 2 failed (2) | Tests 3 failed | 13 passed`，红的三条正是：
+    `expected '帖子内容问题反馈汇报 Bug…限定词：is:open…' not to contain '**'`、
+    `… not to match /\bOpen\b/`、`expected '提反馈要先登录。知道了' to contain '帖子页'`。
+    改完 → 同一命令 `Test Files 2 passed (2) | Tests 16 passed (16)`。
+  - 全量：`pnpm typecheck` 退出码 0；`pnpm lint` `17 problems (0 errors, 17 warnings)`；
+    `npx vitest run` → `Test Files 2 failed | 49 passed (51) / Tests 4 failed | 248 passed (252)`，
+    红的两个文件都**不是本包的**：`routes/profile.test.tsx`（FIX-TITLE 在途，`Found multiple elements with the role "link" and name "账号设置"`）、
+    `routes/home.test.tsx` 3 条（**单独跑绿**：`npx vitest run src/routes/home.test.tsx` 过；
+    与我这三个文件同跑也绿 `3 passed (3) | 21 passed` → 是全量并发下的抖动，与 FIX-TOPIC 记的 10-messages 同一形态）。
+  - 下一步：步骤3 出图 —— DevRoom `devroom.html` 的 13-issue 页 + 产品 `product.html?route=/issues`（1440 与 390），两张都要看。
+  - 阻塞：无

@@ -44,6 +44,18 @@ describe('13-issue 页面', () => {
     expect(within(list).getByText('没有符合条件的反馈')).toBeTruthy();
   });
 
+  // 用户可见处不许漏内部串（第三轮拍板后的排查）：裸枚举、代码路径都不该出现在页面上。
+  // 判据是**整页可见文字** —— 用户看到的就是这一整片字；分条断言便于一眼看出漏的是哪一类。
+  it('用户可见处不泄漏内部串：没有裸枚举 Open/Closed、没有 @/ 代码路径', () => {
+    render(<IssuePage />);
+    const text = document.body.textContent ?? '';
+    expect(text).not.toContain('@/');
+    expect(text).not.toMatch(/\bOpen\b/);
+    expect(text).not.toMatch(/\bClosed\b/);
+    // 检索框下那一行是**给用户看的检索语法**（保留），但它必须自报家门，不能读成漏出来的枚举
+    expect(text).toContain('检索语法');
+  });
+
   it('点列表项切换详情，点详情里的「收起详情」回到空态', () => {
     render(<IssuePage />);
     const list = screen.getByRole('region', { name: '反馈列表' });
