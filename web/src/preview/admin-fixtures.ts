@@ -235,7 +235,11 @@ export function adminFixtureFor(u: string): Reply | undefined {
   }
   if (p.endsWith('/api/v1/admin/topics')) {
     const state = url.searchParams.get('state') ?? 'pending';
-    const rows = state === 'all' ? REVIEW.filter((r) => r.review_state !== 'approved') : REVIEW.filter((r) => r.review_state === state);
+    // 'draft' 是**服务端的作用域名**，不是 review_state 的值（拍板 08 第二轮 · 6.2）：
+    // 它筛的是「已发布 + 有未过审改动」。桩照着做，否则再点一次这一档又会是空的。
+    const rows = state === 'all' ? REVIEW.filter((r) => r.review_state !== 'approved')
+      : state === 'draft' ? REVIEW.filter((r) => r.review_state === 'approved')
+        : REVIEW.filter((r) => r.review_state === state);
     return { body: { data: rows, next_cursor: null } };
   }
   if (p.includes('/api/v1/admin/topics/') && p.endsWith('/review')) {

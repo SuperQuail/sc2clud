@@ -40,7 +40,7 @@ const fixtureLog = installFixture();
 // 只读快照，不做定时刷新：调用方要的是「这一页请求过什么」，不是实时流水。
 const probe = document.createElement('meta');
 probe.name = 'fixture-log';
-probe.content = JSON.stringify({ routes: fixtureLog.map((r) => r.url) });
+probe.content = JSON.stringify({ routes: fixtureLog.map((r) => r.url), n: fixtureLog.length });
 probe.setAttribute('data-fixture-log', probe.content);
 document.head.appendChild(probe);
 
