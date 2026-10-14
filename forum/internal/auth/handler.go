@@ -55,6 +55,10 @@ func (h *Handler) Register(rg *gin.RouterGroup) {
 	// 管理：角色与权限（提权类）。管理端是写操作，必须同时挂 RequireActivated
 	//（拍板 §9.12：未激活的 admin 不该能提权），顺序 login → activated → Perm（设计 §9.2）。
 	a := rg.Group("/admin", login, activated)
+	// 用户管理（C1）：读路径同样挂 user.ban —— 它返回邮箱、三根状态轴、处罚与追加权限，
+	// 与 /admin/roles 一族不是同一档信息（§5.8 归在「用户与权限」那一组）。
+	a.GET("/users", svc.Perm(authz.PermUserBan), h.adminListUsers)
+	a.GET("/users/:id", svc.Perm(authz.PermUserBan), h.adminUserDetail)
 	a.GET("/roles", svc.Perm(authz.PermRoleEdit), h.adminListRoles)
 	a.GET("/permissions", svc.Perm(authz.PermRoleEdit), h.adminListPermissions)
 	a.PATCH("/roles/:id/permissions", svc.Perm(authz.PermRoleEdit), h.adminReplaceRolePerms)
@@ -378,6 +382,47 @@ func (h *Handler) passwordReset(c *gin.Context) {
 }
 
 // ── 管理端 ────────────────────────────────────────────────────────
+
+// ── 用户管理（C1） ───────────────────────────────────────────────
+
+// adminUsersQueryReq 是 GET /admin/users 的查询串。三个布尔筛选是**指针**：
+// 不传 = 不筛，false = 「只看没有这一项的」，两者不能合并（三根状态轴是独立的）。
+type adminUsersQueryReq struct {
+	Q             string `form:"q"`
+	Status        string `form:"status"`
+	Role          string `form:"role"`
+	Activated     *bool  `form:"activated"`
+	EmailVerified *bool  `form:"email_verified"`
+	Limit         int    `form:"limit"`
+	Cursor        string `form:"cursor"`
+}
+
+func (h *Handler) adminListUsers(c *gin.Context) {
+	var req adminUsersQueryReq
+	if err := httpx.BindQuery(c, &req); err != nil {
+		httpx.Fail(c, err)
+		return
+	}
+	items, next, err := h.svc.ListAdminUsers(c.Request.Context(), actorFrom(c), AdminUsersQuery{
+		Q: req.Q, Status: req.Status, Role: req.Role,
+		Activated: req.Activated, EmailVerified: req.EmailVerified,
+		Limit: req.Limit, Cursor: req.Cursor,
+	})
+	if err != nil {
+		httpx.Fail(c, err)
+		return
+	}
+	httpx.OKList(c, items, next)
+}
+
+func (h *Handler) adminUserDetail(c *gin.Context) {
+	out, err := h.svc.AdminUserDetail(c.Request.Context(), actorFrom(c), c.Param("id"))
+	if err != nil {
+		httpx.Fail(c, err)
+		return
+	}
+	httpx.OK(c, out)
+}
 
 func (h *Handler) adminListRoles(c *gin.Context) {
 	items, err := h.svc.ListRoles(c.Request.Context(), actorFrom(c))
