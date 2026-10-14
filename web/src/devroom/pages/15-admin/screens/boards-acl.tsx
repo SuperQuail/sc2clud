@@ -109,7 +109,7 @@ export function BoardAclPanel({
         这一分区命中 deny 的角色：{denied.length === 0 ? '无' : denied.map((r) => r.name).join('、')}
         {denied.length > 0 ? '（整行被 deny 挡住，左侧色条标红）' : ''}。
         勾选只有在 acl_enabled = true 时才算数；关掉开关时上面的结论会变成「第 3 步放行」。
-        保存是**整张矩阵一次 PUT**（后端全量替换：少给一行就真删掉；同一行既 can 又 deny、重复 role_id 都会 400）。
+        保存是整张矩阵一次 PUT（后端全量替换：少给一行就真删掉；同一行既 can 又 deny、重复 role_id 都会 400）。
       </p>
 
       <div className='mt-3 border-t border-border pt-2'>

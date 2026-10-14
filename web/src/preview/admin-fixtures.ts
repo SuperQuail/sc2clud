@@ -20,7 +20,7 @@ const ROLE = (id: number, key: string, name: string, color: string, isSuper = fa
 export const ME_ADMIN = {
   id: 'u-1', handle: 'demo-admin', nickname: '示范管理员', avatar: null,
   email_verified: true, activated: true, is_super: false,
-  perms: ['post.review', 'report.handle', 'reward.verify', 'role.edit', 'role.assign', 'title.grant', 'title.manage', 'board.manage', 'mail.manage', 'site.setting', 'audit.view', 'audit.export', 'user.ban', 'permission.grant'],
+  perms: ['post.review', 'report.handle', 'reward.verify', 'role.edit', 'role.assign', 'title.grant', 'title.manage', 'board.manage', 'mail.manage', 'site.setting', 'audit.view', 'audit.export', 'user.ban', 'permission.grant', 'topic.create'],
   role: { key: 'admin', name: '管理员' },
   extra: [{ key: 'audit.view', expires_at: '2026-12-31T15:59:59Z' }],
   board_ids: [1],
@@ -135,10 +135,79 @@ const AI_CONFIG = {
   last_error: '', last_error_at: null,
 };
 
+// ── C1/C2/C3 三组的桩数据（字段名逐个照 forum/internal/** 的 DTO）──────────
+// users 是**列表项**那一份（role 只有三列、没有 avatar/extra_permissions/title/sanctions）；
+// 那三张表在 USER_DETAIL 里，对应 GET /admin/users/{id}。
+
+const U_ROLE = (key: string) => {
+  const r = ROLES.find((x) => x.key === key)!;
+  return { key: r.key, name: r.name, badge_color: r.badge_color };
+};
+
+const USERS = [
+  { id: '11111111-1111-4111-8111-111111111111', username: 'demo-admin', nickname: '示范管理员', email: 'demo-admin@example.com', role: U_ROLE('admin'), status: 'active', email_verified_at: '2024-03-02T02:10:00Z', activated_at: '2024-03-02T02:12:00Z', trusted: true, level: 5, created_at: '2024-03-02T02:05:00Z', last_login_at: '2026-10-12T09:20:00Z', topic_count: 31, reply_count: 402 },
+  { id: '22222222-2222-4222-8222-222222222222', username: 'demo-overseer', nickname: '督察官', email: 'demo-overseer@example.com', role: U_ROLE('superadmin'), status: 'active', email_verified_at: '2023-11-11T01:00:00Z', activated_at: '2023-11-11T01:00:00Z', trusted: true, level: 9, created_at: '2023-11-11T00:50:00Z', last_login_at: '2026-10-11T16:02:00Z', topic_count: 8, reply_count: 77 },
+  { id: '33333333-3333-4333-8333-333333333333', username: 'demo-infestor', nickname: '感染虫', email: 'demo-infestor@example.com', role: U_ROLE('user'), status: 'banned', email_verified_at: '2025-01-20T05:00:00Z', activated_at: '2025-01-20T05:00:00Z', trusted: false, level: 1, created_at: '2025-01-20T04:58:00Z', last_login_at: '2026-09-30T11:40:00Z', topic_count: 3, reply_count: 51 },
+  { id: '44444444-4444-4444-8444-444444444444', username: 'demo-drone', nickname: '工蜂', email: 'demo-drone@example.com', role: U_ROLE('user'), status: 'active', email_verified_at: '2026-10-08T03:00:00Z', activated_at: null, trusted: false, level: 1, created_at: '2026-10-08T02:58:00Z', last_login_at: '2026-10-12T12:30:00Z', topic_count: 0, reply_count: 0 },
+  { id: '55555555-5555-4555-8555-555555555555', username: 'demo-ghost', nickname: '幽灵特工', email: 'demo-ghost@example.com', role: U_ROLE('creator'), status: 'active', email_verified_at: null, activated_at: null, trusted: false, level: 1, created_at: '2026-10-11T22:10:00Z', last_login_at: null, topic_count: 0, reply_count: 0 },
+];
+
+const USER_DETAIL: Record<string, unknown> = {
+  '11111111-1111-4111-8111-111111111111': {
+    user_permissions: [{ key: 'audit.view', name: '查看审计日志', reason: '季度审计', expires_at: '2026-12-31T15:59:59Z', granted_at: '2026-10-01T00:00:00Z' }],
+    user_titles: [],
+    sanctions: [],
+  },
+  '33333333-3333-4333-8333-333333333333': {
+    user_permissions: [],
+    user_titles: [],
+    sanctions: [
+      { id: 9001, action: 'post', board: null, reason: '刷屏推广外站', until: '2026-11-30T15:59:59Z', created_at: '2026-10-30T15:59:59Z' },
+      { id: 9002, action: 'reply', board: { slug: 'custom-campaign', name: '自制战役' }, reason: '在分区里引战', until: null, created_at: '2026-09-01T00:00:00Z' },
+    ],
+  },
+  '22222222-2222-4222-8222-222222222222': {
+    user_permissions: [],
+    user_titles: [{ id: 't-2', key: 'veteran', name: '元老', color: '#f97316', description: '旧站迁移过来的创始成员', granted_at: '2024-01-01T00:00:00Z', archived_at: null }],
+    sanctions: [],
+  },
+};
+
+/** 后台分区列表：**含归档**，position 是行号（1 起），moderators 只有在任的。 */
+const BOARDS2 = [
+  { id: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', slug: 'custom-campaign', name: '自制战役', description: '战役作者发布与讨论', cover_hash: '', status: 'active', acl_enabled: true, min_post_level: 0, position: 1, topic_count: 812, post_count: 9421, today_count: 17, moderators: [] },
+  { id: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb', slug: 'tool-dev', name: '工具与开发', description: '模型、纹理、音效与工具链', cover_hash: '', status: 'active', acl_enabled: false, min_post_level: 0, position: 2, topic_count: 431, post_count: 3802, today_count: 9, moderators: [] },
+  { id: 'cccccccc-cccc-4ccc-8ccc-cccccccccccc', slug: 'announcement', name: '公告与活动', description: '站点公告、赛事与活动', cover_hash: '', status: 'active', acl_enabled: true, min_post_level: 3, position: 3, topic_count: 24, post_count: 308, today_count: 2, moderators: [] },
+  { id: 'dddddddd-dddd-4ddd-8ddd-dddddddddddd', slug: 'archive', name: '旧版存档', description: '旧站迁移时的历史分区，只读', cover_hash: '', status: 'archived', acl_enabled: false, min_post_level: 0, position: 4, topic_count: 1204, post_count: 8890, today_count: 0, moderators: [] },
+];
+
+/** 自检（C3）：三态 ok / fail / skipped，debug 打开。 */
+const DIAG = {
+  debug_enabled: true, version: 'dev-1c4a9f2', started_at: '2026-10-12T02:00:00Z', readonly: true, total: 4, failed: 1,
+  checks: [
+    { name: '权限点集合一致性', status: 'ok', ok: true, detail: '代码常量 24 个 == permissions 表 24 行', ms: 12 },
+    { name: '枚举值域与代码常量', status: 'ok', ok: true, detail: '全部枚举与 DDL 的 CHECK 一致', ms: 9 },
+    { name: '数据库迁移版本', status: 'fail', ok: false, detail: '迁移处于 dirty 状态：修好 SQL 后先 forum migrate force 再重跑', ms: 3 },
+    { name: '外键索引完备', status: 'skipped', ok: false, detail: '', ms: 0 },
+  ],
+};
+
 /** 管理后台的桩。返回 undefined = 不拦（交回真实 fetch）——例如 `GET /admin/users`。 */
 export function adminFixtureFor(u: string): Reply | undefined {
   const url = new URL(u, 'http://stub');
   const p = url.pathname;
+  // 两个只给出图用的开关（非默认态要看得见）：
+  //  · ?empty=1 —— 三组新端点的 data 一律给空数组（空态：空表 + 「还没有分区」这类文案）
+  //  · ?fail=1  —— 三组新端点一律 500（错误态：界面要把「哪一步没加载 + 状态码」说出来，不是一张空表）
+  // 开关读**页面**的查询串（location.search），不读这一条请求的 URL：它们是「这一次出图」的属性，
+  // 不是端点的属性。早先写成从 u 里读，结果是每次请求都拿到空查询串，开关永远不生效。
+  const page = new URLSearchParams(typeof location === 'undefined' ? '' : location.search);
+  const empty = page.get('empty') === '1';
+  const fail = page.get('fail') === '1';
+  const newGroup = p.endsWith('/api/v1/admin/users') || p.includes('/api/v1/admin/boards') || p.endsWith('/api/v1/admin/diagnostics');
+  if (fail && newGroup) {
+    return { status: 500, body: { error: { code: 'common.internal', message: '服务端内部错误（出图桩：?fail=1）', request_id: 'req-shot' } } };
+  }
   if (p.endsWith('/api/v1/admin/topics')) {
     const state = url.searchParams.get('state') ?? 'pending';
     const rows = state === 'all' ? REVIEW.filter((r) => r.review_state !== 'approved') : REVIEW.filter((r) => r.review_state === state);
@@ -171,14 +240,58 @@ export function adminFixtureFor(u: string): Reply | undefined {
   if (p.endsWith('/api/v1/admin/site-domains')) return { body: { data: [{ domain: 'sc2clud.example' }] } };
   if (p.endsWith('/api/v1/admin/announcements')) return { body: { data: ANNOUNCEMENTS } };
   if (p.endsWith('/api/v1/admin/banners')) return { body: { data: BANNERS } };
+  // ── C1 / C2 / C3 落地的三组（W-D1）────────────────────────────────────
+  // 字段名逐个照 auth/admin_users.go、forum/admin_boards.go、auth/admin_diagnostics.go 的 DTO 抄。
+  if (p.endsWith('/api/v1/admin/users')) {
+    const role = url.searchParams.get('role');
+    const status = url.searchParams.get('status');
+    let rows = USERS;
+    if (role) rows = rows.filter((u) => u.role.key === role);
+    if (status) rows = rows.filter((u) => u.status === status);
+    return { body: { data: empty ? [] : rows, next_cursor: null } };
+  }
+  if (/\/api\/v1\/admin\/users\/[0-9a-f-]+$/.test(p)) {
+    const id = p.split('/api/v1/admin/users/')[1]!;
+    const row = USERS.find((u) => u.id === id);
+    // 详情 = 列表项 + 三张关联表（sanctions / user_permissions / user_titles）
+    return { body: { data: row ? { ...row, ...(USER_DETAIL[id] ?? { sanctions: [], user_permissions: [], user_titles: [] }) } : null } };
+  }
+  // 顺序敏感：/boards/reorder 与 /boards/{id}/... 都要写在 /boards 那条**前面**
+  if (p.endsWith('/api/v1/admin/boards/reorder')) return { body: { data: { ok: true } } };
+  if (p.endsWith('/acl')) {
+    // 选中哪个分区就回哪个分区的矩阵：给 4 个角色各一行，user 那一行按 acl_enabled 决定 deny
+    const b = BOARDS2.find((x) => p.includes(x.id)) ?? BOARDS2[0]!;
+    return {
+      body: {
+        data: ROLES.map((r) => ({
+          role_id: r.id, role_key: r.key,
+          can_post: r.key !== 'user' || !b.acl_enabled,
+          can_reply: true,
+          deny_post: r.key === 'user' && b.acl_enabled,
+          deny_reply: false,
+        })),
+      },
+    };
+  }
+  if (p.endsWith('/moderators')) {
+    // 版主读口**含已卸任的历史行**（grown_at 非空）—— 这一行是刻意造的，屏上要看得见「已卸任」那一档
+    return { body: { data: [
+      { user_id: USERS[0]!.id, handle: USERS[0]!.username, nickname: USERS[0]!.nickname, granted_at: '2026-04-01T00:00:00Z', expires_at: null, grown_at: null },
+      { user_id: USERS[1]!.id, handle: USERS[1]!.username, nickname: USERS[1]!.nickname, granted_at: '2026-01-01T00:00:00Z', expires_at: '2026-12-01T15:59:59Z', grown_at: null },
+      { user_id: USERS[4]!.id, handle: USERS[4]!.username, nickname: USERS[4]!.nickname, granted_at: '2026-01-01T00:00:00Z', expires_at: null, grown_at: '2026-08-01T00:00:00Z' },
+    ] } };
+  }
+  if (p.endsWith('/api/v1/admin/boards')) return { body: { data: empty ? [] : BOARDS2 } };
+  if (/\/api\/v1\/admin\/boards\/[0-9a-f-]+$/.test(p)) return { body: { data: BOARDS2.find((x) => p.endsWith(x.id)) ?? BOARDS2[0] } };
+  if (p.endsWith('/api/v1/admin/diagnostics')) return { body: { data: DIAG } };
   if (p.endsWith('/api/v1/admin/audit-logs')) return { body: { data: AUDIT, next_cursor: null } };
   if (p.endsWith('/api/v1/admin/ai/config')) return { body: { data: AI_CONFIG } };
   if (p.endsWith('/api/v1/admin/ai/test')) {
     return { body: { data: { verdict: 'review', reason: '拿不准是否有外站导流', categories: ['spam'], model: 'deepseek-chat', latency_ms: 812, raw: '{"verdict":"review"}' } } };
   }
-  // 其余 /admin/*（/admin/users、/admin/boards*、/admin/diagnostics）后端**还没有这些路由**。
-  // 这里照真后端的行为回 404（真后端对 /api/ 下的未知路径就是 404 JSON，见 app/http.go 的 NoRoute）——
-  // 出图要看得见那个真实状态（「用户列表没能加载（HTTP 404）」），而不是静默的空表。
+  // 其余 /admin/* 照真后端的行为回 404（未知路径就是 404 JSON，见 app/http.go 的 NoRoute）。
+  // 2026-10-14：C1/C2/C3 落地后，users / boards* / diagnostics 三组已经走到上面那几条桩里了，
+  // 这一条现在只兜「真的没有的路径」。
   if (p.startsWith('/api/v1/admin/')) {
     return { status: 404, body: { error: { code: 'common.route_not_found', message: '接口不存在' } } };
   }

@@ -48,7 +48,7 @@ export function DiagnosticsScreen({ data, loading = false, error = null, canSett
           自检结果没能取到（HTTP {error.status}）：{error.message}
           {error.disabled ? (
             <span className='mt-1 block text-muted-foreground'>
-              这一档是**预期内**的：debug 关闭时后端给的就是 404 common.not_found（不是空 200）——
+              这一档是预期内的：debug 关闭时后端给的就是 404 common.not_found（不是空 200）——
               空 200 会让「生产上关掉了」和「跑了但没结果」长得一模一样。打开 debug 之后刷新本页。
             </span>
           ) : null}
@@ -99,7 +99,7 @@ export function DiagnosticsScreen({ data, loading = false, error = null, canSett
                     <div key={f.name} className='rounded-sm border border-border px-2 py-1'>
                       <div className='flex items-center gap-1.5'><Pill tone='danger'>{f.name}</Pill></div>
                       <p className='text-[11px] text-muted-foreground'>{f.detail}</p>
-                      {/* 这里**不给每一条编处理办法**：后端没给「怎么修」的字段，编出来就是假话。 */}
+                      {/* 这里不给每一条编处理办法：后端没给「怎么修」的字段，编出来就是假话。 */}
                       <p className='text-[11px] text-muted-foreground'>处理：看服务日志与 forum check 的输出；修复动作是迁移或运维命令，不在这个页面上。</p>
                     </div>
                   ))}
@@ -108,12 +108,12 @@ export function DiagnosticsScreen({ data, loading = false, error = null, canSett
             </Panel>
             <Panel title='运维动作' note='这一屏只有读端点'>
               <p className='text-[12px] leading-relaxed text-muted-foreground'>
-                「重建搜索索引」「清理图片缓存」「立即备份」这三颗按钮**一个都没有后端端点**，
+                「重建搜索索引」「清理图片缓存」「立即备份」这三颗按钮一个都没有后端端点，
                 而 mock 里那个 system.settings 权限点在后端 authz 常量表里也不存在 —— 所以这里不画，
                 也不拿一句「请联系管理员」糊过去。
               </p>
               <p className='mt-2 text-[12px] leading-relaxed text-muted-foreground'>
-                探针：/healthz（版本）· /readyz（真打数据库与存储），**不带 /api 前缀**（§21.1）。
+                探针：/healthz（版本）· /readyz（真打数据库与存储），不带 /api 前缀（§21.1）。
                 备份本身是 DB §8 的运维流程（pg_dump + 快照）。
               </p>
               <DisabledReason>面板只读：任何「修复」都不在网页上做</DisabledReason>

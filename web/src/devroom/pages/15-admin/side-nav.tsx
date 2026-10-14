@@ -1,6 +1,5 @@
 import Button from '@jetbrains/ring-ui-built/components/button/button';
 import { ControlsHeight } from '@jetbrains/ring-ui-built/components/global/controls-height';
-import { CountBadge } from '@/ui/message/count-badge';
 import { cn } from '@/lib/utils';
 
 // 后台侧边导航。**后台专用件**（已登记在 devroom/registry.ts 的 15-admin 下，见 side-nav 条目）：
@@ -14,8 +13,10 @@ import { cn } from '@/lib/utils';
 //
 // 可访问性：外层 <nav aria-label>；每一项是真正的 button（可 Tab、可 Enter/Space）；
 // 选中项额外带 aria-current='page'（视觉上是背景块 + 左侧 2px 色条，读屏也能知道「当前在哪」）。
-// 计数用房子件 CountBadge（已登记），为 0 时不渲染。
-export type SideNavItem = { key: string; label: string; count?: number };
+// 原来这里有一个可选的 count（用房子件 CountBadge 渲染），唯一的使用者是 mock 的假数字
+// （users 12 / review 4 …，见 nav.ts 的说明）。假数字摘掉之后它就没有使用者了，所以连 prop 一起删 ——
+// 留着一个「谁来填」的槽位，下一个人就会再塞一个假数进去。
+export type SideNavItem = { key: string; label: string };
 export type SideNavGroup = { title: string; items: SideNavItem[] };
 
 export function SideNav({
@@ -58,11 +59,8 @@ export function SideNav({
                   onClick={() => onChange(it.key)}
                   className='w-full justify-start pl-3'
                 >
-                  <span className='flex w-full items-center gap-2'>
-                    <span className={cn('flex-1 text-left text-[13px]', active ? 'font-medium text-foreground' : 'text-muted-foreground')}>
-                      {it.label}
-                    </span>
-                    {it.count ? <CountBadge count={it.count} /> : null}
+                  <span className={cn('text-[13px]', active ? 'font-medium text-foreground' : 'text-muted-foreground')}>
+                    {it.label}
                   </span>
                 </Button>
               </span>

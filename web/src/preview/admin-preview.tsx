@@ -32,7 +32,17 @@ const route = params.get('route') ?? '/admin/review';
   if (dark) document.documentElement.classList.add('ring-ui-theme-dark');
 })();
 
-if (params.get('stub') !== '0') installFixture();
+const fixtureLog = installFixture();
+
+// 出图诊断：把「这一页发过哪些请求」放进 DOM —— 用
+//   chrome --headless=new --dump-dom '…/admin.html?route=/admin/boards'
+// 再 grep data-fixture-log 就能证明桩真的拦到了那一条（出图不等于验过，交接单 §5 陷阱 4）。
+// 只读快照，不做定时刷新：调用方要的是「这一页请求过什么」，不是实时流水。
+const probe = document.createElement('meta');
+probe.name = 'fixture-log';
+probe.content = JSON.stringify({ routes: fixtureLog.map((r) => r.url) });
+probe.setAttribute('data-fixture-log', probe.content);
+document.head.appendChild(probe);
 
 const root = document.getElementById('root');
 if (!root) throw new Error('#root 不存在：admin.html 与 admin-preview.tsx 不一致');

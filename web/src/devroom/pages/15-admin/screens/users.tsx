@@ -100,7 +100,7 @@ export function UsersScreen({
       key: 'user', title: '用户', track: 'minmax(158px,1.5fr)', sortable: true, sortValue: (u: AdminUser) => u.nickname,
       render: (u: AdminUser) => (
         <span className='flex min-w-0 items-center gap-2'>
-          {/* 列表项 DTO **没有 avatar**（不给密码/会话/IP 也顺手不回头像）：这一格按昵称首字起色块 */}
+          {/* 列表项 DTO 里没有 avatar（不给密码/会话/IP，也顺手不回头像）：这一格按昵称首字起色块 */}
           <UserAvatar name={u.nickname} src={null} size='sm' />
           <span className='flex min-w-0 flex-col leading-tight'>
             <Username nickname={u.nickname} handle={u.username} size='sm' strong badge='none' />
@@ -164,7 +164,7 @@ export function UsersScreen({
       />
 
       <StatRow>
-        <Stat label='本页用户' value={total} hint='后端游标分页**不给总数**（只有 next_cursor），所以这里只数本页' />
+        <Stat label='本页用户' value={total} hint='后端游标分页不给总数（只有 next_cursor），所以这里只数本页' />
         <Stat label='本页已封禁' value={users.filter((u) => u.status === 'banned').length} tone='danger' />
         <Stat label='本页待激活' value={users.filter((u) => !u.activated_at).length} hint='可读不可写（activated_at）' />
         <Stat label='本页邮箱未验证' value={users.filter((u) => !u.email_verified_at).length} hint='不能登录' />
@@ -268,7 +268,7 @@ export function UsersScreen({
             )}
           </Panel>
 
-          <Panel title='追加权限（user_permissions）' note='点对点追加：带 reason 与 expires_at，到期自动失效。这两列**只有详情接口给**（AdminGrantDTO）。'>
+          <Panel title='追加权限（user_permissions）' note='点对点追加：带 reason 与 expires_at，到期自动失效。这两列只有详情接口给（AdminGrantDTO）。'>
             {detailLoading ? <p className='text-[12px] text-muted-foreground'>正在取详情…</p>
               : detail && detail.user_permissions.length > 0 ? (
               <div className='flex flex-col'>
@@ -281,7 +281,7 @@ export function UsersScreen({
             )}
           </Panel>
 
-          <Panel title='处罚记录' note='13.7 / D6 第 2 步：**含已过期的行**——后台要能回答「这个人被处理过几次」，删掉历史就答不了。'>
+          <Panel title='处罚记录' note='13.7 / D6 第 2 步：含已过期的行——后台要能回答「这个人被处理过几次」，删掉历史就答不了。'>
             {detailLoading ? <p className='text-[12px] text-muted-foreground'>正在取详情…</p>
               : detail && detail.sanctions.length > 0 ? (
               <div className='flex flex-col gap-1.5'>
@@ -420,7 +420,7 @@ function SetRoleDialog({ user, roles, onClose, onSet }: {
       <div className='flex w-[420px] max-w-full flex-col gap-3 p-4'>
         <p className='text-[13px] text-foreground'>
           把 <b>{user.nickname}</b> 的基线角色从 <b>{user.role.name}</b> 改到下面这个。
-          角色之间**永不并集**：这是替换，不是叠加（RBAC权限树设计.md §1）。
+          角色之间永不并集：这是替换，不是叠加（RBAC权限树设计.md §1）。
         </p>
         <Select
           type={SelectType.INPUT}

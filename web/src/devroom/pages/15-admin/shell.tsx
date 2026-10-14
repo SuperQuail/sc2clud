@@ -63,7 +63,6 @@ export function AdminShell({ screen, onScreen, meExtra, children }: {
               items: group.items.map((item) => ({
                 key: item.key,
                 label: item.title,
-                count: item.badge ? Number(item.badge) : undefined,
               })),
             }))}
           />

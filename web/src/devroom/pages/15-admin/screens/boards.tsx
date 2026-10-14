@@ -265,9 +265,9 @@ export function BoardsScreen({
                       : <ImageIcon size={16} aria-hidden />}
                   </span>
                   {/* 没有「换封面」，也没有「清空封面」：上传通道后端还没有，而 cover_hash 传空串会被
-                      UpdateBoardInput 折成 nil（= 不动），所以清空这条路当前**走不通** —— 两件事一起写在这里。 */}
+                      UpdateBoardInput 折成 nil（= 不动），所以清空这条路当前走不通 —— 两件事一起写在这里。 */}
                   <span className='text-[11px] leading-relaxed text-muted-foreground'>
-                    cover_hash → /img/hash（nginx 直出）。当前只显示现状：**没有上传端点**（要换图得先走图片通道拿 hash 再 PATCH 上来），
+                    cover_hash → /img/hash（nginx 直出）。当前只显示现状：没有上传端点（要换图得先走图片通道拿 hash 再 PATCH 上来），
                     而且 cover_hash 传空串会被后端折成「不动」，所以这一屏也不画「清空封面」。
                   </span>
                 </div>
@@ -283,7 +283,7 @@ export function BoardsScreen({
 
               <Panel
                 title='分区排序'
-                note='position 是后端算出来的行号；重排一次发**全部 id** 的新顺序（少一个就会有分区留在原位与别人撞在一起）'
+                note='position 是后端算出来的行号；重排一次发全部 id 的新顺序（少一个就会有分区留在原位与别人撞在一起）'
                 actions={
                   <span className='flex items-center gap-1'>
                     <Button inline={false} height={ControlsHeight.S} icon={icon16(ArrowUp)} disabled={!canManage || reordering || index <= 0} onClick={() => move(-1)}>上移</Button>
@@ -352,7 +352,7 @@ export function BoardsScreen({
 
               <Panel
                 title='分区版主任免'
-                note='board_moderators（带期限；卸任 = 置 grown_at，**不删行**，所以这里连历史任期一起显示）'
+                note='board_moderators（带期限；卸任 = 置 grown_at，不删行，所以这里连历史任期一起显示）'
                 actions={
                   canManage
                     ? <Button inline={false} height={ControlsHeight.S} icon={icon16(Plus)} disabled={archived || busy} onClick={() => setGrantOpen((v) => !v)}>任命版主</Button>
@@ -416,7 +416,7 @@ export function BoardsScreen({
                 ) : null}
               </Panel>
 
-              <Panel title='危险动作' note='归档写一条 board.update 审计，可逆；**后端没有删除分区端点**，所以这里不画删除'>
+              <Panel title='危险动作' note='归档写一条 board.update 审计，可逆；后端没有删除分区端点，所以这里不画删除'>
                 <div className='flex flex-wrap items-center gap-2'>
                   {archived ? (
                     <Button inline={false} height={ControlsHeight.S} disabled={!canManage || busy} onClick={() => setPending('unarchive')}>取消归档（改回 active）</Button>
@@ -427,8 +427,8 @@ export function BoardsScreen({
                   )}
                 </div>
                 <p className='mt-2 mb-0 text-[11px] leading-relaxed text-muted-foreground'>
-                  归档 = PATCH status='archived'：分区不再出现在公开列表，帖子与回复保留可读，ACL 勾选随之失效但**不会被改动**（取消归档就恢复）。
-                  删除分区这一轮**没有端点**（§21.2 只列了建 / 改 / 重排）——要删得先在后端想清楚「帖子归谁」，界面不假装能删。
+                  归档 = PATCH status='archived'：分区不再出现在公开列表，帖子与回复保留可读，ACL 勾选随之失效但不会被改动（取消归档就恢复）。
+                  删除分区这一轮没有端点（§21.2 只列了建 / 改 / 重排）——要删得先在后端想清楚「帖子归谁」，界面不假装能删。
                 </p>
               </Panel>
             </>
