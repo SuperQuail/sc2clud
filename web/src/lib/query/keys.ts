@@ -18,6 +18,8 @@ export const qk = {
   userTopics: (handle: string) => ['profile', handle, 'topics'] as const,
   notifications: () => ['notifications', 'list'] as const,
   unread: () => ['notifications', 'unread'] as const,
+  /** 消息设置（notice-center-view 的 SettingsPane）——组件里不许手写字符串数组（本文件头那条） */
+  noticeSettings: () => ['notifications', 'settings'] as const,
   /** 关注状态（L5）：对象进 key —— 改一个分区的关注不影响另一个 */
   followBoard: (slug: string) => ['follow', 'board', slug] as const,
   followUser: (handle: string) => ['follow', 'user', handle] as const,

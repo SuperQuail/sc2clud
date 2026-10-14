@@ -1,8 +1,8 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
-import { MemoryRouter, Route, Routes } from 'react-router';
+import { MemoryRouter, Route, Routes, useLocation } from 'react-router';
 import { afterEach, expect, it, vi } from 'vitest';
 import { Providers } from '@/app/providers';
-import { MessagesPage, NoticeCenter } from './messages';
+import { MessagesPage, NotificationsPage } from './messages';
 
 // 「系统通知」一档必须是 system / review / sanction / reward **四类合一**（B1）：
 //   值域在 forum/internal/notify/kinds.go，后端 ?kind= 认逗号分隔（46d7c04，service.go:200 parseListKinds）。
@@ -58,12 +58,32 @@ function mockApi(writes: WriteCall[] = []) {
   return calls;
 }
 
+/** 把 MemoryRouter 里的当前查询串写进 DOM：断言要读的是**地址栏**，不是组件内部的字段。
+ *  （MemoryRouter 不进 HTML5 history，所以 location.search 读不到它 —— 那正是它存在的意义。） */
+const URL_PROBE_ID = 'notice-center-location';
+function LocationProbe() {
+  const { search } = useLocation();
+  return (
+    <p data-testid={URL_PROBE_ID} className='sr-only'>
+      {search}
+    </p>
+  );
+}
+
 function renderCenter(path = '/notifications') {
   return render(
     <Providers>
       <MemoryRouter initialEntries={[path]}>
         <Routes>
-          <Route path='/notifications' element={<NoticeCenter panel='notices' />} />
+          <Route
+            path='/notifications'
+            element={
+              <>
+                <LocationProbe />
+                <NotificationsPage />
+              </>
+            }
+          />
         </Routes>
       </MemoryRouter>
     </Providers>,
@@ -184,6 +204,37 @@ it('旧书签的单值 ?kind=review 落到「系统通知」这一档（不显�
   expect(calls.some((u) => new URL(u, 'http://x').searchParams.get('kind') === 'system,review,sanction,reward')).toBe(true);
   // Ring 的 Button 没有 aria-pressed，选中态是类名
   expect(screen.getByTestId('notice-nav-kind:system,review,sanction,reward').className).toContain('ring-button-active');
+});
+
+// D10 的验收：**点哪一档，URL、选中态、右侧面板三者同时变**（缺陷清单 D10 的原话）。
+//
+// 为什么这条断言必须存在：D10 报的「URL 变但选中态不变、右侧面板也不换」正是**两套真源**的形态 ——
+// 档位一旦有一半留在组件 state 里，就能出现「地址栏说 A、界面在 B」。这条把它钉成一句话：
+// 三处只允许同时变。列表请求也跟着 kind 走，所以顺带钉住「面板真的换了数据源」。
+it('点每一档：URL、选中态、右侧面板三者同时变（单一真源 = URL）', async () => {
+  const calls = mockApi();
+  renderCenter();
+  expect(await screen.findByText(/回复了你的主题/)).toBeTruthy();
+
+  // 选中态在 Ring 里是类名（Button 没有 aria-pressed）
+  const on = (key: string) => screen.getByTestId('notice-nav-' + key).className.includes('ring-button-active');
+  expect(on('kind:reply')).toBe(true);
+
+  // ① 「收到的赞」：URL 落到 panel + kind，选中态跟着走，右栏换成那一档的列表
+  fireEvent.click(screen.getByTestId('notice-nav-kind:like'));
+  expect(screen.getByTestId(URL_PROBE_ID).textContent, 'URL').toContain('kind=like');
+  expect(on('kind:like')).toBe(true);
+  expect(on('kind:reply')).toBe(false);
+  expect(screen.getByTestId('notice-list').textContent).toContain('收到的赞');
+  // ② 列表请求也换了档（面板不是只有标题变了）
+  expect(calls.some((u) => new URL(u, 'http://x').searchParams.get('kind') === 'like')).toBe(true);
+
+  // ③ 「消息设置」：panel=settings，且 kind 不再挂在 URL 上（切档不留旧参数）
+  fireEvent.click(screen.getByTestId('notice-nav-settings'));
+  expect(screen.getByTestId(URL_PROBE_ID).textContent).toContain('panel=settings');
+  expect(screen.getByTestId(URL_PROBE_ID).textContent).not.toContain('kind=');
+  expect(on('settings')).toBe(true);
+  expect(await screen.findByText('消息提醒')).toBeTruthy();
 });
 
 // ── L11：通知的实时性 ────────────────────────────────────────────
