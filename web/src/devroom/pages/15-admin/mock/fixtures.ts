@@ -1,4 +1,4 @@
-import type { AdminUser, Role, Title } from '@/lib/api/admin';
+import type { AdminUser, ReviewQueueItem, Role, Title } from '@/lib/api/admin';
 
 // DevRoom 15-admin 的演示数据（**只给房间用**；产品路由由 ./admin-screens.tsx 的容器喂真端点）。
 //
@@ -167,3 +167,35 @@ export const DEMO_USERS: AdminUser[] = SEED.map((s) => ({
   title: s.title ? { name: T(s.title).name, color: T(s.title).color } : null,
   topic_count: s.topics, reply_count: s.replies, sanctions: s.sanctions,
 }));
+
+const RB = (slug: string, name: string) => ({ slug, name });
+const RBrief = (handle: string, nickname: string) => ({ handle, nickname, avatar: '', avatar_small: '' });
+
+/** 审核队列的演示数据：字段名照 review_queue.go 的 ReviewQueueItemDTO，
+ *  `review_verdict` 一律当真（**不从 review_state 推** —— 交接单 C11）。 */
+export const DEMO_REVIEW: ReviewQueueItem[] = [
+  {
+    id: 't-1', board: RB('custom-campaign', '自制战役'), author: RBrief('demo-voidray', '虚空辉光舰'),
+    kind: 'resource', title: '第三章「余烬」发布：隐藏结局与平衡性改动',
+    excerpt: '这一章加了七张图、一条隐藏结局线，改动说明与下载都在正文里……',
+    review_state: 'pending', review_note: '拿不准是否有外站导流', review_source: 'ai',
+    reviewer: null, reviewed_at: '2026-10-12T11:00:00Z', review_verdict: 'review',
+    created_at: '2026-10-12T09:20:00Z', updated_at: '2026-10-12T10:05:00Z',
+  },
+  {
+    id: 't-2', board: RB('tool-dev', '工具与开发'), author: RBrief('demo-marine', '陆战队员'),
+    kind: 'discussion', title: '触发器里 Wait 之后变量被清空，是我写法不对吗',
+    excerpt: '每次 Wait 完局部变量就没了，想确认是不是要用静态参数……',
+    review_state: 'approved', review_note: null, review_source: 'manual',
+    reviewer: RBrief('demo-admin', '示范管理员'), reviewed_at: '2026-10-12T12:10:00Z', review_verdict: 'approve',
+    created_at: '2026-10-12T08:00:00Z', updated_at: '2026-10-12T12:10:00Z',
+  },
+  {
+    id: 't-3', board: RB('announcement', '公告'), author: RBrief('demo-roach', '蟑螂'),
+    kind: 'repost', title: '【转载】SC2 编辑器常见坑位整理（2024 版）',
+    excerpt: '整理自社区帖，标注了原作者与出处……',
+    review_state: 'rejected', review_note: '未标注原作者与出处链接，补齐后可重新提交', review_source: 'manual',
+    reviewer: RBrief('demo-admin', '示范管理员'), reviewed_at: '2026-10-11T03:00:00Z', review_verdict: 'reject',
+    created_at: '2026-10-10T21:00:00Z', updated_at: '2026-10-11T03:00:00Z',
+  },
+];

@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { CURRENT_ADMIN } from './mock/perms';
-import { DEMO_ROLES, DEMO_TITLES, DEMO_USERS } from './mock/fixtures';
+import { DEMO_REVIEW, DEMO_ROLES, DEMO_TITLES, DEMO_USERS } from './mock/fixtures';
 import { AdminShell } from './shell';
 import { SCREEN_KEYS, type ScreenKey } from './nav';
 import { AiReviewScreen } from './screens/ai-review';
@@ -9,7 +9,7 @@ import { BoardsScreen } from './screens/boards';
 import { DiagnosticsScreen } from './screens/diagnostics';
 import { MailScreen } from './screens/mail';
 import { ReportsScreen } from './screens/reports';
-import { ReviewScreen } from './screens/review';
+import { ReviewScreen, type ReviewFilter } from './screens/review';
 import { RewardsScreen } from './screens/rewards';
 import { RolesScreen } from './screens/roles';
 import { SettingsScreen } from './screens/settings';
@@ -28,7 +28,7 @@ const SCREENS: Record<ScreenKey, () => React.ReactNode> = {
   users: () => <UsersRoom />,
   roles: () => <RolesScreen />,
   boards: () => <BoardsScreen />,
-  review: () => <ReviewScreen />,
+  review: () => <ReviewRoom />,
   reports: () => <ReportsScreen />,
   rewards: () => <RewardsScreen />,
   titles: () => <TitlesScreen />,
@@ -38,6 +38,26 @@ const SCREENS: Record<ScreenKey, () => React.ReactNode> = {
   audit: () => <AuditScreen />,
   diagnostics: () => <DiagnosticsScreen />,
 };
+
+/** 审核屏的房间版：数据来自 ./mock/fixtures，动作只留一条回执（房间不发请求）。 */
+function ReviewRoom() {
+  const [filter, setFilter] = useState<ReviewFilter>({ state: 'pending', board: 'all', q: '' });
+  const [receipt, setReceipt] = useState<string | null>(null);
+  const items = DEMO_REVIEW.filter((r) => filter.state === 'all' ? r.review_state !== 'approved' : r.review_state === filter.state)
+    .filter((r) => filter.board === 'all' || r.board.slug === filter.board)
+    .filter((r) => !filter.q.trim() || r.title.includes(filter.q.trim()));
+  return (
+    <ReviewScreen
+      items={items}
+      hasMore={false}
+      filter={filter}
+      onFilterChange={setFilter}
+      canReview
+      onReview={(item, action, note) => setReceipt('（房间演示：这里不发请求）' + (action === 'approve' ? '通过' : '拒绝') + '「' + item.title + '」：' + (note || '（无备注）'))}
+      receipt={receipt ? <p className='text-[12px] text-muted-foreground'>{receipt}</p> : null}
+    />
+  );
+}
 
 /** 用户屏的房间版：数据来自 ./mock/fixtures，动作只留一条回执（房间不发请求）。 */
 function UsersRoom() {
