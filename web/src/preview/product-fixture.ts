@@ -332,8 +332,10 @@ export function fixtureFor(u: string, method: string, body?: unknown): Reply | u
       body: {
         data: {
           items: [
-            { id: 'ti-1', key: 'consul', name: '执政官', color: '#2563eb', description: '', archived_at: null },
-            { id: 'ti-2', key: 'champion', name: '首席设计师', color: '#16a34a', description: '', archived_at: null },
+            // 颜色写令牌而不是字面色值：`gate:tokens` 管的是「业务代码里不许写死颜色」，
+            // 桩也在它的扫描面里（TitleBadge 本来就接受 var(--x)，`?? 'var(--primary)'` 是它的默认值）。
+            { id: 'ti-1', key: 'consul', name: '执政官', color: 'var(--primary)', description: '', archived_at: null },
+            { id: 'ti-2', key: 'champion', name: '首席设计师', color: 'var(--vivid-accent)', description: '', archived_at: null },
           ],
           equipped_id: 'ti-1',
         },
@@ -426,7 +428,7 @@ export function fixtureFor(u: string, method: string, body?: unknown): Reply | u
           joined_at: '2024-03-02T00:00:00Z',
           // 头衔默认给 null：D16 的产品页取证就是靠「作者没有头衔时那一枚不能编出来」。
           // ?title=1 才给一个 —— D18「本人主页点头衔换佩戴」的产品页对照图要它。
-          title: new URLSearchParams(location.search).get('title') === '1' ? { name: '执政官', color: '#2563eb' } : null,
+          title: new URLSearchParams(location.search).get('title') === '1' ? { name: '执政官', color: 'var(--primary)' } : null,
           // 个人主页封面（0030）：桩数据里设一张，出图才看得见「更换封面 + 清空封面」两态
           cover: '/img/' + COVER_HASH,
         },
