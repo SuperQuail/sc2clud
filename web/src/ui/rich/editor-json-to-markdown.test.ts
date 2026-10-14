@@ -1,5 +1,5 @@
 import { expect, it } from 'vitest';
-import { editorJsonToMarkdown } from './editor-json-to-markdown';
+import { editorJsonToMarkdown, isEditorStateJson } from './editor-json-to-markdown';
 
 // D6 的那一半纯函数：EditorState JSON → Markdown。
 // 为什么必须有它：上行给后端的 body_md / content_md 是 **Markdown**（后端 forum 的 render 拿它过
@@ -45,6 +45,33 @@ it('列表与引用：无序/有序各自成形，引用每行带 >', () => {
   expect(
     editorJsonToMarkdown(doc([{ children: [text('引用一句。')], direction: 'ltr', format: '', indent: 0, type: 'quote', version: 1 }])),
   ).toBe('> 引用一句。');
+});
+
+it('标题层级认 tag（元素节点的 format 恒为空串，认它会把 ## 压成 #）', () => {
+  const heading = (tag: string, value: string): unknown => ({
+    children: [text(value)],
+    tag,
+    direction: 'ltr',
+    format: '',
+    indent: 0,
+    type: 'heading',
+    version: 1,
+  });
+  expect(editorJsonToMarkdown(doc([heading('h2', '副标题')]))).toBe('## 副标题');
+  expect(editorJsonToMarkdown(doc([heading('h1', '主标题')]))).toBe('# 主标题');
+  // 旧版导出的数字口径（format 里放 # 的个数）仍然照旧
+  expect(editorJsonToMarkdown(doc([{ ...(heading('h1', '旧口径') as object), tag: undefined, format: '3' }]))).toBe('### 旧口径');
+});
+
+// 「是不是编辑器状态」这条判据上下行两侧共用（上行决定换不换、回填决定怎么进编辑器），
+// 所以它自己是**可证的**：'[]' / '{}' / '123' 都能 JSON.parse，但它们不是编辑器状态。
+it('isEditorStateJson：只有顶层带 root 的才算编辑器状态', () => {
+  expect(isEditorStateJson(doc([paragraph([text('正文')])]))).toBe(true);
+  expect(isEditorStateJson('第一段。')).toBe(false);
+  expect(isEditorStateJson('')).toBe(false);
+  expect(isEditorStateJson('[]')).toBe(false);
+  expect(isEditorStateJson('{}')).toBe(false);
+  expect(isEditorStateJson('123')).toBe(false);
 });
 
 it('上行的那一份里不许再出现 JSON 的形状（root / version 这些键）', () => {

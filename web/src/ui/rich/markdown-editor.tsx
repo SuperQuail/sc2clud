@@ -16,7 +16,7 @@ import {
   LexicalTypeaheadMenuPlugin,
   useBasicTypeaheadTriggerMatch,
 } from '@lexical/react/LexicalTypeaheadMenuPlugin';
-import { ELEMENT_TRANSFORMERS, TEXT_FORMAT_TRANSFORMERS, TEXT_MATCH_TRANSFORMERS } from '@lexical/markdown';
+import { $convertFromMarkdownString, ELEMENT_TRANSFORMERS, TEXT_FORMAT_TRANSFORMERS, TEXT_MATCH_TRANSFORMERS } from '@lexical/markdown';
 import { $generateHtmlFromNodes } from '@lexical/html';
 import { $createQuoteNode, HeadingNode, QuoteNode } from '@lexical/rich-text';
 import { INSERT_UNORDERED_LIST_COMMAND, ListItemNode, ListNode } from '@lexical/list';
@@ -34,6 +34,7 @@ import { MaxLengthPlugin } from './lexical/max-length-plugin';
 import { ImageUploader, type UploadedImage } from './image-uploader';
 import { planImages, POST_IMAGE_MAX_BYTES, processImage } from './image-pipeline';
 import { theme } from './lexical/theme';
+import { isEditorStateJson } from './editor-json-to-markdown';
 import { $createMentionNode, MentionNode } from './lexical/mention-node';
 import { $createImageNode, ImageNode, countImageNodes } from './lexical/image-node';
 
@@ -98,7 +99,11 @@ function Toolbar({ onMention }: { onMention: () => void }) {
 }
 
 /** 首次挂载时把已存的内容灌进编辑器：value 是 `SerializedEditorState` 的 JSON 字符串。
- *  空串就保持空白；解析失败直接抛出（保存的是我们自己的格式，不该出现坏数据）。 */
+ *  空串就保持空白。
+ *  **不是编辑器状态的那一份按 Markdown 原文导入**：后端 content_md / body_md 这一列同时装两种东西 ——
+ *  我们自己的 EditorState JSON，与老站迁来的 Markdown（缺陷清单 D6 的另一半）。旧版只认 JSON，
+ *  喂它 Markdown 时 parseEditorState 抛 SyntaxError，React 把整棵编辑器从页面上卸掉（编辑老帖=白屏）。
+ *  判据与上行 editorJsonToMarkdown 共用一句（isEditorStateJson），所以两边的分界不会各说各话。 */
 function InitialState({ value }: { value: string }) {
   const [editor] = useLexicalComposerContext();
   const done = useRef(false);
@@ -106,7 +111,15 @@ function InitialState({ value }: { value: string }) {
     if (done.current) return;
     done.current = true;
     if (!value) return;
-    editor.setEditorState(editor.parseEditorState(value));
+    if (isEditorStateJson(value)) {
+      try {
+        editor.setEditorState(editor.parseEditorState(value));
+        return;
+      } catch {
+        // root 形状但内容坏（节点类型不认识）：不把整棵树炸掉，往下按原文导入
+      }
+    }
+    editor.update(() => $convertFromMarkdownString(value, SHORTCUT_TRANSFORMERS));
   }, [editor, value]);
   return null;
 }

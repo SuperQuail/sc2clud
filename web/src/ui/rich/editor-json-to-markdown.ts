@@ -39,9 +39,9 @@ type JsonNode = {
   format?: number | string;
   /** 列表节点：'bullet' | 'number'（新版）或 1 | 2 | 3（旧版导出的数字口径） */
   listType?: string | number;
+  /** 标题节点的层级在这里（'h1'…'h6'）；元素节点的 format 恒为 ''，认它会把 ## 压成 # */
+  tag?: string;
   children?: JsonNode[];
-  /** 只有顶层那个节点有 root */
-  root?: JsonNode;
 };
 const ORDERED = 1; // 与 Lexical 的常量同值；@lexical/list 不为它导出一个可读名字
 
@@ -73,20 +73,29 @@ function blockOf(node: JsonNode, indent: string): string {
       .join('\n');
   }
   if (node.type === 'quote') return (node.children ?? []).map((child) => indent + '> ' + inlineOf(child)).join('\n');
-  if (node.type === 'heading') return indent + '#'.repeat(Number(node.format) || 1) + ' ' + (node.children ?? []).map(inlineOf).join('');
+  if (node.type === 'heading') {
+    const level = Number((node.tag ?? '').slice(1)) || Number(node.format) || 1;
+    return indent + '#'.repeat(level) + ' ' + (node.children ?? []).map(inlineOf).join('');
+  }
   return indent + (node.children ?? []).map(inlineOf).join('');
+}
+
+/** 「这一份是不是编辑器的 EditorState JSON」——判据是**顶层有 root 节点**，不是「JSON.parse 成功」：
+ *  '[]' / '{}' / '123' 都能 parse，但它们不是编辑器状态。
+ *  上下行两侧共用这一条判据：上行决定「要不要换」，回填决定「parseEditorState 还是按 Markdown 导入」。 */
+export function isEditorStateJson(value: string): boolean {
+  try {
+    const doc = JSON.parse(value) as { root?: unknown } | null;
+    return Boolean(doc && typeof doc === 'object' && doc.root);
+  } catch {
+    return false;
+  }
 }
 
 /** EditorState JSON → Markdown。不是 JSON（老站迁来的 Markdown 原文）就**原样返回**，一个字符都不动。 */
 export function editorJsonToMarkdown(state: string): string {
-  let doc: JsonNode;
-  try {
-    doc = JSON.parse(state) as JsonNode;
-  } catch {
-    return state;
-  }
-  // 判据是「顶层有 root 节点」，不是「JSON.parse 成功」：'[]' 也能 parse，但它不是编辑器状态
-  if (!doc || typeof doc !== 'object' || !doc.root) return state;
+  if (!isEditorStateJson(state)) return state;
+  const doc = JSON.parse(state) as { root: JsonNode };
   return (doc.root.children ?? [])
     .map((child) => blockOf(child, ''))
     .filter((block) => block.trim() !== '')
