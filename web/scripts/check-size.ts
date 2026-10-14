@@ -6,7 +6,11 @@ import { fileURLToPath } from 'node:url';
 // 旧站这条门禁没进 CI，结果 5000 行的文件长期挂账 —— 这次它必须在 CI 里。
 const SRC: string = fileURLToPath(new URL('../src', import.meta.url));
 const LIMIT = 500;
-const PENDING: Record<string, string> = {};
+const PENDING: Record<string, string> = {
+  // 2026-10-14：W1 的信息中心（DevRoom 10-messages）。**重构目标**：把「取数 + 通知四档 + 私信面板」
+  // 拆成 notice-center（壳 + 导航 + 各档面板）与 dm-panel（会话列表 + 聊天）两个文件；行数只减不增。
+  'routes/messages.tsx': '拆成 notice-center / dm-panel 两个文件',
+};
 
 function walk(dir: string): string[] {
   const out: string[] = [];
