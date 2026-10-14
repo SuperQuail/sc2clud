@@ -135,6 +135,17 @@ func newFixture(t *testing.T, opts ...func(*Deps)) *fixture {
 	}
 	mustExec(t, ctx, pool, "CREATE UNIQUE INDEX uq_roles_super ON roles (is_super) WHERE is_super")
 	mustExec(t, ctx, pool, "CREATE UNIQUE INDEX uq_email_tokens_live ON email_tokens (user_id, purpose) WHERE used_at IS NULL")
+	// 第四处：迁移 0051 给 board_moderators 加了 grown_at（版主任期的「已卸任」标记），
+	// 并把 ent 那条 UNIQUE (board_id,user_id) 换成 WHERE grown_at IS NULL 的部分唯一索引。
+	// ent 的 schema 里没有这一列（不重新生成 ent 生成代码），所以夹具按迁移的形状补上 ——
+	// 少了它，ResolveSession / LoadActor 里那句 grown_at IS NULL 会直接报 42703
+	// （2026-10-14 实测：整个 auth 包的会话用例全红）。
+	mustExec(t, ctx, pool, "ALTER TABLE board_moderators ADD COLUMN IF NOT EXISTS grown_at timestamptz NULL")
+	mustExec(t, ctx, pool, "DROP INDEX IF EXISTS boardmoderator_board_id_user_id")
+	mustExec(t, ctx, pool, "CREATE UNIQUE INDEX IF NOT EXISTS uq_board_moderators_active ON board_moderators (board_id, user_id) WHERE grown_at IS NULL")
+	// 0051 还补了 board_id 的单列索引：上面那条部分唯一索引**不算** FK 的可用索引
+	// （RI 查找用不了带谓词的索引），少了它 CheckForeignKeys 会红（2026-10-14 实测）。
+	mustExec(t, ctx, pool, "CREATE INDEX IF NOT EXISTS idx_board_moderators_board ON board_moderators (board_id)")
 
 	cfg := config.Default()
 	cfg.Site.CookieName = "forum_session"

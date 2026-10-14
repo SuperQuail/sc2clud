@@ -60,7 +60,6 @@ func LockBoard(ctx context.Context, tx Querier, boardID int64) error {
 
 // SetAdminACL 全量替换一个分区的 ACL 矩阵：先清空，再逐行插入。
 
-//
 // **整体替换**是设计定的语义（界面需求 §5.3）：矩阵是一个整体，逐格 PATCH 会把「禁止优先」的
 // 中间态暴露给正在发帖的用户（一个角色可能短暂地既不在 can 里也不在 deny 里）。
 // DB 的 ck_board_acls_no_contradiction 兜住「同一行既 can 又 deny」，但 service 先判一次 ——
@@ -154,7 +153,7 @@ func RevokeAdminModerator(ctx context.Context, tx Querier, boardID, userID int64
 
 // BoardIDsByPublicID 取全部分区的 (public_id → id)。
 //
-// 需要它是因为 ent 的 Board 实体里**没有 public_id**（迁移 0025 才加的那一列，
+// 需要它是因为 ent 的 Board 实体里**没有 public_id**（迁移 0050 才加的那一列，
 // 不重新生成 ent 代码：管理端的读路径本来就全走本域 pgsql）。
 // 重排要按请求给的对外顺序映射回自增 id，所以要一次拿全。
 func BoardIDsByPublicID(ctx context.Context, q Querier) (map[string]int64, error) {
@@ -186,6 +185,16 @@ func InsertBoardAudit(ctx context.Context, tx Querier, actorID int64, action, ta
 		"INSERT INTO audit_logs (actor_id, action, target_type, target_id, detail, created_at) "+
 			"VALUES ($1, $2, 'board', $3, $4::jsonb, $5)",
 		actorID, action, targetID, string(raw), now.UTC())
+}
+
+// IsActiveModerator 问「这个人现在是不是这个分区的版主」（在任 = grown_at IS NULL）。
+// 上限校验要用它区分「新增」与「重复任命」：同一个人改任期不该被自己占的名额挡住。
+func IsActiveModerator(ctx context.Context, q Querier, boardID, userID int64) (bool, error) {
+	var ok bool
+	err := queryOneQ(ctx, q,
+		"SELECT EXISTS (SELECT 1 FROM board_moderators WHERE board_id = $1 AND user_id = $2 AND grown_at IS NULL)",
+		[]any{boardID, userID}, func(rows *sql.Rows) error { return rows.Scan(&ok) })
+	return ok, err
 }
 
 // CountActiveModerators 数在任的版主（任命时的上限校验）。

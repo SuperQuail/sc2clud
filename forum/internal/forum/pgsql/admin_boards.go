@@ -118,7 +118,7 @@ func (s *Store) AdminBoardByID(ctx context.Context, id int64, todayStart time.Ti
 	return s.adminBoardOne(ctx, adminBoardsSQL, todayStart, id, "")
 }
 
-// AdminBoardByPublicID 按对外 ID 取一行（路由参数一律 uuid，见 migrations/0025）。
+// AdminBoardByPublicID 按对外 ID 取一行（路由参数一律 uuid，见 migrations/0050）。
 func (s *Store) AdminBoardByPublicID(ctx context.Context, publicID string, todayStart time.Time) (*AdminBoardRow, error) {
 	return s.adminBoardOne(ctx, adminBoardByPublicIDSQL, todayStart, nil, publicID)
 }

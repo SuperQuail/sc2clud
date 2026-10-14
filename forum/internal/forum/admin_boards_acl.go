@@ -17,7 +17,7 @@ import (
 
 // AdminBoardACL 读一个分区的整张矩阵。
 func (s *Service) AdminBoardACL(ctx context.Context, actor *authz.Actor, publicID string) ([]AdminACLItem, error) {
-	if err := requirePerm(actor, authz.PermBoardManage); err != nil {
+	if err := requireBoardManage(actor); err != nil {
 		return nil, err
 	}
 	id, err := s.boardIDByPublicID(ctx, s.db, publicID)
@@ -36,7 +36,7 @@ func (s *Service) AdminBoardACL(ctx context.Context, actor *authz.Actor, publicI
 // 三处「不静默」：角色不存在 → 400；同一行既 can 又 deny → 400；重复 role_id → 400。
 // 第三条尤其重要：后一行会覆盖前一行，不报错的话管理员看到的结果与他勾的不是一回事。
 func (s *Service) ReplaceBoardACL(ctx context.Context, actor *authz.Actor, publicID string, items []AdminACLItem) ([]AdminACLItem, error) {
-	if err := requirePerm(actor, authz.PermBoardManage); err != nil {
+	if err := requireBoardManage(actor); err != nil {
 		return nil, err
 	}
 	seen := make(map[int64]bool, len(items))
@@ -133,7 +133,7 @@ func aclToMap(rows []pgsql.AdminACLRow) map[string]any {
 
 // AdminBoardModerators 列出该分区的全部任期（在任的在前，含已卸任的历史行）。
 func (s *Service) AdminBoardModerators(ctx context.Context, actor *authz.Actor, publicID string) ([]AdminModeratorItem, error) {
-	if err := requirePerm(actor, authz.PermBoardManage); err != nil {
+	if err := requireBoardManage(actor); err != nil {
 		return nil, err
 	}
 	id, err := s.boardIDByPublicID(ctx, s.db, publicID)
@@ -164,7 +164,7 @@ func adminModeratorItems(rows []pgsql.AdminModeratorRow) []AdminModeratorItem {
 // GrantBoardModerator 任命一个版主（幂等：重复任命 = 改任期与任命人）。
 // expires_at 为空 = 永久；给了必须是将来（给一个已经过去的任期等于任命完立刻卸任）。
 func (s *Service) GrantBoardModerator(ctx context.Context, actor *authz.Actor, boardPublicID, userPublicID string, expiresAt *time.Time) ([]AdminModeratorItem, error) {
-	if err := requirePerm(actor, authz.PermBoardManage); err != nil {
+	if err := requireBoardManage(actor); err != nil {
 		return nil, err
 	}
 	if expiresAt != nil && !expiresAt.After(s.clk.Now()) {
@@ -182,10 +182,17 @@ func (s *Service) GrantBoardModerator(ctx context.Context, actor *authz.Actor, b
 		if err != nil {
 			return err
 		}
-		if n, err := pgsql.CountActiveModerators(ctx, tx, boardID); err != nil {
+		// 上限只在**新增**时判：同一个人重复任命（改任期）不该被自己占的名额挡住。
+		already, err := pgsql.IsActiveModerator(ctx, tx, boardID, targetID)
+		if err != nil {
 			return err
-		} else if n >= maxBoardModerator {
-			return invalid("user_id", "一个分区的版主最多 "+itoa64(maxBoardModerator)+" 人")
+		}
+		if !already {
+			if n, err := pgsql.CountActiveModerators(ctx, tx, boardID); err != nil {
+				return err
+			} else if n >= maxBoardModerator {
+				return invalid("user_id", "一个分区的版主最多 "+itoa64(maxBoardModerator)+" 人")
+			}
 		}
 		if err := pgsql.UpsertAdminModerator(ctx, tx, boardID, targetID, actor.UserID, expiresAt, now); err != nil {
 			return err
@@ -211,7 +218,7 @@ func (s *Service) GrantBoardModerator(ctx context.Context, actor *authz.Actor, b
 
 // RevokeBoardModerator 免掉一个版主：置 grown_at（**不删行** —— 删了就答不出「谁什么时候被免的」）。
 func (s *Service) RevokeBoardModerator(ctx context.Context, actor *authz.Actor, boardPublicID, userPublicID string) error {
-	if err := requirePerm(actor, authz.PermBoardManage); err != nil {
+	if err := requireBoardManage(actor); err != nil {
 		return err
 	}
 	now := s.clk.Now()

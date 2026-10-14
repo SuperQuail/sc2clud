@@ -36,7 +36,7 @@ func (s *Service) withTx(ctx context.Context, fn func(tx *ent.Tx) error) error {
 
 // CreateBoard 建一个分区。
 func (s *Service) CreateBoard(ctx context.Context, actor *authz.Actor, in CreateBoardInput) (*AdminBoardDTO, error) {
-	if err := requirePerm(actor, authz.PermBoardManage); err != nil {
+	if err := requireBoardManage(actor); err != nil {
 		return nil, err
 	}
 	slug := strings.TrimSpace(in.Slug)
@@ -80,7 +80,7 @@ func (s *Service) CreateBoard(ctx context.Context, actor *authz.Actor, in Create
 			return err
 		}
 		createdID = b.ID
-		// public_id 是迁移 0025 加的一列，ent 的 Board 实体里没有它（不重新生成 ent 代码：
+		// public_id 是迁移 0050 加的一列，ent 的 Board 实体里没有它（不重新生成 ent 代码：
 		// 管理端的读路径本来就全走本域的 pgsql）。这里读回它只为了写审计的目标 ID。
 		if err := pgsql.QueryRow(ctx, tx, "SELECT public_id::text FROM boards WHERE id = $1", b.ID).
 			Scan(&createdPublic); err != nil {
@@ -106,7 +106,7 @@ func (s *Service) CreateBoard(ctx context.Context, actor *authz.Actor, in Create
 
 // UpdateBoard 只改请求里出现的字段（指针 = 没给）。**没有 Slug**：改 slug 等于废掉所有外链。
 func (s *Service) UpdateBoard(ctx context.Context, actor *authz.Actor, publicID string, in UpdateBoardInput) (*AdminBoardDTO, error) {
-	if err := requirePerm(actor, authz.PermBoardManage); err != nil {
+	if err := requireBoardManage(actor); err != nil {
 		return nil, err
 	}
 	if in.Name != nil {
@@ -205,7 +205,7 @@ func (s *Service) UpdateBoard(ctx context.Context, actor *authz.Actor, publicID 
 // **必须给全**：ids 少一个就会有分区留在原 sort 上、与别人撞在一起，
 // 而「谁在前」从此变成一个说不清的问题。多给、重复、非 uuid 同样拒绝。
 func (s *Service) ReorderBoards(ctx context.Context, actor *authz.Actor, ids []string) error {
-	if err := requirePerm(actor, authz.PermBoardManage); err != nil {
+	if err := requireBoardManage(actor); err != nil {
 		return err
 	}
 	if len(ids) == 0 {
@@ -224,7 +224,7 @@ func (s *Service) ReorderBoards(ctx context.Context, actor *authz.Actor, ids []s
 		raw = append(raw, v)
 	}
 	return s.withTx(ctx, func(tx *ent.Tx) error {
-		// 原生 SQL 取 (id, public_id)：ent 的 Board 没有 public_id 这一列（0025 才加）。
+		// 原生 SQL 取 (id, public_id)：ent 的 Board 没有 public_id 这一列（0050 才加）。
 		byPublic, err := pgsql.BoardIDsByPublicID(ctx, tx)
 		if err != nil {
 			return err

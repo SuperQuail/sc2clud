@@ -1,4 +1,4 @@
--- 0026_board_moderator_grown：版主任期的「已经卸任」标记 + 重复任命（交接单 C2）
+-- 0051_board_moderator_grown：版主任期的「已经卸任」标记 + 重复任命（交接单 C2）
 --
 -- `board_moderators`（0003 建）缺两样东西：
 --
@@ -23,3 +23,11 @@ ALTER TABLE board_moderators ADD COLUMN grown_at timestamptz NULL;
 ALTER TABLE board_moderators DROP CONSTRAINT IF EXISTS board_moderators_board_id_user_id_key;
 CREATE UNIQUE INDEX uq_board_moderators_active ON board_moderators (board_id, user_id)
   WHERE grown_at IS NULL;
+
+-- **必须补这一条**：上面删掉的唯一约束顺带提供了 (board_id, user_id) 的 btree，
+-- 而它是 board_id 外键唯一一条**非部分**索引 —— 删掉之后启动自检（db.SelfCheck 的
+-- 「外键列上没有可用索引」）会直接拒绝启动，2026-10-14 实测报
+-- 「外键 board_moderators.fk_board_moderators_board 上没有可用索引」。
+-- 部分索引（uq_board_moderators_active）**不算**：RI 查找用不了带谓词的索引。
+-- 顺带也服务本域的查询：版主名单与在任判定都是 WHERE board_id = $1。
+CREATE INDEX idx_board_moderators_board ON board_moderators (board_id);

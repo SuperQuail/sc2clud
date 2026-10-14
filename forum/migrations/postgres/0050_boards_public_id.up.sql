@@ -1,4 +1,4 @@
--- 0025_boards_public_id：给 boards 补一列对外 ID（交接单 C2）
+-- 0050_boards_public_id：给 boards 补一列对外 ID（交接单 C2）
 --
 -- 为什么必须补：`httpx.ValidPathIDs("id", "sid")` 是一道**组中间件**，挂在 /api/v1 的 forum 域上 ——
 -- 它要求所有点名过的 {id} 路径参数是对外 ID（uuid）。而 boards 是唯一一张只有自增主键、

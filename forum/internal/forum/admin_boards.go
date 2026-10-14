@@ -7,10 +7,7 @@ import (
 	"time"
 
 	"forum/internal/authz"
-	ent "forum/internal/ent"
-	"forum/internal/ent/board"
 	"forum/internal/forum/pgsql"
-	"forum/internal/platform/apperr"
 	"forum/internal/platform/idgen"
 )
 
@@ -23,7 +20,7 @@ import (
 //  2. **slug 建了就不能改**。ent 的 board.go 原话：「不可改：改 slug 等于废掉所有外链」。
 //     所以它只在 Create 的入参里出现，Update 连字段都不收。
 
-// 值域与长度照 0004/0025 的 DDL：slug varchar(32) UNIQUE、name varchar(32)、description varchar(200)。
+// 值域与长度照 0004/0050 的 DDL：slug varchar(32) UNIQUE、name varchar(32)、description varchar(200)。
 const (
 	maxBoardSlugLen   = 32
 	maxBoardNameLen   = 32
@@ -111,7 +108,7 @@ type UpdateBoardInput struct {
 
 // AdminListBoards 是后台的分区列表（含归档）。权限 board.manage。
 func (s *Service) AdminListBoards(ctx context.Context, actor *authz.Actor) ([]AdminBoardDTO, error) {
-	if err := requirePerm(actor, authz.PermBoardManage); err != nil {
+	if err := requireBoardManage(actor); err != nil {
 		return nil, err
 	}
 	rows, err := s.repo.AdminBoards(ctx, s.todayStart())
@@ -127,7 +124,7 @@ func (s *Service) AdminListBoards(ctx context.Context, actor *authz.Actor) ([]Ad
 
 // AdminBoard 是单个分区的详情（与列表同一形状）。
 func (s *Service) AdminBoard(ctx context.Context, actor *authz.Actor, publicID string) (*AdminBoardDTO, error) {
-	if err := requirePerm(actor, authz.PermBoardManage); err != nil {
+	if err := requireBoardManage(actor); err != nil {
 		return nil, err
 	}
 	id, err := idgen.ParsePublicID(publicID)
@@ -143,6 +140,17 @@ func (s *Service) AdminBoard(ctx context.Context, actor *authz.Actor, publicID s
 	}
 	d := adminBoardDTO(*row)
 	return &d, nil
+}
+
+// requireBoardManage 是分区管理这十来个方法共用的第一道闸。
+//
+// **必须先 requireActor 再 requirePerm**：本域的 requirePerm 直接读 actor.IsSuper，
+// 传 nil 会 panic —— 游客打进来会变成 500 而不是 401（review_queue 里是同一个写法）。
+func requireBoardManage(actor *authz.Actor) error {
+	if _, err := requireActor(actor); err != nil {
+		return err
+	}
+	return requirePerm(actor, authz.PermBoardManage)
 }
 
 func adminBoardDTO(r pgsql.AdminBoardRow) AdminBoardDTO {
@@ -171,4 +179,3 @@ func utcOrNil(t *time.Time) *time.Time {
 	u := t.UTC()
 	return &u
 }
-

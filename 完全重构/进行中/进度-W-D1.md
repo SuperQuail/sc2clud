@@ -93,31 +93,83 @@
   - 下一步：C2 —— `/admin/boards*` 整组。
   - 阻塞：无
 
-- [ ] 第 5 步：C2 —— `/admin/boards*` 整组（代码已写完，**卡在别人在途的编译错误上手不了验证**）
+- [x] 第 5 步：C2 —— `/admin/boards*` 整组（列表 / 建 / 改 / 重排 / ACL 全量替换 / 版主任免）
   - 做了什么：
-    - 迁移 `0025_boards_public_id.up/.down.sql`：boards 补 `public_id uuid NOT NULL DEFAULT gen_random_uuid()`
-      + `uq_boards_public_id`。**为什么必须补**：`httpx.ValidPathIDs("id","sid")` 是挂在 forum 域上的组中间件，
-      而 boards 是全站唯一只有自增主键的业务表 —— 不补这一列，`/admin/boards/{id}` 要么用可改的 slug
-      （改 slug = 废掉所有外链），要么违反「自增 id 不出 API」。
-    - 迁移 `0026_board_moderator_grown.up/.down.sql`：`board_moderators` 加 `grown_at`，
-      唯一约束 `(board_id,user_id)` 换成部分唯一索引 `WHERE grown_at IS NULL`。
-      卸任 = 置 `grown_at`（不删行：删了就答不出「谁什么时候被免的」），重复任命成为可能。
-      **连带改了三处判定 SQL 的 `grown_at IS NULL`**（`auth/pgsql/queries.go` 的 ResolveSessionSQL 与
-      LoadActorSQL、`forum/pgsql/access.go` 的 ACLRowFor）—— 漏一处就是权限泄漏。
-    - `forum/internal/forum/admin_boards.go`（DTO + 读）、`admin_boards_write.go`（建/改/重排）、
-      `admin_boards_acl.go`（ACL 全量替换 + 版主任免）、`handler_admin_boards.go`（9 条 handler）、
-      `pgsql/admin_boards.go` + `pgsql/admin_boards_write.go`（全部 SQL）、
-      `handler.go` 的 9 条路由（含 `ValidPathIDs("id")`）、`errors.go` 两条版主错误码、
-      `deps.go` 加 `InvalidateUser` 钩子、`app/modules.go` 把它接到 `m.Auth.InvalidateUser`。
-    - `admin_boards_test.go`：8 条用例（守卫 / 列表含归档+版主 / 建改 / 重排 / ACL 全量替换 / 版主任免闭环 /
-      权限快照失效钩子）。
-  - 证据（**目前只到编译前**）：`go vet ./internal/forum/` 的错误列表里**只剩别人的**
-    `internal\forum\cursor.go:52:26: undefined: badCursor`（L2「最热排序」在途改动，与我无关；
-    `git diff` 里 `cursor.go` 被删掉了 `badCursor()` 而替换还没写完），以及
-    `topics.go:136 unknown field Sort in struct literal of type TopicPage`。我的文件不再报错。
-  - 下一步：等 `internal/forum` 能编译后跑 `go test ./internal/forum/ -count=1`
-    （先单条 `-run TestAdminBoards|TestCreateAndUpdateBoard|TestReorderBoards|TestBoardACL|TestBoardModerator`
-    定位，再整包），把红转绿的证据补进这一条；然后跑 `gofmt -l .` 与 `go test ./internal/app/`。
-  - 阻塞：`forum/internal/forum/cursor.go` 与 `topics.go` 被**另一个在途工作包**（L2 最热排序）改坏，
-    `internal/forum` 整包编译不过。它的文件不在我的写作用域里（虽然同目录），我不动它。
-    需要那份工作包收尾，或在 Lead 确认后由我补 `badCursor`（一行：`apperr.Invalid(map[string]string{"cursor": "游标格式不正确"})`）。
+    - 迁移 **0050_boards_public_id**：boards 补 `public_id uuid NOT NULL DEFAULT gen_random_uuid()` + `uq_boards_public_id`。
+      **为什么必须补**：`httpx.ValidPathIDs("id","sid")` 是挂在 forum 域上的**组**中间件，而 boards 是全站唯一
+      只有自增主键的业务表 —— 不补这一列，`/admin/boards/{id}` 只能用可改的 slug（改 slug = 废掉所有外链），
+      或用自增 id（违反「自增 id 不出 API」）。
+    - 迁移 **0051_board_moderator_grown**：`board_moderators` 加 `grown_at`；`UNIQUE (board_id,user_id)` 换成
+      **部分**唯一索引 `WHERE grown_at IS NULL`（卸任 = 置 `grown_at`，不删行；重复任命因此成为可能）；
+      并补 `idx_board_moderators_board (board_id)`。
+      **连带改了三处判定 SQL**（`auth/pgsql/queries.go` 的 ResolveSessionSQL 与 LoadActorSQL、
+      `forum/pgsql/access.go` 的 ACLRowFor 的 EXISTS）—— 漏一处就是权限泄漏。
+    - 新增 `forum/internal/forum/admin_boards.go`（DTO + 读 + requireBoardManage）、`admin_boards_write.go`
+      （建/改/重排）、`admin_boards_acl.go`（ACL 全量替换 + 版主任免）、`handler_admin_boards.go`（9 条 handler）、
+      `pgsql/admin_boards.go` + `pgsql/admin_boards_write.go`（全部 SQL）、`admin_boards_test.go`（7 条用例）。
+    - 改动 `handler.go`（9 条路由，`{id}` 走 ValidPathIDs）、`errors.go`（两条版主错误码）、
+      `deps.go`（InvalidateUser 钩子）、`pgsql/query.go`（QueryRow 小工具）、
+      `app/modules.go`（把钩子接到 `m.Auth.InvalidateUser`）、`auth/fixture_test.go`（夹具补 grown_at 与两条索引）。
+  - 证据（**先红后绿**）：路由与 service 方法都不存在时该包连编译都过不去（「端点不存在」的直接证据）。
+    写完后单条跑：`go test ./internal/forum/ -count=1 -run TestAdminBoards` 一族 → 7 条全 PASS；
+    整包 `ok forum/internal/forum 57.8s`、`ok forum/internal/forum/pgsql 9.0s`、
+    `ok forum/internal/app 13.6s`、`ok forum/internal/auth 60.2s`（最后一条见收尾一节的重跑）。
+    七条用例：9 条路由的游客/无权限守卫（断言码）、列表**含归档分区**+position+版主名单、
+    建（slug 五组非法值 + 撞 slug 400 + 默认不启用 ACL + 审计一行）/ 改（只改给了的字段、空 body 400、
+    不存在与非 uuid 都 404）、重排（少给/重复/非 uuid/不存在四种 400 + 正序落库 + position 跟着走 + 审计）、
+    ACL **全量替换**（少一行就真删掉、审计 before/after 按 role_key、同格 can+deny 400、重复角色 400、
+    不存在的角色 400、失败不动库、空矩阵 = 清空）、版主任免闭环（过去任期 400、用户不存在 404、
+    幂等 upsert 不新增行、卸任留历史行 + 名单里消失 + 再免 404 + **免了再任命能成功**）、
+    权限快照失效钩子被调两次。
+  - 三个踩到的坑（都是机器检查抓到的，写下来）：
+    ① **删掉 UNIQUE (board_id,user_id) 会让启动自检拒绝启动**：它是 board_id 外键唯一一条**非部分**索引，
+       部分索引（`WHERE grown_at IS NULL`）不算（RI 查找用不了带谓词的索引）。原文：
+       `外键 board_moderators.fk_board_moderators_board 上没有可用索引`。修法：迁移里补 idx_board_moderators_board。
+    ② **auth 的测试夹具是 `client.Schema.Create` 建的库**，没有 grown_at 这一列 → 整个 auth 包的会话用例
+       全报 `字段 m.grown_at 不存在 (SQLSTATE 42703)`。夹具本来就写着「与迁移的差异必须在建表后补上」，按它补。
+    ③ **迁移号被三个工作包同时占**：先用 0023/0024 → 撞 0023_moderator_to_creator；改 0025/0026 → 又撞
+       0025_topics_hot 与 0026_issue_kinds（`duplicate migration file` 让 app 的 e2e 整包红）；最终用
+       **0050/0051**（远离 002x 的争用区）。**迁移号需要 Lead 统一分配。**
+  - 下一步：无（本工作包 C1/C2/C3/C6 全部落地）。接手人接前端时看本文件开头那节的端点表。
+  - 阻塞：无（原先挡住验证的 `cursor.go` 在途改动已由那份工作包自己修好）。
+---
+
+## 收尾（W-D1，2026-10-14）
+
+**任务完成**：交接单 §4.C 的 C1 / C2 / C3 / C6 四条全部落地并提交，每条一个 commit（都只 add 我改的文件）。
+
+| commit | 内容 |
+|---|---|
+| `7710d26` | C1 `GET /admin/users` + `GET /admin/users/{id}`（筛选三根状态轴 + 游标 + 三张关联表） |
+| `3b6e616` | C6 `POST /admin/users/batch`（逐条成功失败） |
+| `43092e6` | C3 `GET /admin/diagnostics`（site.setting + debug 双门控） |
+| `6f741a2` | C2 `/admin/boards*` 整组 + 迁移 0025/0026（后改号 0050/0051） |
+| 本 commit | C2 收尾：迁移补 FK 索引、夹具补 grown_at、迁移改号 0050/0051、ACL 全量替换的边界 |
+
+**收工验证（命令 + 结尾输出）**：
+
+- `gofmt -l .`（forum/）→ 列出的 7 个文件**全是别人在途的**（`dto.go`、`hot_sort_test.go`、
+  `board_levels_test.go`、`issue_filter_test.go`、`path_order_test.go`、`revision_test.go`、`pgsql/boards.go`）；
+  对我改的 26 个文件单独跑 `gofmt -l <files>` → **无输出，exit 0**；
+- `go vet ./...` → `VET_EXIT=0`（全仓）；
+- `go test ./internal/auth/... ./internal/forum/... ./internal/app/ ./internal/user/ ./internal/site/ -count=1` →
+  `ok forum/internal/auth 82.0s`、`ok forum/internal/forum/pgsql 14.9s`、`ok forum/internal/app 20.0s`、
+  `ok forum/internal/user 18.5s`、`ok forum/internal/site 34.7s`；
+  **`internal/forum` 整包是 FAIL，但那两条红的用例不是我的**：
+  `TestBoardReplyLevelIsSeparateFromPostLevel`（别人的 0027_board_reply_level / E1 回帖门槛）与
+  `TestRevisionRequestedKeepsOnlyAuthorAndShowsApprovedVersion`（别人的 0028_topic_revisions / L6 第四态）。
+  我这一包新增的 7 条用例在同一轮里全 PASS，且单跑 `-run TestAdminBoards\|TestCreateAndUpdateBoard\|TestReorderBoards\|TestBoardACL\|TestBoardModerator`
+  → `ok forum/internal/forum 15.5s`。
+
+**没做的 / 留给 Lead 的**：
+
+1. **迁移号需要统一分配**。这一轮里 0023 / 0025 / 0026 / 0027 / 0028 / 0040 都被不同工作包同时占了，
+   `duplicate migration file` 会让 golang-migrate 直接拒绝启动（app 的 e2e 整包红过一次）。我最终用 0050/0051。
+2. C2 的**封面**只做了 `cover_hash` 字段的读写（PATCH 里可传），**没有做图片上传端点**（§5.10 提到
+   `POST /admin/boards/{id}/cover` 走图片通道）。理由：`media` 域不在我的写作用域里，而复用它的通道
+   需要改 media 的 handler。前端现在可以先用已有的图片上传通道拿到 hash 再 PATCH 进来。
+3. 权限点：C2 的**版主任免**沿用了 `board.manage`（§5.10 只写了「权限点 board.manage」）。
+   若产品要区分「管分区结构」与「任免版主」，那是一个新的权限点（要加常量 + 迁移 + 24 个点的自检跟着动）。
+4. 我在 `auth` 的测试夹具里补了 `grown_at` 与两条索引（迁移 0051 的形状）。**这是夹具与迁移的第二处手工同步**
+   （前两处是 uq_roles_super / uq_email_tokens_live）—— 长期看应该把 `grown_at` 加进 ent schema 并重新生成代码，
+   那件事需要能跑 ent codegen 的人做。

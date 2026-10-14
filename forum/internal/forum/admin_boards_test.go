@@ -54,7 +54,10 @@ func TestAdminBoardsGuards(t *testing.T) {
 	}
 	for _, call := range []func() error{
 		func() error { _, err := h.svc.AdminBoard(h.ctx, plain, public); return err },
-		func() error { _, err := h.svc.CreateBoard(h.ctx, plain, CreateBoardInput{Slug: "x-y", Name: "X"}); return err },
+		func() error {
+			_, err := h.svc.CreateBoard(h.ctx, plain, CreateBoardInput{Slug: "x-y", Name: "X"})
+			return err
+		},
 		func() error { _, err := h.svc.UpdateBoard(h.ctx, plain, public, UpdateBoardInput{}); return err },
 		func() error { return h.svc.ReorderBoards(h.ctx, plain, []string{public}) },
 		func() error { _, err := h.svc.AdminBoardACL(h.ctx, plain, public); return err },
@@ -208,6 +211,7 @@ func (h *harness) seedModerator(boardID, userID int64, expires *time.Time) {
 		h.t.Fatal(err)
 	}
 }
+
 // ── 重排 ──────────────────────────────────────────────────────────
 
 func TestReorderBoards(t *testing.T) {
@@ -292,13 +296,19 @@ func TestBoardACLReplaceIsWhole(t *testing.T) {
 	if n := h.countRows(t, "SELECT count(*) FROM board_acls WHERE board_id = $1", boardID); n != 1 {
 		t.Fatalf("库里应当只剩 1 行，实际 %d", n)
 	}
-	// 审计里要有 before/after，且按 role_key 记
+	// 审计里要有 before/after，且按 role_key 记。取**最后一条**（这一批有两次替换）：
+	// 第一次的 before 是空矩阵，只有第二次能证明「替换前是什么」真的留下了。
 	var detail string
-	if err := h.pool.QueryRow(h.ctx, "SELECT detail::text FROM audit_logs WHERE action = $1", AuditBoardACLUpdate).Scan(&detail); err != nil {
+	if err := h.pool.QueryRow(h.ctx,
+		"SELECT detail::text FROM audit_logs WHERE action = $1 ORDER BY id DESC LIMIT 1",
+		AuditBoardACLUpdate).Scan(&detail); err != nil {
 		t.Fatal(err)
 	}
 	if !strings.Contains(detail, "creator") || !strings.Contains(detail, "admin") {
 		t.Fatalf("审计的 before/after 应当按 role_key 记: %s", detail)
+	}
+	if !strings.Contains(detail, "before") || !strings.Contains(detail, "after") {
+		t.Fatalf("审计必须有 before 与 after 两段: %s", detail)
 	}
 
 	// 同一行既 can 又 deny = 400（而不是让 DB 的 CHECK 抛一个指不到格子的错）
