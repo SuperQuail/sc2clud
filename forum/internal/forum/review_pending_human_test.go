@@ -11,9 +11,10 @@ import (
 // 「AI 正在自动检查，几十秒」与「已经在人工队列里，等一个人」。作者唯一能看到的线索就是这一句。
 //
 // 判据是 **review_events 最新一条判定的 verdict**（d7 §1 的状态机：AI 拿不准 → verdict=review → 人工队列）：
-//   · 最新一条是 review  → 已转人工（pendingHuman = true）；
-//   · 最新一条是 approve（人工已经判过）→ 不再是「已转人工」，
-//     所以判据**不能**写成「存在过 verdict=review」—— 那种写法在判完之后永远为真。
+//
+//	· 最新一条是 review  → 已转人工（pendingHuman = true）；
+//	· 最新一条是 approve（人工已经判过）→ 不再是「已转人工」，
+//	  所以判据**不能**写成「存在过 verdict=review」—— 那种写法在判完之后永远为真。
 func TestTopicDetailReportsPendingHumanFromLatestReviewEvent(t *testing.T) {
 	h := newHarness(t)
 	h.seedBoard("general", 0, false)
