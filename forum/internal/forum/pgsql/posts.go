@@ -71,6 +71,8 @@ WITH roots AS (
    WHERE p.topic_id = $1
      AND p.parent_id IS NULL
      AND p.visibility = 'normal'
+     -- D71：1 楼是主题正文不是回复，列表口径与 reply_count（floor > 1）一致。
+     AND p.floor > 1
      AND p.id > $3::bigint
    ORDER BY p.id ASC
    LIMIT $4
