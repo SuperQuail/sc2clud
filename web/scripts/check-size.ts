@@ -20,6 +20,8 @@ const PENDING: Record<string, string> = {
   // 2026-10-14：Lead 补 D19（作者关注）那条宿主断言后越过 500 行。**门禁也扫测试文件**（`src/**` 里所有 .ts/.tsx），
   // 所以测试长了同样要登记 —— 重构目标：把「作者关注 / 审核横幅 / 提及候选」三组各自拆成独立文件。
   'routes/topic.test.tsx': '拆出作者关注、审核横幅、提及候选三组用例',
+  // 2026-10-15：D34/D37 给两份出图桩补了 AI payload 与邮件模板的演示数据，各自越线。
+  'devroom/pages/15-admin/mock/fixtures.ts': '按屏拆桩文件（users/boards/ai/mail 各一份）',
 };
 
 function walk(dir: string): string[] {

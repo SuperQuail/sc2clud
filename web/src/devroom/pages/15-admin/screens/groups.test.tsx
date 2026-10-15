@@ -21,7 +21,7 @@ const members: AdminGroupMember[] = [
   { user_id: 'u2', handle: 'demo-creator', nickname: '示范创作者', added_at: '2026-09-02T02:00:00Z' },
 ];
 
-function renderOpts(onRemove: (userId: string) => void = () => {}, onSave: (...a: unknown[]) => void = () => {}) {
+function renderOpts(onRemove: (userId: string) => void = () => {}, onSave: (id: string, patch: { name: string; description: string }) => void = () => {}) {
   render(
     <GroupsScreen
       groups={[group]}
@@ -50,7 +50,7 @@ it('移出成员：点「移出」把那一行的 user_id 发给宿主（判定�
 
 it('改组资料：草稿标「未保存」，点保存把 name/description 发上去', () => {
   const seen: Array<{ id: string; patch: { name: string; description: string } }> = [];
-  renderOpts(() => {}, (id, patch) => seen.push({ id, patch: patch as { name: string; description: string } }));
+  renderOpts(() => {}, (id, patch) => seen.push({ id, patch }));
   const name = screen.getByLabelText('名称');
   fireEvent.change(name, { target: { value: '视觉组二' } });
   expect(screen.getByText('未保存')).toBeTruthy();

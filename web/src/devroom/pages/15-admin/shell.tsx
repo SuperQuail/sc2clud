@@ -89,7 +89,7 @@ export function AdminShell({ screen, onScreen, me, meExtra, children }: {
             }))}
           />
           <p className='px-2 text-[10px] leading-relaxed text-muted-foreground'>
-            导航项在真实实现里按权限点渲染（前端方案 §6 /admin/* 声明权限点，缺权限渲染 403）。
+            没有权限的页面不会出现在导航里；越权访问会直接被拒。
           </p>
         </div>
         <div className='flex min-w-0 flex-col gap-3'>{children}</div>
