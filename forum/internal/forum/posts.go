@@ -191,7 +191,13 @@ func (s *Service) insertPost(ctx context.Context, actor *authz.Actor, ref *pgsql
 			if err := s.checkBlocks(ctx, actor, parent.AuthorID); err != nil {
 				return err
 			}
-			parentID = &parent.ID
+			// D71：「回复正文就是回复帖子」——parent 是 1 楼（主题正文）时按顶层回复落库（parent_id = NULL），
+			// 否则正文从评论区摘除（TopLevelReplies 只列 floor > 1）后，这些楼就挂到孤儿名下了。
+			if parent.Floor == 1 {
+				parentID = nil
+			} else {
+				parentID = &parent.ID
+			}
 		}
 		// ③ 分配 floor 并插入。
 		id, _, err := pgsql.InsertPost(ctx, tx, newPublicID(), ref.ID, actor.UserID, parentID,
