@@ -285,6 +285,7 @@ function UsersRoom() {
       canAssignRole={can('role.assign')}
       canGrantTitle={can('title.grant')}
       onBan={(ids, action, reason) => say((action === 'ban' ? '停用 ' : '解封 ') + ids.length + ' 人：' + reason)}
+      onActivate={(ids) => say('激活 ' + ids.length + ' 个账号（只写 activated_at）')}
       onRevokeSessions={(id) => say('踢掉 ' + id + ' 的全部会话')}
       onSetRole={(id, roleId) => say('把 ' + id + ' 的基线角色改成 ' + roleId)}
       onGrantTitle={(userId, titleId) => say('给 ' + userId + ' 授予 ' + titleId)}

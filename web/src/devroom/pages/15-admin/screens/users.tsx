@@ -4,7 +4,7 @@ import Dialog from '@jetbrains/ring-ui-built/components/dialog/dialog';
 import Input from '@jetbrains/ring-ui-built/components/input/input';
 import Select, { Type as SelectType } from '@jetbrains/ring-ui-built/components/select/select';
 import { ControlsHeight } from '@jetbrains/ring-ui-built/components/global/controls-height';
-import { Ban, Search, ShieldCheck } from 'lucide-react';
+import { Ban, Search, ShieldCheck, UserCheck } from 'lucide-react';
 import { icon16 } from '@/ui/icons';
 import { UserAvatar } from '@/ui/user/avatar';
 import { Username } from '@/ui/user/username';
@@ -62,6 +62,9 @@ export type UsersScreenProps = {
   canGrantTitle: boolean;
   /** 封号 / 解封；reason 必填（危险动作走 ConfirmDialog 收集，绝不自己写弹层） */
   onBan: (ids: string[], action: 'ban' | 'unban', reason: string) => void;
+  /** 手工激活（D29）：站点关掉自动激活后，这是**唯一**的激活入口。
+   *  不走 batch 那条路（单条也走同一个端点，后端逐条返回成败）。 */
+  onActivate: (ids: string[]) => void;
   /** 踢掉全部会话（封号不带踢，这是独立动作） */
   onRevokeSessions: (id: string) => void;
   onSetRole: (id: string, roleId: number) => void;
@@ -73,13 +76,15 @@ export type UsersScreenProps = {
 export function UsersScreen({
   users, detail, detailLoading = false, onSelect, total, loading = false, error = null, filter, onFilterChange,
   roles, titles, canBan, canAssignRole, canGrantTitle,
-  onBan, onRevokeSessions, onSetRole, onGrantTitle, receipt,
+  onBan, onActivate, onRevokeSessions, onSetRole, onGrantTitle, receipt,
 }: UsersScreenProps) {
   const [selected, setSelected] = useState<string[]>([]);
   const [sort, setSort] = useState<Sort>({ key: 'created_at', dir: 'desc' });
   // 选中态就在列表里（不另存 state）：屏是无状态展示，详情由宿主持有 —— 少一处会与列表错位的状态
   const activeId = detail?.id ?? null;
-  const [pending, setPending] = useState<{ kind: 'ban' | 'unban'; ids: string[] } | null>(null);
+  // activate 与封号走同一个确认弹层：三者的形状一模一样（选人 → 确认 → 一次请求），
+  // 差别只在文案与是否危险 —— 再抄一份弹层只会多一处漂移。
+  const [pending, setPending] = useState<{ kind: 'ban' | 'unban' | 'activate'; ids: string[] } | null>(null);
   const [grantTo, setGrantTo] = useState<string | null>(null);
   const [roleTo, setRoleTo] = useState<string | null>(null);
   const [page, setPage] = useState(1);
@@ -306,6 +311,18 @@ export function UsersScreen({
           {activeUser ? (
             <Panel title='危险动作'>
               <div className='flex flex-wrap items-center gap-2'>
+                {!activeUser.activated_at ? (
+                  <Button
+                    primary
+                    inline={false}
+                    height={ControlsHeight.S}
+                    icon={icon16(UserCheck)}
+                    disabled={!canBan}
+                    onClick={() => setPending({ kind: 'activate', ids: [activeUser.id] })}
+                  >
+                    激活账号
+                  </Button>
+                ) : null}
                 <DangerAction
                   disabled={!canBan || activeUser.status === 'banned'}
                   why={!canBan ? '本账号没有 user.ban' : activeUser.status === 'banned' ? '该用户已经是封禁状态' : undefined}
@@ -331,21 +348,25 @@ export function UsersScreen({
 
       <ConfirmDialog
         show={pending !== null}
-        label={pending?.kind === 'unban' ? '确认解封？' : '确认停用（封号）？'}
-        danger={pending?.kind !== 'unban'}
-        confirmText={pending?.kind === 'unban' ? '解封' : '停用'}
-        reasonLabel={pending?.kind === 'unban' ? '解封说明（可选，进审计）' : '封号理由（必填，进审计）'}
-        reasonRequired={pending?.kind !== 'unban'}
+        label={pending?.kind === 'activate' ? '确认激活？' : pending?.kind === 'unban' ? '确认解封？' : '确认停用（封号）？'}
+        danger={pending?.kind === 'ban'}
+        confirmText={pending?.kind === 'activate' ? '激活账号' : pending?.kind === 'unban' ? '解封' : '停用'}
+        reasonLabel={pending?.kind === 'ban' ? '封号理由（必填，进审计）' : pending?.kind === 'activate' ? '备注（可选，进审计）' : '解封说明（可选，进审计）'}
+        reasonRequired={pending?.kind === 'ban'}
         disabledReason={!canBan ? '本账号没有 user.ban，按钮不可用' : undefined}
         body={
-          pending?.kind === 'unban'
-            ? <span>解封后该用户可以重新登录。这是 13.7 的封号轴，与「降权」是两条独立通道。</span>
-            : <span>停用会让 <b>{pending?.ids.length}</b> 个用户立刻 401（status=banned）并写入审计 <code>user.ban</code>。
-                被封期间已建立的会话要另外点「踢掉全部会话」才会失效。</span>
+          pending?.kind === 'activate'
+            ? <span>激活只写 <code>activated_at</code>（<b>不改</b> email_verified_at：手工激活不等于邮箱验证）。
+                激活后该用户就能发帖与上传；在他下次发请求前状态不会变（权限缓存 60 秒）。</span>
+            : pending?.kind === 'unban'
+              ? <span>解封后该用户可以重新登录。这是 13.7 的封号轴，与「降权」是两条独立通道。</span>
+              : <span>停用会让 <b>{pending?.ids.length}</b> 个用户立刻 401（status=banned）并写入审计 <code>user.ban</code>。
+                  被封期间已建立的会话要另外点「踢掉全部会话」才会失效。</span>
         }
         onClose={() => setPending(null)}
         onConfirm={(reason) => {
-          if (pending) onBan(pending.ids, pending.kind, reason);
+          if (pending?.kind === 'activate') onActivate(pending.ids);
+          else if (pending) onBan(pending.ids, pending.kind, reason);
           setPending(null);
         }}
       />

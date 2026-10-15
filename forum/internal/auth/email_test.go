@@ -197,7 +197,7 @@ func TestResendDisabledInManualMode(t *testing.T) {
 	f := newFixture(t)
 	f.seedRBAC()
 	f.newUserRow("noc0de", "passw0rd-1", "user", false)
-	f.cfg.Auth.AutoActivate = ptrBool(false)
+	f.set.value = false // 开关真源 = 站点设置（D29）
 	actor := f.actor(f.login("noc0de", "passw0rd-1"))
 	_, err := f.svc.ResendVerify(f.ctx, actor, "127.0.0.1")
 	if errCode(err) != "auth.resend_disabled" {

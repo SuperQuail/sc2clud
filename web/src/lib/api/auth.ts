@@ -85,8 +85,14 @@ export function register(body: {
   nickname?: string;
   email: string;
   password: string;
-} & CaptchaInput): Promise<{ handle: string }> {
-  return api<{ handle: string }>('auth/register', { method: 'POST', body: withCaptcha(body) });
+} & CaptchaInput): Promise<{
+  /** 后端 RegisterResult 的三个字段（auth/service.go）；id/email_verified 前端暂时不用 */
+  handle: string;
+  /** false = 站长把自动激活关了（D29）：**不会发验证码**，注册后应显示「等管理员激活」，
+   *  而不是「请输入验证码」。这个字段后端一直在发，是前端原先把它丢掉了。 */
+  auto_activate: boolean;
+}> {
+  return api('auth/register', { method: 'POST', body: withCaptcha(body) });
 }
 
 // ── 验证码类的三个端点共用一个形状 ───────────────────────────────────────────

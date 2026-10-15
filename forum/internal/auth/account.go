@@ -231,7 +231,7 @@ func (s *Service) Register(ctx context.Context, in RegisterInput) (*RegisterResu
 	//   auto_activate=true  且没有可用发信账号 → 503 auth.mail_unavailable（**不静默降级成人工**，
 	//                        否则管理员会以为「注册走人工」是产品设计，而真实原因是配置坏了）；
 	//   auto_activate=false → 不发任何邮件，等管理员在后台激活。
-	auto := s.cfg.Auth.AutoActivateOn()
+	auto := s.autoActivate(ctx)
 	if auto {
 		canMail, err := s.canMail(ctx)
 		if err != nil {
@@ -517,7 +517,7 @@ func (s *Service) Me(ctx context.Context, actor *authz.Actor) (*MeResult, error)
 		Status:        u.Status,
 		EmailVerified: u.EmailVerifiedAt != nil,
 		Activated:     u.ActivatedAt != nil,
-		AutoActivate:  s.cfg.Auth.AutoActivateOn(),
+		AutoActivate:  s.autoActivate(ctx),
 		Trusted:       u.Trusted,
 		Level:         u.Level,
 		Exp:           u.Exp,

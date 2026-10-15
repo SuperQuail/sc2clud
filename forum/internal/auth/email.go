@@ -263,7 +263,7 @@ func (s *Service) ResendVerify(ctx context.Context, actor *authz.Actor, ip strin
 	}
 	_ = ip
 	// 开关关掉时**根本没有码**可重发：管理员选的模式就是「等我来激活」（拍板 §12.2 表格）。
-	if !s.cfg.Auth.AutoActivateOn() {
+	if !s.autoActivate(ctx) {
 		return nil, ErrResendDisabled
 	}
 	u, err := s.db.User.Query().Where(user.IDEQ(actor.UserID)).Only(ctx)

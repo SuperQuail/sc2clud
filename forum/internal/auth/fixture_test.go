@@ -49,6 +49,8 @@ type fixture struct {
 	clk   *clock.Fake
 	queue *fakeQueue
 	sent  *sentCodes
+	// set 是站点设置替身：D29 的手动激活开关走它（keyAutoActivate）
+	set *settingsStub
 }
 
 // sentCodes 收集 Mailer 发出去的明文验证码：测试要拿它去校验。
@@ -113,6 +115,24 @@ func (denyAll) Allow(context.Context, string, int, time.Duration) (bool, time.Du
 	return false, 7 * time.Second, nil
 }
 
+// settingsStub 是站点设置的替身：只回答「注册后自动激活」这一个键（D29）。
+// 没被设置过（set=false）就按**没这个键**处理 —— 与 site.Service 吃到未声明键时一样，
+// 由 auth 回落到配置默认值，这样既有用例（只改 cfg）照旧成立。
+type settingsStub struct {
+	set   bool
+	value bool
+}
+
+func (s *settingsStub) Setting(_ context.Context, key string) string {
+	if key != keyAutoActivate || !s.set {
+		return "" // 没设过 = 这个键在这个部署里没有值 -> auth 回落配置默认（与 site 的未声明键同形）
+	}
+	if s.value {
+		return "on"
+	}
+	return "off"
+}
+
 // noMailAccounts 让注册落进 manual 分支（拍板 §9.5）。
 type noMailAccounts struct{}
 
@@ -164,6 +184,9 @@ func newFixture(t *testing.T, opts ...func(*Deps)) *fixture {
 		Limiter: allowAll{},
 		Queue:   &fakeQueue{},
 		Log:     slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelError})),
+		// 站点设置默认**开着**（与 config.Default() 的默认值一致，所以既有用例一条都不变）。
+		// 要测开关就改 f.set.value；要测「这个键在这个部署里没有」就改 f.set.set=false。
+		Settings: &settingsStub{set: true, value: true},
 	}
 	for _, opt := range opts {
 		opt(&d)
@@ -177,6 +200,7 @@ func newFixture(t *testing.T, opts ...func(*Deps)) *fixture {
 	}
 	f := &fixture{t: t, ctx: ctx, pool: pool, db: client, svc: svc, cfg: cfg, clk: clk, sent: sent}
 	f.queue, _ = d.Queue.(*fakeQueue)
+	f.set, _ = d.Settings.(*settingsStub)
 	return f
 }
 

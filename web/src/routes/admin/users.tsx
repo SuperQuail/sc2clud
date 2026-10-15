@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { qk } from '@/lib/query/keys';
 import {
+  activateUser,
   banUser,
   fetchRoles,
   fetchTitles,
@@ -71,6 +72,20 @@ export function UsersScreenContainer() {
       : '成功 ' + r.ok + ' 个，失败 ' + r.failed.length + ' 个：' + r.failed.slice(0, 3).join('；')),
     onError: (e) => setReceipt('操作失败：' + errorLine(e)),
   });
+  const activate = useMutation({
+    // 与封号同一条形状：逐条发，拿得到「哪一条为什么失败」（批量端点的 reason 是整批一个）
+    mutationFn: async (ids: string[]) => {
+      let ok = 0; const failed: string[] = [];
+      for (const id of ids) {
+        try { await activateUser(id); ok++; } catch (e) { failed.push(id + '：' + (errorLine(e) ?? '')); }
+      }
+      return { ok, failed };
+    },
+    onSuccess: (r) => done(r.failed.length === 0
+      ? '已激活 ' + r.ok + ' 个用户（只写 activated_at，不影响邮箱验证）'
+      : '成功 ' + r.ok + ' 个，失败 ' + r.failed.length + ' 个：' + r.failed.slice(0, 3).join('；')),
+    onError: (e) => setReceipt('激活失败：' + errorLine(e)),
+  });
   const revoke = useMutation({
     mutationFn: revokeUserSessions,
     onSuccess: (r) => done('已踢掉 ' + r.revoked + ' 个会话'),
@@ -110,6 +125,7 @@ export function UsersScreenContainer() {
       canAssignRole={can(me, 'role.assign')}
       canGrantTitle={can(me, 'title.grant')}
       onBan={(ids, action, reason) => ban.mutate({ ids, action, reason })}
+      onActivate={(ids) => activate.mutate(ids)}
       onRevokeSessions={(id) => revoke.mutate(id)}
       onSetRole={(id, roleId) => role.mutate({ id, roleId })}
       onGrantTitle={(userId, titleId) => title.mutate({ userId, titleId })}

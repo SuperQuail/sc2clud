@@ -30,6 +30,9 @@ export function RegisterPage() {
   // 验证码被服务端拒掉时 +1：一道题只有一次机会，旧图已经作废，必须换一张。
   const [captchaSeed, setCaptchaSeed] = useState(0);
   const [localError, setLocalError] = useState<string | null>(null);
+  // 「等管理员激活」这一态（D29）：站点关掉自动激活时后端**不发码**，
+  // 这时把用户丢到「输入验证码」页等于让他去输一封不存在的邮件里的数字。
+  const [waitAdmin, setWaitAdmin] = useState(false);
 
   const submit = useMutation({
     mutationFn: () =>
@@ -41,7 +44,13 @@ export function RegisterPage() {
         captcha: captcha || undefined,
         captcha_id: captchaId || undefined,
       }),
-    onSuccess: () => void navigate(routePath('register/verify?email=' + encodeURIComponent(email)), { replace: true }),
+    onSuccess: (out) => {
+      if (!out.auto_activate) {
+        setWaitAdmin(true);
+        return;
+      }
+      void navigate(routePath('register/verify?email=' + encodeURIComponent(email)), { replace: true });
+    },
   });
 
   function onSubmit(e: FormEvent<HTMLFormElement>) {
@@ -62,6 +71,26 @@ export function RegisterPage() {
       setCaptchaSeed((n) => n + 1);
     }
   }, [err]);
+
+  if (waitAdmin) {
+    return (
+      <AuthShell
+        title='账号已创建，等待管理员激活'
+        subtitle='本站现在由管理员人工激活新账号，不发验证码。'
+        footer={
+          <a className='underline' href={appPath('login')}>
+            去登录
+          </a>
+        }
+      >
+        <FormAlert
+          tone='info'
+          title='已经收到你的注册'
+          description={'账号 ' + handle + ' 建好了，但还没有激活：注册后可以浏览、收藏、下载，发帖与上传要等管理员激活。不需要等验证码，管理员激活后你直接登录即可。'}
+        />
+      </AuthShell>
+    );
+  }
 
   return (
     <AuthShell

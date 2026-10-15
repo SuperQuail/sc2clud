@@ -34,6 +34,40 @@ type Service struct {
 	// diag 是自检面板要的进程级事实（版本 / 启动时间），由 app 层注入。
 	// 不注入时面板照样能开：那是「这个部署没配」，不是「功能坏了」。
 	diag DiagnosticsInfo
+
+	// set 是站点设置（D29 的开关）。nil = 没接，见 autoActivate。
+	set Settings
+}
+
+// autoActivate 回答「注册走自助验证码，还是等管理员手工激活」。
+//
+// **唯一真源是站点设置** auth.registration.auto_activate（D29）：管理员要在后台一个开关里
+// 切换它，而不是改配置文件重启。三个读者共用它 —— 注册、POST /me 的 auto_activate 回执、
+// 重发（否则会出现「注册说等管理员、重发却真发了码」这种自相矛盾的状态）。
+//
+// 两句兜底：没接站点设置 → 配置默认值（config.Auth.AutoActivateOn，拍板 §12.2 默认 true）；
+// 接了但站点的键没声明/读不到 → site.SettingBool 也是 false，同样回到配置默认值。
+const keyAutoActivate = "auth.registration.auto_activate"
+
+// 值域照 site.SettingSpecs()（kindToggle）：只有 "off" 是关，空串 = 这个键在这个部署里
+// 没声明/读不到 —— 那时才回到配置默认值，不能把「没配」当成「关」。
+const (
+	settingOn  = "on"
+	settingOff = "off"
+)
+
+func (s *Service) autoActivate(ctx context.Context) bool {
+	if s.set == nil {
+		return s.cfg.Auth.AutoActivateOn() // 没接站点设置：配置就是唯一开关
+	}
+	switch v := s.set.Setting(ctx, keyAutoActivate); v {
+	case settingOn:
+		return true
+	case settingOff:
+		return false
+	default:
+		return s.cfg.Auth.AutoActivateOn()
+	}
 }
 
 // Deps 是 NewService 的外部依赖。用具名结构体而不是十几个位置参数：
@@ -53,6 +87,9 @@ type Deps struct {
 	TouchFlush func(ctx context.Context, pairs []TouchPair) error
 	// Diagnostics 是 GET /admin/diagnostics 的进程级事实（C3）。
 	Diagnostics DiagnosticsInfo
+	// Settings 读站点设置（D29 的开关）。nil = 没接站点设置，一律走配置默认值 ——
+	// 与 mail 域的 enabled() 同一个兜底方向：缺实现不该把已有的路堵死。
+	Settings Settings
 }
 
 // TouchPair 是一次会话活跃时间的刷新（摘要 + 观测到的时刻）。
@@ -77,7 +114,7 @@ func NewService(cfg *config.Config, dbc *ent.Client, clk clock.Clock, d Deps) (*
 		users: d.Users, mail: d.Mail, mailer: d.Mailer, captcha: d.Captcha,
 		avatars: d.Avatars,
 		limiter: d.Limiter, queue: d.Queue, hash: h, codes: newAttemptGuard(),
-		diag: d.Diagnostics,
+		diag: d.Diagnostics, set: d.Settings,
 	}
 	s.touch = newToucher(clk, cfg.Auth.TouchInterval, cfg.Auth.RenewInterval, cfg.Auth.SessionTTL, s.flushTouch)
 	if d.TouchFlush != nil {

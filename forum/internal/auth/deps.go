@@ -64,6 +64,15 @@ type (
 	Queue interface {
 		Enqueue(ctx context.Context, t queue.Task) error
 	}
+
+	// Settings 由 internal/site.Service 实现：本域只读**一个**键
+	//（auth.registration.auto_activate，D29 的手动激活开关），所以形状只取一个方法。
+	// 与 aireview.Settings 同一个约定：站点开关只有一个读入口，本域不自己查 site_settings
+	//（那样会出现第二份缓存与第二套默认值）。**不用 SettingBool**：它把「没这个键」
+	// 也压成 false，而本域要区分「没配」与「关掉」（前者回落配置默认值）。
+	Settings interface {
+		Setting(ctx context.Context, key string) string
+	}
 )
 
 // 两个邮件模板 id（与 mail_logs 的 CHECK 逐字一致）。

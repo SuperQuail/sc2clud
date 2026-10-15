@@ -100,6 +100,13 @@ export function banUser(userId: string, action: 'ban' | 'unban', reason: string)
 }
 
 /** 踢掉某人的全部会话（封号不带踢；这条是独立的动作）。 */
+/** 手工激活一个用户（D29）：站点关掉自动激活后管理员唯一的激活入口。
+ *  真源 auth/handler.go 的 POST /admin/users/batch 的 action=activate → ActivateUser：
+ *  **只写 activated_at**，不动 email_verified_at（手工激活 ≠ 邮箱验证）。幂等。 */
+export function activateUser(userId: string, reason = ''): Promise<void> {
+  return api<void>('admin/users/batch', { method: 'POST', body: { ids: [userId], action: 'activate', reason } });
+}
+
 export function revokeUserSessions(userId: string): Promise<{ revoked: number }> {
   return api('admin/users/' + encodeURIComponent(userId) + '/sessions/revoke', { method: 'POST' });
 }

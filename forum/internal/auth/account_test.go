@@ -147,10 +147,13 @@ func TestRegisterWithoutMailAccountsFails(t *testing.T) {
 }
 
 // 拍板 §12.6 第 3 条：auto_activate=false → 注册成功、**不发邮件**、两个验证时间都是 NULL。
+//
+// D29 之后开关的真源是**站点设置**（auth.registration.auto_activate），配置只是它没配时的默认值：
+// 所以这条用例按真源把开关关掉。只改 cfg 不再生效 —— 那正是 D29 要修的行为。
 func TestRegisterManualModeSendsNoMail(t *testing.T) {
 	f := newFixture(t)
 	f.seedRBAC()
-	f.cfg.Auth.AutoActivate = ptrBool(false)
+	f.set.value = false
 	out := f.register("waitadmin", "passw0rd-1")
 	if out.AutoActivate {
 		t.Fatal("开关关掉了，响应里的 auto_activate 仍是 true")
@@ -179,7 +182,7 @@ func TestRegisterManualModeSendsNoMail(t *testing.T) {
 func TestAdminManualActivationKeepsEmailUnverified(t *testing.T) {
 	f := newFixture(t)
 	f.seedRBAC()
-	f.cfg.Auth.AutoActivate = ptrBool(false)
+	f.set.value = false // 开关真源 = 站点设置（D29）
 	f.register("manual-activate", "passw0rd-1")
 	root := f.newSuperAdmin("root")
 

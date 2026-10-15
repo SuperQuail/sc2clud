@@ -108,6 +108,9 @@ func newModules(ctx context.Context, cfg *config.Config, in *Infra) (*Modules, e
 	m.Auth, err = auth.NewService(cfg, in.DB, in.Clock, auth.Deps{
 		Users: m.User, Mail: m.Mail, Mailer: m.Mail, Captcha: m.Captcha,
 		Limiter: in.Limiter, Queue: in.Queue, Log: in.Log,
+		// 站点设置（D29 的手动激活开关 auth.registration.auto_activate）：auth 不自己查表，
+		// 走 site 的那一份缓存与声明 —— 管理员在后台一改，注册与重发两条路同时跟着变。
+		Settings: m.Site,
 		// 头像走与 user 域同一份实现（D2）。m.Media 在 100 行前已装配好。
 		Avatars: m.Media,
 	})
