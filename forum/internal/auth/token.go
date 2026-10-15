@@ -6,7 +6,9 @@ import (
 	"encoding/base64"
 	"encoding/binary"
 	"fmt"
+	"net"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -68,8 +70,9 @@ func codeHash(code string) []byte {
 	return sum[:]
 }
 
-// 会话 Cookie 的属性写死在一处（设计 §6.1）：HttpOnly 永远开，Secure 按 base_url 的协议，
-// SameSite=Lax、Path=/、Max-Age=session_ttl。默认同域部署，前端用不到 csrf（方案 §9.3）。
+// 会话 Cookie 的属性写死在一处（设计 §6.1）：HttpOnly 永远开，SameSite=Lax、Path=/、
+// Max-Age=session_ttl。Secure 按**请求实际协议**（下方 requestIsHTTPS）；默认同域部署，
+// 前端用不到 csrf（方案 §9.3）。
 func (s *Service) setSessionCookie(c *gin.Context, token string) {
 	http.SetCookie(c.Writer, &http.Cookie{
 		Name:     s.cfg.Site.CookieName,
@@ -77,7 +80,7 @@ func (s *Service) setSessionCookie(c *gin.Context, token string) {
 		Path:     "/",
 		MaxAge:   int(s.sessionTTL().Seconds()),
 		HttpOnly: true,
-		Secure:   s.secureCookie(),
+		Secure:   s.requestIsHTTPS(c),
 		SameSite: http.SameSiteLaxMode,
 	})
 }
@@ -90,14 +93,45 @@ func (s *Service) ClearCookie(c *gin.Context) {
 		Path:     "/",
 		MaxAge:   -1,
 		HttpOnly: true,
-		Secure:   s.secureCookie(),
+		Secure:   s.requestIsHTTPS(c),
 		SameSite: http.SameSiteLaxMode,
 	})
 }
 
-func (s *Service) secureCookie() bool {
-	const https = "https://"
-	return len(s.cfg.Site.BaseURL) >= len(https) && s.cfg.Site.BaseURL[:len(https)] == https
+// requestIsHTTPS 决定 Secure 属性。prod 的 base_url 是 https（域名走 nginx TLS），
+// 但同一实例也接受 IP 明文 http 访问：Secure 按配置推导会把 cookie 锁成「只在 https 生效」，
+// 浏览器在 http 上按规范直接丢弃 → 「登录成功但仍是未登录」（2026-10-15 用户实测稳定复现）。
+//   - 直连 TLS（r.TLS 非空）→ Secure；
+//   - 代理转发：X-Forwarded-Proto 只信**可信代理**（与 SetTrustedProxies 同一口径），
+//     客户端伪造的 XFP 不算数；
+//   - 其余（IP 明文等）→ 不带 Secure，cookie 照常生效。
+func (s *Service) requestIsHTTPS(c *gin.Context) bool {
+	req := c.Request
+	if req.TLS != nil {
+		return true
+	}
+	if !s.remoteTrusted(c.RemoteIP()) {
+		return false
+	}
+	return strings.EqualFold(req.Header.Get("X-Forwarded-Proto"), "https")
+}
+
+// remoteTrusted 判断直连对端是否落在 cfg.HTTP.TrustedProxies 里（IP 或 CIDR；
+// gin 的 SetTrustedProxies 收的就是同一份列表）。列表为空 = 没有可信代理，一律不信任。
+func (s *Service) remoteTrusted(ipStr string) bool {
+	ip := net.ParseIP(ipStr)
+	if ip == nil {
+		return false
+	}
+	for _, t := range s.cfg.HTTP.TrustedProxies {
+		if p := net.ParseIP(t); p != nil && p.Equal(ip) {
+			return true
+		}
+		if _, n, err := net.ParseCIDR(t); err == nil && n.Contains(ip) {
+			return true
+		}
+	}
+	return false
 }
 
 // 会话列表与踢设备的 {id}：token_hash 的 base64url **全文**（32 字节 → 43 字符）。

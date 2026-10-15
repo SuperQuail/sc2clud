@@ -28,6 +28,10 @@ export function LoginPage() {
   const [captcha, setCaptcha] = useState('');
   const [captchaId, setCaptchaId] = useState('');
   const [captchaSeed, setCaptchaSeed] = useState(0);
+  // 验证码框**默认不画**（产品拍板 2026-10-15：只有限流开始后——连续登录错误 5 次——才要求）。
+  // 后端判到了但前端不知道，所以以 auth.captcha_required / auth.captcha_wrong 为亮框信号。
+  // mode=always 时第一次提交会多付一次 400 用来亮框 —— 现网 mode=on_failure，常态不发生。
+  const [captchaOn, setCaptchaOn] = useState(false);
 
   const signIn = useMutation({
     mutationFn: () =>
@@ -38,10 +42,16 @@ export function LoginPage() {
       void navigate(next, { replace: true });
     },
     onError: (e) => {
-      // 验证码错 / 需要验证码：后端用 auth.captcha_required / auth.captcha_wrong 表达（§21.4）
+      // 服务端开始要求验证码（限流门槛到了 / 这张答错了）：把框亮出来。
       if (isApiError(e) && (e.code === 'auth.captcha_required' || e.code === 'auth.captcha_wrong')) {
+        setCaptchaOn(true);
+      }
+      // 验证码题是**一次性的**：服务端在密码校验**之前**就消费了它，所以除 429 外的任何失败，
+      // 下一提交都必须换新题 —— 只在验证码类错误时换题，是「密码错一次后对着死题重输、
+      // 明明按图填了却说验证码不正确」的根源（2026-10-15 用户实测，prod 稳定复现）。
+      // 429 不换：登录限流与出题限流的同一个阶段里，重取只会再撞一次墙。
+      if (!isApiError(e) || e.status !== 429) {
         setCaptcha('');
-        // 一道题只有一次机会（服务端无论对错都作废），所以出错必须换一张新的。
         setCaptchaSeed((n) => n + 1);
       }
     },
@@ -122,17 +132,16 @@ export function LoginPage() {
           onChange={setPassword}
           error={fieldError(err, 'password')}
         />
-        {/* **验证码框常驻。** 原先是「后端要才画」（challenge 初值 false），于是 mode=always 下
-            第一次提交必然 400 auth.captcha_required、框才冒出来 —— 用户以为自己填错了。
-            mode=off 时服务端不看它、空着也能提交，所以常驻不挡人。 */}
-        {(
+        {/* 验证码框只在服务端要求后出现（2026-10-15 拍板）。-mode=always 的一次 400 亮框
+            是已知代价，on_failure/off 常态下框根本不渲染、也不去拉题（顺带省出题额度）。 */}
+        {captchaOn ? (
           <ProductCaptcha
             value={captcha}
             onChange={setCaptcha}
             onChallenge={setCaptchaId}
-          refreshKey={captchaSeed}
-        />
-        )}
+            refreshKey={captchaSeed}
+          />
+        ) : null}
         <Checkbox
           label='记住我（这台设备 7 天免登录）'
           checked={remember}

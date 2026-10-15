@@ -17,8 +17,10 @@ import (
 // ——设计 §9.5 的入参与 §7.2 的 verifyOrErr 都是「id + answer」成对校验，
 // 只有一张图的话服务端没法把答案和某一道题对上。
 const (
-	// 10 次/小时：防脚本刷题（d2-auth §9.5 的额度表）。
-	captchaIssueLimit  = 10
+	// 30 回/小时：防脚本刷题（d2-auth §9.5 的额度表）。2026-10-15 从 10 放宽——实测
+	// 「页面载入 + 几次换一张 + 每次失败都要一张新题」轻易打光 10 回，答对的人也被 429 挡在门外，
+	// 表现为「验证码加载失败」。30 ≈ 每 2 分钟 1 张的持续速率，防刷仍然成立。
+	captchaIssueLimit  = 30
 	captchaIssueWindow = time.Hour
 	// 限流键前缀（d2-auth §9.5 与 d5-content §7.2 的键名逐字一致）。
 	keyCaptchaIP = "auth:captcha:ip:"
