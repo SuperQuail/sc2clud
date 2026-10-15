@@ -1,7 +1,7 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { expect, it, vi } from 'vitest';
-import { MemoryRouter, Route, Routes } from 'react-router';
+import { MemoryRouter, Route, Routes, useLocation } from 'react-router';
 import { TopicPage } from './topic';
 // 映射函数 2026-10-14 搬到 _parts/topic-mappers（宿主只留取数与传参，见那边的注释）
 import { toMentionCandidates } from './_parts/topic-mappers';
@@ -197,13 +197,21 @@ vi.mock('@/lib/perms', () => ({
   can: () => true,
 }));
 
-function renderPage() {
+// state 可选：发帖页保存后回跳时带的 **{resubmitted:true}**（B6 那条要演它）
+function SearchProbe() {
+  const loc = useLocation();
+  return <div data-testid='probe-search'>{loc.search}</div>;
+}
+
+function renderPage(state?: unknown) {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(
     <QueryClientProvider client={qc}>
-      <MemoryRouter initialEntries={['/t/' + WIRE.id]}>
+      <MemoryRouter initialEntries={[{ pathname: '/t/' + WIRE.id, state }]}>
         <Routes>
           <Route path='/t/:topicId' element={<TopicPage />} />
+          {/* 「编辑 / 重新提交」都跳发帖页编辑态：这里放一条探针，断言真的跳到了 /new?edit=<id> */}
+          <Route path='/new' element={<SearchProbe />} />
           {/* 删帖成功后会回到分区页：不给这条路由，react-router 会往 stderr 打一行噪音 */}
           <Route path='*' element={<div />} />
         </Routes>
@@ -286,37 +294,28 @@ it('举报打到 POST /reports，字段名与后端 DTO 逐字一致（target_ty
   );
 });
 
-it('B6：编辑保存发的 PATCH 带 content_md（后端凭它把 review_state 打回 pending），页面上说清这一点', async () => {
-  mocks.updateTopic.mockResolvedValue({});
+// B6（2026-10-15 改口径）：编辑不再在帖子页里改 —— 「编辑」与「重新提交审核」都是一条**去发帖页编辑态**的链接
+// （/new?edit=<id>），PATCH 与「打回 pending」都在那边发生（那里的用例钉住了 content_md 是 Markdown）。
+// 帖子页剩下的责任只有一条：**从发帖页回来时，把「这次是改完重提」说出来** ——
+// 那个事实由导航 state 带回来（编辑保存才带），刷新后与首次投稿同形，这是有意的诚实。
+it('B6：编辑与重新提交都是去发帖页的链接；从发帖页回来时横幅说清「已重新提交复审」', async () => {
   renderPage();
   await screen.findByTestId('topic-main');
-  fireEvent.click(screen.getByTestId('topic-edit'));
-  const dialog = await screen.findByRole('dialog');
-  fireEvent.change(dialog.querySelector('input')!, { target: { value: '改过的标题' } });
-  // 这次保存之后服务端会把 review_state 从 rejected 打回 pending（forum 的 ResetTopicReview）——
-  // 桩要跟着变，否则测的是「回执没变」这种谁都看不出来的东西。
+  expect(screen.getByTestId('topic-edit').getAttribute('href')).toBe('/new?edit=' + WIRE.id);
+  // 复审横幅上的那颗按钮走同一个落点（后端状态机没有 rejected → approved 这条边，只有「改完重提」）
+  fireEvent.click(screen.getByTestId('topic-resubmit'));
+  await waitFor(() => expect(screen.getByTestId('probe-search').textContent).toBe('?edit=' + WIRE.id));
+  cleanup();
+
+  // 保存成功后服务端把 review_state 从 rejected 打回 pending；发帖页回跳时带 state —— 横幅与回执都要说同一件事
   mocks.topic.current = { review_state: 'pending', review_note: null };
-  fireEvent.click(dialog.querySelector('[data-testid=edit-save]')!);
-  // 不带 content_md 的 PATCH 不会重置审核态 —— 所以正文必须在体内。
-  // 上行的那一份是 **Markdown**（后端 content_md 那一列过 goldmark → bluemonday 渲染成 content_html，
-  // 由 editor-json-to-markdown 换出来）；不再是「从 content_html 剥标签得到的纯文本」——
-  // 那条路会把提及与图片节点弄丢，而直接发编辑器 JSON 就是缺陷清单 D6 那个形态。
-  await waitFor(() => expect(mocks.updateTopic).toHaveBeenCalledTimes(1));
-  const [patchedId, patchedBody] = mocks.updateTopic.mock.calls[0]! as [string, { title: string; content_md: string }];
-  expect(patchedId).toBe(WIRE.id);
-  expect(patchedBody.title).toBe('改过的标题');
-  expect(patchedBody.content_md).toBe('正文');
-  expect(JSON.stringify(patchedBody)).not.toContain('"root"');
-  // WIRE.content_md 是「正文」（历史值，不是 JSON）：它必须**被保住**（toEditorState 包成最小文档再进编辑器，
-  // 出来还是同一段 Markdown），而不是抛在用户脸上、也不是被清空 —— 这一条同时钉住回填方向。
-  // B6 的那句实话：保存 = 重新提交审核，回执必须说出来（旧回执只会说「更新了」，作者不知道自己在重审）
-  await waitFor(() => expect(screen.getAllByTestId('design-action-note')[0]!.textContent).toContain('已重新提交审核'));
-  // L7：页头横幅也要说同一件事 —— 「正在审核中」这一档原先与**首次投稿**完全同形，
-  // 作者改完正文唯一的反馈就是动作条下面那行回执（滚上去就看不见了）。
+  renderPage({ resubmitted: true });
+  await screen.findByTestId('topic-main');
   const banner = screen.getByTestId('review-banner');
   expect(banner.getAttribute('data-state')).toBe('pending');
   expect(banner.getAttribute('data-resubmitted')).toBe('1');
   expect(banner.textContent).toContain('已重新提交复审');
+  expect(screen.getAllByTestId('design-action-note')[0]!.textContent).toContain('已重新提交审核');
   mocks.topic.current = null;
 });
 

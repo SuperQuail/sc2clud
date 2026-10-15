@@ -198,18 +198,60 @@ function CreateTitleDialog({ open, busy, onClose, onCreate }: {
   const [name, setName] = useState('');
   const [color, setColor] = useState('#2563eb');
   const [description, setDescription] = useState('');
+  // 就地校验照后端那一份值域（forum/internal/title/service.go 的 validateTitle）：
+  // 2026-10-15 实测「新建头衔」稳定 400 —— 后端只说「参数错误」，而 key 带连字符／大写、
+  // 颜色不是 #rrggbb 都会中。这里把理由写在输入框下面，按钮也只在合法时才亮。
+  // 最常见的两种错法（连字符、大写）**就地纠正**：字段里立刻显示真实要提交的值，不做静默改写。
+  // 非拉丁字符（中文 key）不猜、也不硬塞下划线 —— 交给下面那条错误提示说清楚。
+  const normalizeKey = (v: string) => v.toLowerCase().replace(/[\s-]+/g, '_');
+  const keyError = /^[a-z0-9_]{1,32}$/.test(key.trim()) ? null : '只能是小写字母、数字、下划线，1-32 位（连字符请用 _）';
+  const nameError = name.trim() === '' ? '不能为空' : [...name.trim()].length > 32 ? '不能超过 32 字' : null;
+  const colorError = color.trim() === '' || /^#[0-9a-fA-F]{6}$/.test(color.trim()) ? null : '必须是 #rrggbb（例如 #2563eb）';
+  const descError = [...description].length > 200 ? '不能超过 200 字' : null;
   if (!open) return null;
-  const ready = key.trim() !== '' && name.trim() !== '';
+  const ready = !keyError && !nameError && !colorError && !descError;
   return (
     <Dialog show label='新建头衔' onCloseAttempt={onClose} onOverlayClick={onClose} onEscPress={onClose}>
       <div className='flex w-[420px] max-w-full flex-col gap-3 p-4'>
-        <Input label='key（小写，唯一）' value={key} onChange={(e) => setKey(e.target.value)} placeholder='speedrunner' />
-        <Input label='显示名' value={name} onChange={(e) => setName(e.target.value)} placeholder='速通达人' />
-        <Input label='颜色' value={color} onChange={(e) => setColor(e.target.value)} placeholder='#2563eb' />
-        <Input label='说明' value={description} onChange={(e) => setDescription(e.target.value)} placeholder='这条头衔是给谁的' />
+        <Input
+          label='key（小写，唯一）'
+          value={key}
+          onChange={(e) => setKey(normalizeKey(e.target.value))}
+          placeholder='speedrunner'
+          help='小写字母 / 数字 / 下划线，1-32 位；大写与连字符会自动转成小写与 _'
+          error={key.trim() ? (keyError ?? undefined) : undefined}
+        />
+        <Input
+          label='显示名'
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+          placeholder='速通达人'
+          error={name.trim() ? (nameError ?? undefined) : undefined}
+        />
+        <Input
+          label='颜色'
+          value={color}
+          onChange={(e) => setColor(e.target.value)}
+          placeholder='#2563eb'
+          error={color.trim() ? (colorError ?? undefined) : undefined}
+        />
+        <Input
+          label='说明'
+          value={description}
+          onChange={(e) => setDescription(e.target.value)}
+          placeholder='这条头衔是给谁的'
+          error={descError ?? undefined}
+        />
         <div className='flex justify-end gap-2'>
           <Button onClick={onClose}>取消</Button>
-          <Button primary disabled={!ready || busy} onClick={() => onCreate({ key: key.trim(), name: name.trim(), color, description })}>创建</Button>
+          <Button
+            primary
+            disabled={!ready || busy}
+            data-testid='title-create-submit'
+            onClick={() => onCreate({ key: key.trim(), name: name.trim(), color: color.trim(), description: description.trim() })}
+          >
+            创建
+          </Button>
         </div>
       </div>
     </Dialog>

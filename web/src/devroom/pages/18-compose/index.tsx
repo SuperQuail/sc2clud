@@ -16,6 +16,7 @@ import { BoardCover } from '@/devroom/pages/03-navigation/board-rail';
 import { PreviewPane } from './preview-pane';
 import { SourceEditor } from './source-editor';
 import { TOPIC } from '@/devroom/pages/12-topic';
+import { toEditorState } from '@/ui/rich/markdown-to-editor-json';
 import { BackLinks, SubmitBar, SubmitResult } from './submit-gate';
 import { disabledReason, type Draft } from './draft';
 import type { SourceInput } from '@/lib/api/forum';
@@ -90,7 +91,7 @@ export default function ComposePage() {
     setPrefilled(true);
     setTitle(TOPIC.title);
     const md = TOPIC.content_md ?? '';
-    setDoc({ json: md, html: TOPIC.content_html ?? '', length: md.length });
+    setDoc({ json: toEditorState(md), html: TOPIC.content_html ?? '', length: md.length });
     const key = TOPIC.board.slug;
     setBoard(BOARD_OPTIONS.some((b) => b.key === key) ? (key as BoardKey) : DEFAULT_BOARD);
   }, [editing, prefilled]);

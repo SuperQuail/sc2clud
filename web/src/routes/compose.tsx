@@ -9,6 +9,7 @@ import { Eye, EyeOff, Lock } from 'lucide-react';
 import { icon16 } from '@/ui/icons';
 import { MarkdownEditor } from '@/ui/rich/markdown-editor';
 import { editorJsonToMarkdown } from '@/ui/rich/editor-json-to-markdown';
+import { toEditorState } from '@/ui/rich/markdown-to-editor-json';
 import { FormAlert } from '@/devroom/pages/16-auth/form-alert';
 import { PreviewPane } from '@/devroom/pages/18-compose/preview-pane';
 import { SourceEditor } from '@/devroom/pages/18-compose/source-editor';
@@ -84,7 +85,9 @@ export function ComposePage() {
     setBoard(existing.data.board.slug);
     setKind(existing.data.kind);
     const md = existing.data.content_md ?? '';
-    setDoc({ json: md, html: existing.data.content_html ?? '', length: md.length });
+    // content_md 是**历史列**（老站是 Markdown 纯文本）：不换算就灌编辑器 → 正文空白
+    // （2026-10-15 实测）。toEditorState 就是那一层换算，房间与产品共用同一份。
+    setDoc({ json: toEditorState(md), html: existing.data.content_html ?? '', length: md.length });
   }, [editing, prefilled, existing.data]);
 
   // 提交判据来自设计稿的 draft.ts（「三项齐了才能提交」+ 空编辑器的 '<p><br></p>' 不算正文）。
@@ -113,7 +116,13 @@ export function ComposePage() {
     onSuccess: (t) => {
       void qc.invalidateQueries({ queryKey: qk.topic(t.id) });
       void qc.invalidateQueries({ queryKey: qk.posts(t.id) });
-      void navigate(routePath('t/' + encodeURIComponent(t.id)), { replace: true });
+      // 编辑保存后回帖子页：**这一次是「改完重提」**这个事实只有本页知道（PATCH 带 content_md 会把
+      // review_state 打回 pending），用导航 state 交回去 —— 帖子页据此把横幅说成「已重新提交复审」。
+      // 刷新后 state 消失、与首次投稿同形：这是**有意的诚实**（后端没有「第几次提交」这一列）。
+      void navigate(routePath('t/' + encodeURIComponent(t.id)), {
+        replace: true,
+        state: editing ? { resubmitted: true } : undefined,
+      });
     },
   });
 

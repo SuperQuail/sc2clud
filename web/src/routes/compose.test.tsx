@@ -33,8 +33,13 @@ const EDITOR_JSON = JSON.stringify({
 vi.mock('@/ui/rich/markdown-editor', async () => {
   const { default: Input } = await import('@jetbrains/ring-ui-built/components/input/input');
   return {
-    MarkdownEditor: ({ onChange }: { onChange: (json: string, html: string) => void }) => (
-      <Input label='假编辑器（测试注入）' onChange={(e) => onChange(e.target.value, '<p>不管</p>')} />
+    // value 也渲染出来：编辑态的**回填**是 2026-10-15 实测的缺陷（进去正文全空），
+    // 只断言 onChange 的测试看不见它。
+    MarkdownEditor: ({ value, onChange }: { value: string; onChange: (json: string, html: string) => void }) => (
+      <>
+        <Input label='假编辑器（测试注入）' onChange={(e) => onChange(e.target.value, '<p>不管</p>')} />
+        <span data-testid='editor-initial'>{value}</span>
+      </>
     ),
   };
 });
@@ -162,6 +167,21 @@ it('编辑资源帖：SourceEditor 用的是服务端那份 sources（真字段�
   // 编辑态：按钮说的是「保存修改」，标题已从接口回填
   expect(screen.getByTestId('compose-submit').textContent).toContain('保存修改');
   expect((screen.getByTestId('compose-title') as HTMLInputElement).value).toBe('第三章「余烬」发布');
+});
+
+// 2026-10-15 实测：编辑帖子进去**正文空白**（标题/分区/来源都对）——
+// content_md 是历史列（老站是 Markdown 纯文本），直接灌编辑器（按 EditorState JSON 解析）就是空文档。
+// 这条钉住回填：编辑器拿到的必须是**含正文文本的 EditorState**，一字不能丢。
+it('编辑态回填：编辑器初始值是从 content_md 换出来的 EditorState（正文不空）', async () => {
+  mockApi((url) =>
+    url.includes('/me') ? { body: ME } : url.includes('/topics/tp-1') ? { body: TOPIC } : { body: BOARDS },
+  );
+  renderCompose('/new?edit=tp-1');
+  await waitFor(() => expect((screen.getByTestId('compose-title') as HTMLInputElement).value).toBe('第三章「余烬」发布'));
+  const initial = JSON.parse(screen.getByTestId('editor-initial').textContent ?? '') as {
+    root: { children: { children: { text: string }[] }[] };
+  };
+  expect(initial.root.children[0]!.children[0]!.text).toBe('# 余烬');
 });
 
 // D6 的同一条根因，影响面最大的两处：**发帖**与**编辑正文**。

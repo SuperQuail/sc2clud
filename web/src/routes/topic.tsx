@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useNavigate, useParams } from 'react-router';
+import { useLocation, useNavigate, useParams } from 'react-router';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import Button from '@jetbrains/ring-ui-built/components/button/button';
 import { appPath, routePath } from '@/lib/url';
@@ -56,6 +56,7 @@ const BOARD_NAV: BoardNav[] = [
 export function TopicPage() {
   const { topicId = '' } = useParams();
   const navigate = useNavigate();
+  const loc = useLocation();
   const session = useSession();
   const queryClient = useQueryClient();
 
@@ -253,8 +254,14 @@ export function TopicPage() {
     joined: boardFollow.data?.following ?? false,
   };
   const designAuthor = toDesignAuthor(t, ap);
-  const review = toReview(t); // 编辑现在全部发生在发帖页；回执只接本页自己的动作
-  const receiptText = receipt;
+  // 「这次是改完重提」由发帖页用导航 state 交回来（编辑保存 → PATCH 带 content_md → 后端把
+  // review_state 打回 pending）。只看这一次会话：刷新后与首次投稿同形，这是有意的诚实。
+  const resubmitted =
+    Boolean((loc.state as { resubmitted?: boolean } | null)?.resubmitted) && wire.review_state === 'pending';
+  const review = resubmitted ? { ...toReview(t), resubmitted: true } : toReview(t);
+  const receiptText = resubmitted
+    ? '已保存 · 正文改动已重新提交审核（回到「审核中」），通过后其他人才能看到。'
+    : receipt;
 
   const comments = toComments(posts.data?.items ?? []);
   const loggedIn = session.isLoggedIn;
