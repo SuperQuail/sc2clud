@@ -1811,7 +1811,7 @@ var (
 		{Name: "label", Type: field.TypeString, Size: 60, Default: "", SchemaType: map[string]string{"postgres": "varchar(60)"}},
 		{Name: "url", Type: field.TypeString, SchemaType: map[string]string{"postgres": "text"}},
 		{Name: "extraction_code", Type: field.TypeString, Nullable: true, Size: 16, SchemaType: map[string]string{"postgres": "varchar(16)"}},
-		{Name: "size_text", Type: field.TypeString, Size: 16, Default: "", SchemaType: map[string]string{"postgres": "varchar(16)"}},
+		{Name: "size_text", Type: field.TypeString, Size: 64, Default: "", SchemaType: map[string]string{"postgres": "varchar(64)"}},
 		{Name: "upkeep", Type: field.TypeString, Default: "active", SchemaType: map[string]string{"postgres": "text"}},
 		{Name: "go_count", Type: field.TypeInt64, Default: 0},
 		{Name: "verified_at", Type: field.TypeTime, Nullable: true},

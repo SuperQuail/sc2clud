@@ -31,7 +31,7 @@ type TopicSource struct {
 	URL string `json:"url,omitempty"`
 	// 网盘提取码，**明文存**：它是给所有人看的分享口令，不是密码
 	ExtractionCode *string `json:"extraction_code,omitempty"`
-	// 展示用「2.4 GB」，后端格式化后端存（前端不做单位换算）
+	// 普通展示文本（D70 拍板：不托管文件，大小就是作者随手写的一截字；格式检查已随 0057 删除）
 	SizeText string `json:"size_text,omitempty"`
 	// active/archived。**不许从 verified_at 推断**：链接昨天验过、作者已弃坑是常见组合
 	Upkeep string `json:"upkeep,omitempty"`
