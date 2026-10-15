@@ -1,4 +1,4 @@
-// Package ai 是 AI 审核的**协议层**：只懂「把一段文本交给模型，拿回一个判定」，
+// Package ai 是 AI 审核的**协议层**：只懂「把一段文本（可带图）交给模型，拿回一个判定」，
 // 不懂论坛、不懂数据库、不懂状态机。
 //
 // 设计与参数纪律照 完全重构/后端设计/d7-ai-review.md §3：
@@ -15,6 +15,7 @@ package ai
 
 import (
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -64,8 +65,24 @@ type Result struct {
 // ErrTransport 是**可重试**的那一类（网络/超时/HTTP 错误）。
 var ErrTransport = errors.New("ai: 调用失败（可重试）")
 
-// Judge 让模型判一段文本：prompt 是 system，text 是 user 消息。
+// Attachment 是随 user 消息一起发出去的一张图。Data 是**原始字节**：不解码、不缩放、不转格式 ——
+// 官方文档写明服务端**按文件内容**判类型（不看文件名 / MIME），所以 webp 直接发。
+type Attachment struct {
+	// MIME 只用来拼 data URL 的前缀，服务端不靠它判类型。
+	MIME string
+	Data []byte
+}
+
+// Judge 是纯文本那一条：请求体与多模态上线之前**逐字同形**（system + 一段字符串的 user）。
 func Judge(ctx context.Context, cfg Config, prompt, text string) (Result, error) {
+	return JudgeImages(ctx, cfg, prompt, text, nil)
+}
+
+// JudgeImages 让模型判一段文本 + 若干张图（D33③，用户 2026-10-15 拍板）。
+// 有图时 user 的 content 是 OpenAI 兼容的**块数组** [text, image_url, …]；没图时仍发纯文本。
+// 图片走 **data URL 内联**：另一条路要「60 秒内能被服务端取回」的公网图片地址，而本站的
+// /img/<hash> 在 dev/内网里外部取不到（这 48 MiB 的请求体上限就是内联的代价）。
+func JudgeImages(ctx context.Context, cfg Config, prompt, text string, images []Attachment) (Result, error) {
 	if cfg.APIKey == "" || cfg.BaseURL == "" || cfg.Model == "" {
 		return Result{}, errors.New("ai: 未配置（缺 key / base_url / model）")
 	}
@@ -84,11 +101,23 @@ func Judge(ctx context.Context, cfg Config, prompt, text string) (Result, error)
 
 	reqCtx, cancel := context.WithTimeout(ctx, cfg.Timeout)
 	defer cancel()
+	user := openai.UserMessage(text) // 无图：user.content 就是一段字符串（形状与从前逐字相同）
+	if len(images) > 0 {
+		// 文本在前、图在后：先把任务与规则给它，再给被审的图（官方文档的样例顺序）。
+		parts := make([]openai.ChatCompletionContentPartUnionParam, 0, len(images)+1)
+		parts = append(parts, openai.TextContentPart(text))
+		for _, im := range images {
+			parts = append(parts, openai.ImageContentPart(openai.ChatCompletionContentPartImageImageURLParam{
+				URL: dataURL(im),
+			}))
+		}
+		user = openai.UserMessage(parts)
+	}
 	params := openai.ChatCompletionNewParams{
 		Model: shared.ChatModel(cfg.Model),
 		Messages: []openai.ChatCompletionMessageParamUnion{
 			openai.SystemMessage(prompt),
-			openai.UserMessage(text),
+			user,
 		},
 		// param.Opt 是「显式传值」：0 就是 0，不会被当成缺省丢掉（这正是换官方 SDK 的原因）。
 		Temperature: param.NewOpt(0.0),
@@ -115,6 +144,16 @@ func Judge(ctx context.Context, cfg Config, prompt, text string) (Result, error)
 		return Result{}, fmt.Errorf("%w: %v", ErrTransport, err)
 	}
 	return parse(resp, cfg.Model, latency), nil
+}
+
+// dataURL 把一张图编成内联 data URL。MIME 缺省时给 octet-stream —— 服务端按内容判类型，
+// 这个前缀只是「读日志 / 抓请求的人」看到的那一行字。
+func dataURL(a Attachment) string {
+	mime := a.MIME
+	if mime == "" {
+		mime = "application/octet-stream"
+	}
+	return "data:" + mime + ";base64," + base64.StdEncoding.EncodeToString(a.Data)
 }
 
 // SubmitReviewSchema 是 submit_review 的 JSON Schema（d7 §3.2 的字段逐字；strict 模式要求写准）。

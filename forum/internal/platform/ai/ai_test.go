@@ -2,6 +2,7 @@ package ai
 
 import (
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -133,6 +134,90 @@ func TestJudgeRefusesWithoutKey(t *testing.T) {
 	if called {
 		t.Fatal("没配 key 却发出了请求")
 	}
+}
+
+// D33③（用户 2026-10-15 拍板，推翻 d7 §11 的「不送图片」）：有图时 user 的 content 必须是
+// OpenAI 兼容的**块数组**，图片以 data URL 内联（另一条路要公网可达的图片地址，dev 没有）。
+//
+// 先红：JudgeImages 不存在时编译不过；只把图接成纯文本（不组块数组）时红在「user.content 不是数组」。
+func TestJudgeSendsImageContentParts(t *testing.T) {
+	var seen string
+	srv := serve(t, toolCall("approve", "没问题"), 200, func(_ *http.Request, body string) { seen = body })
+	defer srv.Close()
+	raw := []byte{0x52, 0x49, 0x46, 0x46, 1, 2, 3, 4} // 字节是什么不重要：服务端按内容判类型
+	_, err := JudgeImages(context.Background(),
+		Config{BaseURL: srv.URL, Model: "deepseek-flash", APIKey: "k", Timeout: time.Second},
+		"提示词", "标题：看图", []Attachment{{MIME: "image/webp", Data: raw}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	msgs := messagesOf(t, seen)
+	if len(msgs) != 2 || msgs[0].Role != "system" || msgs[1].Role != "user" {
+		t.Fatalf("消息条数/角色不对: %s", seen)
+	}
+	parts := contentParts(t, msgs[1].Content)
+	if len(parts) != 2 {
+		t.Fatalf("块数不对（文本 1 + 图 1）: %s", msgs[1].Content)
+	}
+	if parts[0].Type != "text" || parts[0].Text != "标题：看图" {
+		t.Fatalf("第一块该是正文文本，实际 %+v", parts[0])
+	}
+	want := "data:image/webp;base64," + base64.StdEncoding.EncodeToString(raw)
+	if parts[1].Type != "image_url" || parts[1].ImageURL.URL != want {
+		t.Fatalf("第二块该是内联 data URL:\n得到 %+v\n想要 %s", parts[1], want)
+	}
+}
+
+// 无图帖的请求体与加多模态之前**逐字同形**：system + 一段纯文本 user。
+// 不是为了兼容谁 —— 是为了让「无图」这条路径的形状不随功能上线而变（变了旧日志就要重新解释）。
+func TestJudgeKeepsPlainTextUserWithoutImages(t *testing.T) {
+	var seen string
+	srv := serve(t, toolCall("approve", "没问题"), 200, func(_ *http.Request, body string) { seen = body })
+	defer srv.Close()
+	if _, err := Judge(context.Background(), Config{BaseURL: srv.URL, Model: "m", APIKey: "k", Timeout: time.Second}, "p", "标题：纯文本"); err != nil {
+		t.Fatal(err)
+	}
+	msgs := messagesOf(t, seen)
+	var text string
+	if err := json.Unmarshal(msgs[1].Content, &text); err != nil {
+		t.Fatalf("无图时 user.content 该是一段纯文本，实际 %s", msgs[1].Content)
+	}
+	if text != "标题：纯文本" {
+		t.Fatalf("user 文本变了: %q", text)
+	}
+}
+
+type wireMessage struct {
+	Role    string          `json:"role"`
+	Content json.RawMessage `json:"content"`
+}
+
+func messagesOf(t *testing.T, body string) []wireMessage {
+	t.Helper()
+	var payload struct {
+		Messages []wireMessage `json:"messages"`
+	}
+	if err := json.Unmarshal([]byte(body), &payload); err != nil {
+		t.Fatalf("请求体不是 JSON: %v", err)
+	}
+	return payload.Messages
+}
+
+type wirePart struct {
+	Type     string `json:"type"`
+	Text     string `json:"text"`
+	ImageURL struct {
+		URL string `json:"url"`
+	} `json:"image_url"`
+}
+
+func contentParts(t *testing.T, content json.RawMessage) []wirePart {
+	t.Helper()
+	var parts []wirePart
+	if err := json.Unmarshal(content, &parts); err != nil {
+		t.Fatalf("user.content 不是块数组（有图时必须组块）: %s", content)
+	}
+	return parts
 }
 
 func contains(s, sub string) bool {
