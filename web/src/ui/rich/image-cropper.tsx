@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { createPortal } from 'react-dom';
 import Cropper, { type Area, type Point } from 'react-easy-crop';
 import Button from '@jetbrains/ring-ui-built/components/button/button';
 import Dialog from '@jetbrains/ring-ui-built/components/dialog/dialog';
@@ -104,7 +105,10 @@ export function ImageCropper({ source, aspect = 1, round = aspect === 1, aspectO
   }
 
   const ready = img !== null && area !== null;
-  return (
+  // D69：通过 portal 渲染 —— 封面链路里这颗 Ring Dialog 曾是「封面/背景」native <dialog> 的
+  // **子孙**，native modal 的后代进不了 top layer 的正确层级，命中测试整块被外层 dialog 抢走
+  // （白覆盖、拖不动）。portal 到 body 之后两颗 dialog 是兄弟，与头像链路（页面根部挂载）同构。
+  return createPortal(
     <Dialog
       show
       modal
@@ -221,6 +225,7 @@ export function ImageCropper({ source, aspect = 1, round = aspect === 1, aspectO
           </Button>
         </div>
       </div>
-    </Dialog>
+    </Dialog>,
+    document.body,
   );
 }

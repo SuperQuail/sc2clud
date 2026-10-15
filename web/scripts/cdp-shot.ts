@@ -14,7 +14,7 @@
 // （build = tsc --noEmit && vite build，于是 pack-dev.ts 与 deploy.ps1 一起跑不动）。
 // 它是 scripts/ 下的工具，不在产品构建里，但**在同一份 tsconfig 下** —— 工具也要能过 tsc。
 import { spawn } from 'node:child_process';
-import { existsSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 
 const CANDIDATES = [
@@ -162,6 +162,45 @@ for (const action of actions) {
     const sel = rest.join(':');
     const ok = await cdp.eval<boolean>(`(() => { const el = document.querySelector(\`${sel}\`); if (!el) return false; el.click(); return true; })()`);
     if (!ok) throw new Error('点不到: ' + sel);
+  } else if (kind === 'nav') {
+    // 端内跳转（会话注入后要到真实页面去）。
+    const target = rest.join(':');
+    await cdp.send('Page.navigate', { url: target });
+    await sleep(2600);
+  } else if (kind === 'cookie') {
+    // name:value —— 给当前域塞会话（dev 注入诊断会话用的；用完会删）。
+    void cdp.send('Network.enable');
+    const name = rest[0]!;
+    const value = rest.join(':').slice(name.length + 1);
+    await cdp.send('Network.setCookie', { name, value, url: 'http://191.40.41.97/dev/' , path: '/dev' });
+    await sleep(150);
+  } else if (kind === 'diag') {
+    // 弹层诊断：两颗 dialog 的位置/命中点。修 stacking 的证据件。
+    const info = await cdp.eval<Record<string, unknown>>(
+      "(async () => { const dl = [...document.querySelectorAll('dialog[open]')]; const out = dl.map((d) => { const r = d.getBoundingClientRect(); const cs = getComputedStyle(d); return { cls: String(d.className).slice(0, 60), x: r.x, y: r.y, w: r.width, h: r.height, margin: cs.margin, position: cs.position } }); const box = document.querySelector('[data-testid=crop-frame]'); let hit = null; if (box) { const r = box.getBoundingClientRect(); const c = document.elementFromPoint(r.x + r.width / 2, r.y + r.height / 2); hit = { box: { x: r.x, y: r.y, w: r.width, h: r.height }, top: c ? c.tagName + '.' + String(c.className).slice(0, 60) : null, inside: c === box || box.contains(c) } } return { dialogs: out, hit }; })()",
+    );
+    console.log('DIAG ' + JSON.stringify(info));
+  } else if (kind === 'stufffile') {
+    // 把本地文件塞进页面里的 <input type=file>（DataTransfer）并触发 change。
+    // 拍图工具抓不到「选完文件之后」的状态（文件选择器是系统层）；
+    // 封面/头像链路要走到裁剪框就得靠这注入。
+    const sel = rest[0]!;
+    const file = rest[1]!;
+    if (!existsSync(file)) throw new Error('文件不存在: ' + file);
+    const dataUrl = 'data:image/png;base64,' + readFileSync(file).toString('base64');
+    const ok = await cdp.eval<boolean>(`(async () => {
+      const el = document.querySelector(` + JSON.stringify(sel) + `);
+      if (!el) return false;
+      const bytes = new Uint8Array(await (await fetch(` + JSON.stringify(dataUrl) + `)).arrayBuffer());
+      const f = new File([bytes], 'probe.png', { type: 'image/png' });
+      const dt = new DataTransfer();
+      dt.items.add(f);
+      el.files = dt.files;
+      el.dispatchEvent(new Event('change', { bubbles: true }));
+      return true;
+    })()`);
+    if (!ok) throw new Error('塞不了文件: ' + sel);
+    await sleep(600);
   } else if (kind === 'scroll') {
     // 首屏之下的元素拍不到（截图是视口大小，不是整页）：先把目标滚到中间
     const sel = rest.join(':');

@@ -63,7 +63,9 @@ export function CoverPicker({ cover, onPick, actions, pending = false, onReady, 
         ref={dialog}
         onClose={() => setOpen(false)}
         aria-label='设置封面'
-        className='w-[min(560px,92vw)] rounded-xl border border-border bg-card p-4 text-foreground backdrop:bg-foreground/40'
+        /* D69：Tailwind preflight 把 UA 的 dialog margin:auto 重置没了，showModal 的 fixed
+           元素 margin:0 就钉在左上角 —— 显式 m-auto + inset-0 把居中要回来。 */
+        className='fixed inset-0 m-auto h-fit w-[min(560px,92vw)] rounded-xl border border-border bg-card p-4 text-foreground backdrop:bg-foreground/40'
       >
         <h2 className='m-0 mb-3 text-[15px] font-semibold text-foreground'>封面 / 背景</h2>
         {everOpened ? (
