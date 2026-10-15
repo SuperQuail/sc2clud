@@ -108,23 +108,29 @@ export function ComposePage() {
   const boardName = (boards.data ?? []).find((b) => b.slug === board)?.name ?? '';
 
   const submit = useMutation({
-    mutationFn: () => {
+    // 回执只用来拿**帖子 id**：POST 回详情（有 id），PATCH 回 {ok:true}（**没有 id**）——
+    // 2026-10-15 实测的缺陷就是拿 PATCH 回执的 t.id 拼跳转路径 → `/t/undefined` → 400 参数错误。
+    // 所以这里把 id 显式算出来：编辑态用请求里那个 editId，新建态用回执的 id。
+    mutationFn: async (): Promise<string> => {
       // 上行的是 **Markdown**：后端 content_md 那一列过 goldmark → bluemonday 渲染成 content_html，
       // 把编辑器的 EditorState JSON 直接当 Markdown 发上去，库里存的就是那串 JSON（缺陷清单 D6）。
       // 发帖与编辑走同一条换算 —— 两处各写一份就会各自漂移（FIX-TOPIC 在反馈页已经踩过这个形状）。
       const content_md = editorJsonToMarkdown(doc.json);
-      return editing
-        ? updateTopic(editId, { title: title.trim(), content_md })
-        : createTopic({ board, kind, title: title.trim(), content_md });
+      if (editing) {
+        await updateTopic(editId, { title: title.trim(), content_md });
+        return editId;
+      }
+      const created = await createTopic({ board, kind, title: title.trim(), content_md });
+      return created.id;
     },
     // 保存后回帖子页展示**真进度**：失效详情与楼层，否则 React-Query 拿缓存里的旧正文先渲一帧。
-    onSuccess: (t) => {
-      void qc.invalidateQueries({ queryKey: qk.topic(t.id) });
-      void qc.invalidateQueries({ queryKey: qk.posts(t.id) });
+    onSuccess: (id) => {
+      void qc.invalidateQueries({ queryKey: qk.topic(id) });
+      void qc.invalidateQueries({ queryKey: qk.posts(id) });
       // 编辑保存后回帖子页：**这一次是「改完重提」**这个事实只有本页知道（PATCH 带 content_md 会把
       // review_state 打回 pending），用导航 state 交回去 —— 帖子页据此把横幅说成「已重新提交复审」。
       // 刷新后 state 消失、与首次投稿同形：这是**有意的诚实**（后端没有「第几次提交」这一列）。
-      void navigate(routePath('t/' + encodeURIComponent(t.id)), {
+      void navigate(routePath('t/' + encodeURIComponent(id)), {
         replace: true,
         state: editing ? { resubmitted: true } : undefined,
       });

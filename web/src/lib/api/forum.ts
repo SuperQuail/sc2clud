@@ -216,9 +216,14 @@ export function setPostVote(id: string, value: 1 | -1 | 0) {
 // ---- 以下七个是盲测发现「接口都在、前端连函数都没有」之后补的（2026-10-13）----
 // 缺它们时用户体感是：**发错了删不掉、看到违规内容没法举报、收藏了找不回来**。
 
-/** 请求体字段与后端 updateTopicBody 逐字对应（title / content_md / board / kind / resource_status，全部可选）。 */
-export function updateTopic(id: string, body: { title?: string; content_md?: string }): Promise<TopicDetail> {
-  return api<TopicDetail>('topics/' + encodeURIComponent(id), { method: 'PATCH', body });
+/** 请求体字段与后端 updateTopicBody 逐字对应（title / content_md / board / kind / resource_status，全部可选）。
+ *
+ *  **回执不是帖子详情**：`forum/handler.go` 的 updateTopic 回的是 `{ok:true}`。
+ *  2026-10-15 实测的缺陷：这里原来声明 `Promise<TopicDetail>`，调用方拿 `t.id` 拼跳转路径 →
+ *  `t.id === undefined` → 跳到 `/t/undefined` → 路径闸（httpx.ValidPathIDs）判成 400「参数错误」。
+ *  保存后要展示什么，用**请求里已经知道的那个 id**（编辑态就是 editId）去取。 */
+export function updateTopic(id: string, body: { title?: string; content_md?: string }): Promise<void> {
+  return api<{ ok: boolean }>('topics/' + encodeURIComponent(id), { method: 'PATCH', body }).then(() => undefined);
 }
 
 export function deleteTopic(id: string): Promise<null> {

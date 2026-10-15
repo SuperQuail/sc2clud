@@ -1,5 +1,5 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
-import { MemoryRouter, Route, Routes } from 'react-router';
+import { MemoryRouter, Route, Routes, useLocation } from 'react-router';
 import { afterEach, expect, it, vi } from 'vitest';
 import { Providers } from '@/app/providers';
 import { ComposePage } from './compose';
@@ -129,12 +129,20 @@ const TOPIC = {
   },
 };
 
+// 保存后会跳到帖子页：放一条探针，断言跳的是**真 id** 而不是 `undefined`
+// （2026-10-15 实测：PATCH 回执里没有 id，拿它拼路径 → /t/undefined → 400 参数错误）。
+function TopicProbe() {
+  const loc = useLocation();
+  return <div data-testid='probe-topic'>{loc.pathname}</div>;
+}
+
 function renderCompose(path: string) {
   return render(
     <Providers>
       <MemoryRouter initialEntries={[path]}>
         <Routes>
           <Route path='/new' element={<ComposePage />} />
+          <Route path='/t/:topicId' element={<TopicProbe />} />
         </Routes>
       </MemoryRouter>
     </Providers>,
@@ -223,6 +231,8 @@ it('上行（编辑正文）：PATCH /topics/{id} 的 content_md 也是 Markdown
   expect(patch.url).toContain('/api/v1/topics/tp-1');
   expect((patch.body as { content_md: string }).content_md).toBe('走到第二波就卡关。');
   expect(JSON.stringify(patch.body)).not.toContain('"root"');
+  // 保存后跳的是**真 id**（PATCH 回执 {ok:true} 里没有 id；用 undefined 拼路径会 400）
+  await waitFor(() => expect(screen.getByTestId('probe-topic').textContent).toBe('/t/tp-1'));
 });
 
 it('编辑非资源帖：不画来源编辑器，但说清为什么（后端 forum.not_resource）', async () => {

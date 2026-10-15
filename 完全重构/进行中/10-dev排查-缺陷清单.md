@@ -282,6 +282,12 @@ D34 补的是**管理端当场自助**这一缺环。
 
 ---
 
+### 1n-quinquies. 编辑保存后 400「参数错误」（用户 2026-10-15 17:4x 实测）
+
+| # | 现象 | 根因（实测证据） | 处理 |
+|---|---|---|---|
+| **D54** | 点「编辑」→ 保存 → 落到「加载失败（帖子详情没能加载）参数错误（编号 cd7e74e36204cb6e）」 | 前后端契约不一致：后端 `PATCH /topics/:id` 回的是 `{ok:true}`（**不是帖子详情**），而前端 `updateTopic` 声明成 `Promise<TopicDetail>`，compose 保存后拿 `t.id` 拼跳转 → `/t/undefined` → 路径闸 `httpx.ValidPathIDs("id")` 判 **400 参数错误**。**钉子的红证据**：断言 `expected '/t/undefined' to be '/t/tp-1'` | ① `lib/api/forum.ts` 的 `updateTopic` 改成 `Promise<void>` 并把「回执不是详情」写在注释里（类型不再骗人）；② `routes/compose.tsx` 把帖子 id **显式算出来**（编辑态用请求里的 `editId`，新建态用 POST 回执的 id），保存后按它跳转与失效缓存；③ 钉子：`compose.test.tsx` 加 `/t/:topicId` 探针，断言保存后落在 `/t/tp-1` |
+
 ### 1n-quater. 「偶发 404 / 强刷必挂」的真根因（用户 2026-10-15 17:0x 实测指出这是老毛病）
 
 | # | 现象 | 根因（实测证据） | 处理 |
