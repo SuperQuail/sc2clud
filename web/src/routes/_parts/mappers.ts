@@ -85,7 +85,9 @@ export function toComments(posts: Post[]): CommentData[] {
     liked: p.my_vote === 1,
     disliked: p.my_vote === -1,
   });
-  const roots = posts.filter((p) => p.parent_id === null);
+  // D71 双保险：后端会把 GET /topics/{id}/posts 的 1 楼（主楼正文）撤出列表，但部署时序差里老响应还带着它 ——
+  // 楼层号只用来把主楼挡在评论区外，正文区已经画过一次了；没带 floor 的老 fixture 照旧通过。
+  const roots = posts.filter((p) => p.parent_id === null && p.floor !== 1);
   const repliesOf = new Map<string, Post[]>();
   for (const p of posts) {
     if (p.parent_id === null) continue;

@@ -27,4 +27,15 @@ describe('toComments', () => {
     const [c] = toComments([post({ created_at: 'not-a-date' })]);
     expect(c!.createdAt).toBe('');
   });
+
+  it('D71：floor=1 的主楼不进评论列表，正文区该有的那层不复读；没带 floor 的老响应也不被误伤', () => {
+    const list = toComments([
+      post({ id: 'p-1', floor: 1 }),
+      post({ id: 'p-2', floor: 2 }),
+      post({ id: 'p-3', floor: 3, parent_id: 'p-2' }),
+      post({ id: 'p-4' }),
+    ]);
+    expect(list.map((c) => c.id)).toEqual(['p-2', 'p-4']);
+    expect(list[0]!.replies?.total).toBe(1);
+  });
 });

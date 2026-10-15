@@ -123,6 +123,8 @@ export type Post = {
   like_count: number;
   dislike_count?: number;
   created_at: string;
+  /** 1 楼是主楼本身（正文区已经有了）；评论区靠它把主楼挡在列表外（D71 双保险），老响应可以没有 */
+  floor?: number;
   /**
    * 我的投票：0 = 没投，1 = 赞，-1 = 踩。
    *
