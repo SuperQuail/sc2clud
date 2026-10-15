@@ -288,7 +288,7 @@ D34 补的是**管理端当场自助**这一缺环。
 |---|---|
 | 现象 | 帖子页的「编辑」是**帖内小弹层**（简易标题框 + 降级编辑器），不是发帖页面那套（预览/配图/来源编辑器全都不在）——用户：「应该复用发帖页面做修改」 |
 | 根因 | `compose.tsx` **本来就有** `?edit=<topicId>` 编辑态（自注释「复用而不是另写」），但帖子页没接：挂着 devroom 12-topic 的 `EditTopicDialog` 弹层自己处理 PATCH —— 同一个功能两套 UI |
-| 处理 | ① `routes/topic.tsx`：编辑按钮给 `editHref=/new?edit=<id>`，重提按钮同样进编辑态（PATCH 本来就把 rejected 打回 pending）；帖内 save/PATCH 弹窗代码全部撤除；② 共用 View（12-topic）的编辑按钮从 onClick 改为**注入链接**（`editHref` prop，产品 / 房间各给各的地址），`EditTopicDialog` 与映射器删除；③ 房间 18-compose 增加 `?edit=` 预灌（房间 mock 与产品同口径）。提交 `fa5eb2c` |
+| 处理 | ① `routes/topic.tsx`：编辑按钮给 `editHref=/new?edit=<id>`，重提按钮同样进编辑态（PATCH 本来就把 rejected 打回 pending）；帖内 save/PATCH 弹窗代码全部撤除；② 共用 View（12-topic）的编辑按钮从 onClick 改为**注入链接**（`editHref` prop，产品 / 房间各给各的地址），`EditTopicDialog` 与映射器删除；③ 房间 18-compose 增加 `?edit=` 预灌（房间 mock 与产品同口径）。提交 `723b42f`（−284/+84 行：弹窗实现整段撤除） |
 
 ---
 
