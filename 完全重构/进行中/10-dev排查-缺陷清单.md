@@ -149,6 +149,31 @@ after rollback: health_code=200，并明确声明**数据库不回滚**（迁移
 
 ---
 
+## 1g. FIX-COVER 结论（D21/D27）+ 一条待拍板（2026-10-15）
+
+**D21 的真因（派单初判不成立，如实记下）**：不是「两套数据源」，是两条各自独立的错 ——
+① `_parts/topic-mappers.ts` 的 `toDesignBoard` 读 `b.cover`，而 `BoardDTO` 里叫 `cover_hash`（没有 `cover` 这一列）→ **恒为空串**；
+② `12-topic/left-rail.tsx` 是**第二份分区列表实现**（自己画行、自己拼 img，不带 imagePath/占位）。
+改法：左栏交回 `03-navigation/board-rail.tsx`（那份有封面位），删掉第二份；`boardRows()` 收进 `_parts/mappers.ts` 一处共用。
+
+**D27 与 D21 不同源**：`assetUrl()` 是 public/art 静态素材的拼法，而分区封面是**图片端点**的资源 ——
+于是后台拼出 `/dev/art/img/<hash>` → **稳定裂图**（列表缩略图与资料预览两处），改 `imagePath` 即好。
+**关键发现**：`web/public/art/img/c0c0c0…`（018a952 出图时塞的假映射）让错的 URL 在出图里也能解析，所以这条一直拍不出来；已删。
+实测对照：`/img/<hash>` → 200，`/art/img/<hash>` → 404。
+
+### ⚠️ 待用户拍板：左栏还显不显示「今日 N」
+左栏行现在是 BoardRail 的形状（**封面 + 名称 + 帖子数**，单行），**不再显示「今日 N」**——
+因为全站只剩这一份分区列表，而首页与分区页的左栏本来就没有「今日 N」。
+要保留就得给 `BoardSummary` 加字段（会同时改首页与分区页的左栏）。**等用户一句话**。
+
+### 并发记账（工具层教训）
+FIX-COVER staging 之后、commit 之前，**索引被并发的 `git reset` 清空过一次**（reflog 里是 D25 留的 `reset: moving to HEAD`）——
+第一次提交只带上了进度文件，它自己用 `git reset --soft` 重新合成。**多 agent 同时提交时，`git reset` 是危险动作**：
+它清的不只是自己的索引。结论：子 agent 只准用 `git add <明确路径>` + `git commit`，**不许用 `git reset`/`git stash`/`git checkout --`（Lead 专属）**。
+另：它的 `12-topic/topic-view.tsx` 19 行被 D22 的提交卷进去了（对方 add 范围偏大），内容没丢，只是归属错位。
+
+---
+
 ## 2. 派发分组（互不重叠的文件作用域）
 
 | 包 | 覆盖 | 主要文件 |
