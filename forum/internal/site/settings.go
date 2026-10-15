@@ -101,7 +101,8 @@ func SettingSpecs() []SettingSpec {
 			Min: 1, Max: 20, Default: "3", Hint: "同一篇主题一天最多调几次，防刷"},
 		// d7 §2.2：AI 审核的开关在这里（模型与提示词在 ai_config 表，密钥只从 env 来）。
 		{Key: keyAIEnabled, Label: "启用 AI 审核", Group: "内容审核", Kind: kindToggle,
-			Default: valueOff, Hint: "与 ai_config.enabled 是「且」；关闭时一个外呼都不发"},
+			// d7 §2.2：默认 true —— 缺行回落声明默认（§12.2 不插默认行），写 off 等于全站按默认杀死 AI 审核。
+			Default: valueOn, Hint: "与 ai_config.enabled 是「且」；关闭时一个外呼都不发"},
 	}
 }
 
