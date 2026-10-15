@@ -21,6 +21,8 @@ function item(over: Partial<ReviewQueueItem>): ReviewQueueItem {
     kind: 'discussion',
     title: '教程',
     excerpt: '摘要',
+    body_md: '正文',
+    body_truncated: false,
     review_state: 'pending',
     review_note: null,
     review_source: null,
@@ -108,6 +110,25 @@ it('五个档位各自可切，revision_requested 与 draft 都有入口', () =>
     fireEvent.click(tab);
     expect(onFilterChange).toHaveBeenCalledWith(expect.objectContaining({ state }));
   }
+});
+
+// D25①：右栏的「就地预览」必须是**正文全文**，不是摘要 —— 审核要判的是整篇内容。
+// 旧行为下这条断言必红：右栏当时只画 active.excerpt，正文再长也只看得到 200 字。
+it('右栏预览给的是正文全文（不是摘要），图片以 Markdown 原文可见', () => {
+  const long = '开头。' + '正文段落，很长。'.repeat(30) + '\n\n![封面](/img/0123456789abcdef)\n\n结尾。';
+  renderScreen([item({ title: '带图的长帖', body_md: long })]);
+  fireEvent.click(screen.getAllByRole('row').find((r) => r.textContent?.includes('带图的长帖'))!);
+  const pre = screen.getByTestId('review-preview-body');
+  expect(pre.textContent).toBe(long);
+  expect(pre.textContent).toContain('![封面](/img/0123456789abcdef)');
+  // 摘要仍在（列表行要梗概），但预览不靠它：这一行是列表里的摘要，不是右栏那块
+  expect(screen.getAllByText('摘要').length).toBeGreaterThan(0);
+});
+
+it('正文被截断时说出来，不把半篇当全文', () => {
+  renderScreen([item({ title: '超长帖', body_md: '很', body_truncated: true })]);
+  fireEvent.click(screen.getAllByRole('row').find((r) => r.textContent?.includes('超长帖'))!);
+  expect(screen.getByText(/已截断/)).toBeTruthy();
 });
 
 it('revision_requested 是独立的一档：行内状态说「打回修改」，三个动作都在', () => {

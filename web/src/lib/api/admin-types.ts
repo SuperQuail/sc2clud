@@ -89,6 +89,11 @@ export type ReviewQueueItem = {
   kind: string;
   title: string;
   excerpt: string;
+  /** 1 楼正文全文（Markdown 源，D25① 的就地预览读它）。**不含图片字节**：正文里的
+   *  `![alt](/img/<hash>)` 是「这里有图」唯一的可见证据 —— AI 审核也只收到这段文本。 */
+  body_md: string;
+  /** 正文超过上限被截断（上限 = MaxTopicContent）：屏幕必须说出来，不能说半句当全文 */
+  body_truncated: boolean;
   review_state: string;
   /** 当前生效的那条理由：AI 判的与人工写的都在这一列，谁写的看 review_source */
   review_note: string | null;

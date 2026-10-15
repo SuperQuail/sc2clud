@@ -234,15 +234,29 @@ export function ReviewScreen({
         />
 
         <div className='flex flex-col gap-2'>
-          <Panel title='原文侧栏' note='审核要看见正文摘要，而不是只看标题'>
+          <Panel title='原文侧栏' note='审核要看见正文全文与作者，而不是只看标题'>
             {active ? (
               <>
                 <div className='mb-2 flex items-center gap-2'>
                   <FileText size={14} aria-hidden className='text-muted-foreground' />
                   <span className='truncate text-[13px] font-medium text-foreground'>{active.title}</span>
                 </div>
-                <div className='mb-2 rounded-sm border border-border bg-muted/40 p-2 text-[12px] leading-relaxed text-foreground'>
-                  {active.excerpt || '（后端没有给摘要）'}
+                {/* 就地预览被审内容（D25①）：**正文全文**，不是 200 字摘要。
+                    渲染的是 Markdown **源**（不解析）：审核要看的是「有没有广告 / 攻击 / 离题」，
+                    而解释过的富文本会把链接、图片地址、原始符号藏起来 —— 那些恰恰是要判的东西。
+                    图片字节不含在内（DTO 里就没有）：正文里 `![alt](/img/<hash>)` 是
+                    「这里有一张图」唯一的可见证据，与发给模型的那段文本同源。 */}
+                <div className='mb-2 flex flex-col gap-1'>
+                  <span className='text-[11px] text-muted-foreground'>
+                    {'正文全文 · ' + [...active.body_md].length + ' 字'}
+                    {active.body_truncated ? ' · 已截断（只显示前 ' + active.body_md.length + ' 字）' : ''}
+                  </span>
+                  <pre
+                    data-testid='review-preview-body'
+                    className='m-0 max-h-[240px] overflow-auto whitespace-pre-wrap break-words rounded-sm border border-border bg-muted/40 p-2 text-[12px] leading-relaxed text-foreground'
+                  >
+                    {active.body_md || '（后端没有给正文）'}
+                  </pre>
                 </div>
                 <KV k='分区' v={active.board.name + ' /' + active.board.slug} />
                 <KV k='类型' v={KIND_LABEL[active.kind] ?? active.kind} />
