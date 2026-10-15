@@ -31,8 +31,24 @@ function aiConfig(over: Record<string, unknown> = {}): Reply {
   return { body: { data: {
     enabled: true, provider: 'deepseek', base_url: 'https://api.deepseek.com', model: 'deepseek-chat',
     thinking: false, strict_mode: true, timeout_ms: 20000, max_output_tokens: 1024, temperature: 0,
-    prompt: '', prompt_report: '', has_secret: true, secret_updated_at: '2026-10-01T00:00:00Z',
+    prompt: '', prompt_report: '', probe_sample: '【帖子】这是一次连通性测试，用来确认密钥与地址可用。',
+    has_secret: true, secret_updated_at: '2026-10-01T00:00:00Z',
     last_ok_at: null, last_error: '', last_error_at: null, ...over,
+  } } };
+}
+// D33①：容器挂载后会把「将要发送的那一份」打过来（POST /admin/ai/payload，DryRun）。
+// 桩**必须**盖住它：掉进默认分支会返回一个用户对象，AiPayloadView 一渲染 images 就是 undefined →
+// 错误边界接管整页 → 三条旧用例里的那颗按钮永远不出现（这正是这三条红的根因）。
+function aiPayload(): Reply {
+  return { body: { data: {
+    source: 'probe', topic_id: 0, title: '', trigger: 'create', open_reports: 0,
+    system: '', user_prefix: '', user_title: '', user_body: '',
+    user_text: '标题：连通性测试\n\n正文：这是一次连接测试，用来确认密钥与地址可用。',
+    has_image_markdown: false, image_attachment_count: 0, images: [],
+    image_count: 0, image_skipped: 0, image_bytes: 0,
+    image_limit: 4, image_max_bytes: 2097152, image_read_failed: false,
+    model: 'deepseek-chat', max_output_tokens: 1024, strict_mode: true, tool_name: 'submit_review',
+    categories: ['spam', 'ad'],
   } } };
 }
 const ME_ADMIN: Reply = { body: { data: {
@@ -46,7 +62,9 @@ function mockApi(testReply: Reply, configOver: Record<string, unknown> = {}) {
   vi.stubGlobal('fetch', vi.fn(async (url: string | URL | Request, init?: RequestInit) => {
     const u = String(url);
     calls.push({ url: u, method: init?.method ?? 'GET' });
-    const reply = u.includes('/admin/ai/config') ? aiConfig(configOver) : u.includes('/admin/ai/test') ? testReply : ME_ADMIN;
+    const reply = u.includes('/admin/ai/config') ? aiConfig(configOver)
+      : u.includes('/admin/ai/payload') ? aiPayload()
+      : u.includes('/admin/ai/test') ? testReply : ME_ADMIN;
     return new Response(JSON.stringify(reply.body ?? null), { status: reply.status ?? 200, headers: { 'content-type': 'application/json' } });
   }));
 }
