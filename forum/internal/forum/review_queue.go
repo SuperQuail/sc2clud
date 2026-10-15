@@ -103,6 +103,12 @@ type ReviewQueueItemDTO struct {
 	Kind        string       `json:"kind"`
 	Title       string       `json:"title"`
 	Excerpt     string       `json:"excerpt"`
+	// BodyMD 是 1 楼正文全文（Markdown 源，D25①）：审核员要能就地读到被审内容 ——
+	// 标题、正文、作者、来源四样齐了才叫「预览」。**只读文本**：图片字节不上行，也不在这里下发，
+	// 正文里的 `![alt](/img/<hash>)` 是模型与你唯一能看到「这里有图」的地方（见 aireview 的实测用例）。
+	BodyMD string `json:"body_md"`
+	// BodyTruncated 为 true = 正文超过 maxReviewBody 被截断，屏幕必须说出来（不能说半句当全文）。
+	BodyTruncated bool `json:"body_truncated"`
 	ReviewState string       `json:"review_state"`
 	// ReviewNote 是当前生效的那条理由：AI 判的与人工写的都落在这一列（谁写的看 review_source）。
 	// 没有第三列可读 —— topics 表从来就没有 ai_review_note。
@@ -396,5 +402,14 @@ func reviewQueueItemDTO(r pgsql.ReviewQueueRow) ReviewQueueItemDTO {
 		d.ReviewedAt = &at
 	}
 	d.ReviewVerdict = r.Verdict
+	// 预览正文按**字符**截断到上限：换行统一成 \n（Markdown 源里三种行尾都可能出现，
+	// 前端按原样显示，不统一就会出现「同一篇帖子在两台机器上长得不一样」）。截断了必须说出来。
+	body := strings.ReplaceAll(strings.ReplaceAll(r.BodyMD, "\r\n", "\n"), "\r", "\n")
+	// 上限就是**发帖的上限**（MaxTopicContent）：正常帖永远到不了这里，所以它只在
+	// posts 被绕过写入 / 上限调小时兜住响应体，并且必须把「这是半篇」说出来。
+	if runes := []rune(body); len(runes) > MaxTopicContent {
+		body, d.BodyTruncated = string(runes[:MaxTopicContent]), true
+	}
+	d.BodyMD = body
 	return d
 }

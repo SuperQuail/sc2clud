@@ -13,6 +13,9 @@ import (
 // 作者三列照抄 topicColumns 的写法：avatar_hash 空 → default_avatar_hash，
 // 否则作者头像会退回首字母占位（dto.go 的 UserBriefDTO 注释）。
 const reviewQueueColumns = `t.id, t.public_id::text, t.title, t.kind, COALESCE(t.excerpt, ''),
+       -- 审核要看见**全文**而不是 200 字摘要（D25①）。草稿档（rv.pending_md 非空）取那一份 ——
+       -- 那一档判的正是「这份改动替不替换上线」，给线上旧版等于让人看错那一份。
+       COALESCE(rv.pending_md, p.content_md, ''),
        t.review_state, t.review_note, t.review_source,
        b.slug, b.name,
        a.id, a.public_id, a.username, COALESCE(NULLIF(a.nickname, ''), a.username),
@@ -28,6 +31,8 @@ const reviewQueueFrom = `
   FROM topics t
   JOIN boards b ON b.id = t.board_id
   JOIN users  a ON a.id = t.author_id
+  -- 1 楼正文：审核屏的「就地预览」读的就是它（D25①）。floor=1 上有一张唯一索引，不会放大行数。
+  LEFT JOIN posts p ON p.topic_id = t.id AND p.floor = 1
   LEFT JOIN LATERAL (
     SELECT e.verdict, e.created_at, e.actor_id
       FROM review_events e WHERE e.topic_id = t.id
@@ -45,6 +50,9 @@ type ReviewQueueRow struct {
 	Title    string
 	Kind     string
 	Excerpt  string
+	// BodyMD 是 1 楼正文（Markdown 源）**全文**：审核要能就地读到被审内容，不是只读一句摘要。
+	// 截断在 DTO 层做（review_queue.go 的 maxReviewBody），这一层原样取。
+	BodyMD string
 	// ReviewNote 是**当前生效**的那条理由：AI 判的与人工写的都落在这一列，
 	// 谁写的看 ReviewSource（ai / manual / trusted）。没有第三列可读 —— 别再造一个 ai_review_note。
 	ReviewState  string
@@ -69,7 +77,7 @@ type ReviewQueueRow struct {
 
 // scanReviewQueueRow 是那一列清单的唯一扫描器。
 func scanReviewQueueRow(rows *sql.Rows, r *ReviewQueueRow) error {
-	var note, source, avatar, avatarSmall sql.NullString
+	var note, source, avatar, avatarSmall, body sql.NullString
 	// 判定人是可空的外键：LEFT JOIN + 一组可空标量，扫完再拼成一个可空的 UserRow
 	// （与 issues.go 的指派人是同一套做法）。
 	var (
@@ -78,7 +86,7 @@ func scanReviewQueueRow(rows *sql.Rows, r *ReviewQueueRow) error {
 		rvAvatar, rvAvatarSmall              sql.NullString
 	)
 	if err := rows.Scan(
-		&r.ID, &r.PublicID, &r.Title, &r.Kind, &r.Excerpt,
+		&r.ID, &r.PublicID, &r.Title, &r.Kind, &r.Excerpt, &body,
 		&r.ReviewState, &note, &source,
 		&r.BoardSlug, &r.BoardName,
 		&r.Author.ID, &r.Author.PublicID, &r.Author.Handle, &r.Author.Nickname,
@@ -89,6 +97,7 @@ func scanReviewQueueRow(rows *sql.Rows, r *ReviewQueueRow) error {
 	); err != nil {
 		return err
 	}
+	r.BodyMD = body.String
 	r.ReviewNote, r.ReviewSource = scanNullString(note), scanNullString(source)
 	r.Author.AvatarHash = scanNullString(avatar)
 	r.Author.AvatarSmall = scanNullString(avatarSmall)
