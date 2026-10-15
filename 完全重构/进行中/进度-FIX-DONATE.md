@@ -43,5 +43,19 @@
     出图看图：`shots/fix-donate-d23-room-1440.png`（框里是圆的头像可视区 + 缩小/放大/百分比/复位/取消/就用这一块）、
     `shots/fix-donate-d23-room-zoomed.png`（点两次放大 → 150%，图真的变大）。
     新件按规矩登记进 `devroom/registry.ts`（`image-cropper`，page 11-profile）→ `check-controls` 报「49 个控件」。
-  - 下一步：收口 —— `pnpm typecheck && pnpm lint && npx vitest run` 全绿后提交；三条（D22/D23/D24）的验收面在进度里各自留了证据行。
+  - 下一步：**无（本包三条 D22/D23/D24 都已提交）**。留给 Lead 的两处口径：
+    ① 出图脚手架 —— 上面 4 张图都是 DevRoom（`devroom.html?page=11-profile`），产品页那两张没出
+    （本机没有后端，产品页要真数据；按交接单 B8 的结论走）；② 设置页 `/settings#payment-channels` 这个锚点还在，
+    但内容改成了「页内那一格」，锚点本身仍可用（`routes/settings.tsx` 里那一节没搬走）。
   - 阻塞：无
+
+## 收口状态
+
+| 条 | 状态 | 提交 |
+|---|---|---|
+| D24 收款码上传后默认显示 | 完成（后端默认值 + 界面文案） | `89a36b0` |
+| D22 设置我的收款码 → 就地弹层 | 完成（View 与设置页同源） | `502ed1b` |
+| D23 头像选图后裁剪框 | 完成（纯几何 + 房子件 Dialog） | `01f4e7b` |
+
+三条各自的「先证明会红」证据都在上面三段的「证据」里。**没有新增迁移**：D24 走的是「上传那一笔把自己那行写 true」，
+不需要改 0011 的 DEFAULT（也不需要 0052），所以迁移号一次都没占。
