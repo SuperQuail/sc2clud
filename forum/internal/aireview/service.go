@@ -229,6 +229,33 @@ func (s *Service) Test(ctx context.Context, probe string) (*TestView, error) {
 	return viewOfTest(res), nil
 }
 
+// TestSample 是 multipart 上来的连通测试（D34）：probe 可空（空 = DefaultProbeSample）+ 0..4 张样例图。
+// 样例图只活在这一条请求里（probe.go 的 probeImages，不落库、不留文件），上限与记账沿用
+// imagePayload —— TestTopic 的回执就是同一套字段。没发成的那张只是「没发」，不是失败，
+// 所以照 Test 一样照常外呼（fail 的话 last_error 照记 —— 那是外呼的错，不是图的错）。
+func (s *Service) TestSample(ctx context.Context, probe string, files []ProbeImage) (*TestView, error) {
+	imgs := probeImages(files)
+	cfg, err := s.GetConfig(ctx)
+	if err != nil {
+		return nil, err
+	}
+	key, err := s.LoadKey(ctx)
+	if err != nil {
+		return nil, err
+	}
+	res, err := s.judge(ctx, s.aiConfig(cfg, key, len(imgs.Attachments) > 0),
+		assemblePrompt(cfg, false), probeText(probe), imgs.Attachments)
+	if err != nil {
+		s.markError(ctx, err.Error())
+		return nil, err
+	}
+	s.markOK(ctx)
+	out := viewOfTest(res)
+	out.ImageCount, out.ImageSkipped = imgs.sent(), imgs.skipped()
+	out.Images = imageViews(imgs)
+	return out, nil
+}
+
 // TestTopic 是「拿一条真帖子试跑一次」（D33③ 的当场验证）：组装与真判定**同一条**
 // （assemblePrompt + userText + loadImages，含图），外呼也真发，但**一个字都不落库** ——
 // topics 的状态、review_events、配额计数全都不动。它是管理端的排查工具，不是审核动作。

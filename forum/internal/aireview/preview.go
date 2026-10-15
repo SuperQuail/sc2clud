@@ -185,6 +185,22 @@ func (s *Service) PreviewProbe(ctx context.Context, probe string) (*PayloadView,
 	}), nil
 }
 
+// PreviewSample 是样例带图的干跑（D34）：与 TestSample 同一条 probeImages 记账（含上限截断），
+// 但**一次都不外呼、不写 last_error** —— 它唯一的作用是让界面说的和真发的是同一份。
+// image_attachment_count 在这一路 = 这次 multipart 上传了几张（没有「图集」可言）。
+func (s *Service) PreviewSample(ctx context.Context, probe string, files []ProbeImage) (*PayloadView, error) {
+	prompt, cfg, err := s.systemPrompt(ctx, false)
+	if err != nil {
+		return nil, err
+	}
+	return previewView(&Payload{
+		Source: "probe", UserText: probeText(probe), System: prompt,
+		HasImageMarkdown: false, ImageAttachmentCount: len(files), Images: probeImages(files),
+		Model: cfg.Model, MaxOutputTokens: cfg.MaxOutputTokens, StrictMode: cfg.StrictMode,
+		ToolName: ToolName, Categories: ai.Categories,
+	}), nil
+}
+
 // previewView 把内部 Payload 翻成线格式。**只有这一个出口**，两个来源（probe / topic）走同一条路。
 func previewView(p *Payload) *PayloadView {
 	out := &PayloadView{

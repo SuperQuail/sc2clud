@@ -108,6 +108,22 @@ func (h *Handler) test(c *gin.Context) {
 		httpx.Fail(c, err)
 		return
 	}
+	// D34：multipart 是样例可带图的另一种形态（probe 文本 + 0..4 张 file），与 JSON body 服务同一条
+	// test 台。图片只在内存里走（probe.go），**旧 JSON 路径一字不改** —— 前端没带图时照旧发 JSON。
+	if c.ContentType() == "multipart/form-data" {
+		probe, files, err := readProbeMultipart(c.Request)
+		if err != nil {
+			httpx.Fail(c, err)
+			return
+		}
+		out, err := h.svc.TestSample(c.Request.Context(), probe, files)
+		if err != nil {
+			httpx.Fail(c, err)
+			return
+		}
+		httpx.OK(c, out)
+		return
+	}
 	var in payloadReq
 	// 空 body 是合法的：这条端点从前就没有入参，老前端不发 body 也得照样能测。
 	// 只放过**一个字节都没有**这一种（`EOF`），其余解析失败照常报出去。
@@ -145,6 +161,22 @@ func (h *Handler) test(c *gin.Context) {
 func (h *Handler) payload(c *gin.Context) {
 	if _, err := h.require(c); err != nil {
 		httpx.Fail(c, err)
+		return
+	}
+	// D34：样例带图的干跑（与 test 的 multipart 分支同一条读取口）。只组装、不外呼；
+	// topic 试跑仍只走 JSON（topic_public_id 不在 multipart 字段里）。
+	if c.ContentType() == "multipart/form-data" {
+		probe, files, err := readProbeMultipart(c.Request)
+		if err != nil {
+			httpx.Fail(c, err)
+			return
+		}
+		out, err := h.svc.PreviewSample(c.Request.Context(), probe, files)
+		if err != nil {
+			httpx.Fail(c, err)
+			return
+		}
+		httpx.OK(c, out)
 		return
 	}
 	var in payloadReq
