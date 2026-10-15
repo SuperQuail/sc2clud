@@ -112,13 +112,14 @@ func TestGroupAclLevelGateKept(t *testing.T) {
 	assertCode(t, h.svc.canSpeak(h.ctx, h.actor(low, role, authz.PermTopicCreate), boardID, "post"),
 		"forum.level_too_low")
 
-	// acl_enabled=false：整块 ACL（含组）都不生效 —— 第 3 步直接放行（④ 顺序照现状）。
+	// acl_enabled=false：**deny 例外终局照旧拒绝**（D62，2026-10-15 口径翻转：禁令是 prohibitive，
+	// 不随白名单开关失效——拒绝的用例挪到 TestDenyAppliesEvenWhenAclDisabled）。
+	// 这里留的是「没有 deny 行时第 3 步照旧放行」的对照：
 	open := h.seedBoard("open0", 0, false)
-	h.setGroupACL(open, gid, false, true, "post")
 	low2 := h.seedUser("low2", role, 2, false)
 	h.addMember(gid, low2)
 	if err := h.svc.canSpeak(h.ctx, h.actor(low2, role, authz.PermTopicCreate), open, "post"); err != nil {
-		t.Fatalf("acl_enabled=false 时组也不该拦: %v", err)
+		t.Fatalf("acl_enabled=false 且无 deny 行时应当照旧放行: %v", err)
 	}
 }
 
@@ -165,6 +166,40 @@ func TestGroupAclSanctionFirst(t *testing.T) {
 	h.sanction(uid, nil, "all", ptrTime(h.clk.Now().Add(time.Hour)))
 	assertCode(t, h.svc.canSpeak(h.ctx, h.actor(uid, role, authz.PermTopicCreate), boardID, "post"),
 		"forum.sanctioned")
+}
+
+// D62（2026-10-15 用户实测「组禁发帖没生效——任何组仍能发」）：
+// canSpeak 的第 3 步是「acl_enabled=false → 登录即可发言」，**整块 ACL（含 deny）都被跳过**。
+// 分区的 acl_enabled 默认就是 false（prod 实测三个分区全是 false），管理员给组戴上 deny_post
+// 的预期是「禁令生效」——禁令是 prohibitive，不该依赖白名单开关。让 deny（角色行与组行都算）
+// 在白名单关闭时也终究拒绝；can 侧与等级门槛照旧只在 ACL 开着时参与。
+func TestDenyAppliesEvenWhenAclDisabled(t *testing.T) {
+	h := newHarness(t)
+	role := h.seedRole("user", false)
+	uid := h.seedUser("quiet", role, 5, false)
+	gid := h.seedGroup("denied-off")
+	open := h.seedBoard("open-deny", 0, false) // acl_enabled=false —— prod 的默认形态
+	h.setGroupACL(open, gid, false, true, "post")
+	h.addMember(gid, uid)
+	// 红判据（旧行为：整个 ACL 判定被跳过 → canSpeak 放行 → CreateTopic 落 201）
+	assertCode(t, h.svc.canSpeak(h.ctx, h.actor(uid, role, authz.PermTopicCreate), open, "post"),
+		"board.acl_denied")
+	_, err := h.svc.CreateTopic(h.ctx, h.actor(uid, role, authz.PermTopicCreate), CreateTopicInput{
+		BoardSlug: "open-deny", Kind: "discussion", Title: "探针", ContentMD: "b",
+	})
+	assertCode(t, err, "board.acl_denied")
+
+	// 同一规则对**角色行** deny 成立（白名单关着不代表 deny 行作废）
+	open2 := h.seedBoard("open-deny2", 0, false)
+	h.setACL(open2, role, false, true, "post")
+	assertCode(t, h.svc.canSpeak(h.ctx, h.actor(uid, role, authz.PermTopicCreate), open2, "post"),
+		"board.acl_denied")
+
+	// 对照组：白名单关着、**没有**任何 deny 行 —— 登录即可发言（第 3 步照旧）
+	open3 := h.seedBoard("open-fine", 0, false)
+	if err := h.svc.canSpeak(h.ctx, h.actor(uid, role, authz.PermTopicCreate), open3, "post"); err != nil {
+		t.Fatalf("白名单关着且没有 deny 行时应当照旧放行: %v", err)
+	}
 }
 
 // 组白名单的**拒绝消息要可读**（派单：同一码 board.acl_denied 把「为什么不许」说清楚，不发新码）。

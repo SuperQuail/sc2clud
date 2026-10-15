@@ -52,6 +52,13 @@ func (s *Service) canSpeak(ctx context.Context, actor *authz.Actor, boardID int6
 		minLevel = row.MinPostLevel
 	}
 	if !row.ACLEnabled {
+		// **deny 在白名单关闭时仍然终局**（D62，2026-10-15 用户实测「组禁发帖没生效——任何组仍能发」）：
+		// 第 3 步「白名单关 → 登录即可发言」原本把整个矩阵连同 deny 一起跳过，而分区默认
+		// acl_enabled=false——管理员给组/角色戴上的禁令实际从不生效。禁令是 prohibitive：
+		// 无论白名单开不开都拒绝；can 侧与等级门槛不在此列（那是「加」出来的授权方向）。
+		if row.Deny(action) || row.DenyGroup(action) {
+			return ErrACLDenied
+		}
 		return s.checkMinLevel(ctx, actor, minLevel, action)
 	}
 	// 显式 deny 终局（D38 拍板语义②）：基线角色那一行与组的行**任一层** deny 都直接拒绝，
