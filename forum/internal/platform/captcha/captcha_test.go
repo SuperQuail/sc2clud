@@ -98,17 +98,33 @@ func TestVerifyWrongAnswerAndUnknownID(t *testing.T) {
 	}
 }
 
-// 大小写与首尾空白不敏感（d5-content §7.1）。
+// 大小写与首尾空白不敏感、全宽一律拒（d5-content §7.1；与 dev 2a4a9f2 真机实测口径一致）。
+// 答案在 kv 里直接预置成固定字面量：随机答案未必含字母，靠翻转随机串证不了「大小写敏感已死」。
+// 每例一道新题 —— Verify 无论对错都把这道题消费掉。
 func TestVerifyIsCaseAndSpaceInsensitive(t *testing.T) {
 	s, _, cache := newTestService(t, time.Date(2026, 10, 13, 12, 0, 0, 0, time.UTC))
 	ctx := context.Background()
-	id, _, err := s.Issue(ctx)
-	if err != nil {
-		t.Fatal(err)
+	cases := []struct {
+		stored, answer string
+		want           error
+	}{
+		{"K7M2", "K7M2", nil},       // 原样
+		{"K7M2", "k7m2", nil},       // 大题小答
+		{"k7m2", "K7M2", nil},       // 小题大答
+		{"K7M2", "  k7m2  ", nil},   // 两端空白
+		{"K7M2", "Ｋ７Ｍ２", ErrWrong}, // 全宽：形状对不上必须拒（宁拒勿过）
 	}
-	answer := string(mustGet(t, cache, keyOf(id)))
-	if err := s.Verify(ctx, id, "  "+answer+"  "); err != nil {
-		t.Fatalf("带空白应当通过，得到 %v", err)
+	for _, tc := range cases {
+		id, _, err := s.Issue(ctx)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := cache.Set(ctx, keyOf(id), []byte(tc.stored), answerTTL); err != nil {
+			t.Fatalf("预置答案 %q: %v", tc.stored, err)
+		}
+		if err := s.Verify(ctx, id, tc.answer); !errors.Is(err, tc.want) {
+			t.Fatalf("题面 %q 按 %q 作答：得到 %v，想要 %v", tc.stored, tc.answer, err, tc.want)
+		}
 	}
 }
 

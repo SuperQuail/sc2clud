@@ -5,6 +5,7 @@ package auth
 import (
 	"context"
 	"errors"
+	"strings"
 	"testing"
 
 	"forum/internal/platform/captcha"
@@ -30,8 +31,10 @@ func (c *captchaStub) Issue(context.Context) (string, []byte, error) {
 	return "id-ABCD", []byte{0x89, 0x50, 0x4E, 0x47}, nil
 }
 
+// 与 platform/captcha 的真公约一致：忽略大小写与两端空白，全宽仍拒（ToUpper+TrimSpace 同款）。
+// 替身原先按「区分大小写」自查 —— 那是个不存在的约定，会把 auth 层测试带偏（D65）。
 func (c *captchaStub) Verify(_ context.Context, id, answer string) error {
-	if id != "id-ABCD" || answer != "ABCD" {
+	if id != "id-ABCD" || strings.ToUpper(strings.TrimSpace(answer)) != "ABCD" {
 		return captcha.ErrWrong
 	}
 	return nil
