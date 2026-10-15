@@ -1,5 +1,6 @@
 import { expect, it } from 'vitest';
 import { render, screen } from '@testing-library/react';
+import { DEFAULT_COVER_ART } from '@/ui/topic/default-cover';
 import { BoardCover, BoardRail, type BoardSummary } from './board-rail';
 
 // D3（2026-10-14 用户实测：「左侧分区列表没有任何图片」）的渲染侧。
@@ -32,18 +33,15 @@ it('有封面的分区画图，图的地址是 /img/<裸哈希>', () => {
   expect(img?.getAttribute('loading')).toBe('lazy');
 });
 
-it('没有封面的分区落稳定占位：首字 + slug 定的色相（不是空白）', () => {
+it('没有封面的分区落**默认封面图**：美术资产那张弥音（不是首字色块，用户 2026-10-15 判定）', () => {
   const { container } = render(<BoardCover slug='emperor' name='皇帝区' hash='' />);
   const box = container.firstElementChild as HTMLElement;
-  expect(box.textContent).toBe('皇');
-  // 同一个 slug 两次渲染必须是同一个色（色相由 slug 算，与用户头像同一套公式）
-  const again = render(<BoardCover slug='emperor' name='皇帝区' hash='' />);
-  expect((again.container.firstElementChild as HTMLElement).getAttribute('style')).toBe(box.getAttribute('style'));
-  // jsdom 把 hsl() 归一化成 rgb()（就绪：比对颜色值要先归一化，不能比字符串原文）
-  expect(box.getAttribute('style')).toMatch(/^background: rgb\(/);
-  // 注：色相桶只有 6 个，而这套取色公式（与 @/ui/user/avatar 逐字相同）在 10 字以上的 key 上会撞桶
-  // —— 真站五个分区里有三个撞到同一个桶。占位块本身仍然「有字有底色」，所以这里不断言「两两不同」。
-  // 要真正打散得动 UserAvatar 的公式（全站头像会一起变色），不在 D3 的范围里。
+  // 旧行为：textContent === '皇'（首字 + slug 色相块）。用户原话「完全没有关联的字」。
+  expect(box.textContent).toBe('');
+  expect(container.querySelector('img')?.getAttribute('src')).toBe('/art/' + DEFAULT_COVER_ART);
+  // 有封面时仍然走图片端点（/img/<裸哈希>），两条路不许混
+  const withCover = render(<BoardCover slug='emperor' name='皇帝区' hash='abc' />);
+  expect(withCover.container.querySelector('img')?.getAttribute('src')).toBe('/img/abc');
 });
 
 it('今日 N（用户 2026-10-15 拍板「可以加」）：有新增才画，0 不画', () => {

@@ -1,5 +1,6 @@
 import { act, render, screen } from '@testing-library/react';
 import { expect, it } from 'vitest';
+import { DEFAULT_COVER_ART } from '@/ui/topic/default-cover';
 import { SquareTopicCard } from './topic-square-card';
 import HomePage from './index';
 import { BOARDS, TOPICS, filterByBoard } from './mock';
@@ -58,22 +59,24 @@ it('方卡片：没给 href 时标题**不是链接**（宁可不可点，也不
   expect(screen.getByText(topic.title)).toBeTruthy();
 });
 
-it('方卡片：无封面时不留空壳（色块占位替代）', () => {
+it('方卡片：无封面时落默认封面图（美术资产那张弥音，不是分区首字色块）', () => {
   const noCover = TOPICS.find((t) => !t.cover)!;
-  render(<SquareTopicCard topic={noCover} />);
+  const { container } = render(<SquareTopicCard topic={noCover} />);
+  // 帖子自己的封面仍然**不画**（没有就是没有 —— 图是装饰性的，不该占 alt='《标题》封面'）
   expect(screen.queryByAltText('《' + noCover.title + '》封面')).toBeNull();
-  expect(screen.getByText(noCover.board.name[0]!)).toBeTruthy();
+  // 但封面位不留空壳：旧行为是「色块 + 分区首字」（用户 2026-10-15 判定不要那个字）
+  expect(container.querySelector('img')?.getAttribute('src')).toBe('/art/' + DEFAULT_COVER_ART);
 });
 
 // J9：后端在列表项里给了封面原图尺寸（TopicCardDTO 的 cover_width/cover_height）。
 // 有它就能**在发图片请求之前**判「这张放大出来是糊的」，而不是先把小图拉下来再回退 ——
 // 后者会先闪一张糊图（用户看到的就是那一帧），而且在慢网下要等一整个往返。
-it('方卡片：后端说封面太小（cover_width）时**直接不取那张图**，回落到色块占位', () => {
+it('方卡片：后端说封面太小（cover_width）时**直接不取那张图**，回落到默认封面', () => {
   const topic = { ...TOPICS[0]!, cover: '/img/tiny', cover_width: 120, cover_height: 68 };
-  render(<SquareTopicCard topic={topic} />);
-  // 关键判据是「img 根本没被渲染」——渲染了才会发请求，也就等于没省掉那一趟
+  const { container } = render(<SquareTopicCard topic={topic} />);
+  // 关键判据是「那张小图根本没被渲染」——渲染了才会发请求，也就等于没省掉那一趟
   expect(screen.queryByAltText('《' + topic.title + '》封面')).toBeNull();
-  expect(screen.getByText(topic.board.name[0]!)).toBeTruthy();
+  expect(container.querySelector('img')?.getAttribute('src')).toBe('/art/' + DEFAULT_COVER_ART);
 });
 
 it('方卡片：尺寸够大（或后端没给尺寸）时照常渲染封面', () => {

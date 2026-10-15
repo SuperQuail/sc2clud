@@ -1,6 +1,7 @@
 import Tag, { TagType } from '@jetbrains/ring-ui-built/components/tag/tag';
 import { useState } from 'react';
 import { cn } from '@/lib/utils';
+import { DefaultCover } from '@/ui/topic/default-cover';
 import { KIND_TAG, KIND_TINT, TOPIC_KIND_LABEL } from './topic-kind';
 import type { Topic, TopicKind } from './mock';
 
@@ -36,13 +37,13 @@ export function TopicCover({ topic, className }: { topic: Topic; className?: str
           className='absolute inset-0 size-full object-cover'
         />
       ) : (
-        // 无封面：色块 + 分区首字（首字比纯色块好认，也比默认占位图干净）
-        <span
-          aria-hidden
-          className={cn('absolute inset-0 flex items-center justify-center bg-gradient-to-br to-transparent', KIND_TINT[topic.kind])}
-        >
-          <span className='text-[40px] leading-none font-semibold text-foreground/25'>{[...topic.board.name][0] ?? '?'}</span>
-        </span>
+        // 无封面（或封面太小）：落**全站唯一那份默认封面**（@/ui/topic/default-cover）。
+        // 旧行为是「色块 + 分区首字」——用户 2026-10-15 判定不要那个字（「完全没有关联的字」）。
+        // 暗化 + 渐变压在上面的理由：它是一张画，不是一条信息 —— 标题才是。
+        <>
+          <DefaultCover className='opacity-70' />
+          <span aria-hidden className={cn('absolute inset-0 bg-gradient-to-br to-transparent', KIND_TINT[topic.kind])} />
+        </>
       )}
     </div>
   );

@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react';
 import { imagePath } from '@/lib/url';
 import { cn } from '@/lib/utils';
+import { DefaultCover } from '@/ui/topic/default-cover';
 
 // 分区侧栏（首页 / 分区页共用）。**prop 驱动的 View**：只吃分区数组，不 fetch、不认路由表
 // （清单 §0 的同源要求：DevRoom 03-navigation 与产品页渲染的是这同一个文件）。
@@ -9,8 +10,8 @@ import { cn } from '@/lib/utils';
 // 所以封面用 20px 的小方块，简介放 title（悬停可见）。
 //
 // 封面字段是后端 BoardDTO 的 **cover_hash**（裸哈希，forum/internal/forum/dto.go:43）——
-// 空串 = 这个分区没有封面，此时落一个**稳定的占位**（首字 + 由 slug 定的色相）而不是空白。
-// 稳定：同一个分区每次都是同一个色，与 @/ui/user/avatar 的取色同一套公式。
+// 空串 = 这个分区没有封面，此时落**全站唯一那份默认封面**（@/ui/topic/default-cover）而不是空白，
+// 也不再是「分区首字 + slug 色相」：用户 2026-10-15 判定那个字「完全没有关联」。
 export type BoardSummary = {
   slug: string;
   name: string;
@@ -22,27 +23,17 @@ export type BoardSummary = {
   today_count?: number;
 };
 
-const HUES = [212, 262, 330, 12, 152, 190];
-function hueOf(key: string): number {
-  let h = 0;
-  for (const ch of key) h = (h * 31 + (ch.codePointAt(0) ?? 0)) % 100000;
-  return HUES[h % HUES.length]!;
-}
-
-/** 侧栏一行的封面位：有封面用图，没有就用「首字 + slug 色相」的稳定占位。 */
-export function BoardCover({ slug, name, hash, className }: { slug: string; name: string; hash?: string | null; className?: string }) {
+/** 侧栏一行的封面位：有封面用图（图片端点），没有就用那份全站默认封面（静态素材）。 */
+export function BoardCover({ hash, className }: { slug?: string; name?: string; hash?: string | null; className?: string }) {
   // hash 是**裸哈希**（后端 BoardDTO 给的形状）；房间是静态预览服务、没有 /img/{hash} 这条读口，
   // 所以也接住「已经是路径」的写法（以 / 开头），房间的演示数据用站内素材就能画出一张真封面。
   const src = hash ? imagePath(hash.startsWith('/') ? hash : '/img/' + hash) : null;
   return (
-    <span
-      className={cn('grid size-5 shrink-0 place-items-center overflow-hidden rounded-[4px] text-[11px] font-semibold text-white select-none', className)}
-      style={src ? undefined : { background: 'hsl(' + hueOf(slug) + ' 62% 46%)' }}
-    >
+    <span className={cn('relative size-5 shrink-0 overflow-hidden rounded-[4px]', className)}>
       {src ? (
         <img src={src} alt='' loading='lazy' decoding='async' className='size-full object-cover' />
       ) : (
-        <span aria-hidden>{[...name][0] ?? '?'}</span>
+        <DefaultCover />
       )}
     </span>
   );
