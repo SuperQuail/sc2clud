@@ -74,6 +74,13 @@ func (s *Service) ReplaceBoardACL(ctx context.Context, actor *authz.Actor, publi
 		} else if n != len(ids) {
 			return invalid("acls", "有角色不存在（可能刚被删掉），请刷新角色列表")
 		}
+		// D40：矩阵不控制超管（is_super 第 1 步短路，勾了也毫无作用）——拒绝超管的行，
+		// 让「保存路径」与「呈现」说的是同一句话：全屏勾选都动不了那一行，写入也不接受它。
+		if n, err := pgsql.SuperRolesAmong(ctx, tx, ids); err != nil {
+			return err
+		} else if n > 0 {
+			return invalid("acls", "超级管理员不受分区名单控制（全域继承），不能写进矩阵")
+		}
 		before, err := s.repo.AdminACL(ctx, tx, boardID, true)
 		if err != nil {
 			return err

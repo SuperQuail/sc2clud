@@ -26,6 +26,11 @@ var (
 	ErrAdminModeratorNotFound     = apperr.New("board.moderator_not_found", http.StatusNotFound, "这个人不是该分区的版主")
 	ErrAdminModeratorUserNotFound = apperr.New("board.moderator_user_not_found", http.StatusNotFound, "用户不存在")
 
+	// 用户组（D38）的两条：组与本组组员各一条。同样的「不区分」一刀不用 —— 组管理屏
+	// 常常是管理员一行行对名单，指错一格比「承认它存在」更常见。
+	ErrGroupNotFound       = apperr.New("group.not_found", http.StatusNotFound, "用户组不存在")
+	ErrGroupMemberNotFound = apperr.New("group.member_not_found", http.StatusNotFound, "这个人不在该用户组里")
+
 	ErrTopicLocked   = apperr.New("topic.locked", http.StatusForbidden, "主题已锁定，不能再回复")
 	ErrReviewPending = apperr.New("topic.review_pending", http.StatusForbidden, "主题正在审核中，通过后才能回复")
 	ErrSanctioned    = apperr.New("forum.sanctioned", http.StatusForbidden, "你被禁止在此发言")

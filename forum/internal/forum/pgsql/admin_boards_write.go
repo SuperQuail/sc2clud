@@ -90,6 +90,18 @@ func RolesExist(ctx context.Context, q Querier, roleIDs []int64) (int, error) {
 	return n, err
 }
 
+// SuperRolesAmong 数提交的角色里 is_super 有几个（D40）：矩阵不控制超管——写路径同样要诚实，
+// 收下超管的行就是「勾了却毫无作用」。is_super 的判定语义不因此变动（canSpeak 第 1 步照旧）。
+func SuperRolesAmong(ctx context.Context, q Querier, roleIDs []int64) (int, error) {
+	if len(roleIDs) == 0 {
+		return 0, nil
+	}
+	var n int
+	err := queryOneQ(ctx, q, "SELECT count(*) FROM roles WHERE id = ANY($1::bigint[]) AND is_super", []any{roleIDs},
+		func(rows *sql.Rows) error { return rows.Scan(&n) })
+	return n, err
+}
+
 // ── 版主任期（board_moderators） ──────────────────────────────────
 
 // AdminModeratorRow 是一行任期（含已卸任的：后台要看历史）。

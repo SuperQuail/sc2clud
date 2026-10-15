@@ -401,6 +401,11 @@ func TestBoardACLReplaceIsWhole(t *testing.T) {
 	// 不存在的角色 = 400
 	_, err = h.svc.ReplaceBoardACL(h.ctx, admin, public, []AdminACLItem{{RoleID: 999999}})
 	assertCode(t, err, "common.invalid_input")
+	// D40：超管的行不能写进矩阵 —— is_super 的判定在第 1 步短路，矩阵管不着它；
+	// 收下这种行就会「管理员勾了超管一行却毫无作用」，等于矩阵在说谎。
+	superRole := h.seedRole("superadmin", true)
+	_, err = h.svc.ReplaceBoardACL(h.ctx, admin, public, []AdminACLItem{{RoleID: superRole, CanPost: true}})
+	assertCode(t, err, "common.invalid_input")
 	// 失败的替换不该动已经生效的矩阵
 	if n := h.countRows(t, "SELECT count(*) FROM board_acls WHERE board_id = $1", boardID); n != 1 {
 		t.Fatalf("失败的替换改了库：现在有 %d 行", n)

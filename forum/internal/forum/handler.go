@@ -134,6 +134,18 @@ func (h *Handler) Register(rg *gin.RouterGroup, requireLogin gin.HandlerFunc, pe
 	rg.GET("/admin/boards/:id/acl", requireLogin, perm(authz.PermBoardManage), httpx.ValidPathIDs("id"), h.adminBoardACL)
 	rg.PUT("/admin/boards/:id/acl", w("/admin/boards/:id/acl", requireLogin, perm(authz.PermBoardManage), httpx.ValidPathIDs("id"), httpx.BodyLimit(maxWriteBody), h.adminReplaceBoardACL)...)
 	rg.GET("/admin/boards/:id/moderators", requireLogin, perm(authz.PermBoardManage), httpx.ValidPathIDs("id"), h.adminBoardModerators)
+
+	// ---- 用户组（D38）。组与组员走 user.ban（动的是「谁在哪个组」）；分区的组矩阵与
+	// 角色矩阵同闸 board.manage。{id}/{uid} 都是对外 uuid，非 uuid 同样挡成 400（D3 同族）。
+	rg.GET("/admin/groups", requireLogin, perm(authz.PermUserBan), h.adminListGroups)
+	rg.POST("/admin/groups", w("/admin/groups", requireLogin, perm(authz.PermUserBan), httpx.BodyLimit(maxWriteBody), h.adminCreateGroup)...)
+	rg.PATCH("/admin/groups/:id", w("/admin/groups/:id", requireLogin, perm(authz.PermUserBan), httpx.ValidPathIDs("id"), httpx.BodyLimit(maxWriteBody), h.adminUpdateGroup)...)
+	rg.DELETE("/admin/groups/:id", w("/admin/groups/:id", requireLogin, perm(authz.PermUserBan), httpx.ValidPathIDs("id"), h.adminDeleteGroup)...)
+	rg.GET("/admin/groups/:id/members", requireLogin, perm(authz.PermUserBan), httpx.ValidPathIDs("id"), h.adminGroupMembers)
+	rg.POST("/admin/groups/:id/members", w("/admin/groups/:id/members", requireLogin, perm(authz.PermUserBan), httpx.ValidPathIDs("id"), httpx.BodyLimit(maxWriteBody), h.adminAddGroupMember)...)
+	rg.DELETE("/admin/groups/:id/members/:uid", w("/admin/groups/:id/members/:uid", requireLogin, perm(authz.PermUserBan), httpx.ValidPathIDs("id", "uid"), h.adminRemoveGroupMember)...)
+	rg.GET("/admin/boards/:id/group-acl", w("/admin/boards/:id/group-acl", requireLogin, perm(authz.PermBoardManage), httpx.ValidPathIDs("id"), h.adminBoardGroupACL)...)
+	rg.PUT("/admin/boards/:id/group-acl", w("/admin/boards/:id/group-acl", requireLogin, perm(authz.PermBoardManage), httpx.ValidPathIDs("id"), httpx.BodyLimit(maxWriteBody), h.adminReplaceBoardGroupACL)...)
 	rg.POST("/admin/boards/:id/moderators", w("/admin/boards/:id/moderators", requireLogin, perm(authz.PermBoardManage), httpx.ValidPathIDs("id"), httpx.BodyLimit(maxWriteBody), h.adminGrantBoardModerator)...)
 	rg.DELETE("/admin/boards/:id/moderators/:uid", w("/admin/boards/:id/moderators/:uid", requireLogin, perm(authz.PermBoardManage), httpx.ValidPathIDs("id", "uid"), h.adminRevokeBoardModerator)...)
 }
