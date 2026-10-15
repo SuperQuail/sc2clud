@@ -324,6 +324,39 @@ func TestRejectWritesStateAndEvent(t *testing.T) {
 	}
 }
 
+// ⑤ D25 实测：**图片不发**。上行 payload 只有两段纯文本（system=prompt / user=text），
+// 正文里的图片只会作为 Markdown 字面量（![...](/img/<hash>)）待在 user 文本里 —— 模型看不到图。
+// 这条用例把**实际发出去的请求体形状**钉死：多一个字段、少一个字段都会红。
+// 依据：sqlSubject 只取 topics.title + posts(floor=1).content_md，**不 JOIN topic_images**；
+// platform/ai.Judge 只组 system + user 两条消息，没有任何图片/多模态字段。
+func TestOutboundPayloadHasNoImageField(t *testing.T) {
+	h := newHarness(t)
+	h.putKey()
+	body := "看图：\n\n![封面](/img/0123456789abcdef)\n\n正文若干。"
+	id := h.topic("带图的帖子", body, nil, "pending")
+
+	if err := h.svc.ReviewTopic(h.ctx, id, "create"); err != nil {
+		t.Fatalf("ReviewTopic: %v", err)
+	}
+
+	// 上行只有两条消息：system（prompt）与 user（text），**没有** image_url / content 数组。
+	sent := map[string]string{"system": h.judge.prompt, "user": h.judge.text}
+	for name, v := range sent {
+		if strings.Contains(v, "image_url") || strings.Contains(v, "data:image") {
+			t.Fatalf("%s 里出现了图片字段：模型会被塞进图，但本域不该发图", name)
+		}
+	}
+	// user 文本 = 标题 + 正文原文，图片只是 Markdown 字面量（可以证明「图没被当成图发出去」）。
+	want := "标题：带图的帖子\n\n正文：\n" + body
+	if h.judge.text != want {
+		t.Fatalf("上行 user 文本与预期不符：\n得到 %q\n想要 %q", h.judge.text, want)
+	}
+	// 图片引用原样留在文本里 —— 这是**唯一**让模型知道「这里有张图」的途径。
+	if !strings.Contains(h.judge.text, "![封面](/img/0123456789abcdef)") {
+		t.Fatal("正文里的图片 Markdown 没进 payload：连「有图」这件事都传不出去")
+	}
+}
+
 // ④ d7 §6/§7：到第一阈值入队一条 ai:review(trigger=report)；到第二阈值只转人工、**不再入队**。
 func TestTriggerReportReview(t *testing.T) {
 	h := newHarness(t)

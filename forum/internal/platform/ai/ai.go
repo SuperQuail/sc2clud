@@ -140,7 +140,10 @@ func SubmitReviewSchema(strict bool) map[string]any {
 
 // parse 照 d7 §3.5 的顺序判：任何一步不对 -> Review（交人工），不猜。
 func parse(resp *openai.ChatCompletion, model string, latency int) Result {
-	out := Result{Verdict: Review, Model: model, LatencyMS: latency}
+	// Categories 初始化成**空切片而不是 nil**：模型按 schema 省略这个非必填字段时，
+	// 审核域会把 nil 当 TEXT[] 参数写 review_events，而那一列是 NOT NULL DEFAULT '{}' ——
+	// nil 走 pgx 发出去的是 SQL NULL，撞 23502，判定落不了库还反复重试。
+	out := Result{Verdict: Review, Model: model, LatencyMS: latency, Categories: []string{}}
 	if len(resp.Choices) == 0 {
 		out.Reason = "模型没有返回任何候选"
 		return out
@@ -173,7 +176,9 @@ func parse(resp *openai.ChatCompletion, model string, latency int) Result {
 		out.Reason = "模型给的 verdict 不在三值内"
 		return out
 	}
-	out.Categories = p.Categories
+	if p.Categories != nil { // 省略时保留上面那个空切片，绝不下发 nil
+		out.Categories = p.Categories
+	}
 	out.Reason = strings.TrimSpace(p.Reason)
 	if out.Reason == "" {
 		out.Reason = "审核未给出理由"

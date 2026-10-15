@@ -94,6 +94,25 @@ func TestJudgeFailsOpenToHuman(t *testing.T) {
 	}
 }
 
+// 模型**省略 categories** 时必须是空切片而不是 nil（2026-10-14 实测）：
+// 审核域把 res.Categories 直接当 TEXT[] 参数写 review_events，而那一列是
+// NOT NULL DEFAULT '{}' —— nil 走 pgx 会当 SQL NULL 发出去，撞 23502，
+// 结果是「模型按 schema 合法地省略了一个**非必填**字段 → 判定落不了库、任务反复重试」。
+func TestJudgeAlwaysReturnsNonNilCategories(t *testing.T) {
+	srv := serve(t, toolCall("approve", "正常帖子"), 200, nil)
+	defer srv.Close()
+	got, err := Judge(context.Background(), Config{BaseURL: srv.URL, Model: "m", APIKey: "k", Timeout: time.Second}, "p", "t")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Categories == nil {
+		t.Fatal("Categories 是 nil：写库时会变成 SQL NULL，撞 review_events.categories 的 NOT NULL")
+	}
+	if len(got.Categories) != 0 {
+		t.Fatalf("模型没给 categories，实际 %v", got.Categories)
+	}
+}
+
 // HTTP 错误（可重试）必须与「形状问题」区分开：调用方要据此决定重试还是转人工。
 func TestJudgeTransportErrorIsRetryable(t *testing.T) {
 	srv := serve(t, `{}`, 500, nil)

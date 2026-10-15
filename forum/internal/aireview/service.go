@@ -167,6 +167,12 @@ func (s *Service) ReviewTopic(ctx context.Context, topicID int64, trigger string
 		return err
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
+	// 省略 categories 是 schema 允许的（它只 required verdict/reason），而这一列是 NOT NULL：
+	// nil 走 pgx 会当 SQL NULL 发出去，撞 23502 —— 判定落不了库、任务反复重试。
+	// 判定的**唯一写库口**在这里，所以兜底也放这里（外呼口是注入点，不能指望每个实现都记得）。
+	if res.Categories == nil {
+		res.Categories = []string{}
+	}
 	if _, err := tx.Exec(ctx, sqlInsertEvent, topicID, trigger, string(res.Verdict),
 		trimRunes(res.Reason, 200), res.Categories, res.Model, res.LatencyMS); err != nil {
 		return err
