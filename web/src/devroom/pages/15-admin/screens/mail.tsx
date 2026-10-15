@@ -5,12 +5,14 @@ import Input from '@jetbrains/ring-ui-built/components/input/input';
 import ProgressBar from '@jetbrains/ring-ui-built/components/progress-bar/progress-bar';
 import Toggle from '@jetbrains/ring-ui-built/components/toggle/toggle';
 import { ControlsHeight } from '@jetbrains/ring-ui-built/components/global/controls-height';
-import { Send } from 'lucide-react';
+import { KeyRound, Plus, Send } from 'lucide-react';
 import { icon16 } from '@/ui/icons';
-import type { MailAccount } from '@/lib/api/admin';
+import type { MailAccount, MailAccountInput } from '@/lib/api/admin';
 import { DataTable } from '../data-table';
 import { ConfirmDialog, DangerAction } from '../confirm';
 import { GateNote, KV, Panel, Pill, ScreenHead, Stat, StatRow } from '../bits';
+import { NewAccountDialog } from './mail-new';
+import { RotateSecretDialog } from './mail-cred';
 
 // 13.9 发信账号管理（§8.2 + DB §4.8）。多账号按 priority 轮换，日额度用 mail_quota 记账。
 // 凭据（secret_cipher）**只写不回读**：界面只能说「已配置 + 更新时间」，永远不显示密钥。
@@ -32,21 +34,31 @@ export type MailScreenProps = {
   loading?: boolean;
   error?: ReactNode;
   canManage: boolean;
+  /** 新建账号（POST /admin/mail/accounts）。**这是全站唯一能配发信账号的入口**（账号不在配置文件里）。 */
+  onCreate: (body: MailAccountInput) => void;
   /** 只改传进来的字段（PATCH 的语义：nil = 不动） */
   onPatch: (id: string, patch: { priority?: number; daily_limit?: number; from_name?: string; from_address?: string; reset_tz?: string; enabled?: boolean }) => void;
+  /** 换凭据（PATCH 的 secret / options_json；只在换的那一次出现，后端据此刷新 secret_updated_at） */
+  onSecret: (id: string, patch: { secret?: unknown; options_json?: unknown }) => void;
   onDelete: (id: string) => void;
   onTest: (id: string, to: string) => void;
   busy?: boolean;
   receipt?: ReactNode;
 };
 
-export function MailScreen({ accounts, loading = false, error = null, canManage, onPatch, onDelete, onTest, busy = false, receipt }: MailScreenProps) {
+export function MailScreen({ accounts, loading = false, error = null, canManage, onCreate, onPatch, onSecret, onDelete, onTest, busy = false, receipt }: MailScreenProps) {
   const [activeId, setActiveId] = useState<string | null>(null);
   const [archive, setArchive] = useState<MailAccount | null>(null);
   const [testFor, setTestFor] = useState<MailAccount | null>(null);
+  const [createOpen, setCreateOpen] = useState(false);
+  const [rotateFor, setRotateFor] = useState<MailAccount | null>(null);
 
   const active = accounts.find((a) => a.id === activeId) ?? null;
   const sentToday = accounts.filter((a) => a.enabled).reduce((s, a) => s + a.sent_today, 0);
+  // 「有账号」与「发得出去」是两件事：迁移过来的老账号密文被置 NULL（数据迁移审计 §3），
+  // 它们会永远停在「未配置」而屏上看起来一切正常 —— 这正是 D26 说的「以为能发信」。
+  const ready = accounts.filter((a) => a.enabled && a.secret_configured);
+  const noUsable = ready.length === 0;
 
   const columns = [
     {
@@ -91,9 +103,12 @@ export function MailScreen({ accounts, loading = false, error = null, canManage,
       ),
     },
     {
-      key: 'actions', title: '就地操作', track: 'minmax(190px,1.3fr)',
+      key: 'actions', title: '就地操作', track: 'minmax(248px,1.6fr)',
       render: (a: MailAccount) => (
         <span className='flex flex-wrap items-center gap-1.5' onClick={(e) => e.stopPropagation()}>
+          <Button data-testid={'mail-cred-' + a.id} inline={false} height={ControlsHeight.S} icon={icon16(KeyRound)} disabled={!canManage || busy} onClick={() => setRotateFor(a)}>
+            {a.secret_configured ? '换凭据' : '配凭据'}
+          </Button>
           <Button inline={false} height={ControlsHeight.S} icon={icon16(Send)} disabled={!canManage || busy} onClick={() => setTestFor(a)}>测试发信</Button>
           <Button disabled={!canManage} onClick={() => setActiveId(a.id)}>编辑</Button>
           <DangerAction disabled={!canManage || busy} why={!canManage ? '本账号没有 mail.manage' : undefined} onClick={() => setArchive(a)}>删除</DangerAction>
@@ -107,14 +122,24 @@ export function MailScreen({ accounts, loading = false, error = null, canManage,
       <ScreenHead
         title='发信账号'
         note='13.9：多账号（provider 中立）、优先级轮换、日额度、启用/停用、测试发信；凭据加密存储且**只写不回读**。'
+        actions={canManage ? (
+          <Button data-testid='mail-create' inline={false} height={ControlsHeight.S} icon={icon16(Plus)} onClick={() => setCreateOpen(true)}>新增账号</Button>
+        ) : null}
       />
+
+      {noUsable && accounts.length > 0 ? (
+        <p role='alert' data-testid='mail-no-usable' className='rounded-md border border-warning/40 bg-warning/10 px-3 py-2 text-[12px] text-foreground'>
+          现在**一封邮件都发不出去**：没有一个「已启用 + 已配凭据」的账号。注册验证与找回密码都会失败
+          （<code className='rounded-sm bg-muted px-1'>auth.mail_unavailable</code>）—— 点每一行的「换凭据」把密钥补上。
+        </p>
+      ) : null}
 
       <StatRow>
         <Stat label='账号' value={accounts.length} />
         <Stat label='启用中' value={accounts.filter((a) => a.enabled).length} tone='info' />
         <Stat label='今日已发' value={sentToday} hint='mail_quota 记账，跨天按 reset_tz 重置' />
         <Stat label='失败账号' value={accounts.filter((a) => a.last_error).length} tone='danger' />
-        <Stat label='已配密钥' value={accounts.filter((a) => a.secret_configured).length} hint='没配的账号发不出信' />
+        <Stat label='已配密钥' value={ready.length} hint='启用且已配凭据的才算（迁移过来的老账号密文置 NULL，要重填）' />
       </StatRow>
 
       {!canManage ? <GateNote perm='mail.manage'>整屏只读：本账号没有 mail.manage。</GateNote> : null}
@@ -129,14 +154,16 @@ export function MailScreen({ accounts, loading = false, error = null, canManage,
         activeKey={activeId}
         onRowClick={(a) => setActiveId(a.id)}
         loading={loading}
-        minWidth={872}
+        minWidth={920}
         density='compact'
         empty='还没有发信账号'
       />
 
       <div className='grid items-start gap-3 lg:grid-cols-[minmax(0,1fr)_268px]'>
         <Panel title='账号详情' note='secret_cipher / secret_nonce 的界面表现：只有「已配置」与更新时间'>
-          {active ? <AccountForm key={active.id} account={active} canManage={canManage} busy={busy} onPatch={onPatch} /> : (
+          {active ? (
+            <AccountForm key={active.id} account={active} canManage={canManage} busy={busy} onPatch={onPatch} onRotateSecret={setRotateFor} />
+          ) : (
             <p className='text-[12px] text-muted-foreground'>在左侧点一行查看详情。</p>
           )}
         </Panel>
@@ -153,11 +180,14 @@ export function MailScreen({ accounts, loading = false, error = null, canManage,
               `status` 是账号健康态字符串，这一屏**原样显示**（不编中文标签，也不假设它只有两个值）。
             </p>
           </Panel>
-          <Panel title='新建账号'>
+          <Panel
+            title='新建账号'
+            actions={canManage ? <Button inline={false} height={ControlsHeight.S} icon={icon16(Plus)} onClick={() => setCreateOpen(true)}>新增</Button> : null}
+          >
             <p className='text-[12px] text-muted-foreground'>
               `POST /admin/mail/accounts` 要 `name / provider / from_address` 三项必填，
-              provider 值域 `resend | smtp | log`。这一版还没有那个表单 ——
-              现有账号的启用/停用/额度/测试发信已经能用。
+              provider 值域 `resend | smtp | log`。**账号名与 provider 建后不可改**。
+              账号不写进配置文件，也没有 CLI —— 这一个表单就是配发信账号的入口。
             </p>
           </Panel>
         </div>
@@ -175,16 +205,20 @@ export function MailScreen({ accounts, loading = false, error = null, canManage,
       />
 
       <TestSendDialog account={testFor} busy={busy} onClose={() => setTestFor(null)} onSend={onTest} />
+
+      <NewAccountDialog show={createOpen} busy={busy} onClose={() => setCreateOpen(false)} onCreate={onCreate} />
+      <RotateSecretDialog account={rotateFor} busy={busy} onClose={() => setRotateFor(null)} onSave={onSecret} />
     </div>
   );
 }
 
 /** 部分更新：**每一项显式保存**（PATCH 只写传进来的字段，nil = 不动）。 */
-function AccountForm({ account, canManage, busy, onPatch }: {
+function AccountForm({ account, canManage, busy, onPatch, onRotateSecret }: {
   account: MailAccount;
   canManage: boolean;
   busy: boolean;
   onPatch: MailScreenProps['onPatch'];
+  onRotateSecret: (account: MailAccount) => void;
 }) {
   const [priority, setPriority] = useState(String(account.priority));
   const [dailyLimit, setDailyLimit] = useState(String(account.daily_limit));
@@ -206,6 +240,15 @@ function AccountForm({ account, canManage, busy, onPatch }: {
       <KV k='最近成功' v={relTime(account.last_ok_at)} />
       <KV k='最近失败' v={account.last_error || '—'} />
       <div className='mt-2 flex justify-end gap-2'>
+        <Button
+          inline={false}
+          height={ControlsHeight.S}
+          icon={icon16(KeyRound)}
+          disabled={!canManage || busy}
+          onClick={() => onRotateSecret(account)}
+        >
+          {account.secret_configured ? '换凭据' : '配凭据'}
+        </Button>
         <Button disabled={!dirty} onClick={() => { setPriority(String(account.priority)); setDailyLimit(String(account.daily_limit)); setFromName(account.from_name); setFromAddress(account.from_address); }}>放弃</Button>
         <Button
           primary

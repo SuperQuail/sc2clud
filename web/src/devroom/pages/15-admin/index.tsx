@@ -160,7 +160,25 @@ function MailRoom() {
     <MailScreen
       accounts={accounts}
       canManage
+      onCreate={(body) => {
+        const next = {
+          ...body,
+          id: 'ma-' + (accounts.length + 1),
+          sent_today: 0,
+          status: 'active',
+          secret_configured: body.secret !== undefined,
+          secret_updated_at: body.secret !== undefined ? '2026-10-15T02:00:00Z' : null,
+          last_ok_at: null, last_error: '', last_error_at: null,
+          created_at: '2026-10-15T02:00:00Z', updated_at: '2026-10-15T02:00:00Z',
+          reset_tz: body.reset_tz ?? 'Asia/Shanghai',
+          from_name: body.from_name ?? '', priority: body.priority ?? 0, daily_limit: body.daily_limit ?? 100,
+          enabled: body.enabled ?? true, options_json: body.options_json ?? {},
+        } as (typeof DEMO_MAIL)[number];
+        setAccounts((prev) => [...prev, next]);
+        setReceipt('（房间演示：这里不发请求）已新建账号「' + next.name + '」');
+      }}
       onPatch={(id, p) => { setAccounts((prev) => prev.map((a) => (a.id === id ? { ...a, ...p } : a))); setReceipt('（房间演示：这里不发请求）已保存 ' + Object.keys(p).join('、')); }}
+      onSecret={(id, p) => { setAccounts((prev) => prev.map((a) => (a.id === id ? { ...a, secret_configured: true, secret_updated_at: '2026-10-15T02:00:00Z' } : a))); setReceipt('（房间演示：这里不发请求）已换凭据 ' + Object.keys(p).join('、')); }}
       onDelete={(id) => { setAccounts((prev) => prev.filter((a) => a.id !== id)); setReceipt('（房间演示：这里不发请求）账号已删除'); }}
       onTest={(id, to) => setReceipt('（房间演示：这里不发请求）给 ' + to + ' 发一封测试信（账号 ' + id + '）')}
       receipt={receipt ? <p className='text-[12px] text-muted-foreground'>{receipt}</p> : null}
