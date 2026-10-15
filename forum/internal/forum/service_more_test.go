@@ -107,9 +107,9 @@ func TestReplyParentRules(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	// 「顶层」= parent_id IS NULL：它同时包含 1 楼（主题正文）与顶层回复（§3.4 Q3a）。
-	if len(page.Items) != 2 {
-		t.Fatalf("顶层列表应有 2 条（1 楼 + 顶层回复），实际 %d", len(page.Items))
+	// 顶层列表只含回复（D71：1 楼是主题正文，不进评论区）。
+	if len(page.Items) != 1 {
+		t.Fatalf("顶层列表应有 1 条（只有顶层回复），实际 %d", len(page.Items))
 	}
 	var rootItem *PostDTO
 	for i := range page.Items {

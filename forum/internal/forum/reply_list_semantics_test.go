@@ -76,15 +76,15 @@ func TestTopLevelRepliesListOldestFirst(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	// 1 楼在列（顶层 = parent_id IS NULL 的口径），顶层回复老在前：第一条 → 第二条
-	if len(page.Items) != 3 || page.Items[0].Floor != 1 || page.Items[1].Floor != 2 || page.Items[2].Floor != 3 {
+	// 1 楼是主题正文不进评论区（D71，列表口径与 reply_count 一致都数 floor > 1），顶层回复老在前：第一条 → 第二条
+	if len(page.Items) != 2 || page.Items[0].Floor != 2 || page.Items[1].Floor != 3 {
 		t.Fatalf("顶层回复应按 id 升序（老在上）: %+v", page.Items)
 	}
-	if page.Items[1].ID != first.ID || page.Items[2].ID != second.ID {
+	if page.Items[0].ID != first.ID || page.Items[1].ID != second.ID {
 		t.Fatalf("顺序不对: %+v", page.Items)
 	}
 
-	// 游标方向：限制每页 1 条翻页，第一页给最老的（1 楼），next 翻下去是 2 楼、3 楼 —— 越翻越新。
+	// 游标方向：限制每页 1 条翻页，第一页给最老的一条（第一条回复），next 翻下去是第二条 —— 越翻越新。
 	page1, err := h.svc.ListPosts(h.ctx, author, ListPostsInput{TopicPublicID: topic.ID, Limit: 1})
 	if err != nil {
 		t.Fatal(err)
@@ -99,25 +99,77 @@ func TestTopLevelRepliesListOldestFirst(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(page2.Items) != 1 || page2.Items[0].ID != first.ID {
-		t.Fatalf("第二页接着第一条（越翻越新）: %+v", page2.Items)
+	if len(page2.Items) != 1 || page2.Items[0].ID != second.ID {
+		t.Fatalf("第二页接着第二条（越翻越新）: %+v", page2.Items)
 	}
-	if page2.NextCursor == "" {
-		t.Fatalf("后面还有一条时该继续给游标")
-	}
+	// 尾页的游标按 §3.8 规则 3 允许「取到了 limit 条就给」；再翻一格必须空页。
 	page3, err := h.svc.ListPosts(h.ctx, author, ListPostsInput{TopicPublicID: topic.ID, Cursor: page2.NextCursor, Limit: 1})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(page3.Items) != 1 || page3.Items[0].ID != second.ID {
-		t.Fatalf("第三页应到第一条新楼层并翻到底: %+v", page3.Items)
+	if len(page3.Items) != 0 {
+		t.Fatalf("游标翻到底后应空页: %+v", page3.Items)
 	}
-	// 尾页的游标按 §3.8 规则 3 允许「取到了 limit 条就给」；再翻一格必须空页。
-	page4, err := h.svc.ListPosts(h.ctx, author, ListPostsInput{TopicPublicID: topic.ID, Cursor: page3.NextCursor, Limit: 1})
+}
+
+// D71（用户原话「帖子正文不应该出现在评论区」）：1 楼是主题正文不是回复。
+// roots 把「parent_id IS NULL」的 1 楼也当顶层回复列出来，评论区第一条其实是正文，
+// 而 reply_count 一直按 floor > 1 数（pgsql.RecountTopic 写死的口径）——列表与计数对不上。
+func TestListPostsExcludesTopicBody(t *testing.T) {
+	h := newHarness(t)
+	author, topic := h.setupTopic(t)
+
+	reply, err := h.svc.CreatePost(h.ctx, author, topic.ID, CreatePostInput{ContentMD: "顶层回复"})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(page4.Items) != 0 {
-		t.Fatalf("游标翻到底后应空页: %+v", page4.Items)
+
+	// 1 楼是发主题时落进 posts 的正文行（§4.2），拿它的 public_id 当判据。
+	var bodyID string
+	if err := h.pool.QueryRow(h.ctx, `
+SELECT p.public_id FROM posts p JOIN topics t ON t.id = p.topic_id
+ WHERE t.public_id = $1 AND p.floor = 1`, topic.ID).Scan(&bodyID); err != nil {
+		t.Fatal(err)
+	}
+
+	page, err := h.svc.ListPosts(h.ctx, author, ListPostsInput{TopicPublicID: topic.ID})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(page.Items) != 1 || page.Items[0].ID != reply.ID {
+		t.Fatalf("评论区应只有那条回复: %+v", page.Items)
+	}
+	if listHasPost(page.Items, bodyID) {
+		t.Fatalf("1 楼是主题正文，不该出现在评论区: %+v", page.Items)
+	}
+	// 口径哨兵：列表列的就是 reply_count 数的那些楼，两者必须一致。
+	if n := h.countRows(t, "SELECT reply_count FROM topics WHERE public_id = $1", topic.ID); n != len(page.Items) {
+		t.Fatalf("回复列表长度 %d 应与 reply_count %d 一致", len(page.Items), n)
+	}
+}
+
+// D71：「回复正文就是回复帖子」。CreatePost 曾允许 parent 指向 1 楼（正文），那些楼
+// 挂在正文名下——正文从评论区摘除后就成了没有挂点的孤儿；parent 是正文时按顶层回复落库。
+func TestReplyToTopicBodyIsTopLevel(t *testing.T) {
+	h := newHarness(t)
+	author, topic := h.setupTopic(t)
+
+	var bodyID string
+	if err := h.pool.QueryRow(h.ctx, `
+SELECT p.public_id FROM posts p JOIN topics t ON t.id = p.topic_id
+ WHERE t.public_id = $1 AND p.floor = 1`, topic.ID).Scan(&bodyID); err != nil {
+		t.Fatal(err)
+	}
+
+	reply, err := h.svc.CreatePost(h.ctx, author, topic.ID, CreatePostInput{ContentMD: "回复正文", ParentID: bodyID})
+	if err != nil {
+		t.Fatalf("回复主题正文应该按「回复主题」处理: %v", err)
+	}
+	if reply.ParentID != nil {
+		t.Fatalf("回复正文应落为顶层回复（parent_id = NULL），实际指向 %s", *reply.ParentID)
+	}
+	// 库里的形状钉住：正文名下不再挂楼。
+	if n := h.countRows(t, "SELECT count(*) FROM posts WHERE parent_id IS NOT NULL"); n != 0 {
+		t.Fatalf("正文名下应无挂楼，实际 %d", n)
 	}
 }
