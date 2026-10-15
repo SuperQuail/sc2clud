@@ -15,7 +15,7 @@ func TestCompileTemplateRejectsBadTemplate(t *testing.T) {
 	}{
 		{"html 语法错", Override{Subject: "s", HTMLBody: "&nbsp;\n<p>{{.Code}</p>"}, ":html:2"},
 		{"html 孤立 {{end}}", Override{Subject: "s", HTMLBody: "<p>{{end}}</p>"}, ":html:1"},
-		{"text 语法错", Override{Subject: "s", HTMLBody: "<p>s</p>", TextBody: "码 {{.Code)"} , ":text:1"},
+		{"text 语法错", Override{Subject: "s", HTMLBody: "<p>s</p>", TextBody: "码 {{.Code)"}, ":text:1"},
 		{"html 执行期字段错", Override{Subject: "s", HTMLBody: "<p>{{.Nickname.Missing}}</p>", TextBody: "t"}, ":html"},
 		{"subject 执行期字段错", Override{Subject: "码 {{.Code.Missing}}", HTMLBody: "<p>s</p>", TextBody: "t"}, ":subject"},
 	}

@@ -37,6 +37,12 @@ const (
 	actionAccountArchive = "mail.account.archive"
 )
 
+// 模板域的审计动作（D37）：target_type = mail_template，target_id = kind。
+const (
+	actionTemplateUpdate = "mail.template.update"
+	actionTemplateReset  = "mail.template.reset"
+)
+
 // defaultResetTZ 是 mail_accounts.reset_tz 的列默认值：算「下一个额度重置点」时的兜底。
 const defaultResetTZ = "Asia/Shanghai"
 

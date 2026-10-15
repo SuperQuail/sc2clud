@@ -29,6 +29,9 @@ import (
 type Service struct {
 	db *ent.Client
 	pg *pgsql.Queries
+	// tpl 是自定义模板的读缓存（D37）：admin 写路径与 mail:send 任务在同一个 Service 上，
+	// 所以同进程内 PUT 后的失效是直接生效的（取舍见 templates.go 的 templateCache 注释）。
+	tpl *templateCache
 	// Crypter 是发信凭据的加解密器（chacha20poly1305）。导出是因为 AI 审核的 API Key 与发信凭据
 	// **同一把主密钥、同一套机制**（d7 §2.1）：主密钥只有一把，不为 AI 再引一把。
 	// nil = 主密钥不可用：HasUsable 恒 false，Send 返回 ErrPermanent。
@@ -46,8 +49,10 @@ type Service struct {
 // **可判定**的事（拍板 §12.2）—— HasUsable 返回 false，注册路径据此回 503
 // auth.mail_unavailable，而不是让运维在启动日志里找原因。
 func NewService(db *ent.Client, keys Keys, q Queue, set Settings, a *audit.Writer, clk clock.Clock, log *slog.Logger) *Service {
+	qs := pgsql.New(db)
 	s := &Service{
-		db: db, pg: pgsql.New(db), q: q, set: set,
+		db: db, pg: qs, q: q, set: set,
+		tpl:   newTemplateCache(qs, log),
 		audit: a, clk: clk, log: log,
 	}
 	crypt, err := pgmail.NewCrypter(keys.KeyHex, oldKeys(keys.OldKeysHex)...)

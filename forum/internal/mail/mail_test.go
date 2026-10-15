@@ -1,6 +1,7 @@
 package mail_test
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -51,8 +52,11 @@ const testKey = "00112233445566778899aabbccddeeff00112233445566778899aabbccddeef
 const otherKey = "ffeeddccbbaa99887766554433221100ffeeddccbbaa99887766554433221100"
 
 type harness struct {
-	t        *testing.T
-	ctx      context.Context
+	t   *testing.T
+	ctx context.Context
+	// mailLog 截 log provider 的整封信（D37 的投递内容断言靠它：provider.go 的 logProvider
+	// 把 subject/html/text 全部打进这一条 slog）。
+	mailLog  *bytes.Buffer
 	pool     *pgxpool.Pool
 	db       *ent.Client
 	svc      *mail.Service
@@ -75,7 +79,9 @@ func newHarness(t *testing.T) *harness {
 		queue:    &fakeQueue{},
 		settings: &fakeSettings{enabled: true, siteName: "测试站"},
 	}
-	h.svc = mail.NewService(db, mail.Keys{KeyHex: testKey}, h.queue, h.settings, audit.New(db, h.clk), h.clk, testLogger())
+	h.mailLog = &bytes.Buffer{}
+	h.svc = mail.NewService(db, mail.Keys{KeyHex: testKey}, h.queue, h.settings, audit.New(db, h.clk), h.clk,
+		slog.New(slog.NewJSONHandler(h.mailLog, nil)))
 	// 审计行有 actor_id → users(id) 的外键，所以管理员必须是真的用户
 	if err := h.pool.QueryRow(h.ctx, `INSERT INTO users (public_id, username, email, password_hash, nickname, role_id)
 		 VALUES ($1::uuid, 'admin', 'admin@example.com', 'x', '管理员', (SELECT id FROM roles ORDER BY id LIMIT 1))

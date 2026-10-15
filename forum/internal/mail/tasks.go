@@ -111,7 +111,18 @@ func (s *Service) render(ctx context.Context, lg pgsql.LogRow) (pgmail.Message, 
 	if d.SiteName == "" {
 		d.SiteName = s.siteName(ctx)
 	}
-	msg, err := pgmail.Render(lg.Template, d)
+	// D37：投递前从缓存查一次自定义模板（缓存未命中才读库，编译产物留内存直到下次 PUT/DELETE）。
+	// nil = 库里没有（或手改库造成的编译失败）：回落内置，语义零变化。
+	custom, err := s.tpl.Get(ctx, lg.Template)
+	if err != nil {
+		return pgmail.Message{}, err
+	}
+	var msg pgmail.Message
+	if custom != nil {
+		msg, err = custom.Render(d)
+	} else {
+		msg, err = pgmail.Render(lg.Template, d)
+	}
 	if err != nil {
 		return pgmail.Message{}, err
 	}

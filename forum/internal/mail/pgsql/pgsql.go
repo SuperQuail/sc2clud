@@ -306,3 +306,77 @@ func (q *Queries) BindQuota(ctx context.Context, logID, accountID int64, day str
 	}
 	return nil
 }
+
+// ---- 模板（D37：mail_templates）----
+
+// TemplateRow 是 mail_templates 的一行。回落语义在 Service：缺行 = 内置，这里不建行。
+type TemplateRow struct {
+	Kind      string
+	Subject   string
+	HTMLBody  string
+	TextBody  string
+	UpdatedAt time.Time
+}
+
+const templateSQL = `SELECT kind, subject, html_body, text_body, updated_at
+  FROM mail_templates
+ WHERE kind = $1::varchar`
+
+// Template 读一行自定义模板（读不到返回 sql.ErrNoRows —— 回落内置由调用方决定）。
+func (q *Queries) Template(ctx context.Context, kind string) (TemplateRow, error) {
+	var r TemplateRow
+	if err := q.scanOne(ctx, []any{&r.Kind, &r.Subject, &r.HTMLBody, &r.TextBody, &r.UpdatedAt}, templateSQL, kind); err != nil {
+		return TemplateRow{}, err
+	}
+	return r, nil
+}
+
+const templatesSQL = `SELECT kind, subject, html_body, text_body, updated_at
+  FROM mail_templates
+ ORDER BY id`
+
+// Templates 读全部自定义模板（最多四行）。
+func (q *Queries) Templates(ctx context.Context) ([]TemplateRow, error) {
+	rows, err := q.db.QueryContext(ctx, templatesSQL)
+	if err != nil {
+		return nil, fmt.Errorf("读邮件模板: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+	var out []TemplateRow
+	for rows.Next() {
+		var r TemplateRow
+		if err := rows.Scan(&r.Kind, &r.Subject, &r.HTMLBody, &r.TextBody, &r.UpdatedAt); err != nil {
+			return nil, fmt.Errorf("读邮件模板: %w", err)
+		}
+		out = append(out, r)
+	}
+	return out, rows.Err()
+}
+
+const upsertTemplateSQL = `INSERT INTO mail_templates (kind, subject, html_body, text_body, updated_at, updated_by)
+VALUES ($1::varchar, $2::text, $3::text, $4::text, $5::timestamptz, $6::bigint)
+ON CONFLICT (kind) DO UPDATE SET
+  subject = $2::text, html_body = $3::text, text_body = $4::text,
+  updated_at = $5::timestamptz, updated_by = $6::bigint`
+
+// UpsertTemplate 保存一份自定义模板（PUT 全量三段）。管理员传 0 时 updated_by 走 NULL。
+func (q *Queries) UpsertTemplate(ctx context.Context, kind, subject, htmlBody, textBody string, updatedBy int64, now time.Time) error {
+	var by any
+	if updatedBy > 0 {
+		by = updatedBy
+	}
+	if _, err := q.db.ExecContext(ctx, upsertTemplateSQL, kind, subject, htmlBody, textBody, now.UTC(), by); err != nil {
+		return fmt.Errorf("保存邮件模板 %s: %w", kind, err)
+	}
+	return nil
+}
+
+const deleteTemplateSQL = `DELETE FROM mail_templates WHERE kind = $1::varchar`
+
+// DeleteTemplate 恢复内置：下一次渲染落回 embed（缺行 = 内置的同一条语义）。
+func (q *Queries) DeleteTemplate(ctx context.Context, kind string) error {
+	if _, err := q.db.ExecContext(ctx, deleteTemplateSQL, kind); err != nil {
+		return fmt.Errorf("删除邮件模板 %s: %w", kind, err)
+	}
+	return nil
+}
