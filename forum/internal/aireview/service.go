@@ -3,8 +3,6 @@ package aireview
 import (
 	"context"
 	"encoding/json"
-	"fmt"
-	"strings"
 	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -113,8 +111,9 @@ func (s *Service) ReviewTopic(ctx context.Context, topicID int64, trigger string
 		visibility  string
 		source      *string
 		openReports int
+		images      int
 	)
-	err = s.pool.QueryRow(ctx, sqlSubject, topicID).Scan(&id, &publicID, &title, &body, &visibility, &source, &openReports)
+	err = s.pool.QueryRow(ctx, sqlSubject, topicID).Scan(&id, &publicID, &title, &body, &visibility, &source, &openReports, &images)
 	if err != nil {
 		return nil // 主题没了：没什么可审的，不是错误
 	}
@@ -135,18 +134,10 @@ func (s *Service) ReviewTopic(ctx context.Context, topicID int64, trigger string
 		return nil
 	}
 
-	// 4) 组装：**不截断正文**（d7 §2.4），**不放作者信息**（d7 §11：昵称/邮箱/IP 与审核无关）。
-	prompt := strings.TrimSpace(cfg.Prompt)
-	if prompt == "" {
-		prompt = defaultPrompt
-	}
-	text := "标题：" + title + "\n\n正文：\n" + body
-	if trigger == "report" {
-		if p := strings.TrimSpace(cfg.PromptReport); p != "" {
-			prompt = p
-		}
-		text = fmt.Sprintf("【举报复核】该帖已被 %d 人举报，重点看是否违规。\n", openReports) + text
-	}
+	// 4) 组装：走 preview.go 那一个组装处（审核屏的预览读的就是它）——**不截断正文**（d7 §2.4），
+	// **不放作者信息**（d7 §11：昵称/邮箱/IP 与审核无关）。
+	prompt := assemblePrompt(cfg, trigger == "report")
+	text := userText(reportPrefix(openReports, trigger), title, body)
 
 	// 5) 外呼（超时在 ai.Config 里）。
 	res, err := s.judge(ctx, s.aiConfig(cfg, key), prompt, text)
@@ -197,7 +188,9 @@ func (s *Service) ReviewTopic(ctx context.Context, topicID int64, trigger string
 
 // Test 是 d7 §8 的「测试连通」：真发一次请求，用固定短文本（**不消耗任何用户内容**）。
 // 回执是 TestView 的字段形状，**不含密钥、不含请求体**。
-func (s *Service) Test(ctx context.Context) (map[string]any, error) {
+// probe 是要发的那段样例（空串 = DefaultProbeSample）。**不落库**：样例是排查用的输入，
+// 不是配置 —— 把它写进 ai_config 要加列 + 迁移，而它下一次排查就该被换掉（界面上也标着「临时覆盖」）。
+func (s *Service) Test(ctx context.Context, probe string) (map[string]any, error) {
 	cfg, err := s.GetConfig(ctx)
 	if err != nil {
 		return nil, err
@@ -206,11 +199,7 @@ func (s *Service) Test(ctx context.Context) (map[string]any, error) {
 	if err != nil {
 		return nil, err
 	}
-	prompt := strings.TrimSpace(cfg.Prompt)
-	if prompt == "" {
-		prompt = defaultPrompt
-	}
-	res, err := s.judge(ctx, s.aiConfig(cfg, key), prompt, testText)
+	res, err := s.judge(ctx, s.aiConfig(cfg, key), assemblePrompt(cfg, false), probeText(probe))
 	if err != nil {
 		s.markError(ctx, err.Error())
 		return nil, err

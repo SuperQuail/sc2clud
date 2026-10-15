@@ -17,6 +17,9 @@ type ConfigView struct {
 	Temperature     float64 `json:"temperature"`
 	Prompt          string  `json:"prompt"`
 	PromptReport    string  `json:"prompt_report"`
+	// ProbeSample 是连通测试**实际会发的那段样例**（默认 = DefaultProbeSample）。
+	// 界面要能看见、能改（D33②③）；改只影响那一次测试，**不落库**，所以这里给的是默认值本身。
+	ProbeSample     string  `json:"probe_sample"`
 	HasSecret       bool    `json:"has_secret"`
 	SecretUpdatedAt *string `json:"secret_updated_at"`
 	LastOKAt        *string `json:"last_ok_at"`
@@ -29,7 +32,7 @@ func viewOf(c *Config) *ConfigView {
 		Enabled: c.Enabled, Provider: c.Provider, BaseURL: c.BaseURL, Model: c.Model,
 		Thinking: c.Thinking, StrictMode: c.StrictMode, TimeoutMS: c.TimeoutMS,
 		MaxOutputTokens: c.MaxOutputTokens, Temperature: c.Temperature,
-		Prompt: c.Prompt, PromptReport: c.PromptReport,
+		Prompt: c.Prompt, PromptReport: c.PromptReport, ProbeSample: DefaultProbeSample,
 		HasSecret: c.HasSecret, SecretUpdatedAt: rfc3339(c.SecretUpdatedAt),
 		LastOKAt:  rfc3339(c.LastOKAt),
 		LastError: c.LastError, LastErrorAt: rfc3339(c.LastErrorAt),
@@ -92,8 +95,50 @@ type TestView struct {
 	Raw        string   `json:"raw"`
 }
 
-// testText 是连通测试用的固定短文本：**不消耗任何用户内容**（d7 §8）。
-const testText = "标题：连通性测试\n\n正文：这是一次连接测试，用来确认密钥与地址可用。"
+// PayloadView 是 POST /admin/ai/payload 的回执：**下一次真调用会发出去的那一份**（dry-run，不外呼）。
+//
+// 为什么要有这条端点：审核屏要显示 system + user 全文，而这两段**唯一**的真源是 assemblePrompt /
+// userText（preview.go，真判定走的同一条路）。前端自己拼一份就是第二份真源 —— 本仓库反复栽的那个坑。
+//
+// 「哪里是标题、哪里是正文」不靠前端认字符串：**分段给**（user_title / user_body），
+// 两段中间隔两个换行，拼起来与真发出去的 user **逐字相等**（preview_test.go 拿假外呼收到的原文比）。
+// 图片：图片字节不上行（D25② 实测），所以这里只有 has_image_markdown（正文里有没有 ![](…) 字面量）
+// 与 image_attachment_count（图集 topic_images 里挂着几张）—— **两个数都要给**：
+// 只给前一个，会让「正文没写字面量、图集里有图」的帖子看起来像没图。
+type PayloadView struct {
+	Source      string `json:"source"`   // probe（连通测试样例）| topic（一条真帖子）
+	TopicID     int64  `json:"topic_id"` // probe 时为 0
+	Title       string `json:"title"`
+	Trigger     string `json:"trigger"`
+	OpenReports int    `json:"open_reports"`
+
+	System string `json:"system"`
+	// UserPrefix 只有 trigger=report 时非空（举报复核那行「该帖已被 N 人举报」）。
+	// 单列一段而不是混进 user_body：审核员要知道那行**不是作者写的**。
+	UserPrefix string `json:"user_prefix"`
+	UserTitle  string `json:"user_title"` // topic 专用：标题那一段（含「标题：」前缀）
+	UserBody   string `json:"user_body"`  // topic 专用：正文那一段（含「正文：」前缀）
+	UserText   string `json:"user_text"`  // probe 专用：连通测试发的就是样例本身，不分段
+
+	HasImageMarkdown     bool `json:"has_image_markdown"`
+	ImageAttachmentCount int  `json:"image_attachment_count"`
+
+	Model           string   `json:"model"`
+	MaxOutputTokens int      `json:"max_output_tokens"`
+	StrictMode      bool     `json:"strict_mode"`
+	ToolName        string   `json:"tool_name"`
+	Categories      []string `json:"categories"`
+}
+
+// payloadReq 是 POST /admin/ai/payload 的请求体；POST /admin/ai/test 复用它的 probe 字段。
+type payloadReq struct {
+	// TopicID 为 0 时走 probe 那一路（样例预览），否则读这条主题的标题 + 1 楼正文。
+	TopicID int64 `json:"topic_id"`
+	// Trigger 只有 create | report（空 = create）：report 还要把未处理举报数写进第一行。
+	Trigger string `json:"trigger"`
+	// Probe 是**这一次**要发的样例（空 = DefaultProbeSample）。只影响这一次，不落库。
+	Probe string `json:"probe"`
+}
 
 func rfc3339(t *time.Time) *string {
 	if t == nil {

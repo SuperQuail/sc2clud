@@ -38,12 +38,15 @@ const sqlMarkOK = `UPDATE ai_config SET last_ok_at = now(), last_error = '', las
 
 const sqlMarkError = `UPDATE ai_config SET last_error = $1, last_error_at = now() WHERE id = 1`
 
-// sqlSubject 取一篇主题的全部判定输入：标题 + 1 楼正文（Markdown 源）+ 当前可见性与判定来源 + 未处理举报数。
+// sqlSubject 取一篇主题的全部判定输入：标题 + 1 楼正文（Markdown 源）+ 当前可见性与判定来源 + 未处理举报数
+// + **图集里挂着的配图数**（topic_images 的引用行，与正文里的 ![] 是两件事）。
 // **不含作者**：d7 §11 明确 prompt 里不放昵称/邮箱/IP。
+// 真判定与审核屏的预览（preview.go）读同一条 —— 预览要是另起一条 SELECT，两边就会各自漂。
 const sqlSubject = `
 	SELECT t.id, t.public_id, t.title, p.content_md, t.visibility, t.review_source,
 	       (SELECT count(*) FROM reports r
-	         WHERE r.target_type = 'topic' AND r.target_id = t.id AND r.state = 'open')
+	         WHERE r.target_type = 'topic' AND r.target_id = t.id AND r.state = 'open'),
+	       (SELECT count(*) FROM topic_images ti WHERE ti.topic_id = t.id)
 	  FROM topics t
 	  LEFT JOIN posts p ON p.topic_id = t.id AND p.floor = 1
 	 WHERE t.id = $1`

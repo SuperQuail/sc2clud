@@ -1,6 +1,9 @@
 package aireview
 
 import (
+	"errors"
+	"io"
+
 	"github.com/gin-gonic/gin"
 
 	"forum/internal/authz"
@@ -32,6 +35,8 @@ func (h *Handler) Register(rg *gin.RouterGroup, requireLogin func() gin.HandlerF
 	admin.PATCH("/ai/config", perm(authz.PermSiteSetting), h.patchConfig)
 	admin.POST("/ai/config/secret", perm(authz.PermSiteSetting), h.saveSecret)
 	admin.POST("/ai/test", perm(authz.PermSiteSetting), h.test)
+	// D33①：审核屏要显示的「真正发给模型的那一份」。dry-run，**一次外呼都不发**。
+	admin.POST("/ai/payload", perm(authz.PermSiteSetting), h.payload)
 }
 
 // getConfig 的回执里**没有密钥字段**（d7 §8：密钥永不回显，只有 has_secret 与 secret_updated_at）。
@@ -95,12 +100,50 @@ func (h *Handler) saveSecret(c *gin.Context) {
 }
 
 // test 是「测试连通」：真发一次请求，回耗时 / 实际模型名 / 原始 verdict（d7 §8）。
+// body 可以不带（老调用方）：带了 probe 就发那一段，没带就发默认样例（D33②③，**不落库**）。
 func (h *Handler) test(c *gin.Context) {
 	if _, err := h.require(c); err != nil {
 		httpx.Fail(c, err)
 		return
 	}
-	out, err := h.svc.Test(c.Request.Context())
+	var in payloadReq
+	// 空 body 是合法的：这条端点从前就没有入参，老前端不发 body 也得照样能测。
+	// 只放过**一个字节都没有**这一种（`EOF`），其余解析失败照常报出去。
+	if err := httpx.Bind(c, &in); err != nil && !errors.Is(err, io.EOF) {
+		httpx.Fail(c, err)
+		return
+	}
+	out, err := h.svc.Test(c.Request.Context(), in.Probe)
+	if err != nil {
+		httpx.Fail(c, err)
+		return
+	}
+	httpx.OK(c, out)
+}
+
+// payload 是 dry-run 的组装口（D33①）：按当前配置 + 给定正文，回「将要发送的 system + user 全文」。
+// 两种来源共用这一条：topic_id > 0 读真帖子（sqlSubject，与真判定同一条 SQL），否则回连通测试的样例。
+// **只读**：不改配置、不写 last_error、不外呼 —— 它唯一的作用是让界面说的和真发的是同一份。
+func (h *Handler) payload(c *gin.Context) {
+	if _, err := h.require(c); err != nil {
+		httpx.Fail(c, err)
+		return
+	}
+	var in payloadReq
+	if err := httpx.Bind(c, &in); err != nil {
+		httpx.Fail(c, err)
+		return
+	}
+	ctx := c.Request.Context()
+	var (
+		out *PayloadView
+		err error
+	)
+	if in.TopicID > 0 {
+		out, err = h.svc.Preview(ctx, PayloadInput{TopicID: in.TopicID, Trigger: in.Trigger})
+	} else {
+		out, err = h.svc.PreviewProbe(ctx, in.Probe)
+	}
 	if err != nil {
 		httpx.Fail(c, err)
 		return
