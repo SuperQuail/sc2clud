@@ -69,3 +69,18 @@
     ③ 差异只用一条就够（user / creator / superadmin 逐点相同，creator 的 `topic.lock`/`topic.move` 是 d2-auth §8.6 的明确取舍，写进对照表）。
   - 下一步：收尾验证（`gofmt -l .`、`go vet ./...`、`pnpm typecheck && pnpm lint && npx vitest run`）与进度/缺陷清单回写。
   - 阻塞：无
+
+- [x] 第 5 步：收尾验证（整包后端 + 前端三连 + 格式化）
+  - 做了什么：`0052` 补前置断言（权限点/角色不在表里时 `RAISE EXCEPTION` —— 光靠 JOIN 不到就是 0 行，
+    迁移会「成功」而什么都没补，那正是这条要修的病）；`gofmt -w` 三个文件；删掉自己造的临时出图脚本与探针文件。
+  - 证据：
+    ① `go vet ./...` → 无输出；`gofmt -l .` → 无输出（改前点出三个文件，已格式化）；
+    ② **全量后端**：`go test -count=1 ./...` → **36 个包全 ok**（`app 47.3s` / `auth 110.5s` / `forum 120.6s` /
+    `aireview 30.9s` / `platform/ai 1.5s` / `site 62.7s`，无 FAIL）；
+    ③ **前端三连**（不跑 `pnpm check`）：`pnpm typecheck` 绿、`pnpm lint` `0 errors, 21 warnings`（全是既有 warning）、
+    `npx vitest run` → `56 files / 277 tests passed`；
+    ④ 出图端口 **5288**（预览静态服务）收工按 PID 关：`Get-NetTCPConnection -LocalPort 5288 | OwningProcess` → 37780。
+  - 下一步：本包三条（D25 / D28 / D29）已收口。留给 Lead 的：**dev 与 prod 都要跑一次 `forum migrate`**
+    （0052 是数据迁移，不跑则 admin 仍缺 `resource.publish`）；站点开关的生效上限是 site 的 30 秒设置缓存
+    （管理员改完，注册路径最多 30 秒后跟着变 —— 拍板 §12.2 允许 ≤30s 的读缓存）。
+  - 阻塞：无（Lead 专属三文件与 `deploy/**` 未碰；D30 / D26 属别人的包，未动）
