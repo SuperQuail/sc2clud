@@ -259,6 +259,15 @@ D34 补的是**管理端当场自助**这一缺环。
 | 处理 | 服务器手工 `CREATE INDEX idx_mail_templates_updated_by`（幂等）→ `systemctl reset-failed` + restart → **active，dev@8082 health/home 200**；仓库补迁移 **0056_mail_templates_fk_index**（`IF NOT EXISTS`，新库走迁移、这台已手工补的幂等） |
 | 教训 | 0054 的表注释还写着「不补单列索引」——那是给 kind 的，updated_by 的 FK 漏划了；**带 FK/SET NULL 的列，up 文件必须同行写 CREATE INDEX**（0055 就是这么写的，0054 漏了）；回滚路径遇到「DB 已领先于旧二进制」时应直接报错而不是盲重启 |
 
+### 1l-bis. 生产首部署 20147d0（2026-10-15 13:3x，Lead）
+
+| | 内容 |
+|---|---|
+| 关键发现 | **prod 服务早就 failed，公网一直由「维护占位页」回答**：`sc2clud-placeholder.service`（占位页自己注释「临时；新站上线后删除」）自 10-13 22:36 占住 127.0.0.1:8080，论坛 191.40.41.97:8080 bind 失败反复重启判死。deploy 预检的「port 8080 held by something else」正是这个 —— 既挡部署，也说明此前 prod_home_8080 探测 200 是**假绿**（答话的是占位页不是论坛） |
+| 处理 | ① 迁移先用 **prod 数据拷贝**预演：`pg_dump` → 临时库 `forum_migrcheck`（runuser 建库，forum 角色无 CREATEDB）→ 新二进制 migrate **19→56 全绿**+`forum check` 通过 → 临时库即删；② 占位页 stop+disable（按其注释到达使用终点）；③ `deploy.ps1 prod` 正式部署 **20147d0**：备份 `pre-deploy-20147d0-20261015-053721.dump` → 真库 migrate **19→56** → 服务 active → health/home/asset 200 → **公网身份断言**「IS this build」绿 |
+| 后果 | **prod 数据零改动、dev 保留**：迁移全为 schema 增量（0020 起无 INSERT/UPDATE/DELETE；敏感三处——0026 FK 值域=旧 CHECK 四类、0028 约束只增态、0050 逐行默认——拷贝库已先核）；dev current 仍 75832e0 / DB 55 / health 200 完好 |
+| 记入 BACKLOG | ① deploy 的 `Wait-Health` 探测的是**本机** `127.0.0.1:8080`（Windows 侧永远 000），白等 60s 后才靠远端 facts 判定——应改成 ssh 探测；② 迁移素材（`board-covers`/`ai-config` 清单）已随产物上机但**未对 prod 执行**（写 prod 数据的运维动作留给用户拍板） |
+
 ---
 
 ## 2. 派发分组（互不重叠的文件作用域）
