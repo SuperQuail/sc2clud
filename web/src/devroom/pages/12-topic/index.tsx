@@ -1,6 +1,8 @@
 import { useState } from 'react';
 import { appPath } from '@/lib/url';
-import { roomHref } from '@/devroom/room-links';
+import { cn } from '@/lib/utils';
+import { protoTitle, roomHref } from '@/devroom/room-links';
+import type { RailLink } from '@/devroom/pages/03-navigation/board-rail';
 import type { CommentData } from '@/ui/comment/types';
 import { DESIGN_ACTION_NOTE, DesignActionNote } from './design-action';
 import { REPORT_REASON_LABEL } from './report-dialog';
@@ -30,6 +32,14 @@ import type { ReportReason } from '@/lib/api/forum';
 //   发布 / 删除回复 → 评论数真的 +1 / -1，列表里真的多一条 / 留下「该回复已删除」。
 
 const BOARD = BOARDS.find((b) => b.slug === 'custom-campaign') ?? BOARDS[0]!;
+
+/** 左栏分区行的落地件：房间里没有分区页（房间只有 ?page=），所以**不可导航**并标出原因 ——
+ *  与 03-navigation 的 RoomRailLink 同一条口径（点下去落到 404 比点不动更糟）。 */
+const roomBoardLink: RailLink = ({ className, children, title }) => (
+  <span className={cn('cursor-not-allowed', className)} title={title ?? protoTitle('分区页')}>
+    {children}
+  </span>
+);
 
 // 下载来源：go_path 走服务端转链端点（后端 §21.2 的 assets/go 同款形状），前端不暴露真实直链
 const SOURCES: TopicSource[] = [
@@ -292,6 +302,7 @@ export default function TopicPage() {
 
       <TopicView
         boards={BOARDS}
+        boardLink={roomBoardLink}
         board={BOARD}
         boardNav={BOARD_NAV}
         boardHref={() => roomHref('12-topic')}

@@ -1,7 +1,8 @@
 import { BASE } from '@/lib/base';
-import type { Topic as ApiTopic, Post, TopicKind as ApiKind } from '@/lib/api/forum';
+import type { Board as ApiBoard, Topic as ApiTopic, Post, TopicKind as ApiKind } from '@/lib/api/forum';
 import type { CommentData } from '@/ui/comment/types';
 import type { Topic } from '@/devroom/pages/14-home/mock';
+import type { BoardSummary } from '@/devroom/pages/03-navigation/board-rail';
 
 // 接口形状 → 房子件的 props。**这一层存在的理由**：房子件（14-home 的卡片族、ui/comment）
 // 吃的是它们自己的形状，而接口给的是后端 DTO 的形状；两侧都不该为了对方改签名。
@@ -10,6 +11,27 @@ import type { Topic } from '@/devroom/pages/14-home/mock';
 /** 后端给的是**图片 hash**，字节走 media 的读端点 `GET /img/<hash>`（forum/dto.go 的注释：前端按它拼）。 */
 export function imageUrl(hash?: string | null): string | null {
   return hash ? BASE + 'img/' + hash : null;
+}
+
+/**
+ * 后端 BoardDTO[] → 分区侧栏 View 吃的 BoardSummary[]。**全站唯一一处**做这个形状对齐的地方
+ * （首页 / 分区页 / 帖子页左栏共用；首页与分区页经 _parts/layout 的 BoardRail 宿主，帖子页直接调它）。
+ *
+ * 字段名照 dto.go:43 的 **cover_hash**（裸哈希，不是路径）；lib/api/forum.ts 的 Board 还停在上一次
+ * 收口的 `cover`（I5 那类欠账的另一处），所以两个形状都接着 —— 线上走的是 cover_hash 那半边。
+ * D21：帖子页左栏过去读的正是那个不存在的 `cover`，于是恒为空、恒灰块。
+ */
+export function boardRows(boards: ApiBoard[]): BoardSummary[] {
+  return boards.map((b) => {
+    const raw = b as { cover?: string | null; cover_hash?: string };
+    return {
+      slug: b.slug,
+      name: b.name,
+      description: b.description,
+      topic_count: b.topic_count,
+      cover_hash: raw.cover_hash ?? raw.cover ?? '',
+    };
+  });
 }
 
 /** 后端 DTO 的列表项 → 卡片族的 Topic（裸哈希在这一步换算成可直接用的 URL）。

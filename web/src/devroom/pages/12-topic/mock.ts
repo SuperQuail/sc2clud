@@ -9,11 +9,13 @@ import { roomHref } from '@/devroom/room-links';
 
 const A = (p: string) => assetUrl(p);
 
+// 封面字段是后端 BoardDTO 的 cover_hash。产品页那一份是真哈希（/img/<hash>）；房间是静态服务、
+// 没有那条读口，所以这里给站内素材的**路径**——BoardCover 接住以 / 开头的写法（与它自己的注释同一口径）。
 export const BOARDS: Board[] = [
   {
     slug: 'announcement',
     name: '公告',
-    cover: A('starcraft/nav-announcement.webp'),
+    cover_hash: A('starcraft/nav-announcement.webp'),
     description: '版本发布、维护窗口与规则变动只在这里发；讨论请到对应分区。',
     topic_count: 86,
     post_count: 1240,
@@ -25,7 +27,7 @@ export const BOARDS: Board[] = [
   {
     slug: 'vanilla-mod',
     name: '原版战役 mod',
-    cover: A('starcraft/nav-vanilla_mod.webp'),
+    cover_hash: A('starcraft/nav-vanilla_mod.webp'),
     description: '不改剧情、只改体验：平衡、AI、画面与手感。',
     topic_count: 412,
     post_count: 6120,
@@ -37,7 +39,7 @@ export const BOARDS: Board[] = [
   {
     slug: 'custom-campaign',
     name: '自制战役',
-    cover: A('starcraft/nav-custom_campaign.webp'),
+    cover_hash: A('starcraft/nav-custom_campaign.webp'),
     description: '玩家自制战役与地图：发布、试玩反馈、卡关求助都在这里。',
     topic_count: 1284,
     post_count: 18430,
@@ -49,7 +51,7 @@ export const BOARDS: Board[] = [
   {
     slug: 'tool-player',
     name: '工具（玩家）',
-    cover: A('starcraft/nav-tool_player.webp'),
+    cover_hash: A('starcraft/nav-tool_player.webp'),
     description: '给玩家用的工具：启动器、存档管理、汉化与画质补丁。',
     topic_count: 236,
     post_count: 3110,
@@ -61,7 +63,7 @@ export const BOARDS: Board[] = [
   {
     slug: 'tool-dev',
     name: '工具（开发者）',
-    cover: A('starcraft/nav-tool_dev.webp'),
+    cover_hash: A('starcraft/nav-tool_dev.webp'),
     description: '给作者用的工具：数据编辑器辅助、脚本库、打包与发布流水线。',
     topic_count: 168,
     post_count: 2240,

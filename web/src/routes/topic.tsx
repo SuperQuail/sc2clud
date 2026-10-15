@@ -29,8 +29,9 @@ import { formatCents } from '@/lib/format';
 import { DesignActionNote } from '@/devroom/pages/12-topic/design-action';
 import { TopicView } from '@/devroom/pages/12-topic/topic-view';
 import type { Board, BoardNav, BoardSlug } from '@/devroom/pages/12-topic/types';
+import { RailRouterLink } from './_parts/layout';
 import { ErrorState, Loading } from './_parts/state';
-import { toComments } from './_parts/mappers';
+import { boardRows, toComments } from './_parts/mappers';
 import { boardHref, toDesignAuthor, toDesignBoard, toDesignTopic, toMentionCandidates, toReview, type TopicWire } from './_parts/topic-mappers';
 
 // 帖子详情 + 回复（契约：GET /topics/{id}、GET /topics/{id}/posts、POST /topics/{id}/posts）。
@@ -241,6 +242,11 @@ export function TopicPage() {
   const wire = t as ApiTopicDetail & TopicWire;
 
   // ---- 接口形状 → 设计件的形状 ----
+  // 左栏那一列分区**直接走 03-navigation 的 BoardRail**（首页 / 分区页 / 帖子页同一个 View），
+  // 吃的就是后端 BoardDTO 的形状（cover_hash 裸哈希）—— 本页不再自己画一份分区行，也不再有第二份
+  // 封面逻辑。D21：路由里那份映射读的是设计稿的 cover，而 BoardDTO 里没有这一列，于是左栏恒无封面。
+  const railBoards = boardRows(boards.data ?? []);
+  // 右栏「分区简介」是另一件东西（名称 / 简介 / 四个统计 / 关注），吃的是设计件的 Board。
   const allBoards = (boards.data ?? []).map(toDesignBoard);
   const current = allBoards.find((b) => b.slug === boardSlug);
   // 分区列表没回来也要能画这一页：用主题自带的两字段兜一个最小 Board，统计先空着（不假装有数）。
@@ -249,7 +255,7 @@ export function TopicPage() {
   const base: Board = current ?? {
     slug: boardSlug as BoardSlug,
     name: t.board.name,
-    cover: '',
+    cover_hash: '',
     description: '',
     topic_count: 0,
     post_count: 0,
@@ -302,7 +308,10 @@ export function TopicPage() {
 
   return (
     <TopicView
-      boards={allBoards}
+      boards={railBoards}
+      // 分区行的落地件（View 里不出现 react-router）：react-router 的 <Link>，href 由适配件转成
+      // basename 相对的 to —— 组件自己拼会在 /dev/ 下变成 /dev/dev/…
+      boardLink={RailRouterLink}
       board={designBoard}
       boardNav={BOARD_NAV}
       boardHref={boardHref}
@@ -401,7 +410,9 @@ export function TopicPage() {
               }
       }
       donateIsSelf={t.author.handle === me.handle}
-      donateSettingsHref={appPath('settings#payment-channels')}
+      // D22（2026-10-15）：不去 /settings#payment-channels —— 收款码那一格搬进了个人主页右栏的
+      // 「设置我的收款码」就地弹层，设置页那个锚点后面已经没有内容了。本人看自己的帖子 → 我的主页。
+      donateProfileHref={appPath('u/' + me.handle)}
       onDonate={(v: { channelId: string; amountCents: number }) =>
         donate.mutate({ channelId: v.channelId, amountCents: v.amountCents })
       }

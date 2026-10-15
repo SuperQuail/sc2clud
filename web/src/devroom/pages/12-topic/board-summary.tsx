@@ -2,6 +2,7 @@ import Button from '@jetbrains/ring-ui-built/components/button/button';
 import { ControlsHeight } from '@jetbrains/ring-ui-built/components/global/controls-height';
 import { MessageSquare, Star, UserPlus } from 'lucide-react';
 import { icon16 } from '@/ui/icons';
+import { BoardCover } from '@/devroom/pages/03-navigation/board-rail';
 import type { Board } from './types';
 
 // 右栏第一格：分区简介。顺序照「先是什么、再有多大、最后能做什么」——
@@ -22,11 +23,10 @@ export function BoardSummary({
   return (
     <section className='flex flex-col gap-3 rounded-lg border border-border bg-card p-4'>
       <div className='flex items-start gap-3'>
-        {board.cover ? (
-          <img src={board.cover} alt='' className='size-10 shrink-0 rounded-md object-cover' />
-        ) : (
-          <span aria-hidden className='size-10 shrink-0 rounded-md bg-muted' />
-        )}
+        {/* 封面走**唯一那份** BoardCover（03-navigation）：占位、/img/ 前缀、稳定色相都在它那里。
+            这里原来自己拼 <img src={board.cover}> —— 而 cover 这一列 BoardDTO 里根本没有（真名 cover_hash），
+            所以帖子页右栏的分区封面与左栏一起恒为空（D21）。 */}
+        <BoardCover slug={board.slug} name={board.name} hash={board.cover_hash} className='size-10 rounded-md text-[15px]' />
         <div className='flex min-w-0 flex-1 flex-col gap-1'>
           <h2 className='truncate text-[15px] font-semibold text-foreground'>{board.name}</h2>
           <p className='text-[12px] leading-relaxed text-muted-foreground'>{board.description}</p>

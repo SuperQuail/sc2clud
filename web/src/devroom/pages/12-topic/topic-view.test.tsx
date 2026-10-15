@@ -3,6 +3,7 @@ import { expect, it, vi } from 'vitest';
 import { TopicView, type TopicViewProps } from './topic-view';
 import { toEditorState } from './edit-dialog';
 import type { Board, BoardNav, TopicAuthor, TopicDetail } from './types';
+import type { BoardSummary } from '@/devroom/pages/03-navigation/board-rail';
 import type { CommentData } from '@/ui/comment/types';
 
 // 这一条盯的是「房间与真站共用的那一份版式」：
@@ -14,7 +15,7 @@ import type { CommentData } from '@/ui/comment/types';
 const BOARD: Board = {
   slug: 'custom-campaign',
   name: '自制战役',
-  cover: '',
+  cover_hash: '',
   description: '玩家自制战役与地图。',
   topic_count: 12,
   post_count: 30,
@@ -209,6 +210,25 @@ it('D8：正文头部与右栏作者卡的头像/昵称都点得进 /u/<handle>'
   );
   // 两处各一条（正文头部的作者行 + 右栏作者卡的头像/昵称），而不是只有底下一行「查看主页」
   expect(cards.length).toBeGreaterThanOrEqual(2);
+});
+
+// D21（2026-10-15 用户实测「帖子页内左侧依旧不显示分区封面」）：左栏的分区列表**必须就是**
+// 03-navigation 的 BoardRail（DevRoom 03 与首页 / 分区页都在渲染同一个文件），字段是后端 BoardDTO 的
+// cover_hash（forum/internal/forum/dto.go:43）。旧行为：12-topic 自己又画了一份行，读的是设计稿的
+// `cover` —— BoardDTO 里根本没有这一列，所以真站恒为空 → 恒灰块（用户看到的就是这个）。
+it('D21：左栏分区列表画封面（cover_hash → /img/<hash>），没有封面的那一行落首字占位', () => {
+  const boards: BoardSummary[] = [
+    { slug: 'custom-campaign', name: '自制战役', cover_hash: 'abc123', description: '玩家自制战役与地图', topic_count: 10 },
+    { slug: 'emperor', name: '皇帝区', cover_hash: '', description: '', topic_count: 0 },
+  ];
+  render(<TopicView {...viewProps({ boards })} />);
+  const rows = screen.getByLabelText('分区与分区内导航').querySelectorAll('a[href^="/b/"]');
+  expect(rows.length).toBe(2);
+  // 有封面：真的画图，地址是 /img/<裸哈希>（走 imagePath，带前缀）
+  expect(rows[0]!.querySelector('img')?.getAttribute('src')).toBe('/img/abc123');
+  // 没有封面：落「首字 + slug 色相」的稳定占位，不是空白、也不是裂图
+  expect(rows[1]!.querySelector('img')).toBeNull();
+  expect(rows[1]!.firstElementChild?.textContent).toBe('皇');
 });
 
 it('举报：弹层里先选事由才让提交，提交后把 target 一起交给宿主', async () => {

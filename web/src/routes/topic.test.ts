@@ -116,18 +116,22 @@ it('下载来源：provider 是开放词表（不许收窄成两个），go_path
   expect(s.verified_at).not.toBe('2026-10-12T01:20:00Z');
 });
 
-it('分区：后端 BoardDTO 没有 member_count / hint / joined，缺的按 0 与 false 兜底而不是伪造', () => {
+it('分区：封面读的是 BoardDTO 的 cover_hash（裸哈希），缺的按 0 与 false 兜底而不是伪造', () => {
   const b = toDesignBoard({
     slug: 'custom-campaign',
     name: '自制战役',
     description: '玩家自制战役',
-    cover: null,
+    cover_hash: 'abc123',
     topic_count: 12,
     post_count: 30,
     today_count: 1,
-  } as ApiBoard);
+    // lib/api/forum.ts 的 Board 还停在设计稿的 `cover`（I5 欠账），真实 DTO 里是 cover_hash —— 
+    // 这里就是要照**真实下发**的形状造数据，所以过一层 unknown。
+  } as unknown as ApiBoard);
   expect(b.slug).toBe('custom-campaign');
-  expect(b.cover).toBe('');
+  // 封面那一列的真名是 cover_hash（forum/internal/forum/dto.go:43）；值是**裸哈希**，
+  // 拼 /img/<hash> 与占位由 View 里的 BoardCover 做（D21：读不存在的 cover 时左栏与右栏都恒为空）。
+  expect(b.cover_hash).toBe('abc123');
   expect(b.topic_count).toBe(12);
   expect(b.post_count).toBe(30);
   expect(b.member_count).toBe(0);

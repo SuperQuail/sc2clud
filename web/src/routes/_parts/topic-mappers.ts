@@ -131,10 +131,14 @@ export function toDesignSource(s: ApiSource): TopicSource {
  *  它来自 GET /boards/{slug}/follow，由宿主只对当前这一个分区取一次再覆盖上去）——
  *  所以这里给的是「没有关注信息时」的中性值，不是假数。 */
 export function toDesignBoard(b: ApiBoard): Board {
+  // 封面字段名照后端 BoardDTO 的 **cover_hash**（裸哈希，dto.go:43）：lib/api/forum.ts 的 Board 还停在
+  // 上一次收口的 `cover`（I5 那类欠账），所以两个形状都接着 —— 线上走的是 cover_hash 那半边。
+  // 旧行为读的是 b.cover，而 BoardDTO 里没有这一列 → 帖子页的分区封面恒为空（D21）。
+  const raw = b as ApiBoard & { cover?: string | null; cover_hash?: string };
   return {
     slug: b.slug as BoardSlug,
     name: b.name,
-    cover: b.cover ?? '',
+    cover_hash: raw.cover_hash ?? raw.cover ?? '',
     description: b.description,
     topic_count: b.topic_count,
     post_count: b.post_count ?? 0,

@@ -12,6 +12,7 @@ import { MarkdownEditor } from '@/ui/rich/markdown-editor';
 import { FormAlert } from '@/devroom/pages/16-auth/form-alert';
 import { roomHref } from '@/devroom/room-links';
 import { BOARDS } from '@/devroom/pages/12-topic/mock';
+import { BoardCover } from '@/devroom/pages/03-navigation/board-rail';
 import { PreviewPane } from './preview-pane';
 import { SourceEditor } from './source-editor';
 import { BackLinks, SubmitBar, SubmitResult } from './submit-gate';
@@ -435,7 +436,9 @@ function BoardCard({ slug }: { slug: BoardKey | null }) {
   return (
     <section className='flex flex-col gap-2 rounded-lg border border-border bg-card p-4'>
       <div className='flex items-start gap-3'>
-        <img src={board.cover} alt='' className='size-10 shrink-0 rounded-md object-cover' />
+        {/* 封面走**唯一那份** BoardCover：BOARDS 的封面字段改回后端 DTO 的真名 cover_hash 之后，
+            这里原来那句 board.cover 就没有了（D21 的同一处字段名债）。 */}
+        <BoardCover slug={board.slug} name={board.name} hash={board.cover_hash} className='size-10 rounded-md text-[15px]' />
         <div className='flex min-w-0 flex-1 flex-col gap-1'>
           <h2 className='truncate text-[15px] font-semibold text-foreground'>{board.name}</h2>
           <p className='m-0 text-[12px] leading-relaxed text-muted-foreground'>{board.description}</p>

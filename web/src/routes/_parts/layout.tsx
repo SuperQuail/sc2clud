@@ -8,7 +8,8 @@ import { icon16 } from '@/ui/icons';
 import { appPath, routePath } from '@/lib/url';
 import { qk } from '@/lib/query/keys';
 import { fetchBoards } from '@/lib/api/forum';
-import { BoardRail as BoardRailView, type BoardSummary, type RailLink } from '@/devroom/pages/03-navigation/board-rail';
+import { BoardRail as BoardRailView, type RailLink } from '@/devroom/pages/03-navigation/board-rail';
+import { boardRows } from './mappers';
 
 // 页面级的两个小件（**不是控件**，是版式）：页头（标题 + 描述 + 动作）与分区侧栏。
 // 它们放在 routes/_parts 而不是 src/ui：src/ui 是「控件库」，加控件要走 DevRoom 验证 + 登记
@@ -75,24 +76,11 @@ export function ComposeButton({ board, label = '发帖' }: { board?: string; lab
 export function BoardRail({ current, className }: { current?: string; className?: string }) {
   const boards = useQuery({ queryKey: qk.boards(), queryFn: ({ signal }) => fetchBoards(signal), staleTime: 10 * 60_000 });
   if (!boards.data || boards.data.length === 0) return null;
-  // 这里只做**形状对齐**，不画任何东西：后端回的是 cover_hash，而 lib/api/forum.ts 的 Board
-  // 还停在上一次收口的 cover（= I5 那类欠账的另一处），所以两个形状都接着。
-  // 后端的 BoardDTO 里根本没有 cover 这个字段，所以线上走的是 cover_hash 那半边。
-  const rows: BoardSummary[] = boards.data.map((b) => {
-    const raw = b as { cover?: string | null; cover_hash?: string };
-    return {
-      slug: b.slug,
-      name: b.name,
-      description: b.description,
-      topic_count: b.topic_count,
-      cover_hash: raw.cover_hash ?? raw.cover ?? '',
-    };
-  });
-  return <BoardRailView boards={rows} current={current} className={className} link={RailRouterLink} />;
+  return <BoardRailView boards={boardRows(boards.data)} current={current} className={className} link={RailRouterLink} />;
 }
 
 /** 把 react-router 的 `<Link to>` 适配成 View 要的 `{ href }`：View 因此不认识路由库。 */
-function RailRouterLink({ href, ...rest }: Parameters<RailLink>[0]) {
+export function RailRouterLink({ href, ...rest }: Parameters<RailLink>[0]) {
   // Link 的 to 是 **basename 相对**的（appPath 的结果已经含 /dev 前缀，再给 Link 会变成 /dev/dev/…）
   return <Link to={routePath(href)} {...rest} />;
 }

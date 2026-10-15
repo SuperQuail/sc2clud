@@ -8,11 +8,13 @@ import type { MentionCandidate } from '@/ui/comment/mention-types';
 
 export type BoardSlug = 'announcement' | 'vanilla-mod' | 'custom-campaign' | 'tool-player' | 'tool-dev';
 
-/** GET /api/v1/boards —— 左栏的分区列表项 */
+/** GET /api/v1/boards —— 左栏的分区列表项。
+ *  封面字段是后端 BoardDTO 的 **cover_hash**（裸哈希，不是路径；forum/internal/forum/dto.go:43）——
+ *  与 03-navigation BoardRail 的 BoardSummary 同一个字段名，所以 Board 也直接能当左栏那份数据用。 */
 export type Board = {
   slug: BoardSlug;
   name: string;
-  cover: string;
+  cover_hash: string;
   description: string;
   topic_count: number;
   post_count: number;
