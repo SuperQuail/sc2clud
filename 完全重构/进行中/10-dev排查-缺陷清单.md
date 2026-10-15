@@ -185,3 +185,15 @@ FIX-COVER staging 之后、commit 之前，**索引被并发的 `git reset` 清�
 
 **Lead 专属**（子 agent 不许改，写进阻塞）：`web/src/app/router.tsx`、`app/shell.tsx`、`web/src/main.tsx`。
 **每个包都必须遵守第 0 节的同源要求**，并且每条都要：先证明断言会红 → 改 View → DevRoom 出图 → 产品宿主跟着改 → 产品页出图对照。
+
+
+---
+
+## 1g. D25 / D28 / D29 的实测结论（FIX-PERM 2026-10-15）
+
+| # | 结论 | 证据落点 |
+|---|---|---|
+| **D25②** | **图片不发**。上行 payload 只有两段纯文本：system = 提示词、user = `标题：<t>\n\n正文：<1 楼 Markdown 源>`。图片**唯一的痕迹**是正文里的 `![alt](/img/<hash>)` 字面量——模型看不到图，审核员看到的也只是这行字。代码侧同源：`aireview/sql.go` 的 `sqlSubject` 只取 `topics.title` + `posts(floor=1).content_md`，**不 JOIN `topic_images`**；`platform/ai/ai.go` 的 `Judge` 只组 system + user 两条消息，没有任何多模态字段。 | 用例 `forum/internal/aireview/aireview_test.go` 的 `TestOutboundPayloadHasNoImageField`（逐字钉住 user 文本 + 断言两段里没有 `image_url`/`data:image`）；顺带修了这条用例逼出来的真缺陷：模型按 schema 省略非必填的 `categories` 时 `ai.parse` 返回 nil → 写 `review_events.categories`（`NOT NULL`）撞 23502，判定落不了库还反复重试 |
+| **D25①** | ✅ 已做：审核屏右栏就地预览**正文全文**（不是 200 字摘要）+ 作者（昵称/@handle）+ 来源徽标；图片以 Markdown 原文可见；超上限必显示「已截断」。 | `forum/internal/forum/review_queue.go` 的 `body_md`/`body_truncated`（草稿档取 `rv.pending_md`）；`web/src/devroom/pages/15-admin/screens/review.tsx` 的 `review-preview-body`；图 `shots/fixperm/d25-review-preview.png` |
+| **D28** | ✅ 已核：**只有一处偏差** —— `admin` 少 `resource.publish`（0017 种 16 个点，拍板 §1.3 要 17 个；那条迁移的注释自己写的就是 17）。后果不是「少一个勾」：管理员发 `kind=resource` 的帖子会被 403。`creator` 多出的 `topic.lock`/`topic.move` 是 d2-auth §8.6 的**明确取舍**，不是错。 | 对照表 `完全重构/进行中/D28-默认权限矩阵对照表.md`；迁移 `0052_admin_resource_publish`；判据 `forum/internal/app/role_permissions_test.go` |
+| **D29** | ✅ 已做：`auth.registration.auto_activate` 成为**唯一真源**（配置值只在站点设置读不到时兜底），注册 / `/me` 回执 / 重发三条路联动；管理端补上**唯一的激活入口**（用户屏「危险动作 → 激活账号」，只写 `activated_at`）；注册页在关掉开关时落「等待管理员激活」而不是「请输入验证码」。 | 用例 `forum/internal/auth/activation_switch_test.go` 四条（先红后绿）；图 `shots/fixperm/d29-users-tall-selected.png` |

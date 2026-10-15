@@ -65,7 +65,9 @@ export const SITE_SETTINGS: SiteSetting[] = [
   { key: 'site.tagline', label: '一句话简介', grp: '站点', value: '星际争霸自定义战役的发布、讨论与资源集散地', kind: 'text', hint: '首页与 <meta> 描述' },
   { key: 'site.footer_note', label: '页脚文案', grp: '站点', value: '本站与暴雪娱乐无隶属关系，所有战役版权归作者所有。', kind: 'multiline', hint: '支持纯文本，换行保留' },
   { key: 'registration.open', label: '开放注册', grp: '注册与审核', value: 'on', kind: 'toggle', hint: '关闭后只有管理员能建号' },
-  { key: 'registration.require_activation', label: '注册后需要激活', grp: '注册与审核', value: 'on', kind: 'toggle', hint: '激活前可读、不可发帖回复（users.activated_at）' },
+  // D29：键名与 label/hint 照 site.SettingSpecs() 的 auth.registration.auto_activate 逐字。
+  // 旧键 registration.require_activation 作废（拍板 §12.2：模式由**一个**开关决定，不是两个）。
+  { key: 'auth.registration.auto_activate', label: '注册后自动激活（发验证码）', grp: '注册与审核', value: 'on', kind: 'toggle', hint: '打开 = 用户收到 6 位验证码后自助激活；关闭 = 用户注册后等管理员激活（拍板 §12.2）' },
   { key: 'post.review_policy', label: '发帖审核策略', grp: '注册与审核', value: 'untrusted', kind: 'select', options: ['untrusted', 'all', 'off'], hint: 'untrusted = 仅未标记 trusted 的作者进人工审核队列' },
   { key: 'donation.notice_default', label: '打赏提示默认文案', grp: '赞赏', value: '如果这份战役帮到了你，可以扫码支持作者。站点不经手资金。', kind: 'multiline', hint: '作者可覆盖；超管在这里配默认值' },
   { key: 'donation.enabled', label: '开放打赏', grp: '赞赏', value: 'on', kind: 'toggle', hint: '关闭后收款码与申报入口全站隐藏' },
