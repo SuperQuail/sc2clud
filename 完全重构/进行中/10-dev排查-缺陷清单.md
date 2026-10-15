@@ -250,6 +250,17 @@ D34 补的是**管理端当场自助**这一缺环。
 
 ---
 
+## 1l. 部署事故：75832e0 迁移后起不来+回滚也起不来（2026-10-15 13:1x，Lead 收口）
+
+| | 内容 |
+|---|---|
+| 现象 | `deploy.ps1 dev` 到 75832e0：migrate 好了（version=55）但服务带不起来；`rollback` 回 8d749c3 也带不起来——**站点双面宕机** |
+| 根因 | 两段叠加：① 0054 给 `mail_templates.updated_by` 建了 FK（ON DELETE SET NULL）**没配索引**，`platform/db.SelfCheck` 的「外键列必须有可用索引」在 `forum run` 启动时判死（日志：`外键 mail_templates.mail_templates_updated_by_fkey 上没有可用索引（RI 查找会全表扫）`）；② 8d749c3 是**没见过 0054/0055 的旧二进制**，起来只报「数据库 schema 版本 55 与二进制 53 不一致」——回滚脚本没考虑「DB 已领先」这条路径，回滚本来就不可能绿 |
+| 处理 | 服务器手工 `CREATE INDEX idx_mail_templates_updated_by`（幂等）→ `systemctl reset-failed` + restart → **active，dev@8082 health/home 200**；仓库补迁移 **0056_mail_templates_fk_index**（`IF NOT EXISTS`，新库走迁移、这台已手工补的幂等） |
+| 教训 | 0054 的表注释还写着「不补单列索引」——那是给 kind 的，updated_by 的 FK 漏划了；**带 FK/SET NULL 的列，up 文件必须同行写 CREATE INDEX**（0055 就是这么写的，0054 漏了）；回滚路径遇到「DB 已领先于旧二进制」时应直接报错而不是盲重启 |
+
+---
+
 ## 2. 派发分组（互不重叠的文件作用域）
 
 | 包 | 覆盖 | 主要文件 |
