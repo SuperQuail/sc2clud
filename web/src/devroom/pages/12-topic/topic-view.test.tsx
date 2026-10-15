@@ -1,7 +1,6 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { expect, it, vi } from 'vitest';
 import { TopicView, type TopicViewProps } from './topic-view';
-import { toEditorState } from './edit-dialog';
 import type { Board, BoardNav, TopicAuthor, TopicDetail } from './types';
 import type { BoardSummary } from '@/devroom/pages/03-navigation/board-rail';
 import { DEFAULT_COVER_ART } from '@/ui/topic/default-cover';
@@ -127,7 +126,6 @@ function viewProps(over: Partial<TopicViewProps> = {}): TopicViewProps {
     onToggleLike: vi.fn(),
     onToggleBookmark: vi.fn(),
     onCopyLink: vi.fn(),
-    onEdit: vi.fn(),
     onSubmitReport: vi.fn(),
     reported: false,
     reportedIds: [],
@@ -299,43 +297,16 @@ it('四个反馈入口各是一条带了各自类型的链接（B2）', async ()
   expect(screen.getAllByRole('link', { name: '看全部反馈' })[0]!.getAttribute('href')).toBe('/issues?topic=t_1042');
 });
 
-it('编辑与删帖：不给回调就不渲染入口，给了就真的走宿主', async () => {
-  const onEdit = vi.fn();
-  render(<TopicView {...viewProps({ onEdit })} />);
-  fireEvent.click(screen.getByTestId('topic-edit'));
-  const dialog = await screen.findByRole('dialog');
-  // 正文那格是**富文本编辑器**（拍板 08 §第三轮 5），不再是纯文本框：
-  // 判据是 contentEditable 上那个 data-placeholder（旧版这里是一个 <textarea>，
-  // 而 textarea 的 placeholder 是 DOM 属性、读不到 data-placeholder）。
-  const body = dialog.querySelector('[contenteditable][data-placeholder]');
-  expect(body).toBeTruthy();
-  // 而且它是拿 content_md 灌进来的：编辑器里已经有正文（不是空白文档）
-  await waitFor(() => expect(body!.textContent).toContain('正文第一段。'));
+it('编辑与删帖：不给宿主的跳转地址与回调就不渲染入口；给了就**去发帖页**（2026-10-15 拍板，帖内小弹层撤除）', () => {
+  const editHref = vi.fn((id: string) => '/new?edit=' + encodeURIComponent(id));
+  render(<TopicView {...viewProps({ editHref })} />);
+  const btn = screen.getByTestId('topic-edit');
+  expect(btn.getAttribute('href')).toBe('/new?edit=' + encodeURIComponent('t_1042'));
+  expect(editHref).toHaveBeenCalledWith('t_1042');
 
-  fireEvent.change(dialog.querySelector('input')!, { target: { value: '改过的标题' } });
-  fireEvent.click(dialog.querySelector('[data-testid=edit-save]')!);
-  // 回执带**正文真源**：json 就是 PATCH 的 content_md（不再是从 content_html 剥出来的纯文本）
-  expect(onEdit).toHaveBeenCalledTimes(1);
-  const sent = onEdit.mock.calls[0]![0] as { title: string; json: string; html: string };
-  expect(sent.title).toBe('改过的标题');
-  expect(JSON.parse(sent.json)).toHaveProperty('root');
-  expect(sent.json).toContain('正文第一段。');
-  expect(sent.html).toContain('正文第一段。');
-
-  const { container } = render(<TopicView {...viewProps({ onEdit: undefined, onDelete: undefined })} />);
-  expect(container.querySelector('[data-testid=topic-edit]')).toBeNull();
-  expect(container.querySelector('[data-testid=topic-delete]')).toBeNull();
-});
-
-// 编辑弹层的初值转换（拍板 08 §第三轮 5）：content_md 是**历史列**，里面可能不是 EditorState JSON。
-// 判据两条：本来就是 JSON 就原样用；是纯文本（老站迁过来的 Markdown）就把它包成最小文档 ——
-// **内容不能丢**（直接抛在用户脸上是最坏的一种）。
-it('toEditorState：EditorState JSON 原样用，纯文本（老站迁来的正文）包成最小文档而不是抛', () => {
-  const state = JSON.stringify({ root: { children: [], type: 'root', version: 1 } });
-  expect(toEditorState(state)).toBe(state);
-
-  const fromText = JSON.parse(toEditorState('第一段。\n\n第二段。')) as { root: { children: unknown[] } };
-  expect(fromText.root.children).toHaveLength(2);
-  expect(JSON.stringify(fromText)).toContain('第一段。');
-  expect(toEditorState('   ')).toBe('');
+  // 删除入口的显隐规则不变（宿主不给就不渲染）
+  const second = render(<TopicView {...viewProps({ editHref: undefined, onDelete: undefined })} />);
+  expect(second.container.querySelector('[data-testid=topic-edit]')).toBeNull();
+  expect(second.container.querySelector('[data-testid=topic-delete]')).toBeNull();
+  expect(screen.queryByRole('dialog')).toBeNull(); // 编辑不再是帖内弹层
 });

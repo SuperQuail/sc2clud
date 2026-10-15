@@ -39,7 +39,6 @@ export function MainColumn({
   reviewRevision,
   reported = false,
   reportDialog,
-  editDialog,
   deleteConfirm,
   receipt,
   canEdit = false,
@@ -51,7 +50,7 @@ export function MainColumn({
   onToggleBookmark,
   onCopyLink,
   onReport,
-  onEdit,
+  editHref,
   onDelete,
   onVote,
   onDeleteComment,
@@ -89,9 +88,8 @@ export function MainColumn({
   reviewRevision?: ReactNode;
   /** 举报过这篇帖子：动作条上的按钮变「已举报」 */
   reported?: boolean;
-  /** 举报 / 编辑弹层与删除确认（受控），由页面给 */
+  /** 举报弹层与删除确认（受控），由页面给；**编辑不再是弹层**（2026-10-15：编辑复用发帖页） */
   reportDialog?: ReactNode;
-  editDialog?: ReactNode;
   deleteConfirm?: ReactNode;
   /** 动作回执（分享已复制 / 举报已提交 / 已发布…）：紧跟动作条 */
   receipt?: ReactNode;
@@ -105,7 +103,8 @@ export function MainColumn({
   onToggleBookmark?: () => void;
   onCopyLink?: () => void;
   onReport?: () => void;
-  onEdit?: () => void;
+  /** 编辑跳发帖页：宿主注入的落地地址（产品 /new?edit=…；房间 ?page=18-compose&edit=…） */
+  editHref?: string;
   /** 删帖（与删回复是两个动作）：不传就不渲染这颗按钮 */
   onDelete?: () => void;
   onVote: (id: string, value: 1 | -1) => void;
@@ -192,7 +191,7 @@ export function MainColumn({
         onToggleBookmark={onToggleBookmark}
         onCopyLink={onCopyLink}
         onReport={onReport}
-        onEdit={canEdit ? onEdit : undefined}
+        editHref={canEdit ? editHref : undefined}
         onDelete={onDelete}
         designNote={receipt}
         deleteConfirm={deleteConfirm}
@@ -219,7 +218,6 @@ export function MainColumn({
       )}
 
       {reportDialog}
-      {editDialog}
     </div>
   );
 }

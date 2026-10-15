@@ -24,7 +24,8 @@ export function TopicActions({
   onToggleBookmark,
   onCopyLink,
   onReport,
-  onEdit,
+  /** 编辑走**发帖页**（用户 2026-10-15：编辑不应是帖内小弹层）——宿主注入跳转地址，不给就不渲染 */
+  editHref,
   /** 删帖：设计稿里没有这一颗，但「发错了删不掉」是盲测报过的缺陷——所以留着，由宿主决定给不给 */
   onDelete,
   /** 设计稿反馈那一行：由页面插在动作条下面 */
@@ -45,8 +46,8 @@ export function TopicActions({
   onToggleBookmark?: () => void;
   onCopyLink?: () => void;
   onReport?: () => void;
-  /** 不给就不渲染「编辑」（不是作者、或没有 topic.edit.own） */
-  onEdit?: () => void;
+  /** 不给就不渲染「编辑」；给出 = 点它去发帖页的编辑态（room: ?page=18-compose&edit=…，产品: /new?edit=…） */
+  editHref?: string;
   /** 不给就不渲染「删除」 */
   onDelete?: () => void;
   designNote?: ReactNode;
@@ -94,7 +95,7 @@ export function TopicActions({
         >
           {reported ? '已举报' : '举报'}
         </Button>
-        {onEdit ? (
+        {editHref ? (
           <Button
             ghost
             inline={false}
@@ -102,7 +103,7 @@ export function TopicActions({
             icon={icon16(Pencil)}
             aria-label='编辑这篇帖子'
             data-testid='topic-edit'
-            onClick={onEdit}
+            href={editHref}
           >
             编辑
           </Button>

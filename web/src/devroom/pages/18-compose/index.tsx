@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import Button from '@jetbrains/ring-ui-built/components/button/button';
 import ButtonSet from '@jetbrains/ring-ui-built/components/button-set/button-set';
 import Input, { Size } from '@jetbrains/ring-ui-built/components/input/input';
@@ -15,6 +15,7 @@ import { BOARDS } from '@/devroom/pages/12-topic/mock';
 import { BoardCover } from '@/devroom/pages/03-navigation/board-rail';
 import { PreviewPane } from './preview-pane';
 import { SourceEditor } from './source-editor';
+import { TOPIC } from '@/devroom/pages/12-topic';
 import { BackLinks, SubmitBar, SubmitResult } from './submit-gate';
 import { disabledReason, type Draft } from './draft';
 import type { SourceInput } from '@/lib/api/forum';
@@ -42,6 +43,10 @@ import {
 
 // DevRoom 18 · 发帖页。
 //
+// 编辑态（2026-10-15）：?edit=<topicId> 预灌标题与正文 ——「编辑帖子」不再走帖内小弹层，
+// 房间与产品同口径：12-topic 的「编辑」按钮跳到这里；保存动作在真页面走 PATCH /topics/:id，
+// 房间里的提交仍是演示态（不外呼）。
+//
 // **这一页不造新控件，只把已有的件组装起来**：正文用 @/ui/rich/markdown-editor（配图是它的正文节点）、
 // 附件位用 @/ui/rich/attachment-slot、标题/分区/标签用 Ring 的 Input/Select/Tag、预览走 @/ui/markdown 那条链。
 // 分区与标签数据来自 12-topic 与 14-home 的既有常量，本页不另编一套（见 data.ts 的出处注释）。
@@ -59,6 +64,8 @@ import {
 //   ?demo=mention           自动敲一个 @（复用编辑器自带的开发期开关）
 export default function ComposePage() {
   const params = new URLSearchParams(location.search);
+  const editId = params.get('edit') ?? '';
+  const editing = editId !== '';
   const [activated, setActivated] = useState(params.get('activated') !== '0');
   const [previewOpen, setPreviewOpen] = useState(params.get('preview') !== 'closed');
   const [trusted, setTrusted] = useState(false);
@@ -76,6 +83,17 @@ export default function ComposePage() {
   const [sources, setSources] = useState<SourceRow[]>(DEMO_SOURCES);
   const [sourceBusy, setSourceBusy] = useState(false);
   const [busy, setBusy] = useState(false);
+  // 编辑态预灌（只灌一次）：房间里唯一的 demo 帖就是 12-topic 的那份 mock
+  const [prefilled, setPrefilled] = useState(false);
+  useEffect(() => {
+    if (!editing || prefilled) return;
+    setPrefilled(true);
+    setTitle(TOPIC.title);
+    const md = TOPIC.content_md ?? '';
+    setDoc({ json: md, html: TOPIC.content_html ?? '', length: md.length });
+    const key = TOPIC.board.slug;
+    setBoard(BOARD_OPTIONS.some((b) => b.key === key) ? (key as BoardKey) : DEFAULT_BOARD);
+  }, [editing, prefilled]);
   const [submitted, setSubmitted] = useState<Draft | null>(null);
 
   const post: Draft = { title, board, tags, json: doc.json, html: doc.html };
@@ -177,7 +195,7 @@ export default function ComposePage() {
   return (
     <div className='flex flex-col gap-4'>
       <PageHead
-        title={submitted ? '发帖 · 已提交' : '发帖'}
+        title={submitted ? '发帖 · 已提交' : editing ? '编辑帖子' : '发帖'}
         subtitle='标题、分区、标签、正文、配图、附件位 —— 组装已有的件，不造新控件。'
         actions={<DemoBar activated={activated} onActivated={setActivated} trusted={trusted} onTrusted={setTrusted} />}
       />

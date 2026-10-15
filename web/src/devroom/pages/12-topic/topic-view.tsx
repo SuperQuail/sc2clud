@@ -22,7 +22,6 @@ import { RevisionDialog } from './revision-dialog';
 // 却会把 Ring 的 Dialog + Radio + Input 整包拖进公开首屏 —— 实测这一页给首屏加了约 50KB gzip，
 // 而首屏预算一共 150KB（前端方案 §9.1）。首屏 JS 只花在首屏真要用的东西上。
 const ReportDialog = lazy(() => import('./report-dialog').then((m) => ({ default: m.ReportDialog })));
-const EditTopicDialog = lazy(() => import('./edit-dialog').then((m) => ({ default: m.EditTopicDialog })));
 
 // 12-topic 的**整页组合**：顶部两个大页签 → 三栏（左：分区与分区内导航／中：全文+来源+动作+评论／
 // 右：分区简介→发帖者→赞助→问题反馈）。
@@ -86,9 +85,11 @@ export type TopicViewProps = {
   onToggleLike?: () => void;
   onToggleBookmark?: () => void;
   onCopyLink?: () => void;
-  /** 编辑保存：三样一起给 —— 标题、正文真源（Lexical JSON，就是 PATCH 的 content_md）、
-   *  以及编辑器派生的 HTML（后端会再清洗一遍；房间直接拿它渲染） */
-  onEdit?: (next: { title: string; json: string; html: string }) => void;
+  /** 编辑走**发帖页**（用户 2026-10-15：帖内小弹层撤掉，编辑复用 18-compose 的编辑态）。
+   *  宿主注入跳转地址（产品 /new?edit=<public_id>；房间 ?page=18-compose&edit=<id>），
+   *  保存在发帖页里发生（PATCH /topics/:id），帖页等刷新后的详情。canEdit=false 或
+   *  宿主不给地址都不渲染按钮。 */
+  editHref?: (topicId: string) => string;
   /** target = 被举报的回复；null = 帖子本身（真站要按它填 target_type / target_id） */
   onSubmitReport?: (reason: ReportReason, detail: string, target: { id: string; label: string } | null) => void;
   /** 本人已经举报过这篇帖子（后端是幂等的：重复举报回 200 + 既有那条） */
@@ -173,7 +174,7 @@ export function TopicView({
   onToggleLike,
   onToggleBookmark,
   onCopyLink,
-  onEdit,
+  editHref,
   onSubmitReport,
   reported,
   reportedIds,
@@ -286,7 +287,7 @@ export function TopicView({
             onToggleBookmark={onToggleBookmark}
             onCopyLink={onCopyLink}
             onReport={() => openReport(null)}
-            onEdit={onEdit ? () => setLayer('edit') : undefined}
+            editHref={canEdit && editHref ? editHref(topic.id) : undefined}
             onDelete={onDelete ? () => setLayer('delete') : undefined}
             deleteConfirm={
               layer === 'delete' ? (
@@ -339,23 +340,6 @@ export function TopicView({
                   onSubmit={(reason, detail) => {
                     setLayer(null);
                     onSubmitReport?.(reason, detail, reportTarget);
-                  }}
-                    onClose={() => setLayer(null)}
-                  />
-                </Suspense>
-              ) : null
-            }
-            editDialog={
-              layer === 'edit' ? (
-                <Suspense fallback={<p className='text-[13px] text-muted-foreground'>正在打开编辑…</p>}>
-                  <EditTopicDialog
-                  title={topic.title}
-                  contentMd={topic.content_md}
-                  candidates={candidates}
-                  onMentionQuery={onMentionQuery}
-                  onSave={(next) => {
-                    setLayer(null);
-                    onEdit?.(next);
                   }}
                     onClose={() => setLayer(null)}
                   />

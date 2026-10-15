@@ -75,7 +75,8 @@ const SOURCES: TopicSource[] = [
   },
 ];
 
-const TOPIC: TopicDetail = {
+// 「编辑」入口跳 18-compose 的编辑态需要把这份 mock 再灌回去（与产品的 /new?edit= 同一支口径）
+export const TOPIC: TopicDetail = {
   id: 't_1042',
   board: { slug: 'custom-campaign', name: '自制战役' },
   kind: 'resource',
@@ -131,13 +132,14 @@ function readReviewFromUrl(): { state: ReviewState; pendingHuman: boolean } {
 export default function TopicPage() {
   const params = new URLSearchParams(location.search);
 
-  // 帖子的可变部分：标题 / 正文 / 最后编辑时间（编辑入口真的改它，不是只弹个框）
-  const [title, setTitle] = useState(TOPIC.title);
-  const [bodyHtml, setBodyHtml] = useState(TOPIC.content_html);
+  // 帖子的可变部分：标题 / 正文 / 最后编辑时间 —— **编辑走发帖页（2026-10-15）**，本页不再当场改；
+  // 这些值仍由本页初始（房间是本地演示态）。
   // 编辑器真源也要跟着状态走：编辑保存后 JSON 与 HTML 必须同时更新，
   // 否则再打开一次编辑框会看到**上一次的正文**（保存成功但内容没变的假象）。
-  const [bodyMd, setBodyMd] = useState(TOPIC.content_md);
-  const [updatedAt, setUpdatedAt] = useState(TOPIC.updated_at);
+  const [title] = useState(TOPIC.title);
+  const [bodyHtml] = useState(TOPIC.content_html);
+  const [bodyMd] = useState(TOPIC.content_md);
+  const [updatedAt] = useState(TOPIC.updated_at);
   // 点赞 / 收藏：两个可切换状态（真站是幂等 PUT/DELETE，这里是本地演示）
   const [liked, setLiked] = useState(TOPIC.viewer.liked);
   const [bookmarked, setBookmarked] = useState(TOPIC.viewer.bookmarked);
@@ -255,22 +257,6 @@ export default function TopicPage() {
     );
   }
 
-  /** 编辑保存：标题 / 正文 / 最后编辑时间就地变。未通过审核时**顺手把它送回审核队列**——
-   *  rejected 的唯一出路就是「改完重新提交」（后端状态机没有 rejected → approved 这条边）。 */
-  function saveEdit(next: { title: string; json: string; html: string }) {
-    setTitle(next.title);
-    // 真源与展示一起换：JSON 给「再编辑一次」，HTML 给正文渲染（后端这两列也是同一次写入）
-    setBodyMd(next.json);
-    setBodyHtml(next.html);
-    setUpdatedAt('刚刚');
-    if (reviewState === 'rejected') {
-      setReviewState('pending');
-      setPendingHuman(false);
-      setReceipt('已保存并重新提交审核 · 回到「审核中」，通过后其他人才能看到');
-    } else {
-      setReceipt('已保存 · 「最后编辑」时间已更新为「刚刚」');
-    }
-  }
 
   async function copyLink() {
     try {
@@ -328,7 +314,8 @@ export default function TopicPage() {
         onToggleLike={() => setLiked((v) => !v)}
         onToggleBookmark={() => setBookmarked((v) => !v)}
         onCopyLink={copyLink}
-        onEdit={saveEdit}
+        // 编辑走房间里的 18-compose（编辑态由 ?edit= 预灌本页的 TOPIC）——与产品同一个「去发帖页改」的口径
+        editHref={() => appPath('?page=18-compose&edit=' + encodeURIComponent(TOPIC.id))}
         onSubmitReport={submitReport}
         reported={reported}
         reportedIds={reportedIds}

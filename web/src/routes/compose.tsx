@@ -109,7 +109,12 @@ export function ComposePage() {
         ? updateTopic(editId, { title: title.trim(), content_md })
         : createTopic({ board, kind, title: title.trim(), content_md });
     },
-    onSuccess: (t) => void navigate(routePath('t/' + encodeURIComponent(t.id)), { replace: true }),
+    // 保存后回帖子页展示**真进度**：失效详情与楼层，否则 React-Query 拿缓存里的旧正文先渲一帧。
+    onSuccess: (t) => {
+      void qc.invalidateQueries({ queryKey: qk.topic(t.id) });
+      void qc.invalidateQueries({ queryKey: qk.posts(t.id) });
+      void navigate(routePath('t/' + encodeURIComponent(t.id)), { replace: true });
+    },
   });
 
   // 下载来源：后端按 topic id 挂（POST/PATCH/DELETE /topics/{id}/sources），且只允许 kind=resource，

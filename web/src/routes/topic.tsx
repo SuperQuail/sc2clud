@@ -18,7 +18,6 @@ import {
   setPostVote,
   setTopicBookmark,
   setTopicLike,
-  updateTopic,
   type ReportReason,
   type TopicDetail as ApiTopicDetail,
 } from '@/lib/api/forum';
@@ -198,24 +197,8 @@ export function TopicPage() {
       setReceipt('举报已提交，进入「举报处理」队列（待处理）。你可以在「我的举报」里跟进。');
     },
   });
-  // 改过正文之后审没审过就作废了：后端的 PATCH 只要带 content_md 就把 review_state 打回 pending
-  // （forum/internal/forum/service.go 的 ResetTopicReview，597c4ac 修的）——所以「保存」=「重新提交审核」，
-  // 两件事是同一次请求。saved 只用来在回执里说实话，不参与渲染判断。
-  const [saved, setSaved] = useState<'idle' | 'draft' | 'resubmitted'>('idle');
-  const save = useMutation({
-    // PATCH 的 content_md **与发帖页同一个字段、同一条换算**：编辑器给的是 EditorState JSON，
-    // 上行必须是 Markdown（上面 reply 的同一句）。next.json 非 JSON 时（onResubmit 把详情里的
-    // content_md 原样递回来，它本来就是 Markdown）换算原样放行，不会把老正文吃掉。
-    // 正文不再从 content_html 剥标签：那条路会把提及与图片节点弄丢，而 PATCH 只要带 content_md
-    // 就会把 review_state 打回待审（forum 的 ResetTopicReview），所以发出去的内容必须是真的那一份。
-    mutationFn: (next: { title: string; json: string }) =>
-      updateTopic(topicId, { title: next.title, content_md: editorJsonToMarkdown(next.json) }),
-    onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: qk.topic(topicId) });
-      void queryClient.invalidateQueries({ queryKey: qk.posts(topicId) });
-      setSaved('draft');
-    },
-  });
+  // 编辑走**发帖页**（2026-10-15 用户拍板：帖页内的编辑小柜挪走）。保存动作在 /new?edit=… 里发生
+  // （PATCH /topics/:id，与发帖同一支换算）；保存后它回到本页 —— 审核态由后端 Reset 语据刷新本页即可。
   const remove = useMutation({
     mutationFn: () => deleteTopic(topicId),
     onSuccess: () => {
@@ -270,20 +253,8 @@ export function TopicPage() {
     joined: boardFollow.data?.following ?? false,
   };
   const designAuthor = toDesignAuthor(t, ap);
-  // 回执要说实话：改过正文之后，帖子是「已重新提交、正在重审」，还是只是被保存了？
-  //   reset：这次保存把 rejected 打回了 pending（服务端事实，不是推断——见上面 ResetTopicReview）。
-  //   still：正文改过了但服务端仍说 rejected（还没生效或这版没过），就别谎称已经重新提交。
-  const justSaved = saved === 'draft';
-  // L7：把「这一次 pending 是重提上来的」也交给横幅 —— 作者刚按下保存，回执与页头横幅说同一件事。
-  // shortcut: 只看**本次会话里的保存**（刷新后 pending 与首次投稿同形，界面上分不出来）——
-  //   要跨刷新区分得让后端在上传时记一笔（例如 topics.review_resubmitted_at），那是变更单里的事。
-  const reviewReset = justSaved && wire.review_state === 'pending';
-  const review = reviewReset ? { ...toReview(t), resubmitted: true } : toReview(t);
-  const receiptText = justSaved
-    ? reviewReset
-      ? '已保存 · 正文改动已重新提交审核（回到「审核中」），通过后其他人才能看到。'
-      : '已保存 · 标题与正文都更新了。'
-    : receipt;
+  const review = toReview(t); // 编辑现在全部发生在发帖页；回执只接本页自己的动作
+  const receiptText = receipt;
 
   const comments = toComments(posts.data?.items ?? []);
   const loggedIn = session.isLoggedIn;
@@ -298,7 +269,6 @@ export function TopicPage() {
     { what: '删除帖子', m: remove },
     { what: '发回复', m: reply },
     { what: '举报', m: report },
-    { what: '保存', m: save },
     { what: '删除回复', m: removeReply },
     { what: '投票', m: vote },
     { what: '点赞', m: like },
@@ -344,7 +314,8 @@ export function TopicPage() {
       onToggleLike={() => like.mutate(!(t.viewer?.liked ?? false))}
       onToggleBookmark={() => bookmark.mutate(!(t.viewer?.bookmarked ?? false))}
       onCopyLink={() => void copyLink(location.href, setReceipt)}
-      onEdit={(next) => save.mutate(next)}
+      // 编辑关（动作条上的「编辑」）：去**发帖页的编辑态**（2026-10-15 用户拍板，帖页内编辑撤除）
+      editHref={(id) => appPath('new?edit=' + encodeURIComponent(id))}
       onSubmitReport={(reason, detail, target) => {
         if (target) report.mutate({ target_type: 'post', target_id: target.id, reason, detail: detail || undefined });
         else report.mutate({ target_type: 'topic', target_id: t.id, reason, detail: detail || undefined });
@@ -353,12 +324,10 @@ export function TopicPage() {
       reportedIds={reportedIds}
       onDelete={() => remove.mutate()}
       deleting={remove.isPending}
-      // B6：「重新提交审核」**有真端点**：带 content_md 的 PATCH /topics/{id} 会把 review_state 打回
-      // pending（forum 的 ResetTopicReview，597c4ac 修的）——就是保存那一支，不必先点「编辑」。
-      // 而「申请人工复核」后端**确实没有**（handler.go 里没有这个路由，router.tsx 因此把申诉页整页隐藏），
-      // 所以它照旧只给一次诚实回执，不谎称已经提交。
+      // B6：重新提交 = 进发帖页编辑（带上原帖标题与正文）→ 保存时 PATCH 打回 pending —— 与编辑同一个落点。
+      // 「申请人工复核」后端没有端点（照旧给诚实回执）。
       onAppeal={() => setReceipt('「申请人工复核」的端点后端还没有，所以这一次没有真的提交。')}
-      onResubmit={() => save.mutate({ title: t.title, json: t.content_md ?? '' })}
+      onResubmit={() => void navigate(appPath('new?edit=' + encodeURIComponent(t.id)))}
       comments={comments}
       commentTotal={t.reply_count}
       // shortcut: 提及候选要 GET /users/mention-candidates 之类的端点（lib/api 里还没有），先不给候选
