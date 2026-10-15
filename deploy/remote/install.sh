@@ -83,6 +83,20 @@ ln -sfn "releases/$version" current.new
 mv -Tf current.new current
 ls -l current
 
+# 设计房间（DevRoom）的静态目录：nginx 以 www 用户读不到 releases/（umask 077 + root 所有），
+# 所以房间发布到 $SC2CLUD_DIR/dist/devroom（世界可读），nginx 的 /dev/devroom/ 指的就是它。
+# **这一步不能省**：2026-10-15 实测它停在 10-13 的手工拷贝上两天，期间所有「房间出图确认」看的都是旧包。
+# 只有带 devroom 的产物（dev 构建）才有这一步；生产产物没有这个目录。
+if [ -d "$SC2CLUD_DIR/releases/$version/web/dist/devroom" ]; then
+  rm -rf "$SC2CLUD_DIR/dist/devroom.new"
+  cp -a "$SC2CLUD_DIR/releases/$version/web/dist/devroom" "$SC2CLUD_DIR/dist/devroom.new"
+  chmod -R a+rX "$SC2CLUD_DIR/dist/devroom.new"
+  if [ -d "$SC2CLUD_DIR/dist/devroom" ]; then mv "$SC2CLUD_DIR/dist/devroom" "$SC2CLUD_DIR/dist/devroom.old"; fi
+  mv "$SC2CLUD_DIR/dist/devroom.new" "$SC2CLUD_DIR/dist/devroom"
+  rm -rf "$SC2CLUD_DIR/dist/devroom.old"
+  echo "devroom   : published $(find "$SC2CLUD_DIR/dist/devroom" -type f | wc -l) files"
+fi
+
 # Keep the newest 3 releases; never delete the one a rollback might need.
 ls -1dt releases/*/ 2>/dev/null | tail -n +4 | xargs -r rm -rf
 

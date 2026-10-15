@@ -282,6 +282,13 @@ D34 补的是**管理端当场自助**这一缺环。
 
 ---
 
+### 1n-quater. 「偶发 404 / 强刷必挂」的真根因（用户 2026-10-15 17:0x 实测指出这是老毛病）
+
+| # | 现象 | 根因（实测证据） | 处理 |
+|---|---|---|---|
+| **D52** | **页面偶发 404 / 渲染失败；强制刷新更容易中，普通刷新又好了**（用户：这是之前就发现过的老毛病，房间与很多页面都这样） | server 级 `limit_req zone=sc2clud_req burst=16 nodelay` 会被**没写 limit_req 的 location 继承**。强刷清缓存 → 浏览器并发取 20+ 个 chunk → 第 17 个起 **429** → 模块加载失败 → 页面报「这一页渲染失败了」。实测：连发 40 个房间 assets，**第 19、20 个 429**；`location /`（生产 SPA）与房间 assets 都没写 limit_req | 四个 location 显式声明突发额度（速率仍 8r/s）：房间 assets / 房间入口 / `/dev/` / `location /` → `burst=200 nodelay`。**验收：40 个房间资源 + 20 个生产 chunk 连发 → 全 200，零 429**（nginx 配置与验收命令记进 `deploy/nginx-sc2clud.md` §4b） |
+| **D53** | 房间（DevRoom）**两天来一直是旧包**（我出图时才发现：18-compose 的路由块取不到） | nginx 的 `/dev/devroom/` 指向 `/srv/sc2clud-dev/dist/devroom/`（那份是**手工拷的**，10-13 17:28），而部署把房间放进 release；release 又是 `umask 077`+root 所有，**nginx（www）读不到**（把 alias 指过去实测全 404）。于是**期间所有「房间出图确认」看的都是旧包** | ① 立即发布当前 release 的房间到该目录（世界可读）；② `deploy/remote/install.sh` 增加发布步骤（切 `current` 之后），房间从此跟部署走；③ 记进 `deploy/nginx-sc2clud.md` §4c。**出图证据**：`shots/dev-live/compose-edit-body.png`（编辑态正文已带内容） |
+
 ### 1n-ter. 头衔新建的两个真缺陷（用户 2026-10-15 16:3x–16:5x 实测）
 
 | # | 现象 | 根因（实测证据） | 处理 |

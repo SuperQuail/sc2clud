@@ -44,13 +44,56 @@ curl -s -o /dev/null -w '%{http_code}\n' -H 'Host: 191.40.41.97' http://127.0.0.
    于是 dist 里那份硬编码 `<base href="/" />` 被原样发出去 —— 配置生效了也没用；
 2. `internal/app/shell.go` 的正则写成了 `<bases+href=…` —— `\s` 的反斜杠丢了，永远匹配不到。
 
-## 4. 生产上线前只剩一件事
+## 4. 生产上线（**2026-10-15 已完成**）
 
-停掉 8080 上的占位页（`location /` 已经指向它要用的端口）：
+占位页已停用，`location /` 现在就是论坛本体（`sc2clud-prod`，8080）：
 
 ```bash
-systemctl disable --now sc2clud-placeholder.service
-ss -lntp | grep ':8080'      # 应该已经没有 python3
+systemctl disable --now sc2clud-placeholder.service   # 做过一次即可；它自己注释写着「新站上线后删除」
+ss -lntp | grep ':8080'                               # 只有 forum
+```
+
+## 4b. 限流额度：静态资源与 SPA 的 location **必须显式声明 burst**（2026-10-15 实测修复）
+
+**症状**（用户长期反馈）：「页面偶发 404 / 渲染失败，强制刷新更容易中，普通刷新又好了」。
+**根因**：server 级 `limit_req zone=sc2clud_req burst=16 nodelay;` 会被**没写 limit_req 的 location 继承**。
+强刷时浏览器并发取 20+ 个 chunk，第 17 个起全 429 → 模块加载失败 → 页面报「这一页渲染失败了」，
+而普通刷新有缓存、请求数少，所以看着像「偶发」。**当时缺这四条的正是 `location /`（生产 SPA）与房间 assets。**
+
+改法（速率仍是 8r/s，放宽的只是突发额度；持续刷站照样被限）：
+
+```nginx
+location /dev/devroom/assets/ { limit_req zone=sc2clud_req_dev burst=200 nodelay; … }
+location /dev/devroom/        { limit_req zone=sc2clud_req_dev burst=200 nodelay; … }
+location /dev/                { limit_req zone=sc2clud_req_dev burst=200 nodelay; … }
+location /                    { limit_req zone=sc2clud_req burst=200 nodelay; … }   # 生产 SPA
+```
+
+**验收**（两条都要 0 个 429）：
+
+```bash
+H='Host: 191.40.41.97'
+for f in $(ls /srv/sc2clud-dev/dist/devroom/assets/*.js | head -40); do
+  curl -s -o /dev/null -w '%{http_code} ' -H "$H" "http://127.0.0.1/dev/devroom/assets/$(basename $f)"
+done        # 40×200
+for f in $(ls /srv/sc2clud-prod/current/web/dist/assets/*.js | head -20); do
+  curl -s -o /dev/null -w '%{http_code} ' -H "$H" "http://127.0.0.1/assets/$(basename $f)"
+done        # 20×200
+```
+
+## 4c. 房间目录 `dist/devroom` 由**部署**发布（2026-10-15 实测）
+
+`location /dev/devroom/` 指向 `/srv/sc2clud-dev/dist/devroom/`，而不是 release 里的那份 —— 因为 release 目录是
+`umask 077` + root 所有，**nginx（www 用户）读不到**（指过去会全是 404，实测过）。
+代价是那份必须跟着发布走，否则房间会一直停在最后一次手工拷贝的版本 —— 2026-10-15 实测它就停在 **10-13**
+（两天），期间所有「房间出图确认」看的都是旧包。现在由 `deploy/remote/install.sh` 在切 `current` 之后发布：
+
+```bash
+# install.sh 里：带 devroom 的产物（dev 构建）才做这一步
+rm -rf "$SC2CLUD_DIR/dist/devroom.new" && cp -a "$SC2CLUD_DIR/releases/$version/web/dist/devroom" "$SC2CLUD_DIR/dist/devroom.new"
+chmod -R a+rX "$SC2CLUD_DIR/dist/devroom.new"
+mv "$SC2CLUD_DIR/dist/devroom" "$SC2CLUD_DIR/dist/devroom.old" 2>/dev/null || true
+mv "$SC2CLUD_DIR/dist/devroom.new" "$SC2CLUD_DIR/dist/devroom" && rm -rf "$SC2CLUD_DIR/dist/devroom.old"
 ```
 
 ## 5. 可选优化（没做）
