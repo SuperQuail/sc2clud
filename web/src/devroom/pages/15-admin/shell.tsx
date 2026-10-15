@@ -2,7 +2,10 @@ import type { ReactNode } from 'react';
 import Breadcrumbs from '@jetbrains/ring-ui-built/components/breadcrumbs/breadcrumbs';
 import Button from '@jetbrains/ring-ui-built/components/button/button';
 import DropdownMenu from '@jetbrains/ring-ui-built/components/dropdown-menu/dropdown-menu';
+import { ControlsHeight } from '@jetbrains/ring-ui-built/components/global/controls-height';
+import { LogOut } from 'lucide-react';
 import { appPath } from '@/lib/url';
+import { icon16 } from '@/ui/icons';
 import { UserAvatar } from '@/ui/user/avatar';
 import { Username } from '@/ui/user/username';
 import { RoleBadge } from '@/ui/user/role-badge';
@@ -25,13 +28,15 @@ export type AdminSelf = {
   avatar?: string | null;
 };
 
-export function AdminShell({ screen, onScreen, me, meExtra, children }: {
+export function AdminShell({ screen, onScreen, me, meExtra, onLogout, children }: {
   screen: ScreenKey;
   onScreen: (key: ScreenKey) => void;
   /** 当前登录者（真 session）。**没有就不画那张卡** */
   me?: AdminSelf | null;
   /** 当前管理员的追加权限（/api/v1/me 的 extra：含到期与理由） */
   meExtra: { key: string; reason: string; expires_at: string | null }[];
+  /** D57：右上卡上的「退出登录」。缺省不画（无登录者时角落里不能有一颗不知道退谁的按钮） */
+  onLogout?: () => void;
   children: ReactNode;
 }) {
   const current = NAV.flatMap((g) => g.items).find((i) => i.key === screen);
@@ -64,6 +69,19 @@ export function AdminShell({ screen, onScreen, me, meExtra, children }: {
                 })),
               ]}
             />
+            {/* D57：用户找不到退出入口 —— 设置页里其实一直有（AccountPanel），但管理员一进后台就认定
+                「退出在这张卡上才对」。直接给它：退出在这一刻可见、可点，不用先想到去 /settings。 */}
+            {onLogout ? (
+              <Button
+                inline={false}
+                height={ControlsHeight.S}
+                icon={icon16(LogOut)}
+                data-testid='admin-logout'
+                onClick={onLogout}
+              >
+                退出登录
+              </Button>
+            ) : null}
           </div>
         ) : (
           // 拿不到登录者时**不画人**（不编一个示例管理员），但也不留一片沉默：

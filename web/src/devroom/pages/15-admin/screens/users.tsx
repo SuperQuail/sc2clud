@@ -4,7 +4,7 @@ import Dialog from '@jetbrains/ring-ui-built/components/dialog/dialog';
 import Input from '@jetbrains/ring-ui-built/components/input/input';
 import Select, { Type as SelectType } from '@jetbrains/ring-ui-built/components/select/select';
 import { ControlsHeight } from '@jetbrains/ring-ui-built/components/global/controls-height';
-import { Ban, Search, ShieldCheck, UserCheck } from 'lucide-react';
+import { Ban, KeyRound, Search, ShieldCheck, UserCheck } from 'lucide-react';
 import { icon16 } from '@/ui/icons';
 import { UserAvatar } from '@/ui/user/avatar';
 import { Username } from '@/ui/user/username';
@@ -14,7 +14,7 @@ import type { AdminUser, AdminUserDetail, Role, Title } from '@/lib/api/admin';
 import { DataTable, type Sort } from '../data-table';
 import { PAGE_SIZE, UsersFooter } from './users-footer';
 import { ConfirmDialog, DangerAction } from '../confirm';
-import { DisabledReason, GateNote, KV, Numbers, Panel, Pill, ScreenHead, Stat, StatRow, Toolbar } from '../bits';
+import { DisabledReason, errorLine, GateNote, KV, Numbers, Panel, Pill, ScreenHead, Stat, StatRow, Toolbar } from '../bits';
 
 // 屏 a：用户管理（13.2 用户管理 + 13.7 处罚 + 13.6 发头衔）。
 // 磁盘配额**不做**：D2 已定案放弃网盘，quota_bytes / used_bytes 不迁（见 admin-map.md）。
@@ -82,6 +82,9 @@ export type UsersScreenProps = {
   onRevokeSessions: (id: string) => void;
   onSetRole: (id: string, roleId: number) => void;
   onGrantTitle: (userId: string, titleId: string) => void;
+  /** D56 重置密码（忘记密码的后台通道）。返回 Promise：成功值带一次性临时密码（生成时），
+   *  失败 reject——弹层留住并把错误挂到输入附近（同 D48「失败不关窗」）。 */
+  onResetPassword: (userId: string, password: string) => Promise<{ password?: string; revoked: number }>;
   /** 动作回执（宿主把请求结果放这里） */
   receipt?: ReactNode;
 };
@@ -91,7 +94,7 @@ export function UsersScreen({
   size = PAGE_SIZE,
   loading = false, error = null, filter, onFilterChange,
   roles, titles, canBan, canAssignRole, canGrantTitle,
-  onBan, onActivate, onRevokeSessions, onSetRole, onGrantTitle, receipt,
+  onBan, onActivate, onRevokeSessions, onSetRole, onGrantTitle, onResetPassword, receipt,
 }: UsersScreenProps) {
   const [selected, setSelected] = useState<string[]>([]);
   const [sort, setSort] = useState<Sort>({ key: 'created_at', dir: 'desc' });
@@ -102,6 +105,8 @@ export function UsersScreen({
   const [pending, setPending] = useState<{ kind: 'ban' | 'unban' | 'activate'; ids: string[] } | null>(null);
   const [grantTo, setGrantTo] = useState<string | null>(null);
   const [roleTo, setRoleTo] = useState<string | null>(null);
+  // D56 重置密码的目标：两个入口（行内 + 右栏危险面板）只吸同一个 state。
+  const [resetTo, setResetTo] = useState<string | null>(null);
 
   // 详情接口那一份优先（它多三张表）；回退到列表项只在「详情还没到」的空档里用
   const activeUser: AdminUserDetail | AdminUser | null = detail ?? null;
@@ -166,6 +171,7 @@ export function UsersScreen({
             )}
             {canGrantTitle ? <Button onClick={() => setGrantTo(u.id)}>发头衔</Button> : null}
             {canAssignRole ? <Button onClick={() => setRoleTo(u.id)}>改角色</Button> : null}
+            {canBan ? <Button onClick={() => setResetTo(u.id)}>重置密码</Button> : null}
             <Button onClick={() => onSelect(u.id)}>详情</Button>
           </span>
         );
@@ -359,8 +365,18 @@ export function UsersScreen({
                 >
                   踢掉全部会话
                 </Button>
+                {/* D56：密码重置放在同一个人身上，与「换掉这张凭证」的安全动作凑一块 */}
+                <Button
+                  inline={false}
+                  height={ControlsHeight.S}
+                  icon={icon16(KeyRound)}
+                  disabled={!canBan}
+                  onClick={() => setResetTo(activeUser.id)}
+                >
+                  重置密码
+                </Button>
               </div>
-              {!canBan ? <DisabledReason>没有 user.ban：停用与踢会话都不可用</DisabledReason> : null}
+              {!canBan ? <DisabledReason>没有 user.ban：停用、踢会话与重置密码都不可用</DisabledReason> : null}
             </Panel>
           ) : null}
         </div>
@@ -403,6 +419,13 @@ export function UsersScreen({
         onClose={() => setRoleTo(null)}
         onSet={onSetRole}
       />
+      {/* D56：key=目标任务 —— 换人重开弹层必然是干净状态（不带出上一个人的残留结果/错误） */}
+      <ResetPasswordDialog
+        key={resetTo ?? 'none'}
+        user={users.find((u) => u.id === resetTo) ?? null}
+        onClose={() => setResetTo(null)}
+        onReset={onResetPassword}
+      />
     </div>
   );
 }
@@ -439,6 +462,74 @@ function GrantTitleDialog({ user, titles, onClose, onGrant }: {
           <Button onClick={onClose}>关闭</Button>
           <Button primary disabled={!chosen} onClick={() => { onGrant(user.id, chosen); onClose(); }}>授予</Button>
         </div>
+      </div>
+    </Dialog>
+  );
+}
+
+/** D56 重置密码：忘记密码的后台通道（自助的 forgot 邮件流在 16-auth）。
+ *  密码留空 = 后端生成一次性临时密码，**只在弹层里显示一次**；
+ *  成功不关弹层（关掉就再也拿不回那个密码）、失败也不关（错误挂到输入附近，同 D48 的策略）。 */
+function ResetPasswordDialog({ user, onClose, onReset }: {
+  user: AdminUser | null;
+  onClose: () => void;
+  onReset: (userId: string, password: string) => Promise<{ password?: string; revoked: number }>;
+}) {
+  const [pw, setPw] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [done, setDone] = useState<{ password?: string; revoked: number } | null>(null);
+  if (!user) return null;
+  const submit = () => {
+    setBusy(true);
+    onReset(user.id, pw)
+      .then((r) => { setDone(r); setBusy(false); })
+      .catch((e) => { setError(errorLine(e) ?? '重置没能完成'); setBusy(false); });
+  };
+  return (
+    <Dialog show label='重置密码' onCloseAttempt={onClose} onOverlayClick={onClose} onEscPress={onClose}>
+      <div className='flex w-[420px] max-w-full flex-col gap-3 p-4'>
+        {done ? (
+          <>
+            <p className='m-0 text-[13px] leading-relaxed text-foreground'>
+              已给 <b>{user.nickname}</b> 设好新密码，其 <b>{done.revoked}</b> 个会话已全部失效（旧密码不再可用）。
+            </p>
+            {done.password ? (
+              <div data-testid='pw-reset-once' className='rounded-md border border-border bg-muted/50 px-3 py-2'>
+                <p className='m-0 mb-1 text-[11px] leading-relaxed text-muted-foreground'>
+                  临时密码（<b>只显示这一次</b>，关掉就再也拿不回来）——当面交给这位用户：
+                </p>
+                <span className='font-mono text-[16px] font-semibold tracking-wider text-foreground'>{done.password}</span>
+              </div>
+            ) : (
+              <p data-testid='pw-reset-once-explicit' className='m-0 text-[12px] leading-relaxed text-muted-foreground'>
+                密码是你自己指定的（界面上不回显）——把它交给对方即可。
+              </p>
+            )}
+            <div className='flex items-center justify-end gap-2'>
+              <Button primary inline={false} height={ControlsHeight.S} onClick={onClose}>完成</Button>
+            </div>
+          </>
+        ) : (
+          <>
+            <p className='m-0 text-[13px] leading-relaxed text-foreground'>
+              给 <b>{user.nickname}</b>（@{user.username}）设置新登录密码。提交后该用户<b>全部会话</b>立刻失效、
+              旧密码不再可用；动作写入审计 <code>user.password.reset</code>。
+            </p>
+            <Input
+              label='新密码（8-128 字节；留空 = 自动生成一次性临时密码）'
+              type='text'
+              autoComplete='off'
+              value={pw}
+              onChange={(e) => setPw(e.target.value)}
+            />
+            {error ? <p role='alert' className='m-0 text-[12px] text-destructive'>{error}</p> : null}
+            <div className='flex items-center justify-end gap-2'>
+              <Button onClick={onClose}>取消</Button>
+              <Button primary data-testid='pw-reset-submit' loader={busy} disabled={busy} onClick={submit}>重置密码</Button>
+            </div>
+          </>
+        )}
       </div>
     </Dialog>
   );

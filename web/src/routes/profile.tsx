@@ -14,7 +14,7 @@ import { ProfileHero, type ProfileStat } from '@/devroom/pages/11-profile/profil
 import { CoverPicker, type CoverPickerHandle } from '@/ui/cover-picker';
 import { ImageUploader } from '@/ui/rich/image-uploader';
 import { SponsorCard } from '@/devroom/pages/11-profile/sponsor-card';
-import { assetUrl, appPath, routePath } from '@/lib/url';
+import { assetUrl, appPath, imagePath, routePath } from '@/lib/url';
 import { qk } from '@/lib/query/keys';
 import { can, useSession } from '@/lib/perms';
 import { clearCover, fetchUserProfile, fetchUserTopics, uploadAvatar, uploadCover } from '@/lib/api/user';
@@ -184,7 +184,9 @@ export function ProfilePage() {
       <ProfileHero
         // 封面：本人设过就用 users.cover_hash 那张，没设过回落站内素材（与头像回落默认池同一口径）。
         // 2026-10-14 之前这里恒为站内素材 —— 因为库里没有封面列、media 也没有封面通道（拍板 08 第二轮补齐）。
-        cover={u.cover ? assetUrl(u.cover) : assetUrl('starcraft/sc2-battle.webp')}
+        // D58（生产裂图）：cover 是后端下发的 /img/<hash>，imagePath 原样放行；此前误过 assetUrl
+        // （前置 art/），浏览器实际请求 /art/img/<hash> → SPA 回落 index.html → <img> 拿到 HTML 裂图。
+        cover={u.cover ? imagePath(u.cover) : assetUrl('starcraft/sc2-battle.webp')}
         hasCover={u.cover !== ''}
         // 本人可点；看别人主页时画一颗明确禁用的（禁用 + title 说清原因，而不是「点了没反应」）
         onCoverPick={isSelf ? () => coverApi.current?.open() : null}
@@ -286,7 +288,7 @@ export function ProfilePage() {
       {/* 封面就地换：与 /settings 那处、后台分区屏那处**同一个弹层**（cover-picker.tsx）。
           hero 右上那颗「更换封面」不弹它自己的窗口 —— 它只是通过句柄代点这里，入口只有一处代码。 */}
       <CoverPicker
-        cover={u.cover ? assetUrl(u.cover) : null}
+        cover={u.cover ? imagePath(u.cover) : null}
         pending={coverSave.isPending}
         // 入口是 hero 右上那颗（它通过句柄代点这里）——弹层自己不画按钮，否则同页两颗
         headless

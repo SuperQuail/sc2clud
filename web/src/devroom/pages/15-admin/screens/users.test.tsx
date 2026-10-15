@@ -1,6 +1,7 @@
 import { fireEvent, render, screen } from '@testing-library/react';
 import { expect, it, vi } from 'vitest';
 import { UsersScreen, type UsersFilter, type UsersCounts } from './users';
+import { ApiError } from '@/lib/api/errors';
 import type { AdminUser, AdminUserDetail, Role, Title } from '@/lib/api/admin';
 
 // D29 的手工激活：站点关掉自动激活后，管理员这一屏是**唯一**的激活入口。
@@ -26,9 +27,10 @@ const detail = (u: AdminUser): AdminUserDetail => ({ ...u, sanctions: [], user_p
 
 const COUNTS: UsersCounts = { total: 137, banned: 4, pending_activation: 9, email_unverified: 12 };
 
-function renderScreen(u: AdminUser, over: { page?: number; canNext?: boolean; onPage?: (p: number) => void } = {}) {
+function renderScreen(u: AdminUser, over: { page?: number; canNext?: boolean; onPage?: (p: number) => void; onReset?: ReturnType<typeof vi.fn> } = {}) {
   const onActivate = vi.fn();
   const onPage = over.onPage ?? vi.fn();
+  const onReset = over.onReset ?? vi.fn();
   const filter: UsersFilter = { q: '', status: 'all', role: 'all' };
   render(
     <UsersScreen
@@ -51,10 +53,81 @@ function renderScreen(u: AdminUser, over: { page?: number; canNext?: boolean; on
       onRevokeSessions={() => {}}
       onSetRole={() => {}}
       onGrantTitle={() => {}}
+      onResetPassword={onReset}
     />,
   );
-  return { onActivate, onPage };
+  return { onActivate, onPage, onReset };
 }
+
+// ── D56 管理员重置密码 ────────────────────────────────────────────────
+
+it('D56：重置密码留空提交 → onReset(id, "")，一次性临时密码只在弹层里给一次', async () => {
+  const onReset = vi.fn().mockResolvedValue({ password: 't3mp7kqkmrz4', revoked: 2 });
+  renderScreen(user({ activated_at: '2026-10-14T12:00:00Z' }), { onReset });
+  // 行内与右栏各有入口；点第一颗即可
+  fireEvent.click(screen.getAllByRole('button', { name: '重置密码' })[0]!);
+  fireEvent.click(screen.getByTestId('pw-reset-submit'));
+  expect(await screen.findByTestId('pw-reset-once')).toBeTruthy();
+  const once = screen.getByTestId('pw-reset-once');
+  expect(once.textContent).toContain('t3mp7kqkmrz4');
+  expect(once.textContent).toContain('只显示这一次');
+  expect(onReset).toHaveBeenCalledWith('u-1', '');
+  // 出了结果不关弹层（临时密码关掉就再也拿不回），提交键被「完成」替代
+  expect(screen.getByRole('button', { name: '完成' })).toBeTruthy();
+  expect(screen.queryByTestId('pw-reset-submit')).toBeNull();
+});
+
+it('D56：显式密码原文上送，不出回显位', async () => {
+  const onReset = vi.fn().mockResolvedValue({ revoked: 0 });
+  renderScreen(user({}), { onReset });
+  fireEvent.click(screen.getAllByRole('button', { name: '重置密码' })[0]!);
+  const box = await screen.findByRole('textbox', { name: /新密码/ });
+  fireEvent.change(box, { target: { value: 'admin-set-2026' } });
+  fireEvent.click(screen.getByTestId('pw-reset-submit'));
+  expect(await screen.findByTestId('pw-reset-once-explicit')).toBeTruthy();
+  expect(onReset).toHaveBeenCalledWith('u-1', 'admin-set-2026');
+  expect(screen.queryByTestId('pw-reset-once')).toBeNull();
+});
+
+it('D56：失败不关弹层，字段理由就近可见（D48 同策略）', async () => {
+  const onReset = vi.fn().mockRejectedValue(new ApiError(400, 'common.invalid', '参数无效', undefined, { password: '密码长度必须是 8-128 个字节' }));
+  renderScreen(user({}), { onReset });
+  fireEvent.click(screen.getAllByRole('button', { name: '重置密码' })[0]!);
+  fireEvent.click(screen.getByTestId('pw-reset-submit'));
+  const alert = await screen.findByRole('alert');
+  expect(alert.textContent).toContain('8-128');
+  expect(screen.getByTestId('pw-reset-submit')).toBeTruthy();
+});
+
+// 无 user.ban 既不画行内也不画右栏入口（权限的口径与其它动作一致）
+it('D56：canBan=false 不画任何重置入口', () => {
+  const onReset = vi.fn();
+  render(
+    <UsersScreen
+      users={[user({})]}
+      detail={null}
+      onSelect={() => {}}
+      counts={COUNTS}
+      page={1}
+      canNext={false}
+      onPage={() => {}}
+      filter={{ q: '', status: 'all', role: 'all' }}
+      onFilterChange={() => {}}
+      roles={[] as Role[]}
+      titles={[] as Title[]}
+      canBan={false}
+      canAssignRole={false}
+      canGrantTitle={false}
+      onBan={() => {}}
+      onActivate={() => {}}
+      onRevokeSessions={() => {}}
+      onSetRole={() => {}}
+      onGrantTitle={() => {}}
+      onResetPassword={onReset}
+    />,
+  );
+  expect(screen.queryByRole('button', { name: '重置密码' })).toBeNull();
+});
 
 it('未激活账号有「激活账号」，点了走 onActivate（只写 activated_at）', () => {
   const { onActivate } = renderScreen(user({}));

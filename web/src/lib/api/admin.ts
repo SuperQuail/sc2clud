@@ -133,6 +133,13 @@ export function revokeUserSessions(userId: string): Promise<{ revoked: number }>
   return api('admin/users/' + encodeURIComponent(userId) + '/sessions/revoke', { method: 'POST' });
 }
 
+/** D56 管理员重置用户密码（忘记密码的后台通道；自助通道是 forgot 邮件流）。
+ *  password 留空 = 后端生成一次性临时密码，**只在响应里给一次**；显式给出时不回显。
+ *  两条路都会踢掉目标用户的全部会话。真源 auth/handler.go 的 adminSetPasswordReq。 */
+export function adminSetUserPassword(userId: string, password?: string): Promise<{ password?: string; revoked: number }> {
+  return api('admin/users/' + encodeURIComponent(userId) + '/password', { method: 'POST', body: { password: password ?? '' } });
+}
+
 /** 用户详情：列表项 + 三张关联表（sanctions / user_permissions / user_titles）。**只有这条给那三张表**。 */
 export function fetchUserDetail(userId: string, signal?: AbortSignal): Promise<AdminUserDetail> {
   return api<AdminUserDetail>('admin/users/' + encodeURIComponent(userId), { signal });

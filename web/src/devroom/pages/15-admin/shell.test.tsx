@@ -1,5 +1,5 @@
-import { render, screen } from '@testing-library/react';
-import { expect, it } from 'vitest';
+import { fireEvent, render, screen } from '@testing-library/react';
+import { expect, it, vi } from 'vitest';
 import { AdminShell, type AdminSelf } from './shell';
 
 // D14：管理页右上角那张「当前管理员」卡以前写死 DevRoom 的 mock（示范管理员 @demo-admin / 管理员），
@@ -10,9 +10,9 @@ import { AdminShell, type AdminSelf } from './shell';
 
 const ME: AdminSelf = { nickname: '虚空辉光舰', handle: 'demo-voidray', role: { key: 'creator', name: '认证创作者' }, avatar: null };
 
-function renderShell(me: AdminSelf | null | undefined) {
+function renderShell(me: AdminSelf | null | undefined, over: { onLogout?: () => void } = {}) {
   render(
-    <AdminShell screen='users' onScreen={() => {}} me={me} meExtra={[]}>
+    <AdminShell screen='users' onScreen={() => {}} me={me} meExtra={[]} onLogout={over.onLogout}>
       <div>屏内容</div>
     </AdminShell>,
   );

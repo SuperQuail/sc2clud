@@ -46,14 +46,14 @@ const ME = {
 };
 
 /** user.Profile 是**平铺的**（forum/internal/user/service.go:52-68），title 只给佩戴中的那一个。 */
-const profile = (title: unknown, handle = 'demo-admin') => ({
+const profile = (title: unknown, handle = 'demo-admin', cover = '') => ({
   data: {
     id: 'u1',
     handle,
     nickname: '示范管理员',
     avatar: '',
     avatar_small: '',
-    cover: '',
+    cover,
     bio: '战役作者',
     status: 'normal',
     level: 27,
@@ -96,7 +96,7 @@ function renderProfile(handle: string) {
  * `following` 是**关注态的真源**，PUT / DELETE 之后它会变 —— 「态以服务端回执为准」这条断言
  * 只有在桩跟着变的时候才有意义（回执不动，本地翻转也能骗过断言）。
  */
-function stubProfile(opts: { me?: boolean; handle?: string; following?: boolean } = {}) {
+function stubProfile(opts: { me?: boolean; handle?: string; following?: boolean; cover?: string } = {}) {
   const handle = opts.handle ?? 'demo-admin';
   const me = opts.me !== false;
   let following = opts.following ?? false;
@@ -112,7 +112,7 @@ function stubProfile(opts: { me?: boolean; handle?: string; following?: boolean 
     if (path.endsWith('/api/v1/users/' + handle + '/titles')) return { body: TITLES };
     if (path.endsWith('/api/v1/users/' + handle + '/topics')) return { body: { data: [], next_cursor: null } };
     if (path.endsWith('/api/v1/users/' + handle + '/channels')) return { body: { data: [] } };
-    if (path.endsWith('/api/v1/users/' + handle)) return { body: profile(CURRENT, handle) };
+    if (path.endsWith('/api/v1/users/' + handle)) return { body: profile(CURRENT, handle, opts.cover) };
     if (path.endsWith('/api/v1/me/donation-settings')) {
       return { body: { data: { show_channels: true, records_public: false, notice_visible: true, notice_text: '' } } };
     }
@@ -206,6 +206,17 @@ it('D23：别人主页没有头像上传通道（连 file input 都不在 DOM �
   await screen.findByText('示范管理员');
   expect(container.querySelectorAll('input[type=file]')).toHaveLength(0);
   expect(screen.queryByTestId('avatar-upload-entry')).toBeNull();
+});
+
+// D58（生产裂图）：cover 是后端下发的 /img/<hash>，此前被 assetUrl 拼成 /art/img/<hash> ——
+// 无文件无扩展名 → SPA 回落 index.html（200, text/html）→ <img> 拿到 HTML 解码失败 = 裂图。
+// 钉住：hero 壁纸的 <img> 原样用 /img/ 前缀，绝不出现 /art/img/。
+it('D58：有封面时 hero 壁纸 img 直接用 /img/<hash>（不再拼 art/）', async () => {
+  stubProfile({ cover: '/img/bbaf40a7feed' });
+  const { container } = renderProfile('demo-admin');
+  await screen.findByText('示范管理员');
+  expect(container.querySelector('img[src^="/img/bbaf40a7feed"]')).toBeTruthy();
+  expect(container.querySelector('img[src^="/art/img/"]')).toBeNull();
 });
 
 // 没有头衔且是本人：不显示假占位（接 D16 的口径）

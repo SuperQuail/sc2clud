@@ -1,7 +1,9 @@
 import { createElement, Suspense, type ComponentType } from 'react';
 import { Navigate, useNavigate, useParams } from 'react-router';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
 import Button from '@jetbrains/ring-ui-built/components/button/button';
 import { Lock } from 'lucide-react';
+import { logout } from '@/lib/api/auth';
 import { SCREEN_KEYS, type ScreenKey } from '@/devroom/pages/15-admin/nav';
 import { AdminShell } from '@/devroom/pages/15-admin/shell';
 import { appPath, routePath } from '@/lib/url';
@@ -78,6 +80,12 @@ export function AdminLayout() {
   const session = useSession();
   const params = useParams();
   const navigate = useNavigate();
+  const qc = useQueryClient();
+  // D57：后台右上卡有退出入口。清缓存 + 回登录页；清完 /me 重新走未登录分支，壳自然收起。
+  const signOut = useMutation({
+    mutationFn: () => logout(),
+    onSuccess: () => { void qc.clear(); void navigate(appPath('login')); },
+  });
   const raw = params['*'] ?? 'users';
   const screen = (SCREEN_KEYS as string[]).includes(raw) ? (raw as ScreenKey) : null;
 
@@ -127,6 +135,7 @@ export function AdminLayout() {
       // **后端 /me 的 extra 只有 key 与 expires_at，没有 reason**（读接口不回显理由）——
       // 所以这里不编一个理由出来，缺就是缺（权限明细里那一段会空着）。
       meExtra={(session.session?.extra ?? []).map((p) => ({ key: p.key, reason: '', expires_at: p.expires_at }))}
+      onLogout={() => signOut.mutate()}
     >
       {/* 每个屏自己一个 chunk：加载态必须有（否则切屏时是一片空白） */}
       <Suspense fallback={<Loading what='这一屏' />}>{createElement(SCREEN_COMPONENT[screen])}</Suspense>

@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { fetchUsers } from './admin';
+import { adminSetUserPassword, fetchUsers } from './admin';
 import { mockFetch } from '@/test/fetch-mock';
 
 afterEach(() => {
@@ -32,5 +32,27 @@ describe('用户列表请求（FIX-USERS）', () => {
     const out = await fetchUsers({});
     expect(out.items).toHaveLength(1);
     expect(out.counts.total).toBe(0);
+  });
+});
+
+// D56 管理员重置密码：password 空串 = 后端走「生成」，响应只在生成时给密码
+describe('D56 重置密码请求', () => {
+  it('POST /admin/users/{id}/password；不传密码时 body.password 是空串', async () => {
+    // httpx.OK 的包络是 {ok, data}：client 的 api() 解的就是 data
+    const { calls } = mockFetch([{ body: { data: { password: 'k7rqmzt39v4h', revoked: 3 } } }]);
+    const out = await adminSetUserPassword('u-1');
+    expect(calls[0]?.url).toContain('/admin/users/u-1/password');
+    expect(calls[0]?.init?.method).toBe('POST');
+    expect(JSON.parse(String(calls[0]?.init?.body))).toEqual({ password: '' });
+    expect(out.password).toBe('k7rqmzt39v4h');
+    expect(out.revoked).toBe(3);
+  });
+
+  it('显式密码随 body 原文发送；响应不给 password', async () => {
+    const { calls } = mockFetch([{ body: { data: { revoked: 5 } } }]);
+    const out = await adminSetUserPassword('u-2', 'admin-set-2026');
+    expect(JSON.parse(String(calls[0]?.init?.body))).toEqual({ password: 'admin-set-2026' });
+    expect(out.password).toBeUndefined();
+    expect(out.revoked).toBe(5);
   });
 });

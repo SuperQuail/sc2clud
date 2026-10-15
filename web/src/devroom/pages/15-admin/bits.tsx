@@ -1,9 +1,32 @@
 import type { ReactNode } from 'react';
 import { ShieldAlert } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { isApiError } from '@/lib/api/errors';
 
 // 管理后台的共享展示件（纯展示、非交互）。交互控件一律来自 Ring UI 或本目录的可复用控件。
 // **待提升为 src/ui**：`Panel` / `StatRow` / `Pill` 这几个 12/13/14 页也能用，验证通过后应上移。
+
+/** 容器把任何失败翻成一句人话（不吞错误，也不把 500 说成「没有数据」）。
+ *  **不带状态码**：屏上的模板已经在写「（HTTP 404）」，带上就成了「HTTP 404 HTTP 404 接口不存在」。
+ *  原声的家在 routes/admin/_shared.tsx；屏组件（devroom 这层）也要它（D56 重置弹层就近显示错误），
+ *  所以真身**只此一份**放在这里，_shared 原样再出口，容器不需要改 import。 */
+export function errorLine(e: unknown): string | null {
+  if (!e) return null;
+  if (isApiError(e)) {
+    // **字段级理由必须带上**：后端把「哪个字段、错在哪」放在 fields 里（apperr.Invalid），
+    // 只印一句「参数错误」等于让管理员反复猜 —— 2026-10-15 头衔新建实测：key 带了连字符，
+    // 页面只说「参数错误」，谁也看不出是 key 的形状不对。
+    // 取到字段就用字段；只有 `_`（整体错误）时用它；都没有就不加括号。
+    const f = (e.fields ?? {}) as Record<string, string>;
+    const detail =
+      Object.entries(f)
+        .filter(([k]) => k !== '_')
+        .map(([k, v]) => k + '：' + v)
+        .join('；') || f['_'] || '';
+    return e.message + (detail ? '（' + detail + '）' : '') + (e.requestId ? '（编号 ' + e.requestId + '）' : '');
+  }
+  return String(e);
+}
 
 export function ScreenHead({ title, note, actions }: { title: string; note: string; actions?: ReactNode }) {
   return (

@@ -4,6 +4,7 @@ import { qk } from '@/lib/query/keys';
 import {
   activateUser,
   banUser,
+  adminSetUserPassword,
   fetchRoles,
   fetchTitles,
   fetchUserDetail,
@@ -131,6 +132,12 @@ export function UsersScreenContainer() {
     onSuccess: () => done('头衔已授予'),
     onError: (e) => setReceipt('发头衔失败：' + errorLine(e)),
   });
+  // D56：重置密码的成败**由弹层自己**吃到（成功展示一次性密码、失败不关窗）——
+  // 容器只在成功后刷新缓存，回执写在弹层里，这里不再重复报一条。
+  const resetPw = useMutation({
+    mutationFn: (v: { id: string; password: string }) => adminSetUserPassword(v.id, v.password),
+    onSuccess: () => void qc.invalidateQueries({ queryKey: ['admin'] }),
+  });
 
   const me = session.session;
   const receiptNode = receipt ? (
@@ -164,6 +171,7 @@ export function UsersScreenContainer() {
       onRevokeSessions={(id) => revoke.mutate(id)}
       onSetRole={(id, roleId) => role.mutate({ id, roleId })}
       onGrantTitle={(userId, titleId) => title.mutate({ userId, titleId })}
+      onResetPassword={(id, password) => resetPw.mutateAsync({ id, password })}
       receipt={receiptNode}
     />
   );
