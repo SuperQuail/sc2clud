@@ -201,6 +201,22 @@ RETURNING id`, []any{publicID, userID, label, hash}, &id)
 	return id, nil
 }
 
+// turnChannelDisplayOn 是 D24：**上传收款码即默认显示**。
+//
+// 为什么写在这里、而不是改 0011 的 DEFAULT：默认值只在「行不存在」时才轮得到，而用户传完码
+// 一般已经有一行（改展示开关、改文案都会建行）——那行若是 false，他就得自己摸到设置页去开。
+// 显式关掉过展示的人，重新传一张码 = 又一次「我要挂这个码」的明示，所以照样置 true；
+// 此后想全关仍然可以在设置页关（那是主动收手的动作，本函数不再参与）。
+func turnChannelDisplayOn(ctx context.Context, q sqlExec, userID int64) error {
+	_, err := q.ExecContext(ctx, `
+INSERT INTO user_donation_settings (user_id, show_channels) VALUES ($1, true)
+ON CONFLICT (user_id) DO UPDATE SET show_channels = true, updated_at = now()`, userID)
+	if err != nil {
+		return fmt.Errorf("media: turn channel display on for %d: %w", userID, err)
+	}
+	return nil
+}
+
 // deleteChannel 归属判定在 WHERE 里（d5 §3.2）：空串 = 没有这行。
 func deleteChannel(ctx context.Context, q sqlExec, userID int64, publicID string) (string, error) {
 	var hash string
@@ -238,8 +254,9 @@ SELECT EXISTS (
 // 这张 hash 是**这个作者**的收款码，并且他开着展示开关（渠道列表也才回得了这一行）。
 //
 // 为什么读 reward 域的表：这是「收款码能不能对外展示」的唯一真源，写在 reward 域
-// （user_donation_settings.show_channels，0011 的 DEFAULT false 与老站一致）。media 只 READ 它，不写。
-// 行不存在 = 从没设置过 = 默认关（与迁移的 DEFAULT 一致），所以用 EXISTS 而不是再查一次值。
+// （user_donation_settings.show_channels）。**唯一的写者是上传**（turnChannelDisplayOn，D24 上传即默认显示）
+// 与设置页自己那两个开关 —— 读路径只 READ，不写。
+// 行不存在 = 没传过码也没设置过 = 关（迁移的 DEFAULT 仍是 false），所以用 EXISTS 而不是再查一次值。
 func channelImageWithDisplayOn(ctx context.Context, q sqlExec, hash string, ownerID int64) (bool, error) {
 	var ok bool
 	err := row1(ctx, q, `

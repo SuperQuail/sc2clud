@@ -39,8 +39,10 @@ func TestPaymentChannelImageFollowsDisplaySwitch(t *testing.T) {
 		t.Fatalf("收款码必须给 /img/<hash> 形状的地址，实际 %q", out.Image)
 	}
 
-	// 第 1 步：开关**默认关**（0011 迁移的 DEFAULT false，老站也一样）。
-	// 这时渠道列表回空数组，图不该对无关的人可读 —— 否则「关掉展示」只关掉了列表，没关掉图。
+	// 第 1 步：**关掉**展示开关（设置页那一块）。行由上传建好了（D24：上传即默认显示，
+	// 见 payment_channel_default_test.go），这里显式关回去 —— 本条要证的是「关掉之后真的取不到」。
+	// 这时渠道列表回空数组，图也不该对无关的人可读 —— 否则「关掉展示」只关掉了列表，没关掉图。
+	h.mustExec(`UPDATE user_donation_settings SET show_channels = false WHERE user_id = $1`, alice.ID)
 	for _, c := range []struct {
 		name  string
 		actor *authz.Actor
@@ -57,13 +59,13 @@ func TestPaymentChannelImageFollowsDisplaySwitch(t *testing.T) {
 		}
 	}
 
-	// 作者自己永远拿得到（还没开开关时设置页要能预览自己的码）。
+	// 作者自己永远拿得到（开关关着时设置页要能预览自己的码）。
 	if got, err := h.svc.FetchImage(h.ctx, h.actor(alice), hash); err != nil || got.Placeholder != nil {
 		t.Fatalf("作者本人必须拿得到自己的收款码，实际 %+v / %v", got, err)
 	}
 
-	// 第 2 步：**上传之后**打开展示开关（设置页那一块）—— 同一个 hash，不需要重传。
-	h.mustExec(`INSERT INTO user_donation_settings (user_id, show_channels) VALUES ($1, true)`, alice.ID)
+	// 第 2 步：把开关打开（设置页那一块）—— 同一个 hash，不需要重传。
+	h.mustExec(`UPDATE user_donation_settings SET show_channels = true WHERE user_id = $1`, alice.ID)
 
 	for _, c := range []struct {
 		name  string

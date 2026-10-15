@@ -344,6 +344,11 @@ func (s *Service) AddPaymentChannel(ctx context.Context, actor *authz.Actor, in 
 		if err != nil {
 			return err
 		}
+		// D24（2026-10-15 用户实测）：上传即默认显示 —— 不这么做，用户传完码别人主页上什么都没有，
+		// 还得去设置页开一个自己不知道存在的开关（default false 是 0011 沿用的老站口径，已不适用）。
+		if err := turnChannelDisplayOn(ctx, tx, actor.UserID); err != nil {
+			return err
+		}
 		publicID, sort, err = channelPublicID(ctx, tx, id)
 		return err
 	})
