@@ -24,7 +24,7 @@ export type BoardSummary = {
 };
 
 /** 侧栏一行的封面位：有封面用图（图片端点），没有就用那份全站默认封面（静态素材）。 */
-export function BoardCover({ hash, className }: { slug?: string; name?: string; hash?: string | null; className?: string }) {
+export function BoardCover({ hash, className }: { hash?: string | null; className?: string }) {
   // hash 是**裸哈希**（后端 BoardDTO 给的形状）；房间是静态预览服务、没有 /img/{hash} 这条读口，
   // 所以也接住「已经是路径」的写法（以 / 开头），房间的演示数据用站内素材就能画出一张真封面。
   const src = hash ? imagePath(hash.startsWith('/') ? hash : '/img/' + hash) : null;
@@ -78,7 +78,7 @@ export function BoardRail({
         const title = b.description || b.name;
         const inner = (
           <>
-            <BoardCover slug={b.slug} name={b.name} hash={b.cover_hash} />
+            <BoardCover hash={b.cover_hash} />
             <span className='min-w-0 flex-1 truncate'>{b.name}</span>
             <span className='shrink-0 text-[11px] tabular-nums text-muted-foreground'>{b.topic_count ?? 0}</span>
             {/* 「今日 N」：168px 的窄栏里只留得下「今日 + 数字」，有新增才画（0 不画 —— 一排 0 只是噪音）。

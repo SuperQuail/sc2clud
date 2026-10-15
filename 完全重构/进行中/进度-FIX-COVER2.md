@@ -29,5 +29,5 @@
     `shots/fixcover2/00-contact-sheet.png`、`a-home-default-cover-1440.png`、`b-board-rail-1440.png`、`c-admin-boards-1440.png`、`d-home-390.png`、`e-chosen-art-portrait-320.png`。
     看图结论：卡片上默认封面铺满 16:9、脸在正中、标题在下方卡体上（不压图）；左栏 20×20 与后台 32×32 都能认出是一张人脸；390 窄屏不裂不挤。
     全量：`npx vitest run` = 287 passed（2 个套件收集失败，见阻塞）；`pnpm gate:ui`/`gate:controls`/`gate:urls` 三条全绿。
-  - 下一步：无（本轮范围收口）—— 若要动「用户主页壁纸的默认」（profile.tsx 现回落 `starcraft/sc2-battle.webp`）需用户重新拍板，那是横幅不是封面。
+  - 下一步：无（本轮范围收口）—— 收尾时把 `BoardCover` 已经用不到的两个 prop（`slug`/`name`，虚线框/首字那套留下的）删掉，三个调用点（board-rail 自己、12-topic/board-summary、18-compose）跟着改传参。—— 若要动「用户主页壁纸的默认」（profile.tsx 现回落 `starcraft/sc2-battle.webp`）需用户重新拍板，那是横幅不是封面。
   - 阻塞：`src/lib/api/admin.ts:409` 有人把 `in` 当参数名（`fetchAiPayload(in: {...})`），**在当前工作区里是解析错误** —— 于是 `pnpm typecheck` 有 7 条 TS 错、`pnpm lint` 1 条 error、`src/routes/admin/ai.test.tsx` 与 `src/lib/api/admin.test.ts` 两个套件收集失败。全库这套错**只落在这一个文件**（`pnpm typecheck | Select-String 'error TS'` 去重后只有 `src/lib/api/admin.ts`），与本包无关，已按纪律不碰（不在我的作用域）。

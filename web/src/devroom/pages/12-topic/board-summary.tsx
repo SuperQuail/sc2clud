@@ -26,7 +26,7 @@ export function BoardSummary({
         {/* 封面走**唯一那份** BoardCover（03-navigation）：占位、/img/ 前缀、稳定色相都在它那里。
             这里原来自己拼 <img src={board.cover}> —— 而 cover 这一列 BoardDTO 里根本没有（真名 cover_hash），
             所以帖子页右栏的分区封面与左栏一起恒为空（D21）。 */}
-        <BoardCover slug={board.slug} name={board.name} hash={board.cover_hash} className='size-10 rounded-md text-[15px]' />
+        <BoardCover hash={board.cover_hash} className='size-10 rounded-md' />
         <div className='flex min-w-0 flex-1 flex-col gap-1'>
           <h2 className='truncate text-[15px] font-semibold text-foreground'>{board.name}</h2>
           <p className='text-[12px] leading-relaxed text-muted-foreground'>{board.description}</p>

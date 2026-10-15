@@ -438,7 +438,7 @@ function BoardCard({ slug }: { slug: BoardKey | null }) {
       <div className='flex items-start gap-3'>
         {/* 封面走**唯一那份** BoardCover：BOARDS 的封面字段改回后端 DTO 的真名 cover_hash 之后，
             这里原来那句 board.cover 就没有了（D21 的同一处字段名债）。 */}
-        <BoardCover slug={board.slug} name={board.name} hash={board.cover_hash} className='size-10 rounded-md text-[15px]' />
+        <BoardCover hash={board.cover_hash} className='size-10 rounded-md' />
         <div className='flex min-w-0 flex-1 flex-col gap-1'>
           <h2 className='truncate text-[15px] font-semibold text-foreground'>{board.name}</h2>
           <p className='m-0 text-[12px] leading-relaxed text-muted-foreground'>{board.description}</p>
