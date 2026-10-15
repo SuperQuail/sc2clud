@@ -443,7 +443,7 @@ func TestOutboundPayloadCarriesImageBlocks(t *testing.T) {
 // 不出现在任何管理端回执里。没有这条换算，「选一条带图帖试跑」（D33④）在界面上根本填不出 topic_id。
 //
 // 先红：TopicIDByPublicID 不存在时编译不过；把它实现成直接拼进 SQL 时，最后两条断言会红
-//（非 uuid → 22P02 → 500；不存在的 id → 0 行 → 空 id）—— 那正是本仓库记过的那类缺陷形态。
+// （非 uuid → 22P02 → 500；不存在的 id → 0 行 → 空 id）—— 那正是本仓库记过的那类缺陷形态。
 func TestTopicIDByPublicIDIsTheAdminSideAddress(t *testing.T) {
 	h := newHarness(t)
 	id := h.topic("带图的帖子", "正文", nil, "pending")

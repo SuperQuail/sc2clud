@@ -199,6 +199,18 @@ FIX-COVER staging 之后、commit 之前，**索引被并发的 `git reset` 清�
 - **base64 内联计入 48 MiB 请求体上限**；另一条路是公网 URL（≤8192 字符、图 ≤32 MiB、60s 内取回）——**dev 没有公网图片地址，必须走 data URL**。
 
 派 **FIX-VLM**（后端 payload/取图/上限/记录 + 管理端预览与连通性测试；因无法给已派出的子 agent 发更正，预览那一半并入本包）。
+### D33 收口（2026-10-15 10:35，Lead 代收）
+
+FIX-AI2 被中途停止（无收尾报告），其半成品由 Lead 接手收完：
+- **接线**：`AiPayloadView|AiPayloadImage|AiTestView` 三类、`fetchAiPayload/probe` 样例可编辑（**临时覆盖不落库**）、
+  审核屏与 AI 屏都给「看发给 AI 的那一份」+「真跑一次（含图）」，topic 用 `topic_public_id` 寻址（uuid）。
+- **补的全是代码层面的真空**：`admin-fixtures.ts` 引用了不存在的 `./raw-content` 与未定义的 `payloadOf/AI_IMG_A/B`
+  （出图桩整个红着）；`users-footer.tsx` 用了 Ring 不存在的 `inputStyle`；**测试桩没盖住新请求** `/admin/ai/payload`
+  → AiPayloadView 一渲染就崩 → 错误边界接管 → 三条「连通测试」旧用例红（根因，已在用例注释里写明）。
+- **后端两个在途文件**（`preview_test.go`163 行 / `bind.go` 空 body 归 EOF）实测 `ok 20.8s` 后入库；调试垃圾 `forum/*.txt` 已清。
+
+---
+
 ## 2. 派发分组（互不重叠的文件作用域）
 
 | 包 | 覆盖 | 主要文件 |

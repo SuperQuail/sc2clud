@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { qk } from '@/lib/query/keys';
 import {
   fetchAiConfig,
+  fetchAiPayload,
   patchAiConfig,
   saveAiSecret,
   testAiConfig,
@@ -52,8 +53,20 @@ export function AiReviewScreenContainer() {
   const [receipt, setReceipt] = useState<string | null>(null);
   const [testResult, setTestResult] = useState<AiTestView | null>(null);
   const [testFailure, setTestFailure] = useState<AiTestFailure | null>(null);
+  // 样例的**临时覆盖**（D33②③）：真源在服务端（ConfigView.probe_sample），这里只存「本页改过的那一份」。
+  // null = 还没改过 → 用服务端给的默认样例；刷新页面即回到默认（不落库，理由见 ai-bits 的 ProbeEditor）。
+  const [probeEdit, setProbeEdit] = useState<string | null>(null);
 
   const cfg = useQuery({ queryKey: qk.adminAiConfig(), queryFn: ({ signal }) => fetchAiConfig(signal) });
+  const defaultProbe = cfg.data?.probe_sample ?? '';
+  const probe = probeEdit ?? defaultProbe;
+  // 「将要发送的那一份」：**服务端组装**（POST /admin/ai/payload，dry-run），前端只渲染。
+  // 改成随输入实时重算：样例/提示词一改，这一块就跟着变 —— 它显示的是「现在这一刻会发什么」。
+  const payload = useQuery({
+    queryKey: ['admin', 'ai-payload', probe],
+    queryFn: ({ signal }) => fetchAiPayload({ probe }, signal),
+    enabled: cfg.data !== undefined,
+  });
   const refresh = () => void qc.invalidateQueries({ queryKey: qk.adminAiConfig() });
   const patch = useMutation({
     mutationFn: (body: Partial<AiConfig>) => patchAiConfig(body),
@@ -66,7 +79,7 @@ export function AiReviewScreenContainer() {
     onError: (e) => setReceipt('保存密钥失败：' + (errorLine(e) ?? '')),
   });
   const test = useMutation({
-    mutationFn: testAiConfig,
+    mutationFn: (sample: string) => testAiConfig(sample),
     onSuccess: (r) => { setTestResult(r); setTestFailure(null); setReceipt(null); refresh(); },
     // **失败就地显示**（D12）：不 rethrow、不落进路由的错误边界（那会整页变成「出错了」）。
     // 原来这一档写的是 setReceipt('连通测试失败：…')：回执区在屏幕最上方，而按钮在下面的「连通测试」面板里 ——
@@ -86,6 +99,7 @@ export function AiReviewScreenContainer() {
       canSetting={can(session.session, 'site.setting')}
       onPatch={(body) => patch.mutate(body)}
       onSaveSecret={(key) => secret.mutate(key)}
+      // 发的是**这一份**样例（可能被临时改过）—— 不给就发默认样例
       onTest={() => {
         // **没配 key 时不发那一次请求**：后端这时回的是 500 common.internal（LoadKey 的裸 error 被兜成 500），
         // 错误码里没有「缺 key」这个信息 —— 只有配置里的 has_secret 知道。与其让管理员去猜「服务端内部错误」，
@@ -100,10 +114,19 @@ export function AiReviewScreenContainer() {
           return;
         }
         setTestFailure(null);
-        test.mutate();
+        test.mutate(probe);
       }}
       testResult={testResult}
       testFailure={testFailure}
+      probe={probe}
+      defaultProbe={defaultProbe}
+      onProbeChange={(next) => setProbeEdit(next)}
+      payload={payload.data ?? null}
+      payloadError={payload.error ? (
+        <p role='alert' className='rounded-md border border-destructive/40 bg-destructive/8 px-3 py-2 text-[12px] text-foreground'>
+          「将要发送的那一份」没组装出来（HTTP {isApiError(payload.error) ? payload.error.status : 0}）：{errorLine(payload.error)}
+        </p>
+      ) : null}
       busy={patch.isPending || secret.isPending || test.isPending}
       receipt={receipt ? (
         <p role='status' className='rounded-md border border-border bg-muted/50 px-3 py-2 text-[12px] text-foreground'>{receipt}</p>

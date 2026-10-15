@@ -6,8 +6,9 @@ import Toggle from '@jetbrains/ring-ui-built/components/toggle/toggle';
 import { ControlsHeight } from '@jetbrains/ring-ui-built/components/global/controls-height';
 import { Clock, KeyRound, PlugZap } from 'lucide-react';
 import { icon16 } from '@/ui/icons';
-import type { AiConfig, AiTestView } from '@/lib/api/admin';
-import { TestFail, TestResult, type AiTestFailure } from './ai-bits';
+import type { AiConfig, AiPayloadView, AiTestView } from '@/lib/api/admin';
+import { ProbeEditor, TestFail, TestResult, type AiTestFailure } from './ai-bits';
+import { PayloadBlock } from './ai-payload';
 import { ConfirmDialog } from '../confirm';
 import { DisabledReason, GateNote, KV, Panel, Pill, ScreenHead, Stat, StatRow, Toolbar } from '../bits';
 
@@ -47,19 +48,28 @@ export type AiReviewScreenProps = {
   onPatch: (patch: Partial<AiConfig>) => void;
   /** 只写不回显 */
   onSaveSecret: (apiKey: string) => void;
-  /** 连通测试：**没有入参**，发的是配置里的提示词 + 一段固定短文本 */
+  /** 连通测试：发的是配置里的提示词 + **下面这一行样例**（可临时编辑，见 D33②③） */
   onTest: () => void;
   /** 最近一次连通测试的回执 */
   testResult?: AiTestView | null;
   /** 最近一次连通测试的**失败**：四档就地显示，不落进错误边界（D12） */
   testFailure?: AiTestFailure | null;
+  /** 当前样例（已改动 / 仍是默认值）。**受控**：值在宿主里（它才是"这一次要发的那一段"的真源） */
+  probe: string;
+  /** 默认样例：由服务端给（ConfigView.probe_sample），前端不写死第二份 */
+  defaultProbe: string;
+  onProbeChange: (next: string) => void;
+  /** 这一次要发的 payload（dry-run 的组装结果）：system + user 全文 + 图片逐张的下场 */
+  payload?: AiPayloadView | null;
+  payloadError?: ReactNode;
   busy?: boolean;
   receipt?: ReactNode;
 };
 
 export function AiReviewScreen({
   config, loading = false, error = null, canSetting,
-  onPatch, onSaveSecret, onTest, testResult = null, testFailure = null, busy = false, receipt,
+  onPatch, onSaveSecret, onTest, testResult = null, testFailure = null,
+  probe, defaultProbe, onProbeChange, payload = null, payloadError = null, busy = false, receipt,
 }: AiReviewScreenProps) {
   const [draft, setDraft] = useState<Partial<AiConfig>>({});
   const [secret, setSecret] = useState('');
@@ -212,7 +222,7 @@ export function AiReviewScreen({
 
           <Panel
             title='连通测试'
-            note='POST /admin/ai/test：**没有入参**，发的是配置里那段提示词 + 一段固定短文本'
+            note='发的是配置里那段提示词 + **下面这一段样例**；样例看得见、改得动（D33②③）'
             actions={
               <Button
                 inline={false}
@@ -227,20 +237,35 @@ export function AiReviewScreen({
               </Button>
             }
           >
+            {/* 样例编辑器（D33②③）：**不落库**，改完立刻用新的一段（下面的预览就是它的回执） */}
+            <ProbeEditor
+              value={probe}
+              defaultValue={defaultProbe}
+              onChange={onProbeChange}
+              onReset={() => onProbeChange(defaultProbe)}
+              busy={busy || !canSetting}
+            />
             {/* 失败**就地**说（D12）：四档各一句实话 + 后端原话，绝不落进错误边界 */}
-            {testFailure ? <TestFail failure={testFailure} /> : testResult ? <TestResult result={testResult} /> : (
-              <p className='text-[12px] text-muted-foreground'>
-                点一下就走一次真外呼，回执里给 verdict / reason / categories / model / latency_ms / 原始输出。
-              </p>
-            )}
-            <p className='mt-2 text-[11px] leading-relaxed text-muted-foreground'>
-              <b>这里没有「拿某篇内容试跑」的表单</b>：那条端点不接受内容入参（aireview/handler.go 的 test 不绑定任何字段）。
-              要做得先给 test 加 <code className='rounded-sm bg-muted px-1'>{'{title, content, trigger}'}</code> ——
-              这是请求后端改契约，不是前端自己造一个「看起来能试跑」的框。
-            </p>
+            <div className='mt-2'>
+              {testFailure ? <TestFail failure={testFailure} /> : testResult ? <TestResult result={testResult} /> : (
+                <p className='text-[12px] text-muted-foreground'>
+                  点一下就走一次真外呼，回执里给 verdict / reason / categories / model / latency_ms / 原始输出。
+                </p>
+              )}
+            </div>
           </Panel>
         </div>
       </div>
+
+      {/* D33①：**真正发给模型的那一份**。整块只渲染后端组装的结果（POST /admin/ai/payload 的 dry-run 回执）——
+          前端一个字都不拼：两段文本的真源是 aireview/preview.go，真判定走的是同一段代码。 */}
+      <Panel
+        title='这一份就是发给模型的（dry-run）'
+        note='system + user 全文，含图片逐张的下场。跟着上面的样例与提示词**实时重算**，但它本身不外呼'
+        data-testid='ai-payload-panel'
+      >
+        <PayloadBlock payload={payload} error={payloadError} />
+      </Panel>
 
       <Panel title='温度与上限' note='只有**输出**上限，没有输入截断：截断会让 AI 只看到半篇、判出来的结论就是错的'>
         <div className='grid gap-3 md:grid-cols-3'>
@@ -296,7 +321,8 @@ export function AiReviewScreen({
       <Panel title='这一屏没有做的三件事（后端也还没有）'>
         <ul className='flex flex-col gap-1 text-[12px] leading-relaxed text-muted-foreground'>
           <li>· <b>用量与失败率</b>：没有 <code className='rounded-sm bg-muted px-1'>GET /admin/ai/stats</code>，所以不画那两栏（数据要从 review_events 聚合，端点不存在）。</li>
-          <li>· <b>任意内容的试跑</b>：<code className='rounded-sm bg-muted px-1'>POST /admin/ai/test</code> 不接受内容入参（见上）。</li>
+          <li>· <b>任意内容的试跑</b>：样例可以改（见上，只影响这一次），但**没有「随手粘一篇正文试跑」的框** ——
+            要试真内容请去「帖子审核」队列：那里选一条帖子能看它的 payload、也能真跑一次（带图）。</li>
           <li>· <b>阈值</b>：d7 §2.2 说放 site_settings，但键值在「站点设置」屏（那一屏按后端给的目录渲染）；AI 屏不重复实现一次。</li>
         </ul>
       </Panel>

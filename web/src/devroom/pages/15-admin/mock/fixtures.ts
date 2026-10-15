@@ -1,4 +1,4 @@
-import type { AdminUser, AdminUserDetail, AiConfig, AiTestView, Announcement, AuditItem, Banner, Permission, Donation, DonationStats, Domain, MailAccount, NoticeDefault, Report, ReviewQueueItem, Role, SettingItem, Title } from '@/lib/api/admin';
+import type { AdminUser, AdminUserDetail, AiConfig, AiPayloadView, AiTestView, Announcement, AuditItem, Banner, Permission, Donation, DonationStats, Domain, MailAccount, NoticeDefault, Report, ReviewQueueItem, Role, SettingItem, Title } from '@/lib/api/admin';
 
 // DevRoom 15-admin 的演示数据（**只给房间用**；产品路由由 ./admin-screens.tsx 的容器喂真端点）。
 //
@@ -410,6 +410,9 @@ export const DEMO_AI_CONFIG: AiConfig = {
   temperature: 0,
   prompt: '你是社区内容审核员。判定下面这篇帖子是否合规。\n只回 JSON：{"verdict":"approve|reject|review","reason":"中文理由","categories":[]}\n拿不准就用 review（转人工），不要猜。',
   prompt_report: '你是社区举报复核员。这条帖子已被举报若干次，请判定举报是否成立。\n只回 JSON：{"verdict":"approve|reject|review","reason":"中文理由","categories":[]}',
+  // 连通测试的样例：界面要能看见、能改（D33②③）。**由服务端给**（ConfigView.probe_sample），
+  // 前端不写死第二份 —— 所以这份演示数据就是 D33 的默认值本身。
+  probe_sample: '标题：连通性测试\n\n正文：这是一次连接测试，用来确认密钥与地址可用。',
   has_secret: true,
   secret_updated_at: '2026-10-01T03:20:00Z',
   last_ok_at: '2026-10-12T13:20:00Z',
@@ -417,6 +420,7 @@ export const DEMO_AI_CONFIG: AiConfig = {
   last_error_at: '2026-10-11T22:10:00Z',
 };
 
+/** 演示：连通测试样例那一路（topic_id=0，没有图）。 */
 export const DEMO_AI_TEST: AiTestView = {
   verdict: 'review',
   reason: '拿不准是否有外站导流：正文提到了网盘但没给链接。',
@@ -424,4 +428,42 @@ export const DEMO_AI_TEST: AiTestView = {
   model: 'deepseek-chat',
   latency_ms: 812,
   raw: '{"verdict":"review","reason":"拿不准是否有外站导流","categories":["spam"]}',
+  topic_id: 0,
+  image_count: 0,
+  image_skipped: 0,
+  images: [],
 };
+/** AI 审核屏的演示 payload（D33①）：**真站这一块来自 POST /admin/ai/payload**（服务端组装，dry-run 不外呼）；
+ *  房间里没有后端，所以这里给一份「那条端点会回什么」的投影 —— 字段名逐字照 aireview/dto.go 的 PayloadView。
+ *  刻意造满四档：两张发出去、一张超字节没发（note 说清为什么）、正文里还有一句图片 Markdown 字面量。 */
+export const DEMO_AI_PAYLOAD: AiPayloadView = {
+  source: 'topic',
+  topic_id: 3,
+  title: '第三章「余烬」发布：隐藏结局与平衡性改动（附七张实机截图）',
+  trigger: 'create',
+  open_reports: 0,
+  system: DEMO_AI_CONFIG.prompt,
+  user_prefix: '',
+  user_title: '标题：第三章「余烬」发布：隐藏结局与平衡性改动（附七张实机截图）',
+  user_body: '正文：\n这一章加了七张图、一条隐藏结局线。\n\n![余烬 1](/img/0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef)\n\n改动说明与下载都在下面。',
+  user_text: '',
+  has_image_markdown: true,
+  image_attachment_count: 3,
+  images: [
+    { position: 0, floor: 1, hash: '1111111111111111111111111111111111111111111111111111111111111111', mime: 'image/webp', bytes: 184320, sent: true, note: '' },
+    { position: 1, floor: 1, hash: '2222222222222222222222222222222222222222222222222222222222222222', mime: 'image/webp', bytes: 262144, sent: true, note: '' },
+    { position: 2, floor: 1, hash: '3333333333333333333333333333333333333333333333333333333333333333', mime: 'image/png', bytes: 3407872, sent: false, note: '单张 3.3 MB 超过上限 2.0 MB，没发给模型（截图请压缩后再传）' },
+  ],
+  image_count: 2,
+  image_skipped: 1,
+  image_bytes: 446464,
+  image_limit: 4,
+  image_max_bytes: 2097152,
+  image_read_failed: false,
+  model: DEMO_AI_CONFIG.model,
+  max_output_tokens: DEMO_AI_CONFIG.max_output_tokens,
+  strict_mode: DEMO_AI_CONFIG.strict_mode,
+  tool_name: 'submit_review',
+  categories: ['spam', 'ad', 'abuse', 'off_topic', 'illegal', 'other'],
+};
+

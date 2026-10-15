@@ -1,4 +1,4 @@
-import { api, apiPage } from './client';
+import { api, apiEnvelope, apiPage } from './client';
 import { pageQuery, PAGE_LIMIT } from './paging';
 // 类型只在 admin-types.ts 定义；这里原样再出口一次，调用方一个 import 就够（省得记哪个类型在哪）。
 export type * from './admin-types';
@@ -6,6 +6,7 @@ export type * from './admin-types';
 import type {
   AdminACLItem,
   AdminBoard,
+  AiPayloadView,
   AdminModeratorItem,
   AdminUser,
   AdminUserDetail,
@@ -83,15 +84,33 @@ export function revokeUserPerm(userId: string, perm: string): Promise<void> {
   return api<void>('admin/users/' + encodeURIComponent(userId) + '/permissions/' + encodeURIComponent(perm), { method: 'DELETE' });
 }
 
-/** 用户列表分页（C1 已落地）。包络 {data, next_cursor}；筛选三根状态轴照 auth/handler.go 的 adminUsersQueryReq。 */
-export function fetchUsers(f: AdminUserFilter, signal?: AbortSignal): Promise<{ items: AdminUser[]; next: string | null }> {
-  return apiPage<AdminUser>('admin/users', {
+/** 用户列表的包络（v2 才给 counts）。字段名照 auth 的 AdminUsersCountsDTO 抄。 */
+export type AdminUsersPage = {
+  items: AdminUser[];
+  next: string | null;
+  /** **整个筛选结果集**的计数（不是本页条数）。服务端没给时是 0 —— 屏上宁可为 0 也不假装。 */
+  counts: { total: number; banned: number; pending_activation: number; email_unverified: number };
+};
+
+/** 用户列表分页（C1 已落地）。筛选三根状态轴照 auth/handler.go 的 adminUsersQueryReq。
+ *
+ *  **v=2 是必须的**：只有它回 counts（总数与三根轴的计数）。不带 v 时后端给的是老包络
+ *  {data, next_cursor}，前端就拿不到总人数 —— 这正是用户报的「看不到总人数」。
+ *  包络版本化而不是直接加字段，是为了不改老客户端的契约（后端也有用例钉住这一点）。 */
+export function fetchUsers(f: AdminUserFilter, signal?: AbortSignal): Promise<AdminUsersPage> {
+  // 走 apiEnvelope 而不是 apiPage：counts 是 data **外面**的第三个字段，apiPage 只解 data 与 next_cursor
+  // （私信会话页的 peer 也是同一形状，见 client.ts 的注）。这里就地解包络，少一个只此一用的函数。
+  return apiEnvelope<{ data?: AdminUser[]; next_cursor?: string | null; counts?: AdminUsersPage['counts'] }>('admin/users', {
     query: {
       q: f.q, status: f.status, activated: f.activated,
-      email_verified: f.email_verified, role: f.role, ...pageQuery(f),
+      email_verified: f.email_verified, role: f.role, v: '2', ...pageQuery(f),
     },
     signal,
-  });
+  }).then((p) => ({
+    items: p.data ?? [],
+    next: p.next_cursor ?? null,
+    counts: p.counts ?? { total: 0, banned: 0, pending_activation: 0, email_unverified: 0 },
+  }));
 }
 
 /** 封号 / 解封。真源 auth/handler.go 的 banReq：action 只有 ban | unban。 */
@@ -382,8 +401,27 @@ export function saveAiSecret(apiKey: string): Promise<{ has_secret: boolean }> {
   return api('admin/ai/config/secret', { method: 'POST', body: { api_key: apiKey } });
 }
 
-export function testAiConfig(): Promise<AiTestView> {
-  return api<AiTestView>('admin/ai/test', { method: 'POST' });
+/** 「真正发给模型的那一份」的组装口（D33①，dry-run，**一次外呼都不发**）。
+ *
+ *  两种来源共用这一条：`topicId` 给了就读那条真帖子（服务端按 sqlSubject 现读正文，客户端塞不进
+ *  一份「和真发的不一样」的正文）；不给就回连通测试的样例（`probe` 可临时覆盖那一段）。
+ *  **前端只渲染它的回执** —— 自己拼第二份 payload 就是两份真源，那正是这个屏要消灭的形态。 */
+export function fetchAiPayload(req: { topicPublicId?: string; trigger?: string; probe?: string }, signal?: AbortSignal): Promise<AiPayloadView> {
+  return api<AiPayloadView>('admin/ai/payload', {
+    method: 'POST',
+    // **topic_public_id 是唯一的对外寻址方式**（真源 aireview/dto.go 的 payloadReq）：
+    // 管理端手上只有 uuid（队列 DTO 的 id 就是 topics.public_id），内部自增 id 不跨端。
+    body: { topic_public_id: req.topicPublicId ?? '', trigger: req.trigger ?? '', probe: req.probe ?? '' },
+    signal,
+  });
+}
+
+/** 连通测试。
+ *  `probe` 是**这一次**要发的样例（空 = 后端的内置默认样例）：只影响这一次，**不落库**。
+ *  `topicId` 给了就真发一次这条帖子的 payload（**带图**），回执里会多出 image_count / images[] ——
+ *  这是「图片审核到底起不起效」唯一的当场证据（D33③）。 */
+export function testAiConfig(probe?: string, topicPublicId?: string): Promise<AiTestView> {
+  return api<AiTestView>('admin/ai/test', { method: 'POST', body: { probe: probe ?? '', topic_public_id: topicPublicId ?? '' } });
 }
 
 export { PAGE_LIMIT };

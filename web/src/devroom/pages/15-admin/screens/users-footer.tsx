@@ -78,9 +78,6 @@ export function UsersFooter({ counts, page, canNext, onPage, size = PAGE_SIZE }:
             value={jump}
             onChange={(e) => setJump(e.target.value)}
             onKeyDown={(e) => { if (e.key === 'Enter') submit(); }}
-            // inputStyle='inline' 是 Ring 给「窄的短输入」的写法：默认那个是整行宽，会跟表格抢横向空间
-            // （实测不写它时这个框 240px 宽，「跳页」按钮被挤出表格列、压在右栏详情上）
-            inputStyle='inline'
             inputClassName='min-w-0 flex-1'
             placeholder={'≤ ' + maxJump}
             height={ControlsHeight.S}

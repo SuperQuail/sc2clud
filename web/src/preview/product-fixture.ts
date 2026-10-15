@@ -299,7 +299,7 @@ export function fixtureFor(u: string, method: string, body?: unknown): Reply | u
     return { body: { data: topicDetail() } };
   }
   // 管理后台（/admin/*）：自己的桩，具体路径写在那一份里
-  const admin = adminFixtureFor(u);
+  const admin = adminFixtureFor(u, body);
   if (admin !== undefined) return admin;
   // 游客态：?me=0（真后端「没登录」也是 200 + data:null，不是报错）
   // ?asAdmin=1 换成管理员身份：后台每一屏都要 perms，而这里的默认身份是普通成员。

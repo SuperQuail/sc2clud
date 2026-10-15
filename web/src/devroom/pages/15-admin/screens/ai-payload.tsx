@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react';
 import { AlertTriangle, Image as ImageIcon } from 'lucide-react';
-import { imagePath } from '@/lib/url';
+import { assetUrl, imagePath } from '@/lib/url';
 import type { AiPayloadImage, AiPayloadView } from '@/lib/api/admin';
 import { KV, Pill } from '../bits';
 
@@ -45,6 +45,9 @@ function ImageRow({ img }: { img: AiPayloadImage }) {
       <img
         src={imagePath('/img/' + img.hash)}
         alt={'配图 ' + (img.position + 1)}
+        // 取不到字节时换占位（public/art/miyin/image-unavailable-480.webp，SOURCES.md 标的就是「配图失败占位」）：
+        // 一格裂图既看不出是哪张、也看不出它还在不在 payload 里 —— 而这一格要回答的正是后者。
+        onError={(e) => { e.currentTarget.src = assetUrl('miyin/image-unavailable-480.webp'); }}
         className='h-12 w-16 shrink-0 rounded-[3px] border border-border object-cover'
       />
       <span className='min-w-0 flex-1 text-[11px] leading-relaxed text-muted-foreground'>

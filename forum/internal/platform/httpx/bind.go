@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"reflect"
 	"strings"
@@ -63,6 +64,15 @@ func bindError(dst any, err error) error {
 	var tooLarge *http.MaxBytesError
 	if errors.As(err, &tooLarge) {
 		return apperr.ErrTooLarge
+	}
+
+	// **空 body 归 EOF**：一个字节都没有时 gin 的 JSON 绑定给的是 io.EOF，它落到下面会变成
+	// 一句「参数错误」的 400 —— 而「这条端点的 body 全是可选的」是完全合法的形状
+	// （POST /admin/ai/test 从前就没有入参：老前端不发 body 必须照样能调）。
+	// 这里只把 EOF 这一种**原样**透出去，handler 用 errors.Is(err, io.EOF) 自己决定收不收；
+	// 语法错、类型错、缺必填字段一律照旧 400（必填由 validator 的 required 管，不靠这一条）。
+	if errors.Is(err, io.EOF) {
+		return err
 	}
 
 	var verrs validator.ValidationErrors

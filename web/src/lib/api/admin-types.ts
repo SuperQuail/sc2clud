@@ -264,13 +264,17 @@ export type AiConfig = {
   temperature: number;
   prompt: string;
   prompt_report: string;
+  /** 连通测试**实际会发的那段样例**（真源 aireview 的 DefaultProbeSample）。
+   *  界面要能看见、能改（D33②③），所以它由服务端下发 —— 前端写死第二份就会漂。 */
+  probe_sample: string;
   has_secret: boolean;
   secret_updated_at: string | null;
   last_ok_at: string | null;
   last_error: string;
   last_error_at: string | null;
 };
-/** 连通测试的回执：耗时、实际模型名、原始 verdict。 */
+/** 连通测试的回执：耗时、实际模型名、原始 verdict。
+ *  带 `topic_id` 试跑时后四个字段才有值 —— 那时回执要回答的是「**这次判了几张图**」。 */
 export type AiTestView = {
   verdict: string;
   reason: string;
@@ -278,6 +282,74 @@ export type AiTestView = {
   model: string;
   latency_ms: number;
   raw: string;
+  /** 0 = 走的是固定样例那一路（没有帖子、没有图） */
+  topic_id: number;
+  image_count: number;
+  /** 被上限截掉、**没发**的张数（不许静默丢，界面要说出来） */
+  image_skipped: number;
+  images: AiPayloadImage[];
+};
+
+/** 真源 aireview/dto.go 的 PayloadImage：**发出去的那一份**里的逐张配图。
+ *  `sent=false` 时 `note` 一定非空（截断 / 超字节 / 读不到）—— 界面上不许出现「少了一张但不说」。 */
+export type AiPayloadImage = {
+  /** 帖子里的位置（0 起，= 页面顺序） */
+  position: number;
+  /** 挂在第几楼（配图挂在楼层上，见 topic_images 的键） */
+  floor: number;
+  /** 内容寻址的 64 位 hex；当 src 用要走 imagePath('/img/' + hash) */
+  hash: string;
+  mime: string;
+  bytes: number;
+  sent: boolean;
+  note: string;
+};
+
+/** 真源 aireview/dto.go 的 PayloadView —— **下一次真调用会发出去的那一份**（dry-run，不外呼）。
+ *
+ *  为什么这个类型必须照抄后端而不是前端自己拼：`system`/`user_*` 是审核域**唯一**的组装处
+ *  （aireview/preview.go 的 assemblePrompt + userText）产出的一段；前端再拼一份就是第二份真源，
+ *  两边漂一个换行，界面上的预览就成了一句好听的假话（本仓库反复栽的坑）。
+ *  分段给（user_prefix/user_title/user_body）是为了让界面能把「哪一段是标题、哪一段是正文」标出来：
+ *  三段拼起来与真发出去的 user **逐字相等**（后端有用例拿假外呼收到的原文比）。 */
+export type AiPayloadView = {
+  /** probe（连通测试样例）| topic（一条真帖子） */
+  source: string;
+  topic_id: number;
+  title: string;
+  trigger: string;
+  open_reports: number;
+
+  system: string;
+  /** 只有 trigger=report 时非空（举报复核那行「该帖已被 N 人举报」）——**不是作者写的** */
+  user_prefix: string;
+  user_title: string;
+  user_body: string;
+  /** probe 专用：连通测试发的就是样例本身，不分段 */
+  user_text: string;
+
+  /** 正文里有没有图片 Markdown 字面量（作者自己画的图） */
+  has_image_markdown: boolean;
+  /** = images.length（图集里挂着的张数） */
+  image_attachment_count: number;
+
+  images: AiPayloadImage[];
+  /** 真发出去的张数 */
+  image_count: number;
+  image_skipped: number;
+  /** 发出去的图原始字节合计（base64 后约 ×4/3，计入请求体） */
+  image_bytes: number;
+  /** 上限本身：界面要能解释「为什么只有 N 张」 */
+  image_limit: number;
+  image_max_bytes: number;
+  /** true = 有图读不到 → 这次会转人工（**不是**判违规） */
+  image_read_failed: boolean;
+
+  model: string;
+  max_output_tokens: number;
+  strict_mode: boolean;
+  tool_name: string;
+  categories: string[];
 };
 
 /** forum/admin_boards.go 的 AdminBoardDTO（后台分区列表项，**含归档**）。

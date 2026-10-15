@@ -1,12 +1,19 @@
 package aireview_test
 
 import (
+	"bytes"
+	"encoding/json"
+	"fmt"
+	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
 
+	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 
 	"forum/internal/aireview"
+	"forum/internal/authz"
 	"forum/internal/platform/ai"
 )
 
@@ -230,4 +237,160 @@ func TestPreviewCarriesCallParameters(t *testing.T) {
 	if len(pv.Categories) != len(ai.Categories) {
 		t.Fatalf("categories 值域该照 ai.Categories 给：得到 %v", pv.Categories)
 	}
+}
+
+// ── HTTP 层：端点真的挂上了，而且**空 body 也照样能用**（D33① 的接线判据）─────────────
+//
+// 为什么这条必须在 HTTP 层：上面那几条走的是 service，绕过路由与绑定 ——
+// 而「端点在不在」正是最容易漏的一环（挂路由时依赖没接对、或绑定把空 body 判成 400）。
+// 这条用例自己起一台 gin（注册法与 app/http.go 那行逐字一致），因此它同时钉住三件事：
+// 路由存在、权限点生效、JSON 字段名就是前端要读的那些。
+
+// newTestEngine 按 app 层的挂法注册（aireview.NewHandler(...).Register(v1, requireLogin, perm)）。
+func newTestEngine(h *harness) *gin.Engine {
+	gin.SetMode(gin.TestMode)
+	r := gin.New()
+	v1 := r.Group("/api/v1")
+	// 用例里的「登录」就是带一个 X-Test-Actor 头：拿不到它就是 401（handler.require 的判据）。
+	actor := func(c *gin.Context) (*authz.Actor, bool) {
+		if c.GetHeader("X-Test-Actor") == "" {
+			return nil, false
+		}
+		return &authz.Actor{UserID: h.authorID, Status: "active", Activated: true}, true
+	}
+	// 权限中间件收成与 app 层同一个签名：本用例把「有 site.setting」表达成 X-Test-Perm 头。
+	// **401 / 403 的分界照 auth/middleware.go 的 requirePerm**：没有身份 → 401，有身份缺权限 → 403。
+	perm := func(want ...string) gin.HandlerFunc {
+		return func(c *gin.Context) {
+			if c.GetHeader("X-Test-Actor") == "" {
+				c.AbortWithStatus(http.StatusUnauthorized)
+				return
+			}
+			if c.GetHeader("X-Test-Perm") != want[0] {
+				c.AbortWithStatus(http.StatusForbidden)
+				return
+			}
+			c.Next()
+		}
+	}
+	requireLogin := func() gin.HandlerFunc {
+		return func(c *gin.Context) { c.Next() } // 401 由 require 自己判（handler.go）
+	}
+	aireview.NewHandler(h.svc, actor).Register(v1, requireLogin, perm)
+	return r
+}
+
+// postJSON 发一条 JSON 请求，回状态码与解开的包络。
+func postJSON(t *testing.T, r *gin.Engine, path, body string, headers map[string]string) (int, map[string]any) {
+	t.Helper()
+	req := httptest.NewRequest(http.MethodPost, path, bytes.NewBufferString(body))
+	req.Header.Set("Content-Type", "application/json")
+	for k, v := range headers {
+		req.Header.Set(k, v)
+	}
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+	var out map[string]any
+	if w.Body.Len() > 0 {
+		if err := json.Unmarshal(w.Body.Bytes(), &out); err != nil {
+			t.Fatalf("回执不是 JSON（%d）: %s", w.Code, w.Body.String())
+		}
+	}
+	return w.Code, out
+}
+
+func TestPayloadEndpointIsWiredAndReadsTheRealTopic(t *testing.T) {
+	h := newHarness(t)
+	body := "正文第一行。" + nl2 + "![截图](/img/" + hash64("d") + ")" + nl2 + "最后一行。"
+	id := h.topic("端点用例的帖子", body, nil, "pending")
+	h.withImage(id, hash64("e"))
+	r := newTestEngine(h)
+	auth := map[string]string{"X-Test-Actor": "1", "X-Test-Perm": "site.setting"}
+	payloadBody := "{\"topic_id\":" + fmt.Sprintf("%d", id) + "}"
+
+	// ① 没登录 → 401（不是 500）
+	if code, _ := postJSON(t, r, "/api/v1/admin/ai/payload", payloadBody, nil); code != http.StatusUnauthorized {
+		t.Fatalf("没登录该 401，实际 %d", code)
+	}
+	// ② 登录但缺权限点 → 403（权限点沿用 site.setting，不新造）
+	if code, _ := postJSON(t, r, "/api/v1/admin/ai/payload", payloadBody, map[string]string{"X-Test-Actor": "1"}); code != http.StatusForbidden {
+		t.Fatalf("缺 site.setting 该 403，实际 %d", code)
+	}
+
+	// ③ 真读一条帖：字段名就是前端要读的那些，正文逐字进来
+	code, out := postJSON(t, r, "/api/v1/admin/ai/payload", payloadBody, auth)
+	if code != http.StatusOK {
+		t.Fatalf("payload: %d %v", code, out)
+	}
+	data, _ := out["data"].(map[string]any)
+	if data == nil {
+		t.Fatalf("回执没有 data 包络: %v", out)
+	}
+	if data["source"] != "topic" || data["title"] != "端点用例的帖子" {
+		t.Fatalf("source/title 不对: %v", data)
+	}
+	if got, _ := data["user_body"].(string); got != "正文："+nl+body {
+		t.Fatalf("user_body 不是 1 楼正文原文: 得到 %q 想要 %q", got, "正文："+nl+body)
+	}
+	if data["has_image_markdown"] != true || data["image_attachment_count"] != float64(1) {
+		t.Fatalf("图片两个数不对: has=%v count=%v", data["has_image_markdown"], data["image_attachment_count"])
+	}
+	if data["tool_name"] != "submit_review" {
+		t.Fatalf("tool_name=%v", data["tool_name"])
+	}
+	// ④ 主题不存在 → 404，不是 500
+	if code, _ := postJSON(t, r, "/api/v1/admin/ai/payload", "{\"topic_id\":99999999}", auth); code != http.StatusNotFound {
+		t.Fatalf("不存在的主题该 404，实际 %d", code)
+	}
+
+	// ⑤ **空 body** 走样例那一路（只想看样例、或老前端不发 body 都用这条）
+	code3, out3 := postJSON(t, r, "/api/v1/admin/ai/payload", "", auth)
+	if code3 != http.StatusOK {
+		t.Fatalf("空 body 该走 probe 那一路，实际 %d %v", code3, out3)
+	}
+	d3, _ := out3["data"].(map[string]any)
+	if d3["source"] != "probe" || d3["user_text"] != aireview.DefaultProbeSample {
+		t.Fatalf("空 body 的 probe 回执不对: %v", d3)
+	}
+}
+
+func TestTestEndpointAcceptsProbeOverrideAndEmptyBody(t *testing.T) {
+	h := newHarness(t)
+	h.putKey()
+	r := newTestEngine(h)
+	auth := map[string]string{"X-Test-Actor": "1", "X-Test-Perm": "site.setting"}
+
+	// ① 编辑过的样例：真发出去的就是它（D33③ 的判据：改得动，而且改了真的生效）
+	custom := "标题：编辑过的样例" + "\\n\\n" + "正文：临时内容。"
+	if code, out := postJSON(t, r, "/api/v1/admin/ai/test", "{\"probe\":"+mustJSON(t, custom)+"}", auth); code != http.StatusOK {
+		t.Fatalf("test(自定义样例): %d %v", code, out)
+	}
+	if h.judge.text != custom {
+		t.Fatalf("连通测试发的是 %q，想要我编辑过的 %q", h.judge.text, custom)
+	}
+
+	// ② 空 body（老前端就是这么调的）：不 400，发默认样例
+	if code, out := postJSON(t, r, "/api/v1/admin/ai/test", "", auth); code != http.StatusOK {
+		t.Fatalf("test(空 body): %d %v", code, out)
+	}
+	if h.judge.text != aireview.DefaultProbeSample {
+		t.Fatalf("空 body 该发默认样例，实际 %q", h.judge.text)
+	}
+}
+
+// nl / nl2 是换行常量：用字符串字面量写在表达式里会被 gofmt 与转义层来回折腾，
+// 而这两段文本**逐字**要与 payload 里的换行相同（差一个都会红）。
+const (
+	nl  = "\n"
+	nl2 = "\n\n"
+)
+
+// mustJSON 把一段文本编成 JSON 字符串字面量（样例里有换行，不能手拼）。
+func mustJSON(t *testing.T, s string) string {
+	t.Helper()
+	b, err := json.Marshal(s)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return string(b)
 }

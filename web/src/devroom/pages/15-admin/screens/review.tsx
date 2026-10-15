@@ -4,11 +4,13 @@ import Input from '@jetbrains/ring-ui-built/components/input/input';
 import Select, { Type as SelectType } from '@jetbrains/ring-ui-built/components/select/select';
 import { Tab, Tabs } from '@jetbrains/ring-ui-built/components/tabs/tabs';
 import { ControlsHeight } from '@jetbrains/ring-ui-built/components/global/controls-height';
-import { CheckCheck, Clock3, FileText, History } from 'lucide-react';
+import { CheckCheck, Clock3, FileText, History, PlugZap } from 'lucide-react';
 import { icon16 } from '@/ui/icons';
 import { UserAvatar } from '@/ui/user/avatar';
 import { Username } from '@/ui/user/username';
-import type { ReviewAction, ReviewQueueItem } from '@/lib/api/admin';
+import type { AiPayloadView, AiTestView, ReviewAction, ReviewQueueItem } from '@/lib/api/admin';
+import { PayloadBlock } from './ai-payload';
+import { TestFail, TestResult, type AiTestFailure } from './ai-bits';
 import { DataTable } from '../data-table';
 import { ConfirmDialog, DangerAction } from '../confirm';
 import { DisabledReason, GateNote, KV, Panel, Pill, ScreenHead, Stat, StatRow, Toolbar } from '../bits';
@@ -56,12 +58,24 @@ export type ReviewScreenProps = {
   /** 判定：approve 放行（有草稿时 = 把改动替换上线）、reject / request_revision 都要写理由。
    *  approve 之外的两个动作后端都强制 note（打回不说改哪里等于让作者猜）。 */
   onReview: (item: ReviewQueueItem, action: ReviewAction, note: string) => void;
+  /** 取「选中这条**将要发给 AI** 的那一份」（dry-run，不外呼）。**按需触发**：审核员点「看发给 AI 的那一份」才请求 —— */
+  /** 每点一行就自动拉一次等于把队列变成 N+1 次请求，而多数行只是扫一眼标题。 */
+  onLoadPayload?: (item: ReviewQueueItem) => void;
+  /** 选中这条的 payload；null = 还没拉过 */
+  payload?: AiPayloadView | null;
+  payloadError?: ReactNode;
+  /** 把这条**真发一次**给模型（带图），看它到底怎么判 —— D33③ 的当场验证。**一个字都不落库**。 */
+  onTestTopic?: (item: ReviewQueueItem) => void;
+  topicTest?: AiTestView | null;
+  topicTestFailure?: AiTestFailure | null;
+  testing?: boolean;
   receipt?: ReactNode;
 };
 
 export function ReviewScreen({
   items, hasMore, loading = false, error = null, filter, onFilterChange, onLoadMore,
   canReview, onReview, receipt,
+  onLoadPayload, payload = null, payloadError = null, onTestTopic, topicTest = null, topicTestFailure = null, testing = false,
 }: ReviewScreenProps) {
   const [selected, setSelected] = useState<string[]>([]);
   const [activeId, setActiveId] = useState<string | null>(null);
@@ -244,8 +258,8 @@ export function ReviewScreen({
                 {/* 就地预览被审内容（D25①）：**正文全文**，不是 200 字摘要。
                     渲染的是 Markdown **源**（不解析）：审核要看的是「有没有广告 / 攻击 / 离题」，
                     而解释过的富文本会把链接、图片地址、原始符号藏起来 —— 那些恰恰是要判的东西。
-                    图片字节不含在内（DTO 里就没有）：正文里 `![alt](/img/<hash>)` 是
-                    「这里有一张图」唯一的可见证据，与发给模型的那段文本同源。 */}
+                    这一段只是**编辑框里的源文本**；真正发给模型的那一份（含图片逐张的下场）在下面
+                    「看发给 AI 的那一份」里，那一条读的是后端组装的结果。 */}
                 <div className='mb-2 flex flex-col gap-1'>
                   <span className='text-[11px] text-muted-foreground'>
                     {'正文全文 · ' + [...active.body_md].length + ' 字'}
@@ -284,6 +298,48 @@ export function ReviewScreen({
                 />
                 {!reviewable(active) ? <DisabledReason>这一条已经判过了：再判会被后端按 expected_updated_at 挡回来</DisabledReason> : null}
                 {hasDraft(active) ? <DisabledReason>这是<b>已发布</b>的帖：通过 = 把作者的改动<b>替换</b>上线，读者在此之前一直看到旧版（06.2）。</DisabledReason> : null}
+                {/* D33①③：**真正发给 AI 的那一份** + 当场跑一次看回执。
+                    两块都只渲染后端给的东西（POST /admin/ai/payload 的 dry-run 回执、POST /admin/ai/test
+                    的真实回执）：前端一个字都不拼 —— 拼第二份就是两份真源，界面上的预览就成了假话。 */}
+                <div className='mt-2 flex flex-wrap items-center gap-2 border-t border-border pt-2'>
+                  <Button
+                    inline={false}
+                    height={ControlsHeight.S}
+                    icon={icon16(PlugZap)}
+                    disabled={!onLoadPayload}
+                    onClick={() => onLoadPayload?.(active)}
+                    data-testid='review-load-payload'
+                  >
+                    看发给 AI 的那一份
+                  </Button>
+                  <Button
+                    inline={false}
+                    height={ControlsHeight.S}
+                    icon={icon16(PlugZap)}
+                    loader={testing}
+                    disabled={!onTestTopic || testing}
+                    onClick={() => onTestTopic?.(active)}
+                    data-testid='review-test-topic'
+                  >
+                    真跑一次（含图）
+                  </Button>
+                  <span className='text-[11px] leading-relaxed text-muted-foreground'>
+                    跑一次**不改任何状态**：主题状态、判定事件、配额全都不动 —— 它是排查工具，不是审核动作。
+                  </span>
+                </div>
+                <div className='mt-2'>
+                  {topicTestFailure ? <TestFail failure={topicTestFailure} /> : topicTest ? <TestResult result={topicTest} /> : null}
+                </div>
+                {payload || payloadError ? (
+                  <div className='mt-2 border-t border-border pt-2'>
+                    <PayloadBlock payload={payload} error={payloadError} />
+                  </div>
+                ) : (
+                  <p className='mt-2 border-t border-border pt-2 text-[11px] leading-relaxed text-muted-foreground'>
+                    点上面那颗按钮可以看这条帖**将要发给模型的那一份**（system + user 全文 + 图片逐张的下场）。
+                    它按需请求：每点一行就自动拉一次会把队列变成 N+1 次请求，而多数行只是扫一眼标题。
+                  </p>
+                )}
               </>
             ) : (
               <p className='text-[12px] text-muted-foreground'>在左侧点一行查看原文。</p>

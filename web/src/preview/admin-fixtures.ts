@@ -9,6 +9,33 @@
 // 出图时要能看见「用户列表没能加载（HTTP 404）」这个真实状态，而不是一张示例表。
 type Reply = { status?: number; body?: unknown };
 
+// D33③ 的两张演示配图：用**真实存在的**图片哈希（005x 迁移导入的分区封面素材），不是编的 ——
+// payload 预览画的是「楼位/字节/发没发」这些**字段的值**，不是 <img>，所以哈希在静态预览里解析不出来也不影响图的真实性。
+const AI_IMG_A = 'e70ef0760eb4de0bc8ef07e13cb49d720d3d9ade4457911d582013d753392e9d';
+const AI_IMG_B = '3e585f10269d74597977cd559d954dcb2bf325e0fdeecb104fc3d22e714fcd25';
+
+/** ?topic_public_id=… 那一支的 payload：一条带图帖 —— 两张图，一张发、一张被上限截掉（image_skipped=1）。 */
+function payloadOf(topicPublicId: string): Record<string, unknown> {
+  return {
+    source: 'topic', topic_id: 7, title: '第三章「余烬」配图与流程', trigger: 'create', open_reports: 0,
+    system: AI_CONFIG.prompt,
+    user_prefix: '', user_title: '标题：第三章「余烬」配图与流程',
+    user_body: '正文：这一波敌人的 timing 在二矿后。![开局战术](/img/' + AI_IMG_A + ')\n\n![对面快攻](/img/' + AI_IMG_B + ')',
+    user_text: '标题：第三章「余烬」配图与流程\n\n正文：这一波敌人的 timing 在二矿后。![开局战术](/img/' + AI_IMG_A + ')\n\n![对面快攻](/img/' + AI_IMG_B + ')',
+    has_image_markdown: true, image_attachment_count: 2,
+    images: [
+      { position: 0, floor: 1, hash: AI_IMG_A, mime: 'image/webp', bytes: 25712, sent: true, note: '' },
+      { position: 1, floor: 1, hash: AI_IMG_B, mime: 'image/webp', bytes: 3407872, sent: false, note: '单张 3.3 MB 超过上限 2.0 MB，没发给模型' },
+    ],
+    image_count: 1, image_skipped: 1, image_bytes: 25712,
+    image_limit: 4, image_max_bytes: 2097152, image_read_failed: false,
+    model: AI_CONFIG.model, max_output_tokens: AI_CONFIG.max_output_tokens,
+    strict_mode: AI_CONFIG.strict_mode, tool_name: 'submit_review',
+    categories: ['spam', 'ad', 'abuse', 'off_topic', 'illegal', 'other'],
+    ...(topicPublicId ? {} : {}),
+  };
+}
+
 const RB = (slug: string, name: string) => ({ slug, name });
 const BRIEF = (handle: string, nickname: string) => ({ handle, nickname, avatar: '', avatar_small: '' });
 
@@ -218,7 +245,7 @@ const DIAG = {
 };
 
 /** 管理后台的桩。返回 undefined = 不拦（交回真实 fetch）——例如 `GET /admin/users`。 */
-export function adminFixtureFor(u: string): Reply | undefined {
+export function adminFixtureFor(u: string, sent?: unknown): Reply | undefined {
   const url = new URL(u, 'http://stub');
   const p = url.pathname;
   // 两个只给出图用的开关（非默认态要看得见）：
@@ -337,11 +364,43 @@ export function adminFixtureFor(u: string): Reply | undefined {
   // 连通测试（D12）：默认成功；?aitest=nokey|401|timeout|500 出四档失败态（每一种都要出一张图）。
   // 桩要照后端**真实的**形状给：没 key 时后端回的是 500 common.internal（不是 400），所以 nokey 那一档
   // 前端必须靠配置里的 has_secret 判掉它，而不是靠错误码 —— 桩照实给，图才不会骗人。
+  // 样例预览（D33①）：空 body 也走这条 —— 与真后端同一形状（source=probe）。
+  if (p.endsWith('/api/v1/admin/ai/payload')) {
+    const body = (sent ?? {}) as { topic_public_id?: string };
+    if (!body.topic_public_id) {
+      return { body: { data: {
+        source: 'probe', topic_id: 0, title: '', trigger: 'create', open_reports: 0,
+        system: AI_CONFIG.prompt, user_prefix: '', user_title: '', user_body: '',
+        user_text: '标题：连通性测试\n\n正文：这是一次连接测试，用来确认密钥与地址可用。',
+        has_image_markdown: false, image_attachment_count: 0,
+        images: [], image_count: 0, image_skipped: 0, image_bytes: 0,
+        image_limit: 4, image_max_bytes: 2097152, image_read_failed: false,
+        model: AI_CONFIG.model, max_output_tokens: AI_CONFIG.max_output_tokens,
+        strict_mode: AI_CONFIG.strict_mode, tool_name: 'submit_review',
+        categories: ['spam', 'ad', 'abuse', 'off_topic', 'illegal', 'other'],
+      } } };
+    }
+    return { body: { data: payloadOf(body.topic_public_id) } };
+  }
   if (p.endsWith('/api/v1/admin/ai/test')) {
     const postal = page.get('aitest');
     if (postal === '401') return { status: 401, body: { error: { code: 'common.unauthorized', message: '鉴权失败：上游拒绝了这把 key', request_id: 'req-shot' } } };
     if (postal === 'timeout') return { status: 408, body: { error: { code: 'common.timeout', message: '请求超时', request_id: 'req-shot' } } };
     if (postal === '500') return { status: 500, body: { error: { code: 'common.internal', message: '服务端内部错误', request_id: 'req-shot' } } };
+    // 带帖试跑（D33③）：回执要说清「判了几张图」—— 这就是「图片审核起没起效」的当场证据。
+    const t = (sent ?? {}) as { topic_public_id?: string };
+    if (t.topic_public_id) {
+      return { body: { data: {
+        verdict: 'review', reason: '正文没问题，但配图里有一张看起来像外站二维码，拿不准 → 转人工。',
+        categories: ['other'], model: 'deepseek-flash', latency_ms: 1487, raw: '{"verdict":"review","reason":"配图疑似外站二维码"}',
+        topic_id: 1,
+        image_count: 1, image_skipped: 1,
+        images: [
+          { position: 0, floor: 1, hash: AI_IMG_A, mime: 'image/webp', bytes: 25712, sent: true, note: '' },
+          { position: 1, floor: 1, hash: AI_IMG_B, mime: 'image/webp', bytes: 3407872, sent: false, note: '单张 3.3 MB 超过上限 2.0 MB，没发给模型' },
+        ],
+      } } };
+    }
     return { body: { data: { verdict: 'review', reason: '拿不准是否有外站导流', categories: ['spam'], model: 'deepseek-chat', latency_ms: 812, raw: '{"verdict":"review"}' } } };
   }
   // 其余 /admin/* 照真后端的行为回 404（未知路径就是 404 JSON，见 app/http.go 的 NoRoute）。
