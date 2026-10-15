@@ -27,7 +27,8 @@ import { BoardRail, type BoardSummary, type RailLink } from './board-rail';
  * 房间与产品页渲染同一条路径（`/img/<hash>`）；房间是静态服务、没有那条读口，所以出图脚本
  * 用一条 Service Worker 把 `/img/*` 转到真后端 —— 不是「借一张站内素材当占位」。
  *
- * 最后一行（皇帝区）**故意留空**：它是「没有封面」那一档，画的是首字 + slug 色相的稳定占位。
+ * 最后一行（皇帝区）**故意留空**：它是「没有封面」那一档，画的是**全站唯一那份默认封面**
+ * （@/ui/topic/default-cover，美术资产里那张弥音）—— 用户 2026-10-15 判定不要「首字 + slug 色相」。
  */
 const DEMO_BOARDS: BoardSummary[] = [
   // 与 web/src/preview/product-fixture.ts 的 COVER(...) 是同一组值；换图标就要两边一起换。
@@ -55,7 +56,7 @@ export default function NavigationPage() {
     <div className='flex flex-col gap-4'>
       <Card
         name='分区侧栏 BoardRail（首页 / 分区页共用）'
-        note='产品页渲染的就是这个文件（routes/_parts/layout.tsx 只负责取数传参）。封面字段是后端 BoardDTO 的 cover_hash（裸哈希）；为空时是「首字 + slug 色相」的稳定占位，不是空白。宽度 168px 与真站一致。'
+        note='产品页渲染的就是这个文件（routes/_parts/layout.tsx 只负责取数传参）。封面字段是后端 BoardDTO 的 cover_hash（裸哈希，拼 /img/<hash>）；为空时落美术资产那张弥音默认封面（@/ui/topic/default-cover），不是空白也不是首字色块。宽度 168px 与真站一致。'
       >
         <Row label='有数据：三个分区里第一个有封面、后面没有（= 真站现在的数据）' hint='当前分区加高亮与左侧色条'>
           <div className='rounded-md border border-border p-2'>

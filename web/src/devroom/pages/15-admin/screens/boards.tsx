@@ -4,7 +4,7 @@ import Input from '@jetbrains/ring-ui-built/components/input/input';
 import Select, { Type as SelectType } from '@jetbrains/ring-ui-built/components/select/select';
 import Toggle from '@jetbrains/ring-ui-built/components/toggle/toggle';
 import { ControlsHeight } from '@jetbrains/ring-ui-built/components/global/controls-height';
-import { ArrowDown, ArrowUp, Archive, Image as ImageIcon, Plus } from 'lucide-react';
+import { ArrowDown, ArrowUp, Archive, Plus } from 'lucide-react';
 import { imagePath } from '@/lib/url';
 import { icon16 } from '@/ui/icons';
 import { Username } from '@/ui/user/username';
@@ -13,6 +13,7 @@ import { DataTable } from '../data-table';
 import { ConfirmDialog, DangerAction } from '../confirm';
 import { DisabledReason, KV, Numbers, Panel, Pill, ScreenHead, Stat, StatRow } from '../bits';
 import { ImageUploader } from '@/ui/rich/image-uploader';
+import { DefaultCover } from '@/ui/topic/default-cover';
 import { BoardAclPanel } from './boards-acl';
 import { NewBoardDialog } from './boards-new';
 
@@ -168,9 +169,11 @@ export function BoardsScreen({
       track: 'minmax(0,1fr)',
       render: (b: AdminBoard) => (
         <span className='flex min-w-0 items-start gap-2'>
+          {/* 没有封面时落**全站唯一那份默认封面**（@/ui/topic/default-cover），不是一枚"坏图"虚框。
+              真封面走**图片端点**（imagePath → /img/<hash>）；默认那张是 public/art 静态素材（assetUrl）。 */}
           {b.cover_hash
             ? <img src={imagePath('/img/' + b.cover_hash)} alt='' width={32} height={32} className='mt-0.5 shrink-0 rounded-sm border border-border object-cover' />
-            : <span className='mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-sm border border-dashed border-border text-muted-foreground'><ImageIcon size={14} aria-hidden /></span>}
+            : <span className='relative mt-0.5 h-8 w-8 shrink-0 overflow-hidden rounded-sm border border-border'><DefaultCover /></span>}
           <span className='flex min-w-0 flex-col leading-tight'>
             <span className='flex min-w-0 items-center gap-1.5'>
               <span className={'truncate text-[13px] font-medium ' + (board && b.id === board.id ? 'text-primary' : 'text-foreground')}>{b.name}</span>
@@ -272,10 +275,11 @@ export function BoardsScreen({
                     上一版这一格只有一段说明 —— 不是控件坏了，是后端把空串折成 nil（清空必然 400），
                     而上传通道也还没有，所以当时刻意不画按钮。0030 与那处修复之后两条路都通了。 */}
                 <div className='mt-1 flex items-start gap-3'>
-                  <span className='flex h-14 w-24 shrink-0 items-center justify-center overflow-hidden rounded-sm border border-border bg-muted'>
+                  <span className='relative flex h-14 w-24 shrink-0 items-center justify-center overflow-hidden rounded-sm border border-border bg-muted'>
+                    {/* 预览位也落默认封面：这里原来是一枚 ImageIcon，看起来正好像"图裂了" */}
                     {d.cover_hash
                       ? <img src={imagePath('/img/' + d.cover_hash)} alt='' width={96} height={56} className='h-full w-full object-cover' />
-                      : <ImageIcon size={16} aria-hidden />}
+                      : <DefaultCover />}
                   </span>
                   <div className='flex min-w-0 flex-col gap-1.5'>
                     <span className='flex flex-wrap items-center gap-2'>

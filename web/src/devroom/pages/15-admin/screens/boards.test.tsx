@@ -2,6 +2,7 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { expect, it } from 'vitest';
 import { BoardsScreen, type BoardPatch } from './boards';
 import type { AdminBoard } from '@/lib/api/admin';
+import { DEFAULT_COVER_ART } from '@/ui/topic/default-cover';
 
 // 分区封面的**换与清**（拍板 08 第二轮「壁纸替换」）在屏上到底发了什么。
 //
@@ -9,8 +10,8 @@ import type { AdminBoard } from '@/lib/api/admin';
 // 而**屏上就算画了清空按钮、patch 里没有 cover_hash 这一行也照样什么都不发** ——
 // 「点了没反应」正是这么产生的。所以这里钉的是「点清空 → onSave 收到 {cover_hash:''}」，
 // 不是「按钮在不在」。
-function renderScreen(onSave: (patch: Partial<BoardPatch>) => void) {
-  const board: AdminBoard = {
+function baseBoard(): AdminBoard {
+  return {
     id: '11111111-1111-1111-1111-111111111111',
     slug: 'campaign',
     name: '战役讨论',
@@ -25,6 +26,9 @@ function renderScreen(onSave: (patch: Partial<BoardPatch>) => void) {
     today_count: 0,
     moderators: [],
   };
+}
+
+function renderScreen(onSave: (patch: Partial<BoardPatch>) => void, board: AdminBoard = baseBoard()) {
   render(
     <BoardsScreen
       boards={[board]}
@@ -73,6 +77,18 @@ it('D27：封面图的地址是 imagePath 那条（/img/<裸哈希>），不是 
   // 两处封面：列表行那一枚（32×32）与右侧「分区资料」里的预览（96×56）
   expect(document.querySelector('img[width="32"]')?.getAttribute('src')).toBe('/img/' + hash);
   expect(document.querySelector('img[width="96"]')?.getAttribute('src')).toBe('/img/' + hash);
+});
+
+// 没有封面时后台列表那一格原来是**一枚 ImageIcon 虚框**，看起来正好像「图裂了」。
+// 用户 2026-10-15 的口径：没有封面就落那张默认封面图，四处一个样（@/ui/topic/default-cover）。
+it('没有封面的分区：列表行与资料预览两处都落默认封面图，不是虚框也不是裂图', () => {
+  const board: AdminBoard = { ...baseBoard(), cover_hash: '' };
+  renderScreen(() => {}, board);
+  const srcs = Array.from(document.querySelectorAll('img')).map((i) => i.getAttribute('src'));
+  // 两处缩略图都是同一张静态素材（assetUrl → /art/…），而不是 /img/ 那条图片端点
+  expect(srcs.filter((s) => s === '/art/' + DEFAULT_COVER_ART)).toHaveLength(2);
+  // 也没有第二张 /img/ 的图（没有封面时不该去要图片端点）
+  expect(srcs.some((s) => s?.startsWith('/img/'))).toBe(false);
 });
 
 it('换封面：换了图也不进「未保存的改动」（它走图片通道，选完即生效）', async () => {
