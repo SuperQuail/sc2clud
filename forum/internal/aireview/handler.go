@@ -39,6 +39,9 @@ func (h *Handler) Register(rg *gin.RouterGroup, requireLogin func() gin.HandlerF
 	// D33①：审核屏要显示的「真正发给模型的那一份」。dry-run，**一次外呼都不发**。
 	// 体量配额不在路由上：BodyLimit 是外层先包先生效的形状，配额由 app 层的独立组给 16 MiB。
 	admin.POST("/ai/payload", perm(authz.PermSiteSetting), h.payload)
+	// D63(b)：审核历史（review_events）的列表读口。权限点是审核那一档（post.review）：
+	// 看得到队列的人本来就要看到判定理由；配置那四条端点才是 site.setting（受众不同）。
+	admin.GET("/ai/events", perm(authz.PermPostReview), h.adminEvents)
 }
 
 // getConfig 的回执里**没有密钥字段**（d7 §8：密钥永不回显，只有 has_secret 与 secret_updated_at）。
@@ -205,6 +208,28 @@ func (h *Handler) payload(c *gin.Context) {
 		return
 	}
 	httpx.OK(c, out)
+}
+
+// adminEvents 是审核历史的列表（D63(b)）：包络走 httpx.OKList —— {data, next_cursor}，
+// 与用户列表 / 审计日志同一个形状（前端 apiPage 只认这一个包络形状）。查询串在 events.go。
+func (h *Handler) adminEvents(c *gin.Context) {
+	if _, err := h.require(c); err != nil {
+		httpx.Fail(c, err)
+		return
+	}
+	var req eventsRequest
+	if err := httpx.BindQuery(c, &req); err != nil {
+		httpx.Fail(c, err)
+		return
+	}
+	items, next, err := h.svc.ListEvents(c.Request.Context(), EventsQuery{
+		Verdict: req.Verdict, Source: req.Source, Limit: req.Limit, Cursor: req.Cursor,
+	})
+	if err != nil {
+		httpx.Fail(c, err)
+		return
+	}
+	httpx.OKList(c, items, next)
 }
 
 // topicID 把请求里的两种寻址收敛成一个内部 id（0 = 走 probe 那一路）。

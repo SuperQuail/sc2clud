@@ -1,7 +1,7 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { expect, it, vi } from 'vitest';
 import { ReviewScreen, type ReviewFilter } from './review';
-import type { ReviewQueueItem } from '@/lib/api/admin';
+import type { ReviewEventItem, ReviewQueueItem } from '@/lib/api/admin';
 
 // L6 后台侧（收尾对照表 §8.1 第 2 条）：审核队列补 state=revision_requested 那一档（列表筛选 + 操作），
 // 以及 06.2 的闭环那一档 draft（已发布、改动等着替换上线）。
@@ -92,7 +92,7 @@ it('draft 档（已发布 + 待替换改动）可以放行，按钮文案说清�
   ));
 });
 
-it('五个档位各自可切，revision_requested 与 draft 都有入口', () => {
+it('各档位各自可切（五个队列档 + 历史），revision_requested 与 draft 都有入口', () => {
   const { onFilterChange } = renderScreen([item({})]);
   // Ring 的 Tabs 用 data-test="ring-dumb-tabs"（不是 data-testid），且 tabs 里没有 role=tab——
   // 这就是为什么这条断言按文案找按钮，而不是按 role。
@@ -103,6 +103,8 @@ it('五个档位各自可切，revision_requested 与 draft 都有入口', () =>
     ['待替换改动', 'draft'],
     ['已拒绝', 'rejected'],
     ['全部未通过', 'all'],
+    // D63(b)：历史档（review_events 读口的入口）
+    ['历史', 'history'],
   ];
   for (const [title, state] of cases) {
     const tab = [...tabs.querySelectorAll('button')].find((b) => b.textContent?.trim().startsWith(title));
@@ -142,4 +144,63 @@ it('revision_requested 是独立的一档：行内状态说「打回修改」，
   expect(rowAction('通过')).toBeTruthy();
   expect(rowAction('打回修改')).toBeTruthy();
   expect(rowAction('拒绝')).toBeTruthy();
+});
+
+// ── D63(b)：历史档 ──────────────────────────────────────────────────────
+// GET /admin/ai/events 的读口进屏的历史档。屏是 prop 驱动的：这里断言三件事 ——
+// 流水按行渲染（判定人为空 = AI / 系统），队列主体在历史档不渲染，加载下一页按钮由 eventsHasMore 驱动。
+
+function reviewEvent(over: Partial<ReviewEventItem>): ReviewEventItem {
+  return {
+    id: 42,
+    created_at: '2026-10-14T10:00:00Z',
+    topic_id: '22222222-2222-2222-2222-222222222222',
+    topic_title: '一帖多判的帖子',
+    trigger: 'report',
+    source: 'manual',
+    verdict: 'reject',
+    reason: '人工复核不让过',
+    categories: ['相关违规'],
+    model: 'deepseek-flash',
+    latency_ms: 0,
+    image_count: 1,
+    image_skipped: 0,
+    actor: { id: '33333333-3333-3333-3333-333333333333', handle: 'bob', nickname: '老审核' },
+    ...over,
+  };
+}
+
+function renderHistory(events?: ReviewEventItem[]) {
+  const onLoadEvents = vi.fn();
+  render(
+    <ReviewScreen
+      items={[]}
+      hasMore={false}
+      filter={{ state: 'history', board: 'all', q: '' }}
+      onFilterChange={vi.fn()}
+      canReview
+      onReview={vi.fn()}
+      events={events ?? null}
+      eventsHasMore
+      onLoadEvents={onLoadEvents}
+    />,
+  );
+  return onLoadEvents;
+}
+
+it('历史档渲染判定流水：人工行带判定人，AI 行写 AI / 系统', () => {
+  renderHistory([
+    reviewEvent({}),
+    reviewEvent({ source: 'ai', verdict: 'review', reason: '拿不准', actor: null, latency_ms: 521 }),
+  ]);
+  expect(screen.getByText('人工复核不让过')).toBeTruthy();
+  expect(screen.getByText('拿不准')).toBeTruthy();
+  expect(screen.getAllByText('老审核').length).toBeGreaterThan(0);
+  expect(screen.getAllByText('AI / 系统').length).toBeGreaterThan(0);
+});
+
+it('历史档有下一页：点击交给 onLoadEvents（游标在容器手里）', () => {
+  const onLoadEvents = renderHistory([reviewEvent({})]);
+  fireEvent.click(screen.getByText('加载下一页'));
+  expect(onLoadEvents).toHaveBeenCalled();
 });

@@ -33,6 +33,8 @@ import type {
   Permission,
   Report,
   ReportFilter,
+  ReviewEventItem,
+  ReviewEventsFilter,
   ReviewQueueFilter,
   ReviewQueueItem,
   Role,
@@ -452,7 +454,7 @@ export function fetchAiPayload(req: { topicPublicId?: string; trigger?: string; 
   });
 }
 
-/** 连通测试。
+/** AI 连通测试（D33③）。doc 里改掉的那些行指的是下面这颗：
  *  `probe` 是**这一次**要发的样例（空 = 后端的内置默认样例）：只影响这一次，**不落库**。
  *  `topicId` 给了就真发一次这条帖子的 payload（**带图**），回执里会多出 image_count / images[] ——
  *  这是「图片审核到底起不起效」唯一的当场证据（D33③）。 */
@@ -475,4 +477,13 @@ function probeForm(probe: string, files: File[]): FormData {
 }
 
 export { PAGE_LIMIT };
+/** D63(b)：审核历史（review_events 倒序，一行 = 一次判定）。
+ *  包络与其它管理列表同一个形状（apiPage 解 {data, next_cursor}）；游标只回传不解释。 */
+export function fetchAiEvents(f: ReviewEventsFilter, signal?: AbortSignal): Promise<{ items: ReviewEventItem[]; next: string | null }> {
+  return apiPage<ReviewEventItem>('admin/ai/events', {
+    query: { verdict: f.verdict, source: f.source, ...pageQuery({ limit: f.limit, cursor: f.cursor }) },
+    signal,
+  });
+}
+
 

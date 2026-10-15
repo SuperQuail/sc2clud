@@ -8,7 +8,7 @@ import { CheckCheck, Clock3, FileText, History, PlugZap } from 'lucide-react';
 import { icon16 } from '@/ui/icons';
 import { UserAvatar } from '@/ui/user/avatar';
 import { Username } from '@/ui/user/username';
-import type { AiPayloadView, AiTestView, ReviewAction, ReviewQueueItem } from '@/lib/api/admin';
+import type { AiPayloadView, AiTestView, ReviewAction, ReviewEventItem, ReviewQueueItem } from '@/lib/api/admin';
 import { PayloadBlock } from './ai-payload';
 import { TestFail, TestResult, type AiTestFailure } from './ai-bits';
 import { DataTable } from '../data-table';
@@ -38,9 +38,13 @@ const KIND_LABEL: Record<string, string> = { discussion: '讨论', resource: '�
 const STATE_LABEL: Record<string, string> = {
   pending: '待审', approved: '已通过', rejected: '已拒绝', revision_requested: '打回修改',
 };
-/** 队列的五个档位（review_queue.go 的 reviewQueueStates）。
+/** D63(b)：历史一条的展示词 —— trigger / source 值域在 0020 的 CHECK 里，前端只做说人话这一层。 */
+const EVENT_TRIGGER_LABEL: Record<string, string> = { create: '发布', report: '举报复核', manual: '人工' };
+const EVENT_SOURCE_LABEL: Record<string, string> = { ai: 'AI', manual: '人工', trusted: '免审' };
+const EVENT_VERDICT_LABEL: Record<string, string> = { approve: '通过', reject: '拒绝', review: '转人工' };
+/** 队列的五个档位（review_queue.go 的 reviewQueueStates）加一档「历史」是否需要 D63(b) 决定。
  *  draft 是唯一一个 review_state='approved' 的档：「已发布 + 有改动等着替换上线」（06.2）。 */
-export type ReviewTab = 'pending' | 'revision_requested' | 'draft' | 'rejected' | 'all';
+export type ReviewTab = 'pending' | 'revision_requested' | 'draft' | 'rejected' | 'all' | 'history';
 
 export type ReviewFilter = { state: ReviewTab; board: string; q: string };
 
@@ -70,12 +74,21 @@ export type ReviewScreenProps = {
   topicTestFailure?: AiTestFailure | null;
   testing?: boolean;
   receipt?: ReactNode;
+  // ── 历史（D63(b)：GET /admin/ai/events，屏不取数，容器拉好从这里给）──
+  /** review_events 倒序一页；null = 容器还没拉过来（或当前不是历史档） */
+  events?: ReviewEventItem[] | null;
+  eventsHasMore?: boolean;
+  eventsLoading?: boolean;
+  eventsError?: ReactNode;
+  /** 拉下一页：next_cursor 在容器手里，屏只回传不解释 */
+  onLoadEvents?: () => void;
 };
 
 export function ReviewScreen({
   items, hasMore, loading = false, error = null, filter, onFilterChange, onLoadMore,
   canReview, onReview, receipt,
   onLoadPayload, payload = null, payloadError = null, onTestTopic, topicTest = null, topicTestFailure = null, testing = false,
+  events = null, eventsHasMore = false, eventsLoading = false, eventsError = null, onLoadEvents,
 }: ReviewScreenProps) {
   const [selected, setSelected] = useState<string[]>([]);
   const [activeId, setActiveId] = useState<string | null>(null);
@@ -168,6 +181,24 @@ export function ReviewScreen({
         actions={canReview ? <Button onClick={() => setSelected(items.filter(bulkable).map((r) => r.id))} disabled={items.length === 0}>全选本页</Button> : null}
       />
 
+      {/* 五个档位照 review_queue.go 的 reviewQueueStates。draft 是 06.2 的那一档：
+          「线上还挂着旧版、改动等着替换上线」——它列的是 approved 的帖，别按状态名去猜。 */}
+      <Tabs selected={filter.state} onSelect={(id: string) => { onFilterChange({ ...filter, state: id as ReviewTab }); setSelected([]); }}>
+        <Tab id='pending' title='待审' />
+        <Tab id='revision_requested' title='打回修改' />
+        <Tab id='draft' title='待替换改动' />
+        <Tab id='rejected' title='已拒绝' />
+        <Tab id='all' title='全部未通过' />
+        {/* D63(b)：历史档 —— 审核历史现在是真正的读口（GET /admin/ai/events），
+            不是「要多次判定历史得先给队列加一个读口」的愿望了。 */}
+        <Tab id='history' title='历史' />
+      </Tabs>
+      {/* 历史档换主体：队列的统计/批量/判定动作在这里没有意义（历史是只读流水），
+          换成审核历史那一屏（D63(b)：review_events 倒序，容器拉数）。 */}
+      {filter.state === 'history' ? (
+        <EventHistoryPanel events={events ?? []} hasMore={eventsHasMore} loading={eventsLoading} error={eventsError} onLoadEvents={onLoadEvents} />
+      ) : (
+      <>
       <StatRow>
         <Stat label='本页待审' value={items.filter((r) => r.review_state === 'pending').length} tone='info' />
         <Stat label='待替换改动' value={items.filter(hasDraft).length} tone='info' hint='已发布、改动等着替换上线' />
@@ -180,15 +211,6 @@ export function ReviewScreen({
 
       {!canReview ? <GateNote perm='post.review'>通过 / 打回修改 / 拒绝按钮不渲染（真正的判定在后端 authz.Require）。</GateNote> : null}
 
-      {/* 五个档位照 review_queue.go 的 reviewQueueStates。draft 是 06.2 的那一档：
-          「线上还挂着旧版、改动等着替换上线」——它列的是 approved 的帖，别按状态名去猜。 */}
-      <Tabs selected={filter.state} onSelect={(id: string) => { onFilterChange({ ...filter, state: id as ReviewTab }); setSelected([]); }}>
-        <Tab id='pending' title='待审' />
-        <Tab id='revision_requested' title='打回修改' />
-        <Tab id='draft' title='待替换改动' />
-        <Tab id='rejected' title='已拒绝' />
-        <Tab id='all' title='全部未通过' />
-      </Tabs>
 
       <Toolbar>
         <Select
@@ -346,12 +368,12 @@ export function ReviewScreen({
             )}
           </Panel>
 
-          <Panel title='判定历史在哪里' note='这一屏只带「最近一次」'>
+          <Panel title='判定历史在哪里' note='「历史」那一档有完整流水'>
             <p className='flex items-start gap-1 text-[11px] leading-relaxed text-muted-foreground'>
               <History size={12} aria-hidden className='mt-0.5 shrink-0' />
-              完整的判定事件在 review_events（只增不改：谁判的、什么理由、什么触发方式）。
-              队列 DTO 只带最近一次（reviewer / reviewed_at / review_verdict）——
-              **这一屏不编一份假时间线出来**，要多次判定历史得先给队列加一个读口。
+              这一档的每一行只带**最近一次**判定（队列 DTO 的 reviewer / reviewed_at / review_verdict），
+              它不编一份假时间线出来。完整的事件流水在「历史」档（GET /admin/ai/events，
+              review_events 倒序：谁判的、什么理由、什么触发方式）。
             </p>
           </Panel>
 
@@ -374,6 +396,8 @@ export function ReviewScreen({
           </Panel>
         </div>
       </div>
+      </>
+      )}
 
       <ConfirmDialog
         show={pending !== null}
@@ -413,6 +437,98 @@ export function ReviewScreen({
         }}
       />
     </div>
+  );
+}
+
+/** D63(b)：历史档的主体 —— review_events 倒序的判定流水（一行 = 一次判定）。
+ *  **屏不取数**：props 进来的是容器拉好的一页；filter 与 next_cursor 都在容器手里。
+ *  与队列同一套视觉语言（AI 转人工整行高亮，理由截断 hover 看全 —— 与 demo 的 AiHistory 一致）。 */
+function EventHistoryPanel({ events, hasMore, loading, error, onLoadEvents }: {
+  events: ReviewEventItem[];
+  hasMore: boolean;
+  loading: boolean;
+  error?: ReactNode;
+  onLoadEvents?: () => void;
+}) {
+  const columns = [
+    {
+      key: 'time', title: '时间', track: 'minmax(96px,0.7fr)', sortable: true,
+      sortValue: (r: ReviewEventItem) => r.created_at,
+      render: (r: ReviewEventItem) => (
+        <span className='text-[12px] text-foreground tabular-nums'>{fmtTime(r.created_at)}</span>
+      ),
+    },
+    {
+      key: 'topic', title: '帖子', track: 'minmax(150px,1.7fr)', sortable: true,
+      sortValue: (r: ReviewEventItem) => r.topic_title,
+      render: (r: ReviewEventItem) => (
+        <span className='min-w-0 truncate text-[12px] text-foreground' title={r.topic_title}>{r.topic_title}</span>
+      ),
+    },
+    {
+      key: 'trigger', title: '触发', track: 'minmax(72px,0.6fr)',
+      render: (r: ReviewEventItem) => <Pill tone='outline'>{EVENT_TRIGGER_LABEL[r.trigger] ?? r.trigger}</Pill>,
+    },
+    {
+      key: 'verdict', title: '判定', track: 'minmax(136px,1.2fr)',
+      render: (r: ReviewEventItem) => (
+        <span className='flex flex-wrap items-center gap-1'>
+          <Pill tone='neutral'>{EVENT_SOURCE_LABEL[r.source] ?? r.source}</Pill>
+          <Pill tone={r.verdict === 'approve' ? 'ok' : r.verdict === 'reject' ? 'danger' : 'warn'}>
+            {EVENT_VERDICT_LABEL[r.verdict] ?? r.verdict}
+          </Pill>
+        </span>
+      ),
+    },
+    {
+      key: 'reason', title: '理由（reason）', track: 'minmax(170px,2.2fr)',
+      render: (r: ReviewEventItem) => (
+        <span className='min-w-0 truncate text-[12px] text-foreground' title={r.reason}>
+          {r.reason || '（没有留下理由）'}
+        </span>
+      ),
+    },
+    {
+      key: 'actor', title: '判定人', track: 'minmax(96px,0.9fr)',
+      render: (r: ReviewEventItem) => r.actor
+        ? <Username nickname={r.actor.nickname} handle={r.actor.handle} size='sm' badge='none' />
+        : <span className='text-[11px] text-muted-foreground'>AI / 系统</span>,
+    },
+    {
+      key: 'model', title: '模型 / 耗时', track: 'minmax(104px,0.9fr)', align: 'end' as const,
+      render: (r: ReviewEventItem) => (
+        <span className='flex flex-col items-end leading-tight text-[11px] text-muted-foreground tabular-nums'>
+          <span>{r.model || (r.source === 'manual' ? '（人工）' : '—')}</span>
+          <span>{r.latency_ms > 0 ? r.latency_ms + ' ms' : '—'}</span>
+        </span>
+      ),
+    },
+  ];
+  const toHuman = events.filter((r) => r.source === 'ai' && r.verdict === 'review').length;
+  return (
+    <Panel
+      title='审核历史'
+      note='GET /admin/ai/events：review_events 倒序（只增不改，一行 = 一次判定）。'
+      actions={<Pill tone={toHuman > 0 ? 'danger' : 'neutral'}>{'AI 转人工 ' + toHuman}</Pill>}
+    >
+      {error}
+      <DataTable
+        columns={columns}
+        rows={events}
+        rowKey={(r) => String(r.id)}
+        rowLabel={(r) => r.topic_title}
+        minWidth={760}
+        density='compact'
+        loading={loading}
+        rowClassName={(r) => (r.source === 'ai' && r.verdict === 'review' ? 'bg-destructive/10' : undefined)}
+        empty='还没有判定事件：AI 或人工判过第一条就会出现'
+      />
+      {hasMore ? (
+        <div className='mt-2'>
+          <Button onClick={onLoadEvents} disabled={loading || !onLoadEvents}>加载下一页</Button>
+        </div>
+      ) : null}
+    </Panel>
   );
 }
 

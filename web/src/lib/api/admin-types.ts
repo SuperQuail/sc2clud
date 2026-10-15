@@ -266,6 +266,30 @@ export type AuditFilter = {
   from?: string;
   to?: string;
 } & PageQuery;
+/** D63(b)：审核历史一条（真源 aireview/dto.go 的 ReviewEventItem，GET /admin/ai/events）。
+ *  没有分数字段：d7 的判定只有三值 + ≤200 字理由，库与外呼都不产生数字分数 —— 别编一个。 */
+export type ReviewEventItem = {
+  /** 自增 id 照样出（review_events 无 public_id，审计日志同例） */
+  id: number;
+  created_at: string;
+  /** topics.public_id（uuid）：**对外 id 纪律不变** —— 内部 bigint 不跨端（routes/admin/review.tsx 同注） */
+  topic_id: string;
+  topic_title: string;
+  trigger: string;
+  source: string;
+  /** verdict：approve | reject | review（review = AI 转人工，审核屏最该先看的哪一类） */
+  verdict: string;
+  reason: string;
+  categories: string[];
+  model: string;
+  latency_ms: number;
+  image_count: number;
+  image_skipped: number;
+  /** 判定人（人工判定才有）：AI 判定 → null，审计「系统动作没有操作者」同一口径 */
+  actor: { id: string; handle: string; nickname: string } | null;
+};
+export type ReviewEventsFilter = { verdict?: string; source?: string } & PageQuery;
+
 export type AiConfig = {
   enabled: boolean;
   provider: string;

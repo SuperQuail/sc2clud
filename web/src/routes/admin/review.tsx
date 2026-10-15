@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { qk } from '@/lib/query/keys';
 import {
+  fetchAiEvents,
   fetchAiPayload,
   fetchReviewQueue,
   reviewTopic,
@@ -49,6 +50,17 @@ export function ReviewScreenContainer() {
   const queue = useQuery({
     queryKey: qk.adminReview(apiFilter),
     queryFn: ({ signal }) => fetchReviewQueue(apiFilter, signal),
+    // 「历史」档没有队列语义：不发这一次请求（state=history 对后端是一个无效档位）。
+    enabled: filter.state !== 'history',
+  });
+
+  // ── 历史（D63(b)）：GET /admin/ai/events，一行 = 一次判定 ──
+  // 游标与队列各有一份（同是「不透明串回传」，但换档就作废）：切筛选清两份。
+  const [eventCursor, setEventCursor] = useState<string | null>(null);
+  const events = useQuery({
+    queryKey: ['admin', 'review', 'events', eventCursor],
+    queryFn: ({ signal }) => fetchAiEvents({ cursor: eventCursor ?? undefined }, signal),
+    enabled: filter.state === 'history',
   });
 
   // 「这条将要发给 AI 的那一份」（dry-run，**不外呼**）：点了才请求（payloadId 为空 = 没点过）。
@@ -91,8 +103,17 @@ export function ReviewScreenContainer() {
         </p>
       ) : null}
       filter={filter}
-      onFilterChange={(next) => { setFilter(next); setCursors([null]); }}
+      onFilterChange={(next) => { setFilter(next); setCursors([null]); setEventCursor(null); }}
       onLoadMore={() => { if (queue.data?.next) setCursors((c) => [...c, queue.data!.next]); }}
+      events={filter.state === 'history' ? (events.data?.items ?? null) : null}
+      eventsHasMore={Boolean(events.data?.next)}
+      eventsLoading={events.isPending}
+      eventsError={filter.state === 'history' && events.error ? (
+        <p role='alert' className='rounded-md border border-destructive/40 bg-destructive/8 px-3 py-2 text-[12px] text-foreground'>
+          审核历史没能加载（HTTP {isApiError(events.error) ? events.error.status : 0}）：{errorLine(events.error)}
+        </p>
+      ) : null}
+      onLoadEvents={() => { if (events.data?.next) setEventCursor(events.data.next); }}
       canReview={can(me, 'post.review')}
       onReview={(item, action, note) => decide.mutate({ item, action, note })}
       onLoadPayload={(item) => { setPayloadId(item.id); setTopicTest(null); setTopicTestFailure(null); }}

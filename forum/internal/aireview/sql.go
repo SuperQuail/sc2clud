@@ -105,3 +105,20 @@ const sqlMarkManual = `
 
 // sqlCountReportRounds 给 unique_key 当轮次：同一轮的多次举报只触发一次复核（d7 §6）。
 const sqlCountReportRounds = `SELECT count(*) FROM review_events WHERE topic_id = $1 AND trigger = 'report'`
+
+// sqlListEvents 是「审核历史」（D63(b)）：review_events 倒序连主题与判定人一起取——审计屏一页的
+// 全部展示列都在这条里，不为每个事件回头查一次主题（auth/audit.go 的 ListAuditSQL 同形状：
+// 筛选全走参数，行比较游标 (created_at, id) < (k, id)，首页以 $3 IS NULL 短路）。
+const sqlListEvents = `
+	SELECT e.id, e.created_at, e.trigger, e.source, e.verdict, e.reason, e.categories, e.model,
+	       e.latency_ms, e.image_count, e.image_skipped,
+	       t.public_id, t.title,
+	       u.public_id, u.username, COALESCE(NULLIF(u.nickname, ''), u.username)
+	  FROM review_events e
+	  JOIN topics t ON t.id = e.topic_id
+	  LEFT JOIN users u ON u.id = e.actor_id
+	 WHERE ($1::text        IS NULL OR e.verdict = $1)
+	   AND ($2::text        IS NULL OR e.source  = $2)
+	   AND ($3::timestamptz IS NULL OR (e.created_at, e.id) < ($3, $4))
+	 ORDER BY e.created_at DESC, e.id DESC
+	 LIMIT $5`
