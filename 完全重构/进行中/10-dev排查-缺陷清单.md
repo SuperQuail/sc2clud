@@ -292,6 +292,7 @@ D34 补的是**管理端当场自助**这一缺环。
 | # | 现象 | 根因（实测） | 处理 |
 |---|---|---|---|
 | **D47** | 改动上线后**编辑进去正文全空**（标题/分区/来源都对） | `content_md` 是历史列（老站是 Markdown 纯文本），而 `MarkdownEditor` 按 EditorState JSON 解析 —— 不换算就是空文档。我撤掉帖内弹层时，把那份换算（`toEditorState`）一起删了，而 `routes/compose.tsx` 的预灌从第一天起就是直接塞原文 | 换算落成共享件 `web/src/ui/rich/markdown-to-editor-json.ts`（产品与房间共用），两处预灌都过它；钉子：`markdown-to-editor-json.test.ts`（JSON 原样 / 纯文本包最小文档 / 内容不丢）+ `compose.test.tsx` 的「编辑态回填编辑器拿到含正文的 EditorState」 |
+| **D47-bis** | 上线后用户复测 **正文依旧空白** | 上一轮只修了「换算」，还有更深一层：`MarkdownEditor` 的 `InitialState` 带 **`done` 守卫 —— 只在挂载那一刻读一次 value**，空串就永久空白。而 compose 页是「先渲染编辑器（doc 还空）→ 再用 useEffect 回灌」→ 晚了一步，永远灌不进去。**判据**：`markdown-editor.tsx:107-124` 的 `if (done.current) return; ... if (!value) return;` | 两处预灌（`routes/compose.tsx`、房间 `18-compose`）改成**渲染期推导**（React 的「props 变了就调整 state」写法）：查询到手的那一次渲染里 title/board/kind/doc 一起定下来，编辑器挂载时 value 已是正文；编辑态在详情到手前不画表单（`<Loading what='帖子内容'/>`）。测试替身也照抄真语义（**只认挂载时那一次 value**），否则这个缺陷测不出来 |
 | **D48** | 管理端**新建头衔稳定 400**（「参数错误」，无法创建） | 实测：合法载荷 dev/prod **都是 201**（不是代码坏）→ 是输入值不合规（key 带连字符/大写/中文、或颜色不是 #rrggbb），而后端把「哪个字段错在哪」放在 `fields` 里、**屏上只印一句 message**，用户只能反复试。日志证据：那笔 POST `ms=2`（在绑定/校验就死，没碰库） | ① `routes/admin/_shared.tsx` 的 `errorLine` 带上 `fields`（**全管理屏受益**）；② 新建弹窗就地校验（同值域）+ key 输入就地纠正（大写→小写、连字符/空格→`_`，字段里立刻显示真实要提交的值）+ 颜色/名称/说明的即时提示 |
 
 | | 内容 |

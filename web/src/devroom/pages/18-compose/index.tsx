@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import Button from '@jetbrains/ring-ui-built/components/button/button';
 import ButtonSet from '@jetbrains/ring-ui-built/components/button-set/button-set';
 import Input, { Size } from '@jetbrains/ring-ui-built/components/input/input';
@@ -84,17 +84,18 @@ export default function ComposePage() {
   const [sources, setSources] = useState<SourceRow[]>(DEMO_SOURCES);
   const [sourceBusy, setSourceBusy] = useState(false);
   const [busy, setBusy] = useState(false);
-  // 编辑态预灌（只灌一次）：房间里唯一的 demo 帖就是 12-topic 的那份 mock
+  // 编辑态预灌：房间里唯一的 demo 帖就是 12-topic 的那份 mock。
+  // **渲染期推导而不是 effect**：MarkdownEditor 只在挂载那一刻读 value（InitialState 的 done 守卫），
+  // effect 回灌晚一步 → 正文永远空白（2026-10-15 实测，产品页同一个坑）。
   const [prefilled, setPrefilled] = useState(false);
-  useEffect(() => {
-    if (!editing || prefilled) return;
+  if (editing && !prefilled) {
     setPrefilled(true);
     setTitle(TOPIC.title);
     const md = TOPIC.content_md ?? '';
     setDoc({ json: toEditorState(md), html: TOPIC.content_html ?? '', length: md.length });
     const key = TOPIC.board.slug;
     setBoard(BOARD_OPTIONS.some((b) => b.key === key) ? (key as BoardKey) : DEFAULT_BOARD);
-  }, [editing, prefilled]);
+  }
   const [submitted, setSubmitted] = useState<Draft | null>(null);
 
   const post: Draft = { title, board, tags, json: doc.json, html: doc.html };

@@ -31,16 +31,23 @@ const EDITOR_JSON = JSON.stringify({
   },
 });
 vi.mock('@/ui/rich/markdown-editor', async () => {
-  const { default: Input } = await import('@jetbrains/ring-ui-built/components/input/input');
+  const [{ default: Input }, { useRef }] = await Promise.all([
+    import('@jetbrains/ring-ui-built/components/input/input'),
+    import('react'),
+  ]);
   return {
-    // value 也渲染出来：编辑态的**回填**是 2026-10-15 实测的缺陷（进去正文全空），
-    // 只断言 onChange 的测试看不见它。
-    MarkdownEditor: ({ value, onChange }: { value: string; onChange: (json: string, html: string) => void }) => (
-      <>
-        <Input label='假编辑器（测试注入）' onChange={(e) => onChange(e.target.value, '<p>不管</p>')} />
-        <span data-testid='editor-initial'>{value}</span>
-      </>
-    ),
+    // **照抄真编辑器的语义**：InitialState 带 `done` 守卫，只在挂载那一刻读一次 value ——
+    // 之后再改 value 不会回灌。假件要是不照抄这条，「预灌晚了一步」这个真缺陷就测不出来
+    // （2026-10-15 实测：编辑器先以空值挂载，effect 再灌 → 正文永远空白）。
+    MarkdownEditor: ({ value, onChange }: { value: string; onChange: (json: string, html: string) => void }) => {
+      const first = useRef(value);
+      return (
+        <>
+          <Input label='假编辑器（测试注入）' onChange={(e) => onChange(e.target.value, '<p>不管</p>')} />
+          <span data-testid='editor-initial'>{first.current}</span>
+        </>
+      );
+    },
   };
 });
 

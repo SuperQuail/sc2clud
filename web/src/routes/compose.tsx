@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import Button from '@jetbrains/ring-ui-built/components/button/button';
@@ -76,19 +76,24 @@ export function ComposePage() {
     queryFn: ({ signal }) => fetchTopic(editId, signal),
     enabled: editing,
   });
-  // 只填一次：填完就交给用户，别把他正在打的字覆盖掉。
-  const [prefilled, setPrefilled] = useState(false);
-  useEffect(() => {
-    if (!editing || prefilled || !existing.data) return;
-    setPrefilled(true);
+  // 初值必须在**编辑器首次挂载之前**就位：MarkdownEditor 的 InitialState 带 `done` 守卫，
+  // 只在挂载那一刻读一次 value，空串就永久空白（2026-10-15 实测：编辑进去正文一直是空的 ——
+  // 之前的 effect 回灌晚了一步，恰好撞上这条语义）。
+  // 所以这里用**渲染期推导**（React 官方的「props 变了就调整 state」写法）而不是 effect：
+  // 查询一到手就在同一次渲染里把 title/board/kind/doc 一起定下来，编辑器挂载时 value 已经是正文。
+  // 只做一次（loadedFor 记 id）：填完就交给用户，别把他正在打的字覆盖掉。
+  const [loadedFor, setLoadedFor] = useState<string | null>(null);
+  if (editing && existing.data && loadedFor !== editId) {
+    setLoadedFor(editId);
     setTitle(existing.data.title);
     setBoard(existing.data.board.slug);
     setKind(existing.data.kind);
     const md = existing.data.content_md ?? '';
-    // content_md 是**历史列**（老站是 Markdown 纯文本）：不换算就灌编辑器 → 正文空白
-    // （2026-10-15 实测）。toEditorState 就是那一层换算，房间与产品共用同一份。
+    // content_md 是**历史列**（老站是 Markdown 纯文本）：不换算就灌编辑器 → 正文空白。
     setDoc({ json: toEditorState(md), html: existing.data.content_html ?? '', length: md.length });
-  }, [editing, prefilled, existing.data]);
+  }
+  // 编辑态在拿到详情前不画表单（否则编辑器会先以空值挂载，然后永远空着）
+  const waitingTopic = editing && !existing.data;
 
   // 提交判据来自设计稿的 draft.ts（「三项齐了才能提交」+ 空编辑器的 '<p><br></p>' 不算正文）。
   // board 的 slug 来自接口，不是设计稿那张分区表 —— 所以只借它的判据，不借它的分区名。
@@ -155,6 +160,7 @@ export function ComposePage() {
     return attachTopicImage(editId, file).then((a) => a.url);
   };
 
+  if (waitingTopic) return <Loading what='帖子内容' />;
   if (session.isLoading) return <Loading what='账号信息' />;
   if (session.error) return <ErrorState what='账号信息' error={session.error} />;
 
