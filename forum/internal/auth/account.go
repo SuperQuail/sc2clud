@@ -2,7 +2,9 @@ package auth
 
 import (
 	"context"
+	"crypto/rand"
 	"errors"
+	"math/big"
 	"net/mail"
 	"regexp"
 	"strconv"
@@ -792,6 +794,103 @@ func (s *Service) RevokeUserSessions(ctx context.Context, actor *authz.Actor, us
 		return nil, err
 	}
 	return &RevokeResult{Revoked: n}, nil
+}
+
+// ── 管理员重置密码 ──────────────────────────────────────────────────
+
+// temporaryPasswordChars 是**自动生成**用的字符表：去掉 i l o I L O 0 1 ——
+// 管理员要当面把它念给用户听，易混字符会让交付环节出错。
+const temporaryPasswordChars = "abcdefghjkmnpqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ23456789"
+
+// genTemporaryPassword 用 crypto/rand 取 12 位临时密码（rand.Int 本身无取模偏差）。
+func genTemporaryPassword() (string, error) {
+	const n = 12
+	buf := make([]byte, n)
+	max := big.NewInt(int64(len(temporaryPasswordChars)))
+	for i := range buf {
+		k, err := rand.Int(rand.Reader, max)
+		if err != nil {
+			return "", err
+		}
+		buf[i] = temporaryPasswordChars[k.Int64()]
+	}
+	return string(buf), nil
+}
+
+// AdminSetPasswordInput 的 Password 留空 = 生成一次性临时密码；显式给出 = 管理员指定的密码。
+type AdminSetPasswordInput struct {
+	UserPublicID string
+	Password     string
+	IP           string
+}
+
+// PasswordResetResult 的 Password 只在**生成**路径回显：管理员把它转交用户后自己销毁。
+// 显式指定时响应里没有 password（管理员本来就知道）。两条路都会踢掉目标用户的全部会话
+// （换密码必然失效旧凭证，管理员重置更是「找回来」性质的动作）。
+type PasswordResetResult struct {
+	Password string `json:"password,omitempty"`
+	Revoked  int    `json:"revoked"`
+}
+
+// AdminSetPassword 是管理员重置（用户忘记密码时的后台通道；自助通道是 forgot 流程）：
+// 同事务改 users.password_hash + 删全会话 + 审计 user.password.reset。
+// **审计 detail 不存密码**：审计要回答的是「谁给谁、何时、是否生成」，不是机密的永存。
+// 不设「最后一个超管」守卫：重置超管密码正是 superadmin 忘记密码时的救援路径（只换凭证不减员）。
+func (s *Service) AdminSetPassword(ctx context.Context, actor *authz.Actor, in AdminSetPasswordInput) (*PasswordResetResult, error) {
+	if err := requirePerm(actor, authz.PermUserBan); err != nil {
+		return nil, err
+	}
+	target, err := s.userByPublicID(ctx, in.UserPublicID)
+	if err != nil {
+		return nil, err
+	}
+	generated := in.Password == ""
+	password := in.Password
+	if generated {
+		password, err = genTemporaryPassword()
+		if err != nil {
+			return nil, err
+		}
+	}
+	if err := validatePassword(password); err != nil {
+		return nil, err
+	}
+
+	// 事务外取信号量算哈希（argon2 是 CPU 主项，与 ChangePassword 同一条纪律）。
+	if err := s.hash.acquire(ctx); err != nil {
+		return nil, err
+	}
+	phc, herr := s.hash.Hash(password)
+	s.hash.release()
+	if herr != nil {
+		return nil, herr
+	}
+
+	now := s.clk.Now()
+	var revoked int
+	err = s.withTx(ctx, func(tx *ent.Tx) error {
+		if err := tx.User.UpdateOneID(target.ID).SetPasswordHash(phc).SetUpdatedAt(now).Exec(ctx); err != nil {
+			return err
+		}
+		var iErr error
+		revoked, iErr = tx.Session.Delete().Where(session.UserIDEQ(target.ID)).Exec(ctx)
+		if iErr != nil {
+			return iErr
+		}
+		return s.writeAudit(ctx, tx, AuditEntry{
+			ActorID: actor.UserID, Action: ActionUserPasswordReset, TargetType: "user",
+			TargetID: target.PublicID.String(), IP: ipOf(in.IP),
+			Detail: map[string]any{"after": map[string]any{"generated": generated, "sessions_revoked": revoked}},
+		})
+	})
+	if err != nil {
+		return nil, err
+	}
+	out := &PasswordResetResult{Revoked: revoked}
+	if generated {
+		out.Password = password
+	}
+	return out, nil
 }
 
 // guardLastSuper 是设计 §8.9 的守卫：目标当前是超管、且 write 会让 active 超管数减小时执行。

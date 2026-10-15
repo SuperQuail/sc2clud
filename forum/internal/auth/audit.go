@@ -22,20 +22,21 @@ import (
 // 动作名清单（设计 §8.10 的表）。**只有这一处定义**：action 是排障的第一索引，
 // 散落的字符串会让「某类操作到底有没有留痕」无法回答。
 const (
-	ActionUserRegister     = "user.register"
-	ActionUserLogin        = "user.login"
-	ActionUserCreateAdmin  = "user.create_admin"
-	ActionUserRoleAssign   = "user.role.assign"
-	ActionUserBan          = "user.ban"
-	ActionUserActivate     = "user.activate"
-	ActionSessionsRevoke   = "user.sessions.revoke"
-	ActionRolePermsEdit    = "role.permissions.edit"
-	ActionPermissionGrant  = "permission.grant"
-	ActionPermissionRevoke = "permission.revoke"
-	ActionPermissionExpire = "permission.expire"
-	ActionPasswordChange   = "auth.password.change"
-	ActionEmailVerify      = "auth.email.verify"
-	ActionAuditExport      = "audit.export"
+	ActionUserRegister      = "user.register"
+	ActionUserLogin         = "user.login"
+	ActionUserCreateAdmin   = "user.create_admin"
+	ActionUserRoleAssign    = "user.role.assign"
+	ActionUserBan           = "user.ban"
+	ActionUserActivate      = "user.activate"
+	ActionSessionsRevoke    = "user.sessions.revoke"
+	ActionUserPasswordReset = "user.password.reset"
+	ActionRolePermsEdit     = "role.permissions.edit"
+	ActionPermissionGrant   = "permission.grant"
+	ActionPermissionRevoke  = "permission.revoke"
+	ActionPermissionExpire  = "permission.expire"
+	ActionPasswordChange    = "auth.password.change"
+	ActionEmailVerify       = "auth.email.verify"
+	ActionAuditExport       = "audit.export"
 )
 
 // AuditEntry 是一次审计写入。detail 只有两个形状：{"before": …} 与 {"before": …, "after": …}。

@@ -73,6 +73,7 @@ func (h *Handler) Register(rg *gin.RouterGroup) {
 	a.DELETE("/users/:id/permissions/:perm", svc.Perm(authz.PermPermissionGrant), h.adminRevokePerm)
 	a.POST("/users/:id/ban", svc.Perm(authz.PermUserBan), h.adminBan)
 	a.POST("/users/:id/sessions/revoke", svc.Perm(authz.PermUserBan), h.adminRevokeSessions)
+	a.POST("/users/:id/password", svc.Perm(authz.PermUserBan), h.adminSetPassword)
 	// 自检面板（C3）：debug 关闭时 service 返回 404 common.not_found（不是空 200，§5.13）。
 	a.GET("/diagnostics", svc.Perm(authz.PermSiteSetting), h.adminDiagnostics)
 	a.GET("/audit-logs", svc.Perm(authz.PermAuditView), h.adminAuditList)
@@ -590,6 +591,28 @@ func (h *Handler) adminBan(c *gin.Context) {
 
 func (h *Handler) adminRevokeSessions(c *gin.Context) {
 	out, err := h.svc.RevokeUserSessions(c.Request.Context(), actorFrom(c), c.Param("id"), ClientIP(c))
+	if err != nil {
+		httpx.Fail(c, err)
+		return
+	}
+	httpx.OK(c, out)
+}
+
+// adminSetPasswordReq 是 POST /admin/users/:id/password 的体。password 缺省或空 =
+// 生成一次性临时密码并在**响应**里给一次；显式给出时不回显。
+type adminSetPasswordReq struct {
+	Password string `json:"password"`
+}
+
+func (h *Handler) adminSetPassword(c *gin.Context) {
+	var req adminSetPasswordReq
+	if err := httpx.Bind(c, &req); err != nil {
+		httpx.Fail(c, err)
+		return
+	}
+	out, err := h.svc.AdminSetPassword(c.Request.Context(), actorFrom(c), AdminSetPasswordInput{
+		UserPublicID: c.Param("id"), Password: req.Password, IP: ClientIP(c),
+	})
 	if err != nil {
 		httpx.Fail(c, err)
 		return
