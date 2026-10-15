@@ -282,6 +282,16 @@ D34 补的是**管理端当场自助**这一缺环。
 
 ---
 
+## 1n. 第十轮（用户 2026-10-15 14:2x 在 prod `4151bb7` 上实测；`3735ccb` 收口）
+
+| # | 现象 | 根因（实证） | 处理 |
+|---|---|---|---|
+| **D43** | **超管也看到「还不能发帖回复」，帖主/超管都看不到编辑按钮；「查看账号状态」点了跳登录页** | `TopicDetailDTO` 的 `can_edit`/`can_reply` **从没被赋过值**（dto.go 声明、map.go 忘了填）→ API 恒 `false`；前端 `??` 兜底只认「字段缺失」，字段在场=false 不兜底 → 全员假阴性；「查看账号状态」的 href 恒写 `/login` | `topics.go` 的 `TopicDetail` 补填充：`CanEdit=canEditTopic`（与 PATCH 的同一支判定）、`CanReply=!locked && canSpeak`（超管在第 1 步短路）；用例 `topic_can_flags_test.go`（帖主/超管/陌生人/锁帖/游客五行口径钉死）；前端把已登录态的按钮指向 `settings`（`4aef528`） |
+| **D44** | **AI「测试连通 / 干跑」带图稳定失败 400 参数错误（≥1 MiB 的图必挂）** | D34 契约「4×2 MiB ≈10.7 MiB」**撞 Rahman `BodyLimit(1 MiB)` 组级中间件**：外层包装先生效，派单时挂在路由内的 16 MiB 是内层包装救不回来的；实测 dev 复现 1.3MB→400「样例图片读不出来」（`io.ReadAll` 被 `MaxBytesReader` 拦断，未把超限翻成 413） |两条端点**独立成组**（app/http.go：`ai := r.Group("/api/v1", BodyLimit(16MiB), LoadPrincipal())`，绕开 v1 的外层 1 MiB 链）；`probe.go` 把 `*http.MaxBytesError` 翻成 **413 `media.too_large`**。dev 回测：1.3MB→200、9MB→200（`3735ccb`） |
+| 资料修复 | **资源帖的下载源（topic_sources）在库中为空**——弥音启动器帖（prod topic 11）正文写着「点按钮会跳仓库/网盘」，下载区却渲染不出 | 迁移链上 sources 表建空了（数据从没写过，正文里的链接是唯一真源） | 手工移植可恢复的那条：`topic_sources` 补 `provider=github / label='GitHub Releases（安装包下载）' / url=正文里的仓库`（幂等写，`verified_at=NULL`＝未人工确认，诚实语义）。**若还有网盘/镜像源清单，发我 URL 列表即可补行** |
+
+---
+
 ## 2. 派发分组（互不重叠的文件作用域）
 
 | 包 | 覆盖 | 主要文件 |
