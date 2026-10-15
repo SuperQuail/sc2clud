@@ -95,9 +95,35 @@ function Step-Build([string]$Ver) {
   }
   else {
     Set-GoEnv
-    Info 'web: pnpm build'
     Push-Location $WebDir
-    try { & pnpm build } finally { Pop-Location }
+    try {
+      if ($Instance -eq 'dev') {
+        # dev 实例**必须有 DevRoom 入口**（用户 2026-10-15 实测 D30：主页看不到进房间的按钮）。
+        # 这要两件事一起做，缺一个都不成立：
+        #   ① 产品构建带 VITE_DEVROOM=1（否则入口被摇掉 = 线上那份生产产物就是这个形状）；
+        #   ② 把房间子应用并进 dist/devroom（只做①会得到「有入口、点进去 404」）。
+        # 生产实例**刻意不做**这两件事 —— 房间不该出现在生产。
+        Info 'web: VITE_DEVROOM=1 pnpm build (dev instance: room entry included)'
+        $env:VITE_DEVROOM = '1'
+        & pnpm build
+        if ($LASTEXITCODE -eq 0) {
+          Info 'web: pnpm preview:build + merge into dist/devroom'
+          & pnpm preview:build
+          if ($LASTEXITCODE -eq 0) {
+            $devDir = Join-Path $WebDir 'dist\devroom'
+            if (Test-Path $devDir) { Remove-Item -Recurse -Force $devDir }
+            New-Item -ItemType Directory -Force -Path $devDir | Out-Null
+            Copy-Item (Join-Path $WebDir 'preview-dist\*') $devDir -Recurse -Force
+            Move-Item (Join-Path $devDir 'devroom.html') (Join-Path $devDir 'index.html') -Force
+          }
+        }
+        Remove-Item Env:\VITE_DEVROOM -ErrorAction SilentlyContinue
+      }
+      else {
+        Info 'web: pnpm build'
+        & pnpm build
+      }
+    } finally { Pop-Location }
     if ($LASTEXITCODE -ne 0) {
       if ($AllowStaleWeb) {
         Warn ('frontend build FAILED (exit ' + $LASTEXITCODE + '), continuing with the existing web/dist because -AllowStaleWeb was passed')
@@ -170,6 +196,19 @@ function Step-Build([string]$Ver) {
 }
 
 function Step-Pack([string]$Ver) {
+  # dev 实例的守卫：产物里没有 DevRoom 就直接拒绝部署。
+  # **对 -SkipBuild 同样生效** —— 2026-10-15 那次漏出去正是「用现成的生产 dist + -SkipBuild 之外没构建」，
+  # 而当时的 deploy.ps1 一声不响地就把没有房间入口的产物装到了 dev 上。
+  if ($Instance -eq 'dev') {
+    $devIndex = Join-Path $WebDir 'dist\devroom\index.html'
+    if (-not (Test-Path $devIndex)) {
+      # 消息用 ASCII 单参形式：这一行带拼接与全角标点时被 PS7 解析成「字符串未结束」（试过 6 种最小复现都正常，
+      # 但文件里这一行怎么改都炸）—— 部署脚本不该为一句文案冒险，诊断信息用英文一样读得懂。
+      Fail 'dev release has no DevRoom: dev deploys must build with VITE_DEVROOM=1 and merge dist/devroom (web/dist/devroom/index.html)'
+    }
+    Info 'dev 产物含 DevRoom 入口: dist/devroom/index.html'
+  }
+
   Stage '2/9 pack + sha256'
   $bin = Join-Path $BuildDir 'forum'
   if (-not (Test-Path $bin)) { Fail ('no binary at ' + $bin + ' -- run once without -SkipBuild') }
@@ -183,8 +222,9 @@ function Step-Pack([string]$Ver) {
   # VERSION at the artifact root is the identity a human reads; web/dist/VERSION
   # is the one /healthz reports as web_version. Same string, two readers.
   Copy-Item (Join-Path $WebDir ('dist' + $Sep + 'VERSION')) (Join-Path $stage 'VERSION')
-  # 迁移素材（分区封面清单 / AI 配置值）：生产切换要跑 `forum board-covers -manifest ...` 与
-  # `forum ai-config -manifest ...`，这些文件必须**随产物走**，否则运维得回仓库取（2026-10-14 实测：第一次部署就没带）。
+  # 迁移素材（分区封面清单 / AI 配置值）：生产切换要跑 forum board-covers -manifest ... 与
+  # forum ai-config -ai-manifest ...，这些文件必须**随产物走**，否则运维得回仓库取（2026-10-14 实测：第一次部署就没带）。
+  # 注意：PS 的注释里**不要写反引号** —— 它是转义符，注释里照样被解析，会把下一行拉进语法（这次就是这么写坏的）。
   # 目录不存在时不算失败：素材还没做完的中间状态不该拦住部署。
   $migSrc = Join-Path $Root ('完全重构' + $Sep + '迁移素材')
   if (Test-Path $migSrc) { Copy-Item $migSrc (Join-Path $stage 'migration') -Recurse }
