@@ -71,7 +71,23 @@ model / max_output_tokens / strict_mode / tool_name / categories
     前面那批用例注入的是假外呼 —— 它们只证明「图交给了外呼口」；这一条才证明「真的编成了 data URL 上线」。
   - 下一步：见 ⑥。
   - 阻塞：无。
-- [ ] ⑥ 管理端增量（预览显示 image 块、样例可见可编辑、带图验证出图）
+- [x] ⑥ 管理端**验证 + 一处增量**（渲染那半由 FIX-AI2 完成，我只做验证与定点修补）
+  - 做了什么（增量）：`web/src/devroom/pages/15-admin/screens/ai-payload.tsx` 两处把 `**逐字相同**` /
+    `**组装出来的那一份**` 从 JSX 文本节点里去掉 —— 那是 Markdown 语法，在 JSX 里会**原样画出来**
+    （1440 与 390 两张图里都看得见那两颗星号）。改成 `<b>`。这是看图看出来的，不是猜的。
+  - 证据（出图并看图，CDP 端口 9411/9412，vite dev 5401，按 PID 关）：
+    · `shots/fixvlm/ai-payload-1440.png`：DevRoom `?page=15-admin&screen=ai` 的 payload 块 ——
+      system / user·标题 / user·正文 三段 + `这次判 2 张图`、`没发 1 张`、`上限 4 张 / 单张 2 MB；已发 436 KB`，
+      三行配图逐张给出「会发给模型 / 不发给模型 + 第几张·几楼 + mime·字节 + 不发的理由」，
+      第 3 张（3.3 MB）红字写着「单张 3.3 MB 超过上限 2.0 MB，没发给模型」——**截断在界面上是可见的**。
+    · `shots/fixvlm/ai-payload-390.png`：同一块窄屏 500×746，无截断、图行竖排正常。
+    · 图里左下角有 `FIXVLM-AI-1440` / `FIXVLM-AI-390` 标记（`mark:` 动作），证明拍的是当前源码。
+  - 下一步：**没有下一步**（本包交付完成）。若 Lead 要我把产品页 `routes/admin/ai.tsx` 的「选一条带图帖 →
+    真跑一次」也接上（需要后端 + 真 key 才能出真回执），说一声即可。
+  - 阻塞：**一处不是阻塞的说明** —— 「带图验证态」的真回执（跑一次真帖、回执里看到 verdict + 判了几张图）
+    需要真 API Key 打真上游；本机没有 key，所以那条只能用**用例**证明
+    （`TestImagesReachTheWireAsDataURL` 用假上游抓真请求体 + `TestOutboundPayloadCarriesImageBlocks` 钉住
+    review_events 的 image_count/model），房间里的回执是 mock。真跑一次属于 dev 实例上的验收动作。
   - **现场变化（09:53 实测）**：FIX-AI2 已经在改这批文件了 —— `web/src/lib/api/admin.ts` 与
     `admin-types.ts` 已在途（`fetchAiPayload` / `testAiConfig(probe, topicId)` / `AiPayloadImage` /
     本文件定的那 7 个 image 字段**全都对齐了我的字段契约**），并且 09:53:03 新建了
