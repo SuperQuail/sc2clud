@@ -80,6 +80,20 @@ func (q *Queries) UserTitles(ctx context.Context, userID int64) ([]HeldTitle, er
 	return out, rows.Err()
 }
 
+// TitleRefs 数一条头衔在两处引用上各有多少行（持有名单 / 正佩戴）。
+// DeleteTitle 的 409 判定用它：读与删在**同一事务**里，数完满意才轮到 DELETE。
+func (q *Queries) TitleRefs(ctx context.Context, titleID int64, holders, equipped *int) error {
+	if err := q.scanOne(ctx, []any{holders},
+		"SELECT count(*) FROM user_titles WHERE title_id = $1", titleID); err != nil {
+		return fmt.Errorf("title: count holders: %w", err)
+	}
+	if err := q.scanOne(ctx, []any{equipped},
+		"SELECT count(*) FROM users WHERE equipped_title_id = $1", titleID); err != nil {
+		return fmt.Errorf("title: count equipped: %w", err)
+	}
+	return nil
+}
+
 // TitleByPublicID 返回内部 id 与归档态；不存在 → sql.ErrNoRows。
 func (q *Queries) TitleByPublicID(ctx context.Context, publicID string) (int64, bool, error) {
 	var (

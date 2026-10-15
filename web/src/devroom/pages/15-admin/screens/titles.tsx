@@ -3,7 +3,7 @@ import Button from '@jetbrains/ring-ui-built/components/button/button';
 import Dialog from '@jetbrains/ring-ui-built/components/dialog/dialog';
 import Input from '@jetbrains/ring-ui-built/components/input/input';
 import { ControlsHeight } from '@jetbrains/ring-ui-built/components/global/controls-height';
-import { Archive, Plus } from 'lucide-react';
+import { Archive, Plus, Trash2 } from 'lucide-react';
 import { icon16 } from '@/ui/icons';
 import { HexColorPicker } from 'react-colorful';
 import { TitleBadge } from '@/ui/user/title-badge';
@@ -34,15 +34,20 @@ export type TitlesScreenProps = {
   /** 新建失败的理由（字段级理由由 errorLine 带出来）；有它就在弹窗里显示，不关窗 */
   createError?: string | null;
   onUpdate: (id: string, b: { key: string; name: string; color: string; description: string; archived: boolean }) => void;
+  /** D68：真删一条头衔（参数确认后调，被持有 / 佩戴时后端 409，理由走宿主的 receipt/errorLine） */
+  onDelete?: (t: Title) => void;
+  /** 删除请求在途（与 archived 保存共用一把「忙」：不允许重复点） */
+  deleting?: boolean;
   /** 是否在提交中（禁用按钮，避免重复点） */
   busy?: boolean;
   receipt?: ReactNode;
 };
 
-export function TitlesScreen({ titles, loading = false, error = null, canManage, onCreate, createError = null, onUpdate, busy = false, receipt }: TitlesScreenProps) {
+export function TitlesScreen({ titles, loading = false, error = null, canManage, onCreate, createError = null, onUpdate, onDelete, deleting = false, busy = false, receipt }: TitlesScreenProps) {
   const [sort, setSort] = useState<Sort>({ key: 'key', dir: 'asc' });
   const [activeId, setActiveId] = useState<string | null>(null);
   const [archive, setArchive] = useState<Title | null>(null);
+  const [remove, setRemove] = useState<Title | null>(null);
   const [createOpen, setCreateOpen] = useState(false);
 
   const active = titles.find((t) => t.id === activeId) ?? null;
@@ -81,6 +86,15 @@ export function TitlesScreen({ titles, loading = false, error = null, canManage,
               <span className='flex items-center gap-1'><Archive size={13} aria-hidden />归档</span>
             </DangerAction>
           )}
+          {onDelete ? (
+            <DangerAction
+              disabled={!canManage || busy || deleting}
+              why={!canManage ? '本账号没有 title.manage' : undefined}
+              onClick={() => setRemove(t)}
+            >
+              <span className='flex items-center gap-1' data-testid={'title-delete-' + t.key}><Trash2 size={13} aria-hidden />删除</span>
+            </DangerAction>
+          ) : null}
         </span>
       ),
     },
@@ -90,7 +104,7 @@ export function TitlesScreen({ titles, loading = false, error = null, canManage,
     <div className='flex flex-col gap-3'>
       <ScreenHead
         title='头衔目录'
-        note='13.6：建 / 改 / 归档（不物理删）；佩戴的头衔只有一个，归档时由外键自动置空（DB §4.11）。持有者数后端没给，所以这里不显示。'
+        note='13.6：建 / 改 / 归档 / 删除（D68：删除只在无人引用时放行，而且管理屏看得到归档项）。持有者数后端没给，所以这里不显示。'
         actions={canManage ? <Button inline={false} height={ControlsHeight.S} icon={icon16(Plus)} onClick={() => setCreateOpen(true)}>新建头衔</Button> : null}
       />
 
@@ -132,6 +146,29 @@ export function TitlesScreen({ titles, loading = false, error = null, canManage,
           )}
         </Panel>
       </div>
+
+      {onDelete ? (
+        <ConfirmDialog
+          show={remove !== null}
+          label='删除这条头衔？'
+          danger
+          confirmText='确认删除'
+          // D68：删除是**补归档的逃生门**（key 唯一列被旧词占用时唯一出路）。后端在持有名单 /
+          // 正佩戴没清之前回 409 并把数字写进 fields —— 理由由宿主的 errorLine 摆进 receipt，屏不装懂。
+          // 无引用的头衔直接物化删除；user_titles 的历史行不会被级联清空。
+          body={
+            <span>
+              从头衔目录里物理删除 <b>{remove?.name}</b>（key 的唯一性一并释放）。
+              只要还有人持有或佩戴着它，后端会拒绝并把人数字在错误里 —— 那时先去用户管理收回。
+            </span>
+          }
+          onClose={() => setRemove(null)}
+          onConfirm={() => {
+            if (remove) onDelete(remove);
+            setRemove(null);
+          }}
+        />
+      ) : null}
 
       <ConfirmDialog
         show={archive !== null}

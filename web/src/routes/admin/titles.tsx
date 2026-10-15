@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { qk } from '@/lib/query/keys';
 import {
   createTitle,
+  deleteTitle as deleteTitleApi,
   fetchTitles,
   updateTitle,
 } from '@/lib/api/admin';
@@ -33,6 +34,12 @@ export function TitlesScreenContainer() {
     onSuccess: (t) => { setReceipt('已保存「' + t.name + '」' + (t.archived_at ? '（已归档）' : '')); refresh(); },
     onError: (e) => setReceipt('保存失败：' + (errorLine(e) ?? '')),
   });
+  // D68：真删（后端 409 时 fields 里带「还有 N 人持有……」，errorLine 会把那句话抬出来）
+  const remove = useMutation({
+    mutationFn: (id: string) => deleteTitleApi(id),
+    onSuccess: () => { setReceipt('已删除该头衔（key 一并释放，可重新创建）'); refresh(); },
+    onError: (e) => setReceipt('删除失败：' + (errorLine(e) ?? '')),
+  });
 
   return (
     <TitlesScreen
@@ -55,6 +62,8 @@ export function TitlesScreenContainer() {
       }}
       createError={create.error ? errorLine(create.error) : null}
       onUpdate={(id, body) => update.mutate({ id, body })}
+      onDelete={(t) => remove.mutate(t.id)}
+      deleting={remove.isPending}
       busy={create.isPending || update.isPending}
       receipt={receipt ? (
         <p role='status' className='rounded-md border border-border bg-muted/50 px-3 py-2 text-[12px] text-foreground'>{receipt}</p>

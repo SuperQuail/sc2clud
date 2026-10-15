@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"fmt"
 	"regexp"
 	"strings"
 	"time"
@@ -36,6 +37,23 @@ func NewService(db, dbRead *ent.Client, clk clock.Clock, audit AuditSink) *Servi
 func (s *Service) ListTitles(ctx context.Context) ([]TitleDTO, error) {
 	rows, err := s.dbRead.Title.Query().
 		Where(title.ArchivedAtIsNil()).
+		Order(ent.Asc(title.FieldID)).
+		All(ctx)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]TitleDTO, 0, len(rows))
+	for _, t := range rows {
+		out = append(out, titleDTO(t.PublicID.String(), t.Key, t.Name, t.Color, t.Description, t.ArchivedAt))
+	}
+	return out, nil
+}
+
+// AdminListTitles 是管理端的目录：**含归档**（D68，2026-10-15 用户实测「归档头衔管理屏看不到、
+// key 被占用变永久卡死」）。归档行不进公共目录但必须能在后台看到——否则「恢复 / 删除」都无从
+// 谈起，而归档一多，titles.key 的唯一列就把旧词挡成永久 409。行上 archived_at 非 nil = 已归档。
+func (s *Service) AdminListTitles(ctx context.Context) ([]TitleDTO, error) {
+	rows, err := s.dbRead.Title.Query().
 		Order(ent.Asc(title.FieldID)).
 		All(ctx)
 	if err != nil {
@@ -230,6 +248,53 @@ func (s *Service) UpdateTitle(ctx context.Context, actor *authz.Actor, in TitleI
 
 // AddExp 加经验并同事务重算 level（d4 §4.13）：先插流水，只有**真的插进去了**才加经验，
 // 所以队列重试与并发重放都不会加两次。ref 相同 = 同一次事件。
+// DeleteTitle 是**真删**（D68 的第二根：归档项在后台不可见且删不了，key 唯一列被旧词占用后
+// 新建立刻 409，「永久卡死」）。titles 被引用时外键会级联毁掉 user_titles 的历史行、把佩戴置空
+// （0009 的 ON DELETE SET NULL/CASCADE）——那是「数据不许悄悄毁掉」的反例，所以删除前在同一
+// 事务里数一遍引用：有人在持有 / 佩戴就 409 并把数量说在 fields 里，收回之后才放行。
+func (s *Service) DeleteTitle(ctx context.Context, actor *authz.Actor, titlePublicID string) error {
+	if err := requirePerm(actor, authz.PermTitleManage); err != nil {
+		return err
+	}
+	if err := checkPublicID(titlePublicID); err != nil {
+		return err
+	}
+	titleID, _, err := s.pg().TitleByPublicID(ctx, titlePublicID)
+	if errors.Is(err, sql.ErrNoRows) {
+		return apperr.ErrNotFound
+	}
+	if err != nil {
+		return err
+	}
+	if err := db.WithTx(ctx, s.db, func(tx *ent.Tx) error {
+		q := pgsql.NewTx(tx)
+		var holders, equipped int
+		if err := q.TitleRefs(ctx, titleID, &holders, &equipped); err != nil {
+			return err
+		}
+		if holders > 0 || equipped > 0 {
+			msg := ""
+			switch {
+			case holders > 0 && equipped > 0:
+				msg = fmt.Sprintf("还有 %d 人持有、%d 人正佩戴这条头衔，先收回再删除", holders, equipped)
+			case holders > 0:
+				msg = fmt.Sprintf("还有 %d 人持有这条头衔，先收回再删除", holders)
+			default:
+				msg = fmt.Sprintf("还有 %d 人正佩戴这条头衔，先取下再删除", equipped)
+			}
+			return apperr.ErrConflict.WithFields(map[string]string{"title_id": msg})
+		}
+		return tx.Title.DeleteOneID(titleID).Exec(ctx)
+	}); err != nil {
+		return err
+	}
+	return s.audit.Log(ctx, AuditEntry{
+		ActorID: actor.UserID, Action: ActionTitleManage,
+		TargetType: "title", TargetID: titlePublicID,
+		Detail: map[string]any{"deleted": true},
+	})
+}
+
 func (s *Service) AddExp(ctx context.Context, actor *authz.Actor, in AddExpInput) (*ExpDTO, error) {
 	if err := requirePerm(actor, authz.PermTitleGrant); err != nil {
 		return nil, err

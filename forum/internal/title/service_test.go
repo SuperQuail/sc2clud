@@ -335,6 +335,92 @@ SELECT count(*) FROM users u
 	}
 }
 
+// D68（2026-10-15 用户实测「归档头衔管理屏看不到、key 被占用变永久卡死」）的两条根：
+// ① 管理目录要能看到归档项（旧 adminList 复用了不返归档的 ListTitles），否则「恢复 / 删除」都无从谈起；
+// ② 真删除在被引用时明确 409（说清多少人在持有 / 佩戴），不级联毁掉 user_titles 的历史行。
+func TestAdminListIncludesArchived(t *testing.T) {
+	f := newFixture(t)
+	keep := f.createTitle(t, "founder", "创始人")
+	gone := f.createTitle(t, "veteran", "老兵")
+	if _, err := f.svc.UpdateTitle(f.ctx, f.admin(), TitleInput{PublicID: gone.ID, Name: "老兵", Archived: true}); err != nil {
+		t.Fatal(err)
+	}
+
+	// 公共目录照旧不返归档（TestArchiveHidesFromCatalogButKeepsHeld 已钉）；管理目录两行都要在
+	list, err := f.svc.AdminListTitles(f.ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(list) != 2 {
+		t.Fatalf("管理目录应看到全部 2 条（含归档），实际 %d", len(list))
+	}
+	byKey := map[string]*TitleDTO{}
+	for i := range list {
+		byKey[list[i].Key] = &list[i]
+	}
+	if byKey[keep.Key] == nil || byKey[gone.Key] == nil {
+		t.Fatalf("管理目录缺行: %+v", list)
+	}
+	if byKey[gone.Key].ArchivedAt == nil {
+		t.Fatalf("归档行必须带着 archived_at: %+v", byKey[gone.Key])
+	}
+}
+
+func TestDeleteTitleRefusesWhileReferenced(t *testing.T) {
+	f := newFixture(t)
+	u := newUser(t, f.ctx, f.pool, "alice")
+	held := f.createTitle(t, "veteran", "老兵")
+	free := f.createTitle(t, "free", "自由")
+
+	// ① 未被引用：删得掉，且审计留一条（现在已有的 create×2 + update×1 都算）
+	if err := f.svc.DeleteTitle(f.ctx, f.admin(), free.ID); err != nil {
+		t.Fatalf("无人引用的头衔应当真删成功: %v", err)
+	}
+	if n := countRows(t, f.ctx, f.pool, "SELECT count(*) FROM titles WHERE public_id = $1", free.ID); n != 0 {
+		t.Fatal("删除必须物化：titles 里不该再有这一行")
+	}
+	if ents := f.audit.entries; len(ents) < 3 {
+		t.Fatalf("删除应写一条审计，动作应不少于 create×2 + delete: %v", f.audit.actions())
+	} else if ents[len(ents)-1].TargetID != free.ID || ents[len(ents)-1].Detail["deleted"] != true {
+		t.Fatalf("最后一条审计应是删除本身（含 deleted 标记）: %+v", ents[len(ents)-1])
+	}
+
+	// ② 已被持有（还没佩戴）：409 说不清谁挂着就不许删
+	if err := f.svc.AssignTitle(f.ctx, f.admin(), AssignInput{UserID: u, TitlePublicID: held.ID}); err != nil {
+		t.Fatal(err)
+	}
+	if err := f.svc.DeleteTitle(f.ctx, f.admin(), held.ID); !isCode(err, apperr.CodeConflict) {
+		t.Fatalf("被持有的头衔删除必须 409，实际 %v", err)
+	}
+	if n := countRows(t, f.ctx, f.pool, "SELECT count(*) FROM user_titles WHERE user_id = $1", u); n != 1 {
+		t.Fatalf("409 不得级联毁持有行: %d", n)
+	}
+
+	// ③ 佩戴中的更要挡（外键 SET NULL 会白手抹掉用户的选择）
+	if err := f.svc.Equip(f.ctx, f.plain(u), held.ID); err != nil {
+		t.Fatal(err)
+	}
+	if err := f.svc.DeleteTitle(f.ctx, f.admin(), held.ID); !isCode(err, apperr.CodeConflict) {
+		t.Fatalf("佩戴中的头衔删除必须 409，实际 %v", err)
+	}
+
+	// ④ 已经没人持有（收回后）：删得掉
+	if err := f.svc.AssignTitle(f.ctx, f.admin(), AssignInput{UserID: u, TitlePublicID: held.ID, Revoke: true}); err != nil {
+		t.Fatal(err)
+	}
+	if err := f.svc.DeleteTitle(f.ctx, f.admin(), held.ID); err != nil {
+		t.Fatalf("收回佩戴 / 持有后应当能真删: %v", err)
+	}
+
+	// ⑤ 权限与存在性：无 title.manage 403；不存在的 id 404（坏形状不给 500）
+	if err := f.svc.DeleteTitle(f.ctx, f.plain(u), held.ID); !isCode(err, apperr.CodeForbidden) {
+		t.Fatalf("无权限删除必须 403，实际 %v", err)
+	}
+	if err := f.svc.DeleteTitle(f.ctx, f.admin(), "not-a-uuid"); !isCode(err, apperr.CodeNotFound) {
+		t.Fatalf("不存在的 id 必须 404，实际 %v", err)
+	}
+}
+
 func TestAuditFailurePropagates(t *testing.T) {
 	f := newFixture(t)
 	u := newUser(t, f.ctx, f.pool, "alice")
@@ -374,6 +460,7 @@ func TestRegisterRoutesDoNotConflict(t *testing.T) {
 		"GET /api/v1/admin/titles",
 		"POST /api/v1/admin/titles",
 		"PATCH /api/v1/admin/titles/:id",
+		"DELETE /api/v1/admin/titles/:id",
 	} {
 		if !got[want] {
 			t.Fatalf("缺少路由 %s（实际 %v）", want, got)

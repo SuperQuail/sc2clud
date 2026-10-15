@@ -18,11 +18,11 @@ const title: Title = {
   archived_at: null,
 };
 
-function Harness({ ok, errorText = '' }: { ok: boolean; errorText?: string }) {
+function Harness({ ok, errorText = '', titles, onRemove }: { ok: boolean; errorText?: string; titles?: Title[]; onRemove?: (t: Title) => void }) {
   const [error, setError] = useState<string | null>(null);
   return (
     <TitlesScreen
-      titles={[title]}
+      titles={titles ?? [title]}
       canManage
       onCreate={async () => {
         if (!ok) {
@@ -33,6 +33,7 @@ function Harness({ ok, errorText = '' }: { ok: boolean; errorText?: string }) {
       }}
       createError={error}
       onUpdate={() => {}}
+      onDelete={onRemove}
     />
   );
 }
@@ -55,6 +56,26 @@ it('新建失败：弹窗不关，失败理由留在弹窗里（「创建后消�
   expect((screen.getByPlaceholderText('speedrunner') as HTMLInputElement).value).toBe('sg_king');
 });
 
+it('D68：归档行要列得出来（有恢复 + 删除），删除走确认后把那一行交给宿主', () => {
+  const archived: Title = { ...title, id: 't-2', key: 'laobing', name: '老兵', archived_at: '2026-10-14T00:00:00Z' };
+  const seen: string[] = [];
+  render(<Harness ok titles={[title, archived]} onRemove={(t) => seen.push(t.key)} />);
+
+  // 归档行也在表里：有「恢复」也有「删除」（旧的 adminList 复用 ListTitles 滤往归档时这行根本看不到）
+  expect(screen.getByTestId('title-delete-laobing')).toBeTruthy();
+  expect(screen.getByRole('button', { name: /恢复/ })).toBeTruthy();
+
+  fireEvent.click(screen.getByTestId('title-delete-laobing'));
+  const dialog = screen.getByRole('dialog');
+  expect(dialog.textContent).toContain('物理删除');
+  fireEvent.click(screen.getByRole('button', { name: '确认删除' }));
+  expect(seen).toEqual(['laobing']);
+});
+
+it('（对照）没给 onDelete 时不画删除——管理端容器没接线的那一档不亮一个点了必失败的按钮', () => {
+  render(<Harness ok />);
+  expect(document.querySelector('[data-testid*=title-delete-]')).toBeNull();
+});
 it('建成才关窗', async () => {
   render(<Harness ok />);
   openAndSubmit();

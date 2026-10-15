@@ -43,6 +43,7 @@ func (h *Handler) Register(rg *gin.RouterGroup, requireLogin gin.HandlerFunc, pe
 	a.GET("/titles", perm(authz.PermTitleManage), h.adminList)
 	a.POST("/titles", perm(authz.PermTitleManage), h.adminCreate)
 	a.PATCH("/titles/:id", perm(authz.PermTitleManage), h.adminUpdate)
+	a.DELETE("/titles/:id", perm(authz.PermTitleManage), h.adminDelete)
 }
 
 func (h *Handler) listTitles(c *gin.Context) {
@@ -54,7 +55,26 @@ func (h *Handler) listTitles(c *gin.Context) {
 	httpx.OK(c, items)
 }
 
-func (h *Handler) adminList(c *gin.Context) { h.listTitles(c) }
+// adminList 与公共目录**不是同一条查询**（D68）：管理屏必须能看见归档项——
+// 只用 ListTitles 的话归档行立即消失，「恢复 / 删除」都无处安放。
+func (h *Handler) adminList(c *gin.Context) {
+	items, err := h.svc.AdminListTitles(c.Request.Context())
+	if err != nil {
+		httpx.Fail(c, err)
+		return
+	}
+	httpx.OK(c, items)
+}
+
+// adminDelete 是真删（D68）：被持有 / 佩戴时 service 用 409 fields 说清收不收得回，不级联毁数据。
+func (h *Handler) adminDelete(c *gin.Context) {
+	actor, _ := h.actorOf(c)
+	if err := h.svc.DeleteTitle(c.Request.Context(), actor, c.Param("id")); err != nil {
+		httpx.Fail(c, err)
+		return
+	}
+	httpx.NoContent(c)
+}
 
 func (h *Handler) userTitles(c *gin.Context) {
 	brief, err := h.users.ByUsername(c.Request.Context(), c.Param("handle"))

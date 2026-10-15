@@ -300,6 +300,11 @@ export function updateTitle(id: string, b: { key: string; name: string; color: s
   return api<Title>('admin/titles/' + encodeURIComponent(id), { method: 'PATCH', body: b });
 }
 
+/** D68：真删一条头衔（无人引用才 204；被持有 / 佩戴回 409，fields 里说明先收回再删）。 */
+export function deleteTitle(id: string): Promise<void> {
+  return api<void>('admin/titles/' + encodeURIComponent(id), { method: 'DELETE' }).then(() => undefined);
+}
+
 export function grantTitle(userId: string, titleId: string): Promise<void> {
   return api<void>('admin/users/' + encodeURIComponent(userId) + '/titles/' + encodeURIComponent(titleId), { method: 'POST' });
 }
