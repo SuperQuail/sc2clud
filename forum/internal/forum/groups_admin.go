@@ -380,7 +380,7 @@ func adminGroupACLItems(rows []pgsql.AdminGroupACLRow) []AdminGroupACLItem {
 	for _, r := range rows {
 		out = append(out, AdminGroupACLItem{
 			GroupKey: r.GroupKey,
-			CanPost: r.CanPost, CanReply: r.CanReply, DenyPost: r.DenyPost, DenyReply: r.DenyReply,
+			CanPost:  r.CanPost, CanReply: r.CanReply, DenyPost: r.DenyPost, DenyReply: r.DenyReply,
 		})
 	}
 	return out

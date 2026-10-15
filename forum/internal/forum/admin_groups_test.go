@@ -24,10 +24,19 @@ func TestAdminGroupsGuards(t *testing.T) {
 	}
 	for _, call := range []func() error{
 		func() error { _, err := h.svc.AdminListGroups(h.ctx, plain); return err },
-		func() error { _, err := h.svc.AdminCreateGroup(h.ctx, plain, CreateGroupInput{Key: "x", Name: "X"}); return err },
-		func() error { _, err := h.svc.AdminUpdateGroup(h.ctx, plain, "00000000-0000-0000-0000-000000000000", UpdateGroupInput{}); return err },
+		func() error {
+			_, err := h.svc.AdminCreateGroup(h.ctx, plain, CreateGroupInput{Key: "x", Name: "X"})
+			return err
+		},
+		func() error {
+			_, err := h.svc.AdminUpdateGroup(h.ctx, plain, "00000000-0000-0000-0000-000000000000", UpdateGroupInput{})
+			return err
+		},
 		func() error { return h.svc.AdminDeleteGroup(h.ctx, plain, "00000000-0000-0000-0000-000000000000") },
-		func() error { _, err := h.svc.AdminGroupMembers(h.ctx, plain, "00000000-0000-0000-0000-000000000000"); return err },
+		func() error {
+			_, err := h.svc.AdminGroupMembers(h.ctx, plain, "00000000-0000-0000-0000-000000000000")
+			return err
+		},
 	} {
 		assertCode(t, call(), "common.forbidden")
 	}

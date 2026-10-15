@@ -20,3 +20,8 @@
   - 证据：pnpm typecheck 绿；pnpm lint（本人六文件 0 警告）；npx vitest run **63 文件 310 用例全绿**（含 groups.test.tsx 三条新用例）
   - 下一步：DevRoom 出图（?screen=groups 与 ?screen=boards，1440/390）；整包 go test 收口
   - 阻塞：无
+
+- [x] 出图并看图（DevRoom 房间，vite dev @19223 由本包起、按 PID 关）：
+  - 证据与文件：`shots/fixgroups/d39-boards-1440.png` 与 `d39-boards-390.png`（390 实拍为 500px 最小窗；首屏无设计文档字样）、`d40-boards-full.png`（1440 全高：两张名单矩阵 + 超管行「全域继承」锁定态 + 原因句）、`d38-groups-full.png`（组屏全高：目录/资料/成员/危险动作）、`d38-groups-1440.png`
+  - 下一步：整包 go test 收口（后台跑着）
+  - 阻塞：无
