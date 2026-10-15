@@ -44,6 +44,8 @@ export function ImageUploader({
   headless = false,
   crop = false,
   cropEdge,
+  cropAspect,
+  cropAspectOptions,
 }: {
   images: UploadedImage[];
   onChange: (next: UploadedImage[]) => void;
@@ -81,6 +83,10 @@ export function ImageUploader({
   crop?: boolean;
   /** 裁剪输出的长边上限（默认 512）；成品目标仍由 targetBytes / 形态决定 */
   cropEdge?: number;
+  /** D59 裁剪框的默认比例（宽/高；头像 1、横幅封面 21/9）。仅 crop 时有意义 */
+  cropAspect?: number;
+  /** D59 框上的比例预设（切完即时生效）。仅 crop 且给了它时出现选择器 */
+  cropAspectOptions?: { label: string; value: number }[];
 }) {
   // 头像与封面都是「一个槽」：已有的那张是「现在这张」，再选一张是换掉它。
   const single = variant !== 'list';
@@ -192,6 +198,8 @@ export function ImageUploader({
   const cropper = cropping ? (
     <ImageCropper
       source={cropping.file}
+      aspect={cropAspect}
+      aspectOptions={cropAspectOptions}
       maxEdge={cropEdge}
       onCropped={(b) => void confirmCrop(b)}
       onCancel={() => {

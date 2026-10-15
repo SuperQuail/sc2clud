@@ -337,6 +337,16 @@ D34 补的是**管理端当场自助**这一缺环。
 
 ---
 
+## 1o. 第十一轮（用户 2026-10-15 18:4x 提出三件事 + 壁纸裁切；Lead 收口，本轮一切只上 **dev**）
+
+| # | 事项 | 事实/根因 | 处理 |
+|---|---|---|---|
+| **D56** | 「管理员无法重新为用户设置密码」 | 后端**没有**这一个端点（admin 组此前只有 ban / revoke-sessions / role / permissions）——不是前端没接，是功能缺失。可复用的形状全在 ChangePassword（validatePassword + argon2 信号量）与 RevokeUserSessions（同事务删全会话 + 审计） | ① 新端点 POST /admin/users/:id/password（user.ban）：password 空 = crypto/rand 生成 12 位无易混字符（去掉 i l o I L O 0 1）临时密码，**响应只回显这一次**（json omitempty）；显式指定不回显。同事务：password_hash + 删目标全部会话 + 审计 user.password.reset（detail 不含密码值，只有 generated / sessions_revoked）。**不设「最后一个超管」守卫**——重置超管密码正是救援路径（只换凭证不减员）。② 前端用户管理屏**行内 + 右栏**两处入口：弹层留空提交即可生成，出结果不关窗（临时密码关掉拿不回）、失败不关窗（字段理由就地显示，D48 同策略）。③ 红先绿：路由缺失时守卫用例红，恢复后 auth 包全绿（后端四条钉 + 前端屏四条 + client 两条）。提交 4be1fe0（后端）+ ea8c0d4（前端） |
+| **D57** | 「无法退出登录」 | 前后端**早就都有**：POST /auth/logout + /settings 的 AccountPanel（testid logout、登出后 queryClient.clear()）。是**可发现性**：退出埋在 /settings，管理员从不往那儿想 | 后台右上「当前管理员」卡直接加「退出登录」（testid admin-logout；有登录者才画）：登出 + 清缓存 + 回登录页。shell 用例两条钉住。设置页原路径不动 |
+| **D58** | 生产用户主页**背景裂图**（用户点名派子 agent 只读调查） | 子代理证据链：后端下发 cover=/img/<hash>（DB、文件、nginx、读链路**全部健康**，curl /img/… = 200 image/webp 76554B），前端 profile.tsx:187 误过 assetUrl()（前置 art/）→ 浏览器实际请求 **/art/img/<hash>** → 无文件无扩展名 → Go 静态回落 SPA index.html（200 text/html）→ img 拿到 HTML 解码失败 = 裂图。用户重传新封面 10+ 次也自救不了（journalctl 前后十几条 /art/img 请求） | 改 imagePath(u.cover) 原样放行（同一处 CoverPicker 预览一并修；fallback 的 art/ 素材仍是 assetUrl）。钉子：profile 页断言封面 img 必以 /img/ 开头、零 /art/img/。**生产不动**：修复随 dev 部署，用户验收后再推 prod |
+| **D59** | 「壁纸的文件选择器缺少合适的图片选择器设置裁切和预览」；（用户补充确认此前说的头衔选择器也是这条主页背景壁纸链路） | 封面链路（主页/设置页/后台分区）此前**选图即上传**：没有裁切这一步，非横幅图被 CSS object-cover 随机裁，用户看到的和传的不一样 | **裁切引擎换 react-easy-crop@6.2.4**（经典可靠：拖动/双指/滚轮/键盘、比例锁都是它管）。家里只留三件事：读图交给库、比例预设 UI（封面默认 21:9，可切 16:9 / 3:2）、确认时按库给的 croppedAreaPixels 一次 drawImage 出 blob。**换掉的自维护面**：image-crop.ts 三大纯函数（fitFrame / clampPan / cropRect 的平移夹取、缩放夹取、原图坐标换算）与其测试**整组删除**；头像（D23 圆框）与封面（横幅框/可切比例）自此是同一个件的两档。钉 6 条：方形头像内接正方形、放大真进裁切、缩放边界、21:9 预设出 21:9、非圆框、maxEdge 长边。弹层拆出 users-dialogs.tsx（gate:size 587→超限，三个动作弹层成独立件） |
+| **忘记密码答复** | 「用户忘记密码后有无途径重新设置」 | **有**：登录页「用注册邮箱自助重置」→ POST /auth/password/forgot → 邮件验证码 → verify-code → reset（票据一次性 + 全会话踢掉，email_test.go 全链路钉住）。**前提**：站点配了可用发信邮箱（mail_accounts 有可用行）——没有的话自助重置在发码环节走不通，需要管理员先在后台「邮箱配置」屏配好 SMTP | 部署后查 dev/prod 的 mail_accounts 有无可用行并在汇报里说明（生产只读） |
+
 ## 2. 派发分组（互不重叠的文件作用域）
 
 | 包 | 覆盖 | 主要文件 |

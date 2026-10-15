@@ -320,6 +320,14 @@ export function BoardsScreen({
                           variant='cover'
                           label={d.cover_hash ? '更换封面' : '加个封面'}
                           compress
+                          /* D59：与个人主页封面同一个裁切口径（横幅比例，可切） */
+                          crop
+                          cropAspect={21 / 9}
+                          cropAspectOptions={[
+                            { label: '21:9', value: 21 / 9 },
+                            { label: '16:9', value: 16 / 9 },
+                            { label: '3:2', value: 3 / 2 },
+                          ]}
                           images={[]}
                           onChange={(list) => { const f = list[0]; if (f) onUploadCover(f.file); }}
                         />

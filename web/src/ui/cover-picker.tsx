@@ -71,6 +71,15 @@ export function CoverPicker({ cover, onPick, actions, pending = false, onReady, 
           variant='cover'
           label='上传封面'
           compress
+          /* D59：选完先裁（横幅比例，框上可切 21:9 / 16:9 / 3:2），裁完才走 onPick ——
+             上传仍由调用方发（弹层只交回字节，三处「选完干什么」的语义不变）。 */
+          crop
+          cropAspect={21 / 9}
+          cropAspectOptions={[
+            { label: '21:9', value: 21 / 9 },
+            { label: '16:9', value: 16 / 9 },
+            { label: '3:2', value: 3 / 2 },
+          ]}
           images={cover ? [{ id: 'cover', name: 'cover.webp', size: 0, url: imagePath(cover), original: false, file: new Blob() }] : []}
           onChange={(list: UploadedImage[]) => {
             const f = list[0];
@@ -79,7 +88,7 @@ export function CoverPicker({ cover, onPick, actions, pending = false, onReady, 
         />
         ) : null}
         <p className='mt-2 mb-0 text-[11px] leading-relaxed text-muted-foreground'>
-          横幅图最好看（16:9 或更宽）；长边压到 1600，服务端硬上限 2MB。选完即上传。
+          横幅最好看：默认按 21:9 裁切（可切 16:9 / 3:2），长边压到 1600、服务端上限 2MB；裁完即上传。
         </p>
         <div className='mt-3 flex flex-wrap items-center justify-end gap-2'>
           {actions}
