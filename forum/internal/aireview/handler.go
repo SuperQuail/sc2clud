@@ -1,6 +1,7 @@
 package aireview
 
 import (
+	"context"
 	"errors"
 	"io"
 
@@ -114,10 +115,15 @@ func (h *Handler) test(c *gin.Context) {
 		httpx.Fail(c, err)
 		return
 	}
-	// 带 topic_id = **拿一条真帖子试跑一次**（D33③ 的当场验证：预览里看到图 → 跑 → 回执里看到
-	// 结论与「判了几张图」）。组装与真判定同源（含图），外呼也真发，但一个字都不落库。
-	if in.TopicID > 0 {
-		out, err := h.svc.TestTopic(c.Request.Context(), in.TopicID)
+	// 带 topic_id / topic_public_id = **拿一条真帖子试跑一次**（D33③ 的当场验证：预览里看到图 →
+	// 跑 → 回执里看到结论与「判了几张图」）。组装与真判定同源（含图），外呼也真发，但一个字都不落库。
+	id, err := h.topicID(c.Request.Context(), in)
+	if err != nil {
+		httpx.Fail(c, err)
+		return
+	}
+	if id > 0 {
+		out, err := h.svc.TestTopic(c.Request.Context(), id)
 		if err != nil {
 			httpx.Fail(c, err)
 			return
@@ -150,12 +156,14 @@ func (h *Handler) payload(c *gin.Context) {
 		return
 	}
 	ctx := c.Request.Context()
-	var (
-		out *PayloadView
-		err error
-	)
-	if in.TopicID > 0 {
-		out, err = h.svc.Preview(ctx, PayloadInput{TopicID: in.TopicID, Trigger: in.Trigger})
+	id, err := h.topicID(ctx, in)
+	if err != nil {
+		httpx.Fail(c, err)
+		return
+	}
+	var out *PayloadView
+	if id > 0 {
+		out, err = h.svc.Preview(ctx, PayloadInput{TopicID: id, Trigger: in.Trigger})
 	} else {
 		out, err = h.svc.PreviewProbe(ctx, in.Probe)
 	}
@@ -164,6 +172,18 @@ func (h *Handler) payload(c *gin.Context) {
 		return
 	}
 	httpx.OK(c, out)
+}
+
+// topicID 把请求里的两种寻址收敛成一个内部 id（0 = 走 probe 那一路）。
+// 管理端点收的是**对外 id**（uuid），判定链路用 bigint —— 换算只此一处。
+func (h *Handler) topicID(ctx context.Context, in payloadReq) (int64, error) {
+	if in.TopicID > 0 {
+		return in.TopicID, nil
+	}
+	if in.TopicPublicID == "" {
+		return 0, nil
+	}
+	return h.svc.TopicIDByPublicID(ctx, in.TopicPublicID)
 }
 
 // require 是登录端点的取 actor：拿不到就是 401。

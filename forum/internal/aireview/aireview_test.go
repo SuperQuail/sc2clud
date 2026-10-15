@@ -3,9 +3,13 @@ package aireview_test
 import (
 	"bytes"
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
+	"io"
 	"log/slog"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"sort"
@@ -23,6 +27,7 @@ import (
 	"forum/internal/aireview"
 	ent "forum/internal/ent"
 	"forum/internal/platform/ai"
+	"forum/internal/platform/apperr"
 	"forum/internal/platform/clock"
 	pgmail "forum/internal/platform/mail"
 	"forum/internal/platform/queue"
@@ -33,6 +38,9 @@ import (
 // 用例跑在真 PostgreSQL 上（testsupport 每个用例一个 schema）：本域的全部行为都在 SQL 里
 // （sql.go），假库证明不了「八步」有没有走通。外呼是唯一注入点（fakeJudge）。
 func TestMain(m *testing.M) { testsupport.Main(m) }
+
+// reviewToolCall 是假上游回的一次 submit_review（真外呼那条用例要它）。
+const reviewToolCall = `{"choices":[{"finish_reason":"tool_calls","message":{"tool_calls":[{"id":"c1","type":"function","function":{"name":"submit_review","arguments":"{\"verdict\":\"approve\",\"reason\":\"图没问题\"}"}}]}}]}`
 
 // testKey 是 32 字节 hex：与发信同一套 Crypter（d7 §2.1），用例里就用真实现，不用假 Crypter。
 const testKey = "00112233445566778899aabbccddeeff00112233445566778899aabbccddeeff"
@@ -428,6 +436,114 @@ func TestOutboundPayloadCarriesImageBlocks(t *testing.T) {
 	}
 	if model == "" {
 		t.Fatal("review_events.model 是空的：审核记录必须写清用的哪个模型")
+	}
+}
+
+// 管理端手里只有**对外 id**（uuid）：审核队列 DTO 的 id 就是 topics.public_id，自增 bigint
+// 不出现在任何管理端回执里。没有这条换算，「选一条带图帖试跑」（D33④）在界面上根本填不出 topic_id。
+//
+// 先红：TopicIDByPublicID 不存在时编译不过；把它实现成直接拼进 SQL 时，最后两条断言会红
+//（非 uuid → 22P02 → 500；不存在的 id → 0 行 → 空 id）—— 那正是本仓库记过的那类缺陷形态。
+func TestTopicIDByPublicIDIsTheAdminSideAddress(t *testing.T) {
+	h := newHarness(t)
+	id := h.topic("带图的帖子", "正文", nil, "pending")
+	var publicID string
+	if err := h.pool.QueryRow(h.ctx, "SELECT public_id FROM topics WHERE id = $1", id).Scan(&publicID); err != nil {
+		t.Fatal(err)
+	}
+	got, err := h.svc.TopicIDByPublicID(h.ctx, publicID)
+	if err != nil || got != id {
+		t.Fatalf("对外 id 换算错：得到 %d / %v，想要 %d", got, err, id)
+	}
+	// 换算出来的 id 必须能直接喂给预览（换算完就该是同一条路，不是第二条）。
+	if _, err := h.svc.Preview(h.ctx, aireview.PayloadInput{TopicID: got}); err != nil {
+		t.Fatalf("换算出来的 id 喂不进 Preview: %v", err)
+	}
+	// 非 uuid **不能**送进 SQL：那是 22P02 → 500 的形状，这里必须是 400。
+	_, err = h.svc.TopicIDByPublicID(h.ctx, "not-a-uuid")
+	var ae *apperr.Error
+	if !errors.As(err, &ae) || ae.Status != 400 {
+		t.Fatalf("非 uuid 该回 400 的业务错误，实际 %v", err)
+	}
+	// 查不到该是 404（不是 500，也不是 0）。
+	if _, err := h.svc.TopicIDByPublicID(h.ctx, uuid.NewString()); !errors.Is(err, apperr.ErrNotFound) {
+		t.Fatalf("不存在的主题该回 404，实际 %v", err)
+	}
+}
+
+// **线上形状的最终证据**：把真外呼（platform/ai.JudgeImages）接上，让假上游把收到的请求体原样抓下来 ——
+// 前面那些用例注入的是假外呼，它们证明的是「我们把图交给了外呼口」；这一条证明的是
+// 「外呼口真的把它编成了 image_url 的 data URL，且字节就是 media 里那一份」。
+// 中间任何一段断掉（取图、上限、编码、组块）这条都会红，而它是唯一能红的形状。
+func TestImagesReachTheWireAsDataURL(t *testing.T) {
+	h := newHarness(t)
+	// 真外呼那一条（judge 传 nil 就是 ai.JudgeImages），base_url 指向假上游。
+	var body string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		raw, _ := io.ReadAll(r.Body)
+		body = string(raw)
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(reviewToolCall))
+	}))
+	defer srv.Close()
+	if _, err := h.pool.Exec(h.ctx, "UPDATE ai_config SET base_url = $1 WHERE id = 1", srv.URL); err != nil {
+		t.Fatal(err)
+	}
+	h.putKey()
+	svc := aireview.New(h.pool, nil, h.reader, h.crypter, h.queue, h.set,
+		&clock.Fake{T: time.Date(2026, 10, 14, 12, 0, 0, 0, time.UTC)}, testLogger())
+
+	hash := hash64("e")
+	id := h.topic("带图的帖子", "看图：\n\n![封面](/img/"+hash+")\n\n完。", nil, "pending")
+	h.attachSized(id, hash, 0, 1024)
+
+	if err := svc.ReviewTopic(h.ctx, id, "create"); err != nil {
+		t.Fatalf("ReviewTopic(真外呼): %v", err)
+	}
+	if body == "" {
+		t.Fatal("假上游一个请求都没收到")
+	}
+	// content 是联合类型：system 那条是**字符串**，user 那条才是块数组 —— 用 RawMessage 分开解，
+	// 这样「system 也被改成了块数组」这种形状变化同样会让这条红。
+	var sent struct {
+		Messages []struct {
+			Role    string          `json:"role"`
+			Content json.RawMessage `json:"content"`
+		} `json:"messages"`
+	}
+	if err := json.Unmarshal([]byte(body), &sent); err != nil {
+		t.Fatalf("上游收到的不是 JSON: %v", err)
+	}
+	if len(sent.Messages) != 2 || sent.Messages[0].Role != "system" || sent.Messages[1].Role != "user" {
+		t.Fatalf("上游该收到 [system, user]，实际 %s", body)
+	}
+	var system string
+	if err := json.Unmarshal(sent.Messages[0].Content, &system); err != nil {
+		t.Fatalf("system 那条该仍是一段纯文本：%s", sent.Messages[0].Content)
+	}
+	var parts []struct {
+		Type     string `json:"type"`
+		Text     string `json:"text"`
+		ImageURL struct {
+			URL string `json:"url"`
+		} `json:"image_url"`
+	}
+	if err := json.Unmarshal(sent.Messages[1].Content, &parts); err != nil {
+		t.Fatalf("user 那条该是块数组：%s", sent.Messages[1].Content)
+	}
+	if len(parts) != 2 {
+		t.Fatalf("上游该收到 [system, user[text, image]]，实际 %s", body)
+	}
+	want := "data:image/webp;base64," + base64.StdEncoding.EncodeToString(bytes.Repeat([]byte{0xAB}, 1024))
+	if got := parts[1].ImageURL.URL; got != want {
+		t.Fatalf("上行图片字节与 media 里那一份不符：\n得到 %.60s…\n想要 %.60s…", got, want)
+	}
+	// 判定照常落库（这条链路的终点仍然是状态机）。
+	if state, _, source, _ := h.topicState(id); state != "approved" || source == nil || *source != "ai" {
+		t.Fatalf("判定没落库：state=%q source=%v", state, source)
+	}
+	if count, _, _ := h.eventImages(id); count != 1 {
+		t.Fatalf("review_events 该记 1 张图，实际 %d", count)
 	}
 }
 

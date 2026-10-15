@@ -51,6 +51,10 @@ const sqlSubject = `
 	  LEFT JOIN posts p ON p.topic_id = t.id AND p.floor = 1
 	 WHERE t.id = $1`
 
+// sqlTopicIDByPublicID 是对外 id → 内部 id 的换算：管理端手里只有 uuid（审核队列 DTO 的 id 就是它），
+// 而判定链路（sqlSubject / topic_images）用自增 bigint 寻址。
+const sqlTopicIDByPublicID = `SELECT id FROM topics WHERE public_id = $1`
+
 // sqlTopicImages 取一篇主题的配图引用行，**按页面顺序**（楼层 → 该楼内的 sort，hash 兜底稳定序）。
 // 顺带取 images 里登记的 mime/size：字节要不要读由 loadImages 按上限决定 ——
 // 注定不发的那几张（超张数/超单张上限）不该白白读盘。

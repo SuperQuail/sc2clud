@@ -4,10 +4,10 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"net/http"
 	"strings"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 
@@ -267,7 +267,7 @@ func (s *Service) TestTopic(ctx context.Context, topicID int64) (*TestView, erro
 		return nil, err
 	}
 	if imgs.ReadFailed {
-		return nil, apperr.New("ai.image_unreadable", http.StatusBadGateway, "配图读不到，这条帖子的试跑结果不可信："+failingNote(imgs))
+		return nil, errImageUnreadable.WithMsg(errImageUnreadable.Msg + "：" + failingNote(imgs))
 	}
 	res, err := s.judge(ctx, s.aiConfig(cfg, key, len(imgs.Attachments) > 0),
 		assemblePrompt(cfg, false), userText("", title, deref(body)), imgs.Attachments)
@@ -288,6 +288,21 @@ func viewOfTest(res ai.Result) *TestView {
 		Verdict: string(res.Verdict), Reason: res.Reason, Categories: res.Categories,
 		Model: res.Model, LatencyMS: res.LatencyMS, Raw: res.Raw, Images: []PayloadImage{},
 	}
+}
+
+// TopicIDByPublicID 是「对外 id → 内部 id」的唯一换算处：管理端手里只有 uuid（队列 DTO 的 id 就是它），
+// 而判定链路（sqlSubject / topic_images）用自增 bigint 寻址。
+// 形状先校验：非 uuid 直接 400 —— 送进 SQL 会是 22P02 → 500（本仓库记过的那条缺陷形态）。
+func (s *Service) TopicIDByPublicID(ctx context.Context, publicID string) (int64, error) {
+	if _, err := uuid.Parse(publicID); err != nil {
+		return 0, apperr.Invalid(map[string]string{"topic_public_id": "不是合法的主题 id"})
+	}
+	var id int64
+	err := s.pool.QueryRow(ctx, sqlTopicIDByPublicID, publicID).Scan(&id)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return 0, apperr.ErrNotFound
+	}
+	return id, err
 }
 
 // TriggerReportReview 是举报域的 ReviewTrigger（d7 §1/§7）：举报到阈值 → 复核。

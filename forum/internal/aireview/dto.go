@@ -166,6 +166,10 @@ type PayloadView struct {
 type payloadReq struct {
 	// TopicID 为 0 时走 probe 那一路（样例预览），否则读这条主题的标题 + 1 楼正文。
 	TopicID int64 `json:"topic_id"`
+	// TopicPublicID 是**管理端唯一拿得到的那个 id**：审核队列 DTO 的 id 是 topics.public_id（uuid），
+	// 自增 bigint 不出现在任何管理端回执里 —— 没有它，「选一条带图帖试跑」（D33④）在界面上走不通
+	//（前端只能拿 uuid 去填一个 int64 字段）。两个都给得进来：topic_id > 0 优先，否则按它查一次。
+	TopicPublicID string `json:"topic_public_id"`
 	// Trigger 只有 create | report（空 = create）：report 还要把未处理举报数写进第一行。
 	Trigger string `json:"trigger"`
 	// Probe 是**这一次**要发的样例（空 = DefaultProbeSample）。只影响这一次，不落库。

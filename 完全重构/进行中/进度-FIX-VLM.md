@@ -64,7 +64,34 @@ model / max_output_tokens / strict_mode / tool_name / categories
   - 证据：`forum/internal/app/modules.go` 一行 + 注释说明「传 nil 不崩，但带图帖一律转人工 = 这个功能没接线」。
   - 下一步：见 ⑥。
   - 阻塞：无。
+- [x] ③b 线上形状的最终证据（真外呼 + 假上游抓请求体）
+  - 证据：`TestImagesReachTheWireAsDataURL`：judge 传 nil（= 真 `ai.JudgeImages`）+ base_url 指向 httptest 假上游，
+    断言上游收到的 `messages[1].content` 是 `[text, image_url]`，且 `image_url.url` **逐字等于**
+    `data:image/webp;base64,` + media 里那一份字节（1024 个 0xAB），判定照常落库、review_events 记 1 张。
+    前面那批用例注入的是假外呼 —— 它们只证明「图交给了外呼口」；这一条才证明「真的编成了 data URL 上线」。
+  - 下一步：见 ⑥。
+  - 阻塞：无。
 - [ ] ⑥ 管理端增量（预览显示 image 块、样例可见可编辑、带图验证出图）
+  - **现场变化（09:53 实测）**：FIX-AI2 已经在改这批文件了 —— `web/src/lib/api/admin.ts` 与
+    `admin-types.ts` 已在途（`fetchAiPayload` / `testAiConfig(probe, topicId)` / `AiPayloadImage` /
+    本文件定的那 7 个 image 字段**全都对齐了我的字段契约**），并且 09:53:03 新建了
+    `web/src/devroom/pages/15-admin/screens/ai-payload.tsx`（当时 18 秒前）。
+    按 Lead 的更正（"别碰 platform/ai 与 aireview 的请求组装"是给它的、预览屏归它），
+    **我不去抢这两个文件** —— 抢了就是把它的在途工作冲掉。我这一包的交付边界就落在后端，
+    前端那半由它完成；冲突点记在这里，Lead 若要我做请说一声（我按它那一刻的版本增量改）。
+
+## 两处必须写清的取舍
+
+1. **data URL 而不是公网 URL**：官方另一条路要求图片「60 秒内能被服务端取回」的**公网地址**，
+   而本站的 `/img/<hash>` 在 dev / 内网里外部取不到 ⇒ 只能内联。代价是 base64 计入 48 MiB 请求体上限
+   （4×2 MiB×4/3 ≈ 10.7 MiB，离上限很远）。**真上线若要走 URL，得另配一个公网可达的图片域** —— 那是运维动作。
+2. **重试次数保持 2，没有跟着图一起 +1**：任务书写的是「timeout_ms 与重试跟着调」，我调了前者
+   （有图时超时下限 60s），**没有调后者**，理由是可查的：`max_retry` 在**入队那一刻**就写进 jobs 表
+   （`forum/topics.go:382` 与 `aireview/util.go:14`，两处都是硬编码 2），而那时**还不知道这条帖有没有图**
+   —— 要按图区分就得改队列契约（入队前多查一次图集）或者整体 +1。整体 +1 的代价是真实的：
+   每次重试都会**重发一遍全部图片**，一次读不到文件的调用会被重发 4 遍。所以只调超时，
+   并保留既定的「失败 → 转人工」语义（用例 `TestImageCallGetsLongerTimeoutAndTimeoutIsNotAVerdict`
+   钉住：超时是可重试失败，绝不落成判定）。**这是与任务书的一处有意偏差，写在这里备查。**
 
 ## 现场（开工时的实测，不是推的）
 
