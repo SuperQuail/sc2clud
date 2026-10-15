@@ -1,6 +1,6 @@
-import { useState } from 'react';
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useEffect, useRef, useState } from 'react';
 import Button from '@jetbrains/ring-ui-built/components/button/button';
+import Dialog from '@jetbrains/ring-ui-built/components/dialog/dialog';
 import { ControlsHeight } from '@jetbrains/ring-ui-built/components/global/controls-height';
 import Input from '@jetbrains/ring-ui-built/components/input/input';
 import Toggle from '@jetbrains/ring-ui-built/components/toggle/toggle';
@@ -8,109 +8,83 @@ import { Trash2 } from 'lucide-react';
 import { icon16 } from '@/ui/icons';
 import { ImageUploader, type UploadedImage } from '@/ui/rich/image-uploader';
 import { AVATAR_MAX_BYTES } from '@/ui/rich/image-pipeline';
-import { qk } from '@/lib/query/keys';
-import { formatCents, formatTime } from '@/lib/format';
-import { isApiError } from '@/lib/api/errors';
-import {
-  addPaymentChannel,
-  channelImageSrc,
-  deletePaymentChannel,
-  DONATION_STATE,
-  fetchDonationSettings,
-  fetchMyDonations,
-  fetchMyChannels,
-  updateDonationSettings,
-  withdrawDonation,
-} from '@/lib/api/rewards';
+import { channelImageSrc, type DonationSettings, type PaymentChannel } from '@/lib/api/rewards';
+import { CHANNEL_MAX, CHANNEL_TARGET } from './payment-channels-hook';
 
-// 「赞赏与收款码」（本人侧）。2026-10-14 之前这一整块在前端**零接线**：
-// 后端 13 条端点早就齐了（收款码在 media 域、展示与申报在 reward 域），库里连一个客户端都没有，
-// 所以个人设置页上「收款码」只留了一句「本轮不排」的注释，个人主页上的赞助卡是置灰的。
-//
-// 端点与字段名逐字照抄（不照 DevRoom 的 mock —— mock 里的 `qr_url` / 顶格 `notice` 后端都不存在）：
-//   · POST/GET/DELETE /me/payment-channels（`media/handler.go:43-45`，上传是 multipart 字段 `file` + `label`）
-//     —— **本人的码用这一条**，不用 reward 域那条 /users/{handle}/channels（它要过作者的展示开关）
-//   · GET/PATCH /me/donation-settings（`reward/handler.go:41-42`，四个字段的部分更新）
-//   · GET /me/rewards、DELETE /rewards/{id}（`reward/handler.go:40,45`）
-//
-// 每用户上限 5 张、单图 512KB 都是**服务端**的硬约束（`media/service.go:39` 与 config.Image.PaymentMax），
-// 这里只是把同一批数字显示出来 —— 前端自己再定一套会让「还能传几张」与后端不一致。
+// 「赞赏与收款码」的本人侧：收款码列表 + 传新码 + 展示开关。
+// **只吃 props**（§0 同源）：取数与写动作在 payment-channels-hook.ts，两个宿主各给一份 ——
+//   · 个人设置页那一格（PaymentChannelsPanel）；
+//   · 个人主页右栏那颗「设置我的收款码」就地弹层（D22，SponsorCard 里）。
+// 房间没有 QueryClient，所以它给的是本地 state（选中即结果那一套）。
 
-/** 收款码是给人扫的：压缩到长边 256（头像位那一档）会糊掉码点，所以用配图位的 1600。 */
-const CHANNEL_MAX = 5;
-/** 服务端的硬上限（config.Image.PaymentMax = 512KB），前端只能更小不能更大（超了是 413，用户看不出为什么）。 */
-const CHANNEL_BYTES = 512 * 1024;
-/**
- * 交出去**之前**要压到的目标，留出 32KB 余量。
- *
- * 这里曾经把 CHANNEL_BYTES 直接当 maxSize 用 —— 那是「这一步收到的原图」的上限，
- * 于是 1.3MB 的收款码图在解压/压缩**之前**就被判「不能超过 0.5MB」当场退掉（D1）。
- * 上限与压缩目标是两个数：上限是「还救不救得动」（AVATAR_MAX_BYTES 那一档，与头像同一个道理），
- * 目标才是成品要压到多少。
- */
-const CHANNEL_TARGET = CHANNEL_BYTES - 32 * 1024;
+export type PaymentChannelsViewProps = {
+  channels: PaymentChannel[];
+  /** 「还能传几张」按它算（服务端的硬上限是 media 域的 maxPaymentChannels）。 */
+  limit?: number;
+  pending?: boolean;
+  error?: string | null;
+  settings?: DonationSettings;
+  settingsPending?: boolean;
+  settingsError?: string | null;
+  saveError?: string | null;
+  /** 挂到 ImageUploader 上的提示：不由它自己画（D1：同一句话出现过两次） */
+  notice?: string | null;
+  onNotice?: (message: string) => void;
+  /** 选中一张（已按收款码那一档压好）：宿主发 POST /me/payment-channels */
+  onAdd: (file: Blob, label: string) => void;
+  addPending?: boolean;
+  addError?: string | null;
+  onDelete: (id: string) => void;
+  removePending?: boolean;
+  removeError?: string | null;
+  onShowChannels?: (on: boolean) => void;
+};
 
-export function PaymentChannelsPanel() {
-  const qc = useQueryClient();
+export function PaymentChannelsView({
+  channels,
+  limit = CHANNEL_MAX,
+  pending = false,
+  error,
+  settings,
+  settingsPending = false,
+  settingsError,
+  saveError,
+  notice,
+  onNotice,
+  onAdd,
+  addPending = false,
+  addError,
+  onDelete,
+  removePending = false,
+  removeError,
+  onShowChannels,
+}: PaymentChannelsViewProps) {
   const [label, setLabel] = useState('');
   const [picked, setPicked] = useState<UploadedImage[]>([]);
-  // 上传器给的体积/张数提示落在这一行上。**只有这一行** —— 上传器内部不再画（D1 的「同一句提示出现两次」）；
-  // 但它必须有人画：不加这个 state，超限就变成**一句提示都没有**（出图当场抓到过）。
-  const [error, setError] = useState<string | null>(null);
-
-  // 本人管理自己的码走 /me/payment-channels（不是 /users/{handle}/channels：那条要过作者的展示开关）
-  const channels = useQuery({ queryKey: qk.paymentChannels(), queryFn: ({ signal }) => fetchMyChannels(signal) });
-  const settings = useQuery({ queryKey: qk.donationSettings(), queryFn: ({ signal }) => fetchDonationSettings(signal) });
-  const mine = useQuery({ queryKey: qk.myDonations(), queryFn: ({ signal }) => fetchMyDonations({}, signal) });
-
-  // 上传成功后**清掉 picked**：预览换回服务端那张 /img/<hash>，别停在「本地已选」的假象上。
-  const add = useMutation({
-    mutationFn: (v: { file: Blob; label: string }) => addPaymentChannel(v.file, v.label),
-    onSuccess: () => {
+  const full = channels.length >= limit;
+  // 上传成功后清掉本地预览：预览该换回服务端那张 /img/<hash>，别停在「本地已选」的假象上
+  // （原来那半在宿主的 onSuccess 里，现在宿主只有 props，所以在这里收口）。
+  const uploading = useRef(false);
+  useEffect(() => {
+    if (addPending) uploading.current = true;
+    else if (uploading.current) {
+      uploading.current = false;
       setPicked([]);
       setLabel('');
-      setError(null);
-      void qc.invalidateQueries({ queryKey: qk.paymentChannels() });
-    },
-  });
-  const remove = useMutation({
-    mutationFn: (id: string) => deletePaymentChannel(id),
-    onSuccess: () => void qc.invalidateQueries({ queryKey: qk.paymentChannels() }),
-  });
-  // 部分更新：只发改过的那个键（后端是 *bool，多发一个键就是覆盖别人那一项）
-  const saveSettings = useMutation({
-    mutationFn: (patch: { show_channels?: boolean; records_public?: boolean }) => updateDonationSettings(patch),
-    onSuccess: (saved) => qc.setQueryData(qk.donationSettings(), saved),
-  });
-  const withdraw = useMutation({
-    mutationFn: (id: string) => withdrawDonation(id),
-    onSuccess: () => void qc.invalidateQueries({ queryKey: qk.myDonations() }),
-  });
-
-  const list = channels.data ?? [];
-  const full = list.length >= CHANNEL_MAX;
-  // Array.isArray：响应形状不对时**这一屏会整页崩**（`rows.map is not a function`，
-  // 2026-10-14 settings.test 抓到的），所以列表这一层自己兜住，不指望调用点都记得判。
-  const rows = Array.isArray(mine.data?.items) ? mine.data.items : [];
+    }
+  }, [addPending]);
 
   return (
-    <section id='payment-channels' className='flex scroll-mt-20 flex-col gap-3 rounded-lg border border-border bg-card p-4'>
-      <h2 className='m-0 text-[15px] font-semibold text-foreground'>赞赏与收款码</h2>
-      <p className='m-0 text-[12px] leading-relaxed text-muted-foreground'>
-        站点不经手资金：这里只展示你挂的收款码，别人扫码付款后自己来登记一笔申报，你或管理员核对到账后才计入统计。
-      </p>
-
-      {channels.isPending ? (
+    <div className='flex flex-col gap-3'>
+      {pending ? (
         <span className='text-[12px] text-muted-foreground'>正在读收款码…</span>
-      ) : channels.isError ? (
-        <span role='alert' className='text-[12px] text-destructive'>
-          {isApiError(channels.error) ? channels.error.message : '收款码读取失败'}
-        </span>
+      ) : error ? (
+        <span role='alert' className='text-[12px] text-destructive'>{error}</span>
       ) : (
         <>
-          {list.length > 0 ? (
+          {channels.length > 0 ? (
             <ul className='flex flex-wrap gap-3'>
-              {list.map((c) => (
+              {channels.map((c) => (
                 <li key={c.id} className='flex w-[136px] flex-col gap-1.5 rounded-md border border-border p-2'>
                   <img
                     src={channelImageSrc(c)}
@@ -126,8 +100,8 @@ export function PaymentChannelsPanel() {
                     height={ControlsHeight.S}
                     danger
                     icon={icon16(Trash2)}
-                    loader={remove.isPending && remove.variables === c.id}
-                    onClick={() => remove.mutate(c.id)}
+                    loader={removePending}
+                    onClick={() => onDelete(c.id)}
                   >
                     删除
                   </Button>
@@ -135,7 +109,7 @@ export function PaymentChannelsPanel() {
               ))}
             </ul>
           ) : (
-            <span className='text-[12px] text-muted-foreground'>还没有收款码；最多 {CHANNEL_MAX} 张，挂上后别人主页才有打赏入口。</span>
+            <span className='text-[12px] text-muted-foreground'>还没有收款码；最多 {limit} 张，挂上后别人主页才有打赏入口。</span>
           )}
 
           <div className='flex flex-col gap-2 border-t border-border pt-3'>
@@ -154,90 +128,92 @@ export function PaymentChannelsPanel() {
               onChange={(next) => {
                 setPicked(next);
                 const f = next[0];
-                if (f) add.mutate({ file: f.file, label });
+                if (f) onAdd(f.file, label);
               }}
               maxSize={AVATAR_MAX_BYTES}
               targetBytes={CHANNEL_TARGET}
-              onError={setError}
+              onError={(msg) => onNotice?.(msg)}
             />
             {/* 已满时说清为什么点不动，而不是让按钮静默无效 */}
             {full ? (
-              <span className='text-[12px] text-muted-foreground'>已经有 {CHANNEL_MAX} 张了，删一张才能再传。</span>
+              <span className='text-[12px] text-muted-foreground'>已经有 {limit} 张了，删一张才能再传。</span>
             ) : null}
-            {error ? <span role='alert' className='text-[12px] text-destructive'>{error}</span> : null}
-            {add.isError ? (
-              <span role='alert' className='text-[12px] text-destructive'>
-                {isApiError(add.error) ? add.error.message : '上传失败'}
-              </span>
-            ) : null}
-            {remove.isError ? <span role='alert' className='text-[12px] text-destructive'>删除失败，请重试</span> : null}
+            {notice ? <span role='alert' className='text-[12px] text-destructive'>{notice}</span> : null}
+            {addPending ? <span className='text-[12px] text-muted-foreground'>正在上传…</span> : null}
+            {addError ? <span role='alert' className='text-[12px] text-destructive'>{addError}</span> : null}
+            {removeError ? <span role='alert' className='text-[12px] text-destructive'>{removeError}</span> : null}
           </div>
 
           <div className='flex flex-col gap-2 border-t border-border pt-3'>
             <span className='text-[12px] font-medium text-foreground'>收款码可见性</span>
-            {settings.isPending ? (
+            {settingsPending ? (
               <span className='text-[12px] text-muted-foreground'>正在读设置…</span>
-            ) : settings.isError ? (
-              <span role='alert' className='text-[12px] text-destructive'>赞赏设置读取失败</span>
-            ) : (
+            ) : settingsError ? (
+              <span role='alert' className='text-[12px] text-destructive'>{settingsError}</span>
+            ) : settings ? (
               <>
-                <Toggle
-                  checked={settings.data.show_channels}
-                  onChange={(e) => saveSettings.mutate({ show_channels: e.target.checked })}
-                >
+                <Toggle checked={settings.show_channels} onChange={(e) => onShowChannels?.(e.target.checked)}>
                   在个人主页与帖子右栏展示我的收款码
                 </Toggle>
-                <Toggle
-                  checked={settings.data.records_public}
-                  onChange={(e) => saveSettings.mutate({ records_public: e.target.checked })}
-                >
-                  公开我给出的打赏记录（只影响我作为打赏人那一侧；逐行判，对方关了也看不到）
-                </Toggle>
-                {saveSettings.isError ? (
-                  <span role='alert' className='text-[12px] text-destructive'>
-                    {isApiError(saveSettings.error) ? saveSettings.error.message : '保存失败'}
-                  </span>
-                ) : null}
+                <p className='m-0 text-[11px] leading-relaxed text-muted-foreground'>
+                  开着 = 别人主页与帖子右栏都能看到这些码；关上只有你自己看得到。
+                  <span className='text-foreground'>上传一张码会自动打开它</span>（D24），不用再回来点一次。
+                </p>
+                {saveError ? <span role='alert' className='text-[12px] text-destructive'>{saveError}</span> : null}
               </>
-            )}
+            ) : null}
           </div>
         </>
       )}
+    </div>
+  );
+}
 
-      <div className='flex flex-col gap-2 border-t border-border pt-3'>
-        <span className='text-[12px] font-medium text-foreground'>我的打赏记录</span>
-        {mine.isPending ? (
-          <span className='text-[12px] text-muted-foreground'>正在读记录…</span>
-        ) : mine.isError ? (
-          <span role='alert' className='text-[12px] text-destructive'>打赏记录读取失败</span>
-        ) : rows.length === 0 ? (
-          <span className='text-[12px] text-muted-foreground'>还没有申报过打赏。给别人打赏后在对方主页上点「我已完成打赏」就会出现在这里。</span>
-        ) : (
-          <ul className='flex flex-col gap-2'>
-            {rows.map((d) => (
-              <li key={d.id} className='flex flex-wrap items-center gap-2 rounded-md border border-border px-2 py-1.5 text-[12px]'>
-                <span className='text-foreground'>给 {d.recipient.nickname}</span>
-                <span className='tabular-nums text-foreground'>¥{formatCents(d.amount_cents)}</span>
-                <span className='text-muted-foreground'>{DONATION_STATE[d.state] ?? d.state}</span>
-                <span className='text-muted-foreground'>{formatTime(d.created_at)}</span>
-                {/* 只有还没核验的能撤（后端只动 pending；已核验的给 403，所以这里不给入口） */}
-                {d.state === 'pending' ? (
-                  <Button
-                    data-testid={'donation-withdraw-' + d.id}
-                    inline={false}
-                    height={ControlsHeight.S}
-                    loader={withdraw.isPending && withdraw.variables === d.id}
-                    onClick={() => withdraw.mutate(d.id)}
-                  >
-                    撤回
-                  </Button>
-                ) : null}
-              </li>
-            ))}
-          </ul>
-        )}
-        {withdraw.isError ? <span role='alert' className='text-[12px] text-destructive'>撤回失败，请重试</span> : null}
+/** 收款码管理弹层的标题。**一处定义两处用**（弹层的 aria-label 与页内标题）。 */
+export const PAYMENT_CHANNELS_TITLE = '赞赏与收款码';
+
+/** 收款码管理弹层的说明（设置页那一格也用它，所以放在这里而不是各写一份）。 */
+export const PAYMENT_CHANNELS_HINT =
+  '站点不经手资金：这里只展示你挂的收款码，别人扫码付款后自己来登记一笔申报，你或管理员核对到账后才计入统计。';
+
+/**
+ * 就地弹层（D22）：个人主页那颗「设置我的收款码」不再跳 /settings#payment-channels。
+ * 复用 Ring 的 Dialog（遮罩、Esc、焦点陷阱都由它负责），内容就是上面那个 View。
+ */
+export function PaymentChannelsDialog({
+  open,
+  onClose,
+  ...view
+}: PaymentChannelsViewProps & { open: boolean; onClose: () => void }) {
+  if (!open) return null;
+  return (
+    <Dialog
+      show
+      modal
+      trapFocus
+      label={PAYMENT_CHANNELS_TITLE}
+      showCloseButton
+      onCloseAttempt={onClose}
+      onOverlayClick={onClose}
+      onEscPress={onClose}
+      contentClassName='w-full max-w-[520px] p-5'
+    >
+      <div className='flex flex-col gap-3'>
+        <h2 className='m-0 text-[15px] font-semibold text-foreground'>{PAYMENT_CHANNELS_TITLE}</h2>
+        <p className='m-0 text-[12px] leading-relaxed text-muted-foreground'>{PAYMENT_CHANNELS_HINT}</p>
+        <PaymentChannelsView {...view} />
       </div>
+    </Dialog>
+  );
+}
+
+/** 设置页那一格：就地把 View 摆进一张卡里（取数在 payment-channels-hook.ts）。 */
+export function PaymentChannelsPanel(props: PaymentChannelsViewProps) {
+  return (
+    <section id='payment-channels' className='flex scroll-mt-20 flex-col gap-3 rounded-lg border border-border bg-card p-4'>
+      <h2 className='m-0 text-[15px] font-semibold text-foreground'>{PAYMENT_CHANNELS_TITLE}</h2>
+      <p className='m-0 text-[12px] leading-relaxed text-muted-foreground'>{PAYMENT_CHANNELS_HINT}</p>
+      <PaymentChannelsView {...props} />
     </section>
   );
 }

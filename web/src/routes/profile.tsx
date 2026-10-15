@@ -21,6 +21,7 @@ import { clearCover, fetchUserProfile, fetchUserTopics, uploadAvatar, uploadCove
 import { equipTitle, fetchUserTitles } from '@/lib/api/title';
 import { fetchUserFollow, followUser, unfollowUser } from '@/lib/api/follow';
 import { createDonation, fetchDonationSettings, fetchUserChannels } from '@/lib/api/rewards';
+import { useMyPaymentChannels } from '@/devroom/pages/11-profile/payment-channels-hook';
 import { formatCents, formatTime } from '@/lib/format';
 import { isApiError } from '@/lib/api/errors';
 import { toCardTopic } from './_parts/mappers';
@@ -138,6 +139,9 @@ export function ProfilePage() {
     mutationFn: (file: Blob) => uploadAvatar(file),
     onSuccess: () => void queryClient.invalidateQueries({ queryKey: qk.profile(handle) }),
   });
+  // 本人侧的收款码管理（D22 弹层用）：与设置页那一格同一个 hook、同一份客户端代码。
+  // 看别人时不发这些请求（那里那一格是打赏入口，不是管理入口）。
+  const donateChannels = useMyPaymentChannels(isSelf);
   // 打赏申报（POST /rewards）：**是登记，不是付款** —— 钱是扫码直接给作者的，站点不经手资金。
   const donate = useMutation({
     mutationFn: (v: { channelId: string; amountCents: number }) =>
@@ -412,7 +416,30 @@ export function ProfilePage() {
             isSelf={isSelf}
             channels={channels.data ?? []}
             notice={isSelf ? donationSettings.data?.notice_text : undefined}
-            settingsHref={appPath('settings#payment-channels')}
+            // D22：本人那一颗「设置我的收款码」就地弹层（版面与设置页那一格是同一个 View），
+            // 数据/动作来自 useMyPaymentChannels —— 与设置页共用一份客户端代码。
+            editor={
+              isSelf
+                ? {
+                    channels: donateChannels.channels,
+                    pending: donateChannels.channelsPending,
+                    error: donateChannels.channelsError,
+                    settings: donateChannels.settings,
+                    settingsPending: donateChannels.settingsPending,
+                    settingsError: donateChannels.settingsError,
+                    saveError: donateChannels.saveError,
+                    notice: donateChannels.notice,
+                    onNotice: donateChannels.setNotice,
+                    onAdd: donateChannels.onAdd,
+                    addPending: donateChannels.addPending,
+                    addError: donateChannels.addError,
+                    onDelete: donateChannels.onDelete,
+                    removePending: donateChannels.removePending,
+                    removeError: donateChannels.removeError,
+                    onShowChannels: donateChannels.onShowChannels,
+                  }
+                : undefined
+            }
             onDonate={(v: { channelId: string; amountCents: number }) => donate.mutate(v)}
             donationPending={donate.isPending}
             donationError={donate.isError ? (isApiError(donate.error) ? donate.error.message : '登记失败，请重试') : null}

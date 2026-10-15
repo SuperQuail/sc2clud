@@ -16,7 +16,7 @@ export function RewardPanel({
   channels,
   notice,
   isSelf = false,
-  settingsHref = '',
+  profileHref,
   onDonate,
   donationPending,
   donationError,
@@ -28,7 +28,8 @@ export function RewardPanel({
   notice?: string;
   /** 看自己的帖子时（作者本人）不显示打赏位 —— 自己给自己打赏后端直接 400 */
   isSelf?: boolean;
-  settingsHref?: string;
+  /** 本人时「去我的主页挂码」的去处（D22 之后收款码的管理界面在主页右栏那个弹层里） */
+  profileHref?: string;
   onDonate?: (v: { channelId: string; amountCents: number }) => void;
   donationPending?: boolean;
   donationError?: string | null;
@@ -72,7 +73,7 @@ export function RewardPanel({
             channels={channels}
             notice={notice}
             isSelf={isSelf}
-            settingsHref={settingsHref}
+            profileHref={profileHref}
             onDonate={onDonate ?? (() => undefined)}
             pending={donationPending}
             error={donationError}

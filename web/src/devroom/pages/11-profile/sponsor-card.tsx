@@ -7,6 +7,7 @@ import { useState } from 'react';
 import { ChevronDown, ChevronUp, Coffee } from 'lucide-react';
 import { icon16 } from '@/ui/icons';
 import { DonateBox } from '@/devroom/pages/12-topic/donate-box';
+import { PaymentChannelsDialog, type PaymentChannelsViewProps } from './payment-channels';
 import type { PaymentChannel } from '@/lib/api/rewards';
 
 // 看别人主页 / 看自己主页是两种情形（真站里 isSelf 由「当前登录者 handle 是否等于 /u/{handle}」给）：
@@ -18,6 +19,11 @@ import type { PaymentChannel } from '@/lib/api/rewards';
 // 2026-10-14（L1）：整块接真数据。删掉了 `disableReason` 那个逃生口 ——
 // 它存在的理由是「后端没有收款码列、没有 GET /users/{handle}/channels、没有 POST /rewards」，
 // 而这三样**后端一直都有**（media 域 + reward 域），缺的是前端客户端。逃生口留着只会掩盖漏接。
+//
+// 2026-10-15（D22）：那颗「设置我的收款码」**就地弹层**，不再把整页跳到 /settings#payment-channels ——
+// 用户是在主页上看见「我这一格什么都没有」才点的它，跳走等于把上下文丢了。
+// 洞见：收款码的管理界面（payment-channels.tsx 的 View）与设置页那一格是**同一份实现**，
+// 所以弹层里看到的东西和设置页逐字一样；宿主只给数据（payment-channels-hook.ts）。
 type SponsorView = { heading: string; button: string; hint: string };
 const SPONSOR_VIEW: Record<'other' | 'self', SponsorView> = {
   other: {
@@ -28,7 +34,7 @@ const SPONSOR_VIEW: Record<'other' | 'self', SponsorView> = {
   self: {
     heading: '我的赞助',
     button: '设置我的收款码',
-    hint: '收款码在个人设置里挂；打赏渠道随时可关，关掉后别人主页上不显示这个入口。',
+    hint: '点开就地挂码/删码，不用离开这一页；打赏渠道随时可关，关掉后别人主页上不显示这个入口。',
   },
 };
 
@@ -36,26 +42,34 @@ function SponsorCard({
   isSelf,
   channels,
   notice,
-  settingsHref = '',
   onDonate,
   donationPending,
   donationError,
   donationDone,
   loginHref,
   loggedIn = false,
+  editor,
+  openEditor = false,
 }: SponsorDemo & {
   /** 作者的提示文案（user_donation_settings.notice_text；后端没有「每渠道一句」这一列） */
   notice?: string;
-  settingsHref?: string;
   onDonate?: (v: { channelId: string; amountCents: number }) => void;
   donationPending?: boolean;
   donationError?: string | null;
   donationDone?: string | null;
   loginHref?: string;
   loggedIn?: boolean;
+  /**
+   * 本人侧弹层的数据与动作（D22）。**不传 = 这一格只有一句提示**（房间/未接线的宿主就是这种）；
+   * 传了 = 那颗按钮就地打开收款码管理弹层，不再跳设置页。
+   */
+  editor?: PaymentChannelsViewProps;
+  /** 房间的首屏状态：默认就打开弹层，出图时不用先点一下（真站从 false 开始）。 */
+  openEditor?: boolean;
 }) {
   const view = SPONSOR_VIEW[isSelf ? 'self' : 'other'];
   const [open, setOpen] = useState(false);
+  const [editorOpen, setEditorOpen] = useState(openEditor);
   // 别人的主页且没有收款码 → 整块不渲染（不是禁用按钮）。自己主页永远渲染。
   if (!isSelf && channels.length === 0) return null;
 
@@ -69,9 +83,9 @@ function SponsorCard({
           inline={false}
           primary
           aria-expanded={isSelf ? undefined : open}
+          aria-haspopup={isSelf && editor ? 'dialog' : undefined}
           iconRight={!isSelf ? icon16(open ? ChevronUp : ChevronDown) : undefined}
-          onClick={() => (isSelf ? undefined : setOpen((v) => !v))}
-          href={isSelf ? settingsHref : undefined}
+          onClick={() => (isSelf ? setEditorOpen(true) : setOpen((v) => !v))}
           className='!h-11 w-full !border-[var(--vivid-accent)] !bg-[var(--vivid-accent)] !text-[15px] !text-white'
         >
           <span className='inline-flex items-center gap-2'>
@@ -87,7 +101,6 @@ function SponsorCard({
               channels={channels}
               notice={notice}
               isSelf={false}
-              settingsHref={settingsHref}
               onDonate={onDonate ?? (() => undefined)}
               pending={donationPending}
               error={donationError}
@@ -96,6 +109,12 @@ function SponsorCard({
               loginHref={loginHref}
             />
           </div>
+        ) : null}
+
+        {/* 弹层挂在卡片里（与 CoverPicker 同一用法）：入口是上面那颗按钮，内容与设置页那一格同源。
+            不传 editor 就没有弹层 —— 没数据可管的宿主不该画一颗点了没反应的按钮。 */}
+        {isSelf && editor ? (
+          <PaymentChannelsDialog open={editorOpen} onClose={() => setEditorOpen(false)} {...editor} />
         ) : null}
       </div>
     </Island>

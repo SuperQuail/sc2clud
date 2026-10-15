@@ -79,6 +79,7 @@ const HELD_TITLES = [
 
 // 赞助入口拆到 sponsor-card.tsx（该文件超体量门禁），这里只 import 用它
 import { SPONSOR_CHANNELS, SPONSOR_NOTICE, SponsorCard, readSelfView, type SponsorDemo } from './sponsor-card';
+import type { PaymentChannel } from '@/lib/api/rewards';
 
 export default function ProfilePage() {
   const [tab, setTab] = useState('posts');
@@ -114,6 +115,17 @@ export default function ProfilePage() {
   // G5：屏蔽词**不实现**（拍板），所以这里没有 setter —— 见下面那一行的 onAdd/onRemove 为什么是空的。
   // 留一个非空数组是为了让「以后长在这里」那行有条目可看（它读起来就是示例数据）。
   const [blocked] = useState<string[]>([]);
+  // D22 弹层的房间口径：收款码是本地列表（选中即结果），开关也是本地 state。
+  // 真站的那一半在 payment-channels-hook.ts —— 端点、限额、压缩目标都在那边，这里只演交互。
+  const [roomChannels, setRoomChannels] = useState<PaymentChannel[]>([...SPONSOR_CHANNELS]);
+  const [roomChannelNotice, setRoomChannelNotice] = useState<string | null>(null);
+  const [roomShowChannels, setRoomShowChannels] = useState(true);
+  // 卡片那一格与弹层读**同一份** roomChannels：两份列表会让「删掉一张」只在一处生效
+  // （真站里两边读的是同一个 react-query 缓存，房间这里得自己保证同源）。
+  const removeRoomChannel = (id: string) => {
+    setRoomChannels((prev) => prev.filter((c) => c.id !== id));
+    setSelfView((prev) => ({ ...prev, channels: prev.channels.filter((c) => c.id !== id) }));
+  };
 
   const settings: SettingRow[] = [
     {
@@ -180,7 +192,10 @@ export default function ProfilePage() {
             <Button
               key={s.key}
               active={s.demo.isSelf === selfView.isSelf && s.demo.channels.length === selfView.channels.length}
-              onClick={() => setSelfView(s.demo)}
+              onClick={() => {
+                setSelfView(s.demo);
+                setRoomChannels([...s.demo.channels]);
+              }}
             >
               {s.label}
             </Button>
@@ -338,7 +353,32 @@ export default function ProfilePage() {
             赞助放第一格：它是这个页面唯一的转化点（读完之后「想支持一下」的那一秒），
             徽章与关注的人是补充信息，晚一步看到不影响什么。 */}
         <aside className='flex flex-col gap-3'>
-          <SponsorCard isSelf={selfView.isSelf} channels={selfView.channels} notice={SPONSOR_NOTICE} />
+          {/* D22：本人那一颗「设置我的收款码」就地弹层。房间没有后端 → 用本地 state 演一遍
+              「删掉一张就少一张」，取数与写动作在真站由 payment-channels-hook.ts 给。 */}
+          <SponsorCard
+            isSelf={selfView.isSelf}
+            channels={selfView.channels}
+            notice={selfView.isSelf ? SPONSOR_NOTICE : undefined}
+            editor={
+              selfView.isSelf
+                ? {
+                    channels: roomChannels,
+                    notice: roomChannelNotice,
+                    onNotice: setRoomChannelNotice,
+                    onAdd: () => setRoomChannelNotice('房间没有后端：真站在这里 POST /me/payment-channels，压到 ≤480KB 再传。'),
+                    onDelete: removeRoomChannel,
+                    // 设置那一块也要真值：给假的 undefined 会让开关恒显「正在读设置…」（房间出图当场看得出来）
+                    settings: {
+                      show_channels: roomShowChannels,
+                      records_public: false,
+                      notice_visible: true,
+                      notice_text: SPONSOR_NOTICE,
+                    },
+                    onShowChannels: setRoomShowChannels,
+                  }
+                : undefined
+            }
+          />
           <Island withoutPaddings>
             <div className='flex flex-col gap-3 p-4'>
               <span className='text-[12px] font-medium tracking-wide text-muted-foreground'>徽章</span>

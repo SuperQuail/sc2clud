@@ -13,6 +13,8 @@ import { LeftRail } from './left-rail';
 import { MainColumn, TopicMeta } from './main-column';
 import { AuthorOnlyHint, ReviewAppealButton, ReviewResubmitButton, ReviewRevisionButton, type ReviewState } from './review-state';
 import { RewardPanel } from './reward-panel';
+// 类型名与右栏那一格的组件 BoardSummary（./board-summary）撞车，所以这里起别名（交接单 §5.6 的老坑）
+import type { BoardSummary as RailBoard, RailLink } from '@/devroom/pages/03-navigation/board-rail';
 import type { Board, BoardNav, BoardSlug, PaymentChannel, TopicAuthor, TopicDetail } from './types';
 import { RevisionDialog } from './revision-dialog';
 
@@ -54,7 +56,11 @@ export type TopicReview = {
 
 export type TopicViewProps = {
   // —— 分区（左栏 + 右栏第一格）——
-  boards: Board[];
+  /** 左栏的分区列表。**就是 03-navigation BoardRail 吃的那个形状**（后端 BoardDTO 的 cover_hash，
+   *  裸哈希）—— 左栏不再自己画一份分区行，两处封面逻辑因此只剩一份（D21）。 */
+  boards: RailBoard[];
+  /** 左栏分区行的落地件（View 里不出现 react-router）：产品传 Link，房间传不可导航的 span */
+  boardLink?: RailLink;
   board: Board;
   boardNav: BoardNav[];
   boardHref: (slug: BoardSlug) => string;
@@ -117,8 +123,8 @@ export type TopicViewProps = {
   channelNotice?: string;
   /** 打赏位：作者本人不显示（后端拒绝自己给自己打赏） */
   donateIsSelf?: boolean;
-  /** 「设置我的收款码」的去处（作者本人时那一格是入口） */
-  donateSettingsHref?: string;
+  /** 本人时「去我的主页挂码」的去处（D22：收款码的管理界面在个人主页右栏那个弹层里） */
+  donateProfileHref?: string;
   onDonate?: (v: { channelId: string; amountCents: number }) => void;
   donatePending?: boolean;
   donateError?: string | null;
@@ -146,6 +152,7 @@ export type TopicViewProps = {
 
 export function TopicView({
   boards,
+  boardLink,
   board,
   boardNav,
   boardHref,
@@ -188,7 +195,7 @@ export function TopicView({
   channels,
   channelNotice,
   donateIsSelf = false,
-  donateSettingsHref = '',
+  donateProfileHref,
   onDonate,
   donatePending,
   donateError,
@@ -240,7 +247,7 @@ export function TopicView({
             nav={boardNav}
             navValue={navValue}
             onNavChange={onNavChange}
-            boardHref={boardHref}
+            link={boardLink}
           />
         </aside>
 
@@ -373,7 +380,7 @@ export function TopicView({
             channels={channels}
             notice={channelNotice}
             isSelf={donateIsSelf}
-            settingsHref={donateSettingsHref}
+            profileHref={donateProfileHref}
             onDonate={onDonate}
             donationPending={donatePending}
             donationError={donateError}

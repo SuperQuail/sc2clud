@@ -10,6 +10,8 @@ import { NoticeSettings, type SettingRow } from '@/ui/message/notice-settings';
 import { AccountPanel } from '@/devroom/pages/11-profile/account-panel';
 import { CoverPicker } from '@/ui/cover-picker';
 import { PaymentChannelsPanel } from '@/devroom/pages/11-profile/payment-channels';
+import { useMyPaymentChannels } from '@/devroom/pages/11-profile/payment-channels-hook';
+import { DonationRecordsPanel } from '@/devroom/pages/11-profile/records-panel';
 import { FormAlert } from '@/devroom/pages/16-auth/form-alert';
 import { appPath, routePath } from '@/lib/url';
 import { qk } from '@/lib/query/keys';
@@ -115,6 +117,8 @@ export function SettingsPage() {
     onSuccess: (saved) => setNotice(saved),
   });
   const current = notice ?? noticeQuery.data ?? null;
+  // 收款码/赞赏设置的数据侧（D22 把它抽成一份：设置页这一格与个人主页那颗「设置我的收款码」弹层共用）
+  const channels = useMyPaymentChannels();
 
   if (session.isLoading) return <Loading what='账号信息' />;
   if (session.error) {
@@ -343,8 +347,27 @@ export function SettingsPage() {
       </section>
 
       {/* 赞赏与收款码（L1）：原先这里只写了一句「本轮不排」的注释 —— 后端 13 条端点一直都有，
-          缺的是这一块客户端。整块在 payment-channels.tsx 里，设置页只负责摆它。 */}
-      <PaymentChannelsPanel />
+          缺的是这一块客户端。版面在 payment-channels.tsx（View），取数在 payment-channels-hook.ts，
+          设置页只负责把两者接起来（同一个 View 也被个人主页那颗「设置我的收款码」弹层用着）。 */}
+      <PaymentChannelsPanel
+        channels={channels.channels}
+        pending={channels.channelsPending}
+        error={channels.channelsError}
+        settings={channels.settings}
+        settingsPending={channels.settingsPending}
+        settingsError={channels.settingsError}
+        saveError={channels.saveError}
+        notice={channels.notice}
+        onNotice={channels.setNotice}
+        onAdd={channels.onAdd}
+        addPending={channels.addPending}
+        addError={channels.addError}
+        onDelete={channels.onDelete}
+        removePending={channels.removePending}
+        removeError={channels.removeError}
+        onShowChannels={channels.onShowChannels}
+      />
+      <DonationRecordsPanel />
     </div>
   );
 }

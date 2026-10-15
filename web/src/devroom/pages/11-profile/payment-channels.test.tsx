@@ -1,11 +1,18 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, expect, it, vi } from 'vitest';
 import { Providers } from '@/app/providers';
-import { PaymentChannelsPanel } from './payment-channels';
+import { PaymentChannelsDialog, PaymentChannelsPanel } from './payment-channels';
+import { useMyPaymentChannels } from './payment-channels-hook';
+import { DonationRecordsPanel } from './records-panel';
 
 // 「赞赏与收款码」这一块（L1）在真页面里到底发了什么请求。
 // 契约真源：media/handler.go:43-45（收款码 CRUD）与 reward/handler.go:40-42,45（设置 / 记录 / 撤回）。
 // 断言只查「打出去的那一发」与页面文案 —— 不查 className。
+//
+// 2026-10-15（D22）改了形状：版面是**只吃 props 的 View**，取数与发请求在
+// payment-channels-hook.ts，记录那一节搬到 records-panel.tsx。所以这里的宿主就是真站那一段接线
+// （routes/settings.tsx 与 routes/profile.tsx 的弹层都是这么接的）——
+// 请求面因此照旧被钉住，而「版面与取数分家」这件事本身也顺带被这条用例守着。
 afterEach(() => {
   vi.unstubAllGlobals();
 });
@@ -42,10 +49,35 @@ const MINE = {
   next_cursor: null,
 };
 
+/** 真站的接线：hook 给数据，View 只画（弹层那一半由 dialog 用例覆盖）。 */
+function Host({ dialog = false }: { dialog?: boolean }) {
+  const c = useMyPaymentChannels();
+  const view = {
+    channels: c.channels,
+    pending: c.channelsPending,
+    error: c.channelsError,
+    settings: c.settings,
+    settingsPending: c.settingsPending,
+    settingsError: c.settingsError,
+    saveError: c.saveError,
+    notice: c.notice,
+    onNotice: c.setNotice,
+    onAdd: c.onAdd,
+    addPending: c.addPending,
+    addError: c.addError,
+    onDelete: c.onDelete,
+    removePending: c.removePending,
+    removeError: c.removeError,
+    onShowChannels: c.onShowChannels,
+  };
+  return dialog ? <PaymentChannelsDialog open onClose={() => {}} {...view} /> : <PaymentChannelsPanel {...view} />;
+}
+
 function renderPanel() {
   return render(
     <Providers>
-      <PaymentChannelsPanel />
+      <Host />
+      <DonationRecordsPanel />
     </Providers>,
   );
 }
@@ -147,4 +179,22 @@ it('体积超限时提示只有一行（控件不再自己画一份）', async (
   expect(screen.getAllByText(/没有加进来/)).toHaveLength(1);
   // 而且**没有**发那一发必然 413 的上传（上限在压缩之前就拦下了）
   expect(calls.some((c) => c.method === 'POST' && c.url.includes('/me/payment-channels'))).toBe(false);
+});
+
+// D22：同一条 View 换进弹层（个人主页那颗「设置我的收款码」用的就是这个）也必须工作 ——
+// 「设置页能用、弹层里是空壳」正是同源要求要挡的那种分叉。
+it('弹层里是同一份实现：列表、开关、上传口都在', async () => {
+  mockApi((url) => {
+    if (url.includes('/me/payment-channels')) return { body: CHANNEL };
+    if (url.includes('/me/donation-settings')) return { body: SETTINGS };
+    return { status: 404, body: { error: { code: 'common.not_found', message: 'no' } } };
+  });
+  render(
+    <Providers>
+      <Host dialog />
+    </Providers>,
+  );
+  await waitFor(() => expect(screen.getByText('微信')).toBeTruthy());
+  expect(screen.getByRole('dialog')).toBeTruthy();
+  expect(screen.getByText('在个人主页与帖子右栏展示我的收款码')).toBeTruthy();
 });

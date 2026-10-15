@@ -23,7 +23,7 @@ export function DonateBox({
   channels,
   notice,
   isSelf,
-  settingsHref,
+  profileHref,
   onDonate,
   pending,
   error,
@@ -35,8 +35,8 @@ export function DonateBox({
   /** 作者的提示文案（关掉提示时后端给空串）；没有就不渲染那一行 */
   notice?: string;
   isSelf: boolean;
-  /** 看自己时那一格是「设置我的收款码」的入口 */
-  settingsHref: string;
+  /** 看自己时那一格是「去我的主页挂码」的入口（D22 之后真正的管理界面在那里：右栏「我的赞助」就地弹层） */
+  profileHref?: string;
   onDonate: (v: { channelId: string; amountCents: number }) => void;
   pending?: boolean;
   error?: string | null;
@@ -51,15 +51,18 @@ export function DonateBox({
   const cents = Math.round(Number(yuan) * 100);
   const valid = Number.isFinite(cents) && cents >= 1 && cents <= 99_999_999;
 
-  // 看自己：这一格是入口，不是打赏位（自己给自己打赏后端会直接 400）
+  // 看自己：这一格是入口，不是打赏位（自己给自己打赏后端会直接 400）。
+  // D22（2026-10-15）：真正的管理界面是**个人主页右栏那颗按钮的就地弹层**，所以这里指去我的主页，
+  // 而不是 /settings#payment-channels（那个锚点已经没有内容了 —— 收款码那一格搬进了弹层）。
   if (isSelf) {
     return (
       <div className='flex flex-col gap-2'>
-        <Button inline={false} height={ControlsHeight.M} href={settingsHref} className='w-full'>
-          设置我的收款码
+        <Button inline={false} height={ControlsHeight.M} href={profileHref} className='w-full'>
+          去我的主页挂码
         </Button>
         <p className='m-0 text-[11px] leading-relaxed text-muted-foreground'>
-          收款码在个人设置里挂；打赏渠道随时可关，关掉后别人主页与帖子右栏都不再显示这个入口。
+          收款码在个人主页右栏「我的赞助」那一格：点开就地挂码 / 删码，不用离开那一页。
+          打赏渠道随时可关，关掉后别人主页与帖子右栏都不再显示这个入口。
         </p>
       </div>
     );
