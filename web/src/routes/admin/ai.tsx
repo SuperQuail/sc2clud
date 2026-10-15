@@ -56,15 +56,20 @@ export function AiReviewScreenContainer() {
   // 样例的**临时覆盖**（D33②③）：真源在服务端（ConfigView.probe_sample），这里只存「本页改过的那一份」。
   // null = 还没改过 → 用服务端给的默认样例；刷新页面即回到默认（不落库，理由见 ai-bits 的 ProbeEditor）。
   const [probeEdit, setProbeEdit] = useState<string | null>(null);
+  // D34：样例图（0..4 张）也只活在这一页上 —— 刷新即清（与 probe 的临时覆盖同一语义）。
+  const [sampleFiles, setSampleFiles] = useState<File[]>([]);
 
   const cfg = useQuery({ queryKey: qk.adminAiConfig(), queryFn: ({ signal }) => fetchAiConfig(signal) });
   const defaultProbe = cfg.data?.probe_sample ?? '';
   const probe = probeEdit ?? defaultProbe;
   // 「将要发送的那一份」：**服务端组装**（POST /admin/ai/payload，dry-run），前端只渲染。
   // 改成随输入实时重算：样例/提示词一改，这一块就跟着变 —— 它显示的是「现在这一刻会发什么」。
+  // 所见即所发（D34）：选图/移样例一变，这份「将要发送的」**立刻**跟着重算 ——
+  // 图也进 images[]（后端逐张记账：发没发、为什么没发）。key 里放文件的稳定化身，选完即换 key。
+  const fileKey = sampleFiles.map((f) => f.name + ':' + f.size + ':' + f.lastModified).join('|');
   const payload = useQuery({
-    queryKey: ['admin', 'ai-payload', probe],
-    queryFn: ({ signal }) => fetchAiPayload({ probe }, signal),
+    queryKey: ['admin', 'ai-payload', probe, fileKey],
+    queryFn: ({ signal }) => (sampleFiles.length > 0 ? fetchAiPayload({ probe }, signal, sampleFiles) : fetchAiPayload({ probe }, signal)),
     enabled: cfg.data !== undefined,
   });
   const refresh = () => void qc.invalidateQueries({ queryKey: qk.adminAiConfig() });
@@ -79,7 +84,7 @@ export function AiReviewScreenContainer() {
     onError: (e) => setReceipt('保存密钥失败：' + (errorLine(e) ?? '')),
   });
   const test = useMutation({
-    mutationFn: (sample: string) => testAiConfig(sample),
+    mutationFn: ({ probe, files }: { probe: string; files: File[] }) => testAiConfig(probe, undefined, files),
     onSuccess: (r) => { setTestResult(r); setTestFailure(null); setReceipt(null); refresh(); },
     // **失败就地显示**（D12）：不 rethrow、不落进路由的错误边界（那会整页变成「出错了」）。
     // 原来这一档写的是 setReceipt('连通测试失败：…')：回执区在屏幕最上方，而按钮在下面的「连通测试」面板里 ——
@@ -114,13 +119,15 @@ export function AiReviewScreenContainer() {
           return;
         }
         setTestFailure(null);
-        test.mutate(probe);
+        test.mutate({ probe, files: sampleFiles });
       }}
       testResult={testResult}
       testFailure={testFailure}
       probe={probe}
       defaultProbe={defaultProbe}
       onProbeChange={(next) => setProbeEdit(next)}
+      sampleFiles={sampleFiles}
+      onSampleFilesChange={setSampleFiles}
       payload={payload.data ?? null}
       payloadError={payload.error ? (
         <p role='alert' className='rounded-md border border-destructive/40 bg-destructive/8 px-3 py-2 text-[12px] text-foreground'>

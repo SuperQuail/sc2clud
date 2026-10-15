@@ -406,7 +406,11 @@ export function saveAiSecret(apiKey: string): Promise<{ has_secret: boolean }> {
  *  两种来源共用这一条：`topicId` 给了就读那条真帖子（服务端按 sqlSubject 现读正文，客户端塞不进
  *  一份「和真发的不一样」的正文）；不给就回连通测试的样例（`probe` 可临时覆盖那一段）。
  *  **前端只渲染它的回执** —— 自己拼第二份 payload 就是两份真源，那正是这个屏要消灭的形态。 */
-export function fetchAiPayload(req: { topicPublicId?: string; trigger?: string; probe?: string }, signal?: AbortSignal): Promise<AiPayloadView> {
+export function fetchAiPayload(req: { topicPublicId?: string; trigger?: string; probe?: string }, signal?: AbortSignal, files?: File[]): Promise<AiPayloadView> {
+  // D34：带样例图的干跑走 multipart（与 test 同一条表单口）；不带图照旧 JSON。
+  if (files?.length) {
+    return api<AiPayloadView>('admin/ai/payload', { method: 'POST', body: probeForm(req.probe ?? '', files), signal });
+  }
   return api<AiPayloadView>('admin/ai/payload', {
     method: 'POST',
     // **topic_public_id 是唯一的对外寻址方式**（真源 aireview/dto.go 的 payloadReq）：
@@ -420,8 +424,22 @@ export function fetchAiPayload(req: { topicPublicId?: string; trigger?: string; 
  *  `probe` 是**这一次**要发的样例（空 = 后端的内置默认样例）：只影响这一次，**不落库**。
  *  `topicId` 给了就真发一次这条帖子的 payload（**带图**），回执里会多出 image_count / images[] ——
  *  这是「图片审核到底起不起效」唯一的当场证据（D33③）。 */
-export function testAiConfig(probe?: string, topicPublicId?: string): Promise<AiTestView> {
+export function testAiConfig(probe?: string, topicPublicId?: string, files?: File[]): Promise<AiTestView> {
+  // D34：带了样例图就走 multipart（probe 文本 + file 部件）——client.ts 的 request 对 FormData body
+  // 本来就不套 JSON（头像上传同一形态），错误包络仍是同一个解析（isApiError 可判）。
+  // 没带图保持**旧 JSON 路径一字不改**（topic_public_id 的试跑也在这里）。
+  if (files?.length) {
+    return api<AiTestView>('admin/ai/test', { method: 'POST', body: probeForm(probe ?? '', files) });
+  }
   return api<AiTestView>('admin/ai/test', { method: 'POST', body: { probe: probe ?? '', topic_public_id: topicPublicId ?? '' } });
+}
+
+/** D34 的 multipart 表单：probe 是文本字段（可空串），file 是 0..4 个部件。 */
+function probeForm(probe: string, files: File[]): FormData {
+  const form = new FormData();
+  form.append('probe', probe);
+  for (const f of files) form.append('file', f, f.name || '样例图');
+  return form;
 }
 
 export { PAGE_LIMIT };
