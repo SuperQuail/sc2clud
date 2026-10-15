@@ -111,6 +111,44 @@ type LinkLike = (p: { href: string; children: ReactNode; className?: string }) =
 
 ---
 
+## 1e. 第四轮（用户 2026-10-15 08:00 在 dev `cbf714d` 上实测，10 条）
+
+| # | 现象 | 初判（**要实测确认，不许照抄**） |
+|---|---|---|
+| **D21** | 帖子页内左侧**依旧不显示分区封面** | 该页左栏用的是 `routes/topic.tsx` 传进去的 `BOARD_NAV` **常量表**（无封面字段），不是刚补了封面位的 `BoardRail` View —— 两个入口两套数据源，只改了一处 |
+| **D22** | 收款码设置**期望点击后就地悬浮窗**，而不是跳个人设置页 | 打赏面板那颗「设置我的收款码」现在是链接跳 `/settings#payment-channels`；应改成页内弹层 |
+| **D23** | 头像只有基础上传，**没有选择启用区域（裁剪）** | 要「选图后弹裁剪框选区域」；复用现有图片管线与房子件 Dialog，不许引新依赖 |
+| **D24** | 收款码上传后**应默认显示**（默认配置调整） | 现在新建渠道默认关着；改后端默认值或前端初值，**说清改哪边** |
+| **D25** | AI 审核**缺帖子内容预览**；且**要验证图片是否一并发给模型** | ① 审核屏就地预览被审内容；② **实测**上行 payload 里有没有图，结论落在"发/不发"之一 |
+| **D26** | **邮件发码器是假数据、完全无功能** → **不该进 dev 与生产实例** | 要么真做，要么明确未实现并从 dev/生产版本去掉这屏（假数据会让管理员以为能发信） |
+| **D27** | 管理页「分区管理」**稳定裂图** | 裂图 = URL 拼错（少 `/img/` 或没走 `imagePath`）；与 D21 **分别取证** |
+| **D28** | 管理页**默认权限树显示有问题**（或权限没按预期设置） | 逐条核 `role_permissions` 默认值与界面映射，**给「应该是什么」的对照表** |
+| **D29** | **无手动激活开关**：打开 → 不发验证码、等管理员手动激活；关掉后未激活账号可再发码 | 后端已有 `auth.auto_activate_on` 概念（`MeResult.AutoActivate`），缺站点设置开关与两条路径联动 |
+| **D30** | **dev 实例主页没有进 DevRoom 的按钮** | **Lead 判定**：`deploy.ps1` **不构建**（要求 `web/dist` 已存在），而上次跑的是**生产** `pnpm build`（无 `VITE_DEVROOM`）→ 产物本来就没有入口。修：dev 部署必须用 `VITE_DEVROOM=1`，并加守卫（dev 产物无 `dist/devroom/index.html` 就拒绝） |
+
+---
+
+## 1f. 部署链上的两条实测教训（2026-10-15，Lead）
+
+**① deploy.ps1 不构建 dev 房间入口 → D30 的真根因。**
+它自己跑一遍普通 pnpm build（无 VITE_DEVROOM）、也不把房间并入 dist/devroom，所以**任何一次 dev 部署都会把「没有房间入口」的产物装上去**
+—— 这不是「忘了构建」，是脚本从来没做过这件事。
+已修（edd25c1）：dev 实例跑 VITE_DEVROOM=1 pnpm build + pnpm preview:build + 并入 dist/devroom；
+并在打包前**加守卫**：dev 产物的 dist/devroom/index.html 不存在就拒绝部署（**-SkipBuild 也挡** —— 那次就是这么漏出去的）。生产实例刻意不做这两件事。
+
+**② 编辑工具写进 .ps1 的中文字符串会让 PowerShell 7 解析失败。**
+实测：给 deploy.ps1 加了含中文的 Fail(...) 与 Info(...) 后，Parser::ParseFile 报
+「The string is missing the terminator」/「Unexpected token 'dev'」，**级联出 8 条错**；把这两处文案换成 ASCII 立刻「语法 OK」。
+注释里的中文没事（原文件的中文都在注释里）。**所以：改完 deploy/*.ps1 必须跑一次解析检查**——
+用 [System.Management.Automation.Language.Parser]::ParseFile 传 [ref] 收错误。
+**更好的一条**：别用编辑工具往部署脚本里写中文字符串 —— 诊断文案英文一样读得懂，而写坏的是**上线链**。
+
+**③ 回滚链在真实失败里跑通了**（顺手得到的一次证据）：这次构建失败后脚本自动 ROLLBACK current -> releases/cbf714d、
+after rollback: health_code=200，并明确声明**数据库不回滚**（迁移是单向的）。即：**dev 上没有半成品**。
+代价是那次部署白跑一趟 —— 多 agent 在途时部署要等它们停。
+
+---
+
 ## 2. 派发分组（互不重叠的文件作用域）
 
 | 包 | 覆盖 | 主要文件 |
