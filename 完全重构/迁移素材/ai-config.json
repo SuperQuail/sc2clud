@@ -14,7 +14,7 @@
     "prompt_report": "你是社区内容审核员。下面这条内容被用户举报，请重新判定它是否违规：明确违规才给不通过，拿不准就给待定。"
   },
   "traced": [
-    { "field": "enabled", "value": "false", "legacy": "site_texts.ai_enabled = '0'（默认 0，线上未被改过）", "note": "与 site_settings 的 ai.review.enabled（默认 off）是「且」：两处都关着才是老站的「不外呼」。这一格保持关 == 老站值，并且不需要碰 site_settings" },
+    { "field": "enabled", "value": "false", "legacy": "site_texts.ai_enabled = '0'（默认 0，线上未被改过）", "note": "与 site_settings 的 ai.review.enabled（声明默认 on，D63 修复——d7 §2.2 默认 true，缺行回落它；ai_config.enabled=false 继续兜「且」的另一半，老站迁移行为不变）。这一格保持关 == 老站值，不需要碰 site_settings" },
     { "field": "base_url", "value": "https://api.deepseek.com", "legacy": "site_texts.ai_endpoint；site/migrations/0029 的默认是 https://api.openai.com/v1，线上被改成 DeepSeek" },
     { "field": "model", "value": "deepseek-flash", "legacy": "site_texts.ai_model（0029 默认 gpt-4o-mini，线上已改）" },
     { "field": "prompt", "value": "（见 config.prompt，逐字）", "legacy": "site_texts.ai_prompt_new_post（0029 的默认值逐字相同）" },

@@ -373,6 +373,16 @@ function ReviewRoom() {
       onFilterChange={setFilter}
       canReview
       onReview={(item, action, note) => setReceipt('（房间演示：这里不发请求）' + (action === 'approve' ? '通过' : '拒绝') + '「' + item.title + '」：' + (note || '（无备注）'))}
+      // D63(b)：历史档的演示数据（真端点 GET /admin/ai/events 的形状照抄，ID 触发不了就别假装能翻）
+      events={filter.state === 'history' ? [
+        { id: 3, created_at: '2026-10-15T12:04:00Z', topic_id: '0d0e34f2-1fb2-4c01-9dcc-6effc1a2f001', topic_title: '示例帖：命中 AI 判定的演示行', trigger: 'post', source: 'ai', verdict: 'reject', reason: '演示理由：命中「百度网盘不限速」一类营销话术', categories: ['ad'], model: 'gpt-5-mini', latency_ms: 940, image_count: 0, image_skipped: 0, actor: null },
+        { id: 2, created_at: '2026-10-15T12:01:00Z', topic_id: '0d0e34f2-1fb2-4c01-9dcc-6effc1a2f002', topic_title: '示例帖：AI 转人工（高亮演示）', trigger: 'post', source: 'ai', verdict: 'review', reason: '模型拿不准，转人工', categories: ['other'], model: 'gpt-5-mini', latency_ms: 1510, image_count: 2, image_skipped: 0, actor: null },
+        { id: 1, created_at: '2026-10-15T11:58:00Z', topic_id: '0d0e34f2-1fb2-4c01-9dcc-6effc1a2f003', topic_title: '示例帖：人工放行', trigger: 'post', source: 'manual', verdict: 'approve', reason: '看过正文，无问题', categories: [], model: '', latency_ms: 0, image_count: 1, image_skipped: 0, actor: { id: '18', handle: 'demo-voidray', nickname: '虚空辉光舰' } },
+      ] : null}
+      eventsHasMore={false}
+      eventsLoading={false}
+      eventsError={null}
+      onLoadEvents={() => {}}
       receipt={receipt ? <p className='text-[12px] text-muted-foreground'>{receipt}</p> : null}
     />
   );

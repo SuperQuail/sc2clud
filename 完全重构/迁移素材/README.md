@@ -39,7 +39,7 @@ forum board-covers -manifest /path/to/完全重构/迁移素材/board-covers.jso
 
 | 字段 | 老站真源 | 逐字？ |
 |---|---|---|
-| `enabled=false` | `site_texts.ai_enabled='0'` | 逐字（且与 `site_settings.ai.review.enabled`（默认 off）是「且」，两处都关着才是老站的「零外呼」） |
+| `enabled=false` | `site_texts.ai_enabled='0'` | 逐字（且与 `site_settings.ai.review.enabled`——**声明默认 on（D63 修复）**，此格 false 继续保持老站「零外呼」——是「且」） |
 | `base_url=https://api.deepseek.com` | `site_texts.ai_endpoint` | 逐字（0029 的默认是 openai，线上已改） |
 | `model=deepseek-flash` | `site_texts.ai_model` | 逐字（0029 的默认是 gpt-4o-mini，线上已改） |
 | `prompt` / `prompt_report` | `site_texts.ai_prompt_new_post` / `ai_prompt_report` | **逐字**（老站那两段中文原文，一字不改） |
