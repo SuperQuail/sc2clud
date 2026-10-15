@@ -18,6 +18,8 @@ export type BoardSummary = {
   cover_hash: string;
   description?: string;
   topic_count?: number;
+  /** BoardDTO 的 today_count：今天新发的帖子数。**只有分区页会用「今日 N」这一格**（t 弹提示里也用它） */
+  today_count?: number;
 };
 
 const HUES = [212, 262, 330, 12, 152, 190];
@@ -88,6 +90,11 @@ export function BoardRail({
             <BoardCover slug={b.slug} name={b.name} hash={b.cover_hash} />
             <span className='min-w-0 flex-1 truncate'>{b.name}</span>
             <span className='shrink-0 text-[11px] tabular-nums text-muted-foreground'>{b.topic_count ?? 0}</span>
+            {/* 「今日 N」：168px 的窄栏里只留得下「今日 + 数字」，有新增才画（0 不画 —— 一排 0 只是噪音）。
+                与分区页那句「· 今日 N」（routes/board.tsx:101）同一个口径，数据都是 BoardDTO.today_count。 */}
+            {b.today_count ? (
+              <span className='shrink-0 text-[10px] tabular-nums text-primary/80'>今日 {b.today_count}</span>
+            ) : null}
           </>
         );
         return isCurrent ? (

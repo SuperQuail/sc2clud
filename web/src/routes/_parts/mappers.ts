@@ -29,6 +29,8 @@ export function boardRows(boards: ApiBoard[]): BoardSummary[] {
       name: b.name,
       description: b.description,
       topic_count: b.topic_count,
+      // 今日 N（用户 2026-10-15 拍板「可以加」）：左栏那一格用它，字段本来就是 BoardDTO 的 today_count。
+      today_count: b.today_count,
       cover_hash: raw.cover_hash ?? raw.cover ?? '',
     };
   });

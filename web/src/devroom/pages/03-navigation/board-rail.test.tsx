@@ -12,8 +12,10 @@ import { BoardCover, BoardRail, type BoardSummary } from './board-rail';
 // 字段名是后端 BoardDTO 的 cover_hash（裸哈希），不是设计稿的 cover（路径）。
 
 const BOARDS: BoardSummary[] = [
-  { slug: 'custom-campaign', name: '自制战役', cover_hash: 'abc123', description: '玩家自制战役与地图', topic_count: 10 },
-  { slug: 'emperor', name: '皇帝区', cover_hash: '', description: '', topic_count: 0 },
+  // 第一条带 today_count（>0），第二条为 0 —— 「今日 N」那条用例就靠这两个值分档：
+  // **0 不画**（一排 0 只是噪音），有新增才画，与分区页那句「· 今日 N」同一口径。
+  { slug: 'custom-campaign', name: '自制战役', cover_hash: 'abc123', description: '玩家自制战役与地图', topic_count: 10, today_count: 3 },
+  { slug: 'emperor', name: '皇帝区', cover_hash: '', description: '', topic_count: 0, today_count: 0 },
 ];
 
 // **View 里不出现 react-router**（房间不在 RouterProvider 里，import 了它就渲染不了）：
@@ -42,6 +44,13 @@ it('没有封面的分区落稳定占位：首字 + slug 定的色相（不是�
   // 注：色相桶只有 6 个，而这套取色公式（与 @/ui/user/avatar 逐字相同）在 10 字以上的 key 上会撞桶
   // —— 真站五个分区里有三个撞到同一个桶。占位块本身仍然「有字有底色」，所以这里不断言「两两不同」。
   // 要真正打散得动 UserAvatar 的公式（全站头像会一起变色），不在 D3 的范围里。
+});
+
+it('今日 N（用户 2026-10-15 拍板「可以加」）：有新增才画，0 不画', () => {
+  renderRail();
+  // 有新增的那一行画「今日 3」；0 的那一行一个字都不出现
+  expect(screen.getByText('今日 3')).toBeTruthy();
+  expect(screen.getAllByText(/^今日 /)).toHaveLength(1);
 });
 
 it('每个分区都有一行：链到 /b/<slug>、当前分区标 aria-current', () => {
