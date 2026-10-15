@@ -7,3 +7,11 @@
   - 证据：新用例先红（multipart 打进旧 handler 是 400 common.invalid_input「请求体格式不正确」，4/4 FAIL）→ 实现后 `go test ./internal/aireview/ -count=1` 全包 PASS（ok，23.2s；旧 JSON 三条 TestTestEndpointAcceptsProbeOverrideAndEmptyBody / TestPayloadEndpointIsWiredAndReadsTheRealTopic / TestProbeSampleIsReadableAndOverridable 原样绿）；gofmt -l internal/aireview 无 diff；go vet ./internal/aireview 干净
   - 下一步：前端 file-picker.tsx（新）+ registry 登记，ProbeEditor 选图/移除/拒绝原因
   - 阻塞：无
+- [x] 前端：new file-picker.tsx（headless、不加工）+ registry 登记薄
+  - 证据：src/devroom/pages/15-admin/screens/ai-probe.test.tsx 5 用例红→绿（选不上图/联不上 sampleNotes 先红）；同行 1440 宽可见「添加图片」钮
+  - 下一步：admin.ts / routes/admin/ai.tsx 接 FormData
+  - 阻塞：无
+- [x] 前端：admin.ts 与容器走 FormData；ProbeEditor 选图即重算
+  - 证据：src/routes/admin/ai-files.test.tsx 2 用例红→绿（payload multipart 2 部件、test 走 FormData 且 file 部件 2 枚）；全量 vitest 61 文件/301 用例全绿（基线 59/294 不变不碰红）
+  - 下一步：DevRoom 出图 1440/390（双图、payload 图块、回执明细）
+  - 阻塞：无

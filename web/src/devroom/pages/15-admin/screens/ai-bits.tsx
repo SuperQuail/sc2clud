@@ -1,8 +1,10 @@
+import { useRef } from 'react';
 import Button from '@jetbrains/ring-ui-built/components/button/button';
 import Input from '@jetbrains/ring-ui-built/components/input/input';
 import { ControlsHeight } from '@jetbrains/ring-ui-built/components/global/controls-height';
-import { AlertTriangle, CheckCircle2, RotateCcw } from 'lucide-react';
+import { AlertTriangle, CheckCircle2, ImagePlus, RotateCcw, X } from 'lucide-react';
 import { icon16 } from '@/ui/icons';
+import { FilePicker } from '@/ui/file-picker';
 import type { AiTestView } from '@/lib/api/admin';
 import { DisabledReason, Pill, Toolbar } from '../bits';
 
@@ -93,14 +95,20 @@ export function TestFail({ failure }: { failure: AiTestFailure }) {
  * 而它下一次排查（换个边界、换种语言）就该被换掉 —— 存下来的版本反而会让下一个人以为「这就是线上在发的」。
  * 代价写在界面上：刷新页面回到默认样例。默认样例本身也**不在前端写死**，它来自配置回执的 probe_sample。
  */
-export function ProbeEditor({ value, defaultValue, onChange, onReset, busy }: {
+export function ProbeEditor({ value, defaultValue, onChange, onReset, busy, files = [], onFilesChange }: {
   value: string;
   defaultValue: string;
   onChange: (next: string) => void;
   onReset: () => void;
   busy: boolean;
+  /** 这一次测试要附的样例图（D34）。真源在宿主：它连着干跑的重算与测试的 FormData */
+  files?: File[];
+  /** 添加 = 原数组 + 新选的；移除 = 按 index 滤掉。整个数组进出 */
+  onFilesChange?: (next: File[]) => void;
 }) {
   const edited = value !== defaultValue;
+  const openPicker = useRef<(() => void) | null>(null);
+  const notes = sampleNotes(files);
   return (
     <div className='flex flex-col gap-1'>
       <Input
@@ -120,10 +128,77 @@ export function ProbeEditor({ value, defaultValue, onChange, onReset, busy }: {
             恢复默认样例
           </Button>
         ) : null}
+        {/* D34：样例图在这里选（headless FilePicker，选完原样交出 FileList）。 */}
+        <Button
+          inline={false}
+          height={ControlsHeight.S}
+          icon={icon16(ImagePlus)}
+          disabled={busy}
+          onClick={() => openPicker.current?.()}
+          data-testid='ai-probe-add-image'
+        >
+          添加图片
+        </Button>
         <DisabledReason>不落库：样例存下来只会让下一个人以为「线上就在发这一段」</DisabledReason>
       </Toolbar>
+      <FilePicker multiple onChange={(picked) => onFilesChange?.([...files, ...picked])} onReady={(api) => { openPicker.current = api?.open ?? null; }} />
+      {files.length > 0 ? (
+        <ul className='flex flex-col gap-1'>
+          {files.map((f, i) => (
+            <li
+              key={i + ':' + f.name + ':' + f.size + ':' + f.lastModified}
+              data-testid='ai-probe-file'
+              className='flex items-start gap-2 rounded-sm border border-border px-2 py-1'
+            >
+              <span className='min-w-0 flex-1 text-[11px] leading-relaxed text-muted-foreground'>
+                <span className='flex flex-wrap items-center gap-1.5'>
+                  <span className='text-foreground'>{'第 ' + (i + 1) + ' 张'}</span>
+                  <span className='break-all'>{f.name}</span>
+                  <span className='tabular-nums'>{kbOf(f.size)}</span>
+                </span>
+                {notes[i] ? <span data-testid='ai-probe-file-note' className='mt-0.5 block text-destructive'>{notes[i]}</span> : null}
+              </span>
+              <Button
+                inline={false}
+                height={ControlsHeight.S}
+                icon={icon16(X)}
+                aria-label={'移除 ' + f.name}
+                disabled={busy}
+                onClick={() => onFilesChange?.(files.filter((_, x) => x !== i))}
+              />
+            </li>
+          ))}
+        </ul>
+      ) : null}
+      <span className='text-[11px] leading-relaxed text-muted-foreground'>
+        样例图只活在这一条请求里（不落库、不留文件）：PNG / JPEG / GIF / WebP，最多 4 张、单张 ≤ 2.0 MB —— 与带帖审核是同一套上限。
+      </span>
     </div>
   );
+}
+
+// 样例图的**前端两条规则**（与后端 aireview/images.go 的 maxImages / maxImageBytes 同值同理由）：
+// 干跑回执里的 image_limit / image_max_bytes 是后端原样回显的两条上限 —— 数字漂了图上看得见。
+const SAMPLE_MAX_IMAGES = 4;
+const SAMPLE_MAX_BYTES = 2 * 1024 * 1024;
+
+/** 每张样例图就地显示的拒绝原因（D34：不许静默丢）。类型（「不是图片」）由后端判字节 ——
+ *  干跑回执里那一张的下场就是这句话，这里不重复做第二份嗅探。 */
+export function sampleNotes(files: File[]): string[] {
+  const mb = (n: number) => (n / (1024 * 1024)).toFixed(1);
+  return files.map((f, i) => {
+    if (files.length > SAMPLE_MAX_IMAGES && i >= SAMPLE_MAX_IMAGES) {
+      return '超过 ' + SAMPLE_MAX_IMAGES + ' 张上限，这一张没发';
+    }
+    if (f.size > SAMPLE_MAX_BYTES) {
+      return '单张 ' + mb(f.size) + ' MB 超过上限 ' + mb(SAMPLE_MAX_BYTES) + ' MB，这一张没发';
+    }
+    return '';
+  });
+}
+
+function kbOf(n: number): string {
+  return n >= 1024 * 1024 ? (n / 1024 / 1024).toFixed(1) + ' MB' : Math.round(n / 1024) + ' KB';
 }
 
 /** 把失败粗分类成「鉴权」与「网络 / 超时」：三种回执要一眼分得开。 */

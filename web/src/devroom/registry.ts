@@ -249,6 +249,21 @@ export const VERIFIED: VerifiedControl[] = [
     ],
   },
   {
+    name: 'file-picker',
+    path: '@/ui/file-picker',
+    page: '15-admin',
+    verifiedOn: '2026-10-15',
+    props: [
+      'onChange(files: File[])：选完把 FileList 原样交出（不压缩、不加工）',
+      'multiple（D34 样例图选 0..4 张）/ accept（缺省 PNG/JPEG/GIF/WebP 四件套）',
+      'onReady({ open })：headless 打开句柄，挂载期交回、卸载收回 null',
+    ],
+    notes: [
+      '业务代码不许手写 <input type=file>（gate:ui）——选文件的控件只有这一个与 image-uploader（带压缩管线）。',
+      '首用：15-admin 连通测试的样例图（D34，ProbeEditor 点「添加图片」的就是它）。',
+    ],
+  },
+  {
     name: 'avatar-picker',
     path: '@/ui/avatar-picker',
     page: '11-profile',

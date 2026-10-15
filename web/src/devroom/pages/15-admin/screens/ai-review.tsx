@@ -59,6 +59,9 @@ export type AiReviewScreenProps = {
   /** 默认样例：由服务端给（ConfigView.probe_sample），前端不写死第二份 */
   defaultProbe: string;
   onProbeChange: (next: string) => void;
+  /** D34：这一次测试要附的样例图（0..4 张）。真源在宿主 —— 干跑重算与测试的 FormData 都靠它 */
+  sampleFiles?: File[];
+  onSampleFilesChange?: (next: File[]) => void;
   /** 这一次要发的 payload（dry-run 的组装结果）：system + user 全文 + 图片逐张的下场 */
   payload?: AiPayloadView | null;
   payloadError?: ReactNode;
@@ -69,7 +72,8 @@ export type AiReviewScreenProps = {
 export function AiReviewScreen({
   config, loading = false, error = null, canSetting,
   onPatch, onSaveSecret, onTest, testResult = null, testFailure = null,
-  probe, defaultProbe, onProbeChange, payload = null, payloadError = null, busy = false, receipt,
+  probe, defaultProbe, onProbeChange, sampleFiles = [], onSampleFilesChange,
+  payload = null, payloadError = null, busy = false, receipt,
 }: AiReviewScreenProps) {
   const [draft, setDraft] = useState<Partial<AiConfig>>({});
   const [secret, setSecret] = useState('');
@@ -222,7 +226,7 @@ export function AiReviewScreen({
 
           <Panel
             title='连通测试'
-            note='发的是配置里那段提示词 + **下面这一段样例**；样例看得见、改得动（D33②③）'
+            note='发的是配置里那段提示词 + **下面这一段样例**（可附 0..4 张样例图，D34）；样例看得见、改得动（D33②③）'
             actions={
               <Button
                 inline={false}
@@ -244,6 +248,8 @@ export function AiReviewScreen({
               onChange={onProbeChange}
               onReset={() => onProbeChange(defaultProbe)}
               busy={busy || !canSetting}
+              files={sampleFiles}
+              onFilesChange={onSampleFilesChange}
             />
             {/* 失败**就地**说（D12）：四档各一句实话 + 后端原话，绝不落进错误边界 */}
             <div className='mt-2'>

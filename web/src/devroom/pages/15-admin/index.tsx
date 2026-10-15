@@ -90,6 +90,7 @@ function AiRoom() {
   const [cfg, setCfg] = useState(DEMO_AI_CONFIG);
   const [test, setTest] = useState(DEMO_AI_TEST);
   const [probe, setProbe] = useState(DEMO_AI_CONFIG.probe_sample);
+  const [sampleFiles, setSampleFiles] = useState<File[]>([]);
   const [receipt, setReceipt] = useState<string | null>(null);
   return (
     <AiReviewScreen
@@ -98,6 +99,8 @@ function AiRoom() {
       probe={probe}
       defaultProbe={DEMO_AI_CONFIG.probe_sample}
       onProbeChange={(next) => { setProbe(next); setReceipt('（房间演示：这里不发请求）样例已临时改动，只影响这一次测试'); }}
+      sampleFiles={sampleFiles}
+      onSampleFilesChange={(next) => { setSampleFiles(next); setReceipt('（房间演示：这里不发请求）样例图改成了 ' + next.length + ' 张 —— 真站的干跑会跟着重算并回逐张下场'); }}
       payload={DEMO_AI_PAYLOAD}
       onPatch={(p) => { setCfg((c) => ({ ...c, ...p })); setReceipt('（房间演示：这里不发请求）已保存 ' + Object.keys(p).join('、')); }}
       onSaveSecret={() => { setCfg((c) => ({ ...c, has_secret: true, secret_updated_at: new Date().toISOString() })); setReceipt('（房间演示：这里不发请求）密钥已保存（只写不回显）'); }}
