@@ -55,6 +55,10 @@ export const qk = {
   adminBanners: () => ['admin', 'banners'] as const,
   adminAudit: (f: unknown) => ['admin', 'audit', f] as const,
   adminAiConfig: () => ['admin', 'ai-config'] as const,
+  /** 用户组（D38）：目录不翻页；组员与分区组矩阵按 id 取 */
+  adminGroups: () => ['admin', 'groups'] as const,
+  adminGroupMembers: (id: string) => ['admin', 'groups', id, 'members'] as const,
+  adminBoardGroupAcl: (id: string) => ['admin', 'boards', id, 'group-acl'] as const,
   /** 搜索：type 与 q 都在 key 里 —— 换一个词就是另一次查询，不能互相覆盖 */
   search: (type: string, q: string) => ['search', type, q] as const,
   /** 打赏域（lib/api/rewards.ts）：本人的收款码 / 设置 / 我发出的申报，以及某个人的收款码 */

@@ -1,6 +1,7 @@
 package pgsql
 
 import (
+	"fmt"
 	"context"
 	"database/sql"
 	"encoding/json"
@@ -80,15 +81,32 @@ func DeleteAdminGroup(ctx context.Context, q Querier, groupID int64) (int64, err
 	return rowsAffected(ctx, q, "DELETE FROM user_groups WHERE id = $1", groupID)
 }
 
-// GroupsExist 是分组矩阵 PUT 前的前置（照 RolesExist）。
-func GroupsExist(ctx context.Context, q Querier, groupIDs []int64) (int, error) {
-	if len(groupIDs) == 0 {
+// GroupsExistByKey 是按组 key 的存在性校验（矩阵的行带 key —— 组目录里对外的是 uuid，
+// 管理员界面上稳定可见的是 key；自增 id 不出 API 的同一条拍板）。
+func GroupsExistByKey(ctx context.Context, q Querier, keys []string) (int, error) {
+	if len(keys) == 0 {
 		return 0, nil
 	}
 	var n int
-	err := queryOneQ(ctx, q, "SELECT count(*) FROM user_groups WHERE id = ANY($1::bigint[])", []any{groupIDs},
+	err := queryOneQ(ctx, q, "SELECT count(*) FROM user_groups WHERE key = ANY($1::varchar[])", []any{keys},
 		func(rows *sql.Rows) error { return rows.Scan(&n) })
 	return n, err
+}
+
+// GroupIDsByKey 把组的 key 换成自增 id（写矩阵落库要 id，弹回的校验走 key）。
+func GroupIDsByKey(ctx context.Context, q Querier, keys []string) (map[string]int64, error) {
+	out := map[string]int64{}
+	err := queryQ(ctx, q, "SELECT key, id FROM user_groups WHERE key = ANY($1::varchar[])", []any{keys},
+		func(rows *sql.Rows) error {
+			var key string
+			var id int64
+			if err := rows.Scan(&key, &id); err != nil {
+				return err
+			}
+			out[key] = id
+			return nil
+		})
+	return out, err
 }
 
 // ── 组员 ─────────────────────────────────────────────────────────
@@ -147,15 +165,15 @@ func (s *Store) RemoveGroupMember(ctx context.Context, q Querier, groupID, userI
 // ── 分区 × 组 ACL 行（照 admin_boards_write.go 的矩阵那一组） ────────────
 
 const adminGroupACLSQL = `
-SELECT a.group_id, gg.key, a.can_post, a.can_reply, a.deny_post, a.deny_reply
+SELECT gg.key, a.can_post, a.can_reply, a.deny_post, a.deny_reply
   FROM board_group_acls a
   JOIN user_groups gg ON gg.id = a.group_id
  WHERE a.board_id = $1
  ORDER BY gg.key, gg.id`
 
-// AdminGroupACLRow 是一行分区 × 组的 ACL（形状照 AdminACLRow，键从 role 换成 group）。
+// AdminGroupACLRow 是一行分区 × 组的 ACL（以组 key 为标识：管理界面上稳定的是 key，
+// 自增 id 不出 API —— boards.public_id 那条拍板的同款。读的时候顺带把 key join 回来）。
 type AdminGroupACLRow struct {
-	GroupID   int64  `json:"group_id"`
 	GroupKey  string `json:"group_key"`
 	CanPost   bool   `json:"can_post"`
 	CanReply  bool   `json:"can_reply"`
@@ -172,7 +190,7 @@ func (s *Store) AdminGroupACL(ctx context.Context, q Querier, boardID int64, loc
 	var out []AdminGroupACLRow
 	err := queryQ(ctx, q, sqlText, []any{boardID}, func(rows *sql.Rows) error {
 		var a AdminGroupACLRow
-		if err := rows.Scan(&a.GroupID, &a.GroupKey, &a.CanPost, &a.CanReply, &a.DenyPost, &a.DenyReply); err != nil {
+		if err := rows.Scan(&a.GroupKey, &a.CanPost, &a.CanReply, &a.DenyPost, &a.DenyReply); err != nil {
 			return err
 		}
 		out = append(out, a)
@@ -182,15 +200,29 @@ func (s *Store) AdminGroupACL(ctx context.Context, q Querier, boardID int64, loc
 }
 
 // SetAdminGroupACL 全量替换一个分区的组矩阵（整体替换语义照 board_acls）。
+// rows 以 **group_key** 交上来：这里自查一次 key → id（矩阵校验在 service 完成过存在性）。
 func SetAdminGroupACL(ctx context.Context, q Querier, boardID int64, rows []AdminGroupACLRow) error {
+	keys := make([]string, 0, len(rows))
+	for _, a := range rows {
+		keys = append(keys, a.GroupKey)
+	}
+	byKey, err := GroupIDsByKey(ctx, q, keys)
+	if err != nil {
+		return err
+	}
 	if err := exec(ctx, q, "DELETE FROM board_group_acls WHERE board_id = $1", boardID); err != nil {
 		return err
 	}
 	for _, a := range rows {
+		id, ok := byKey[a.GroupKey]
+		if !ok {
+			// 理论不可达：service 先查过存在性并在同一事务里锁到替换完成；兜一条防静默。
+			return fmt.Errorf("组 key %q 已不存在（同事务内被删？）", a.GroupKey)
+		}
 		if err := exec(ctx, q, `
 INSERT INTO board_group_acls (board_id, group_id, can_post, can_reply, deny_post, deny_reply, created_at, updated_at)
 VALUES ($1, $2, $3, $4, $5, $6, now(), now())`,
-			boardID, a.GroupID, a.CanPost, a.CanReply, a.DenyPost, a.DenyReply); err != nil {
+			boardID, id, a.CanPost, a.CanReply, a.DenyPost, a.DenyReply); err != nil {
 			return err
 		}
 	}

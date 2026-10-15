@@ -172,8 +172,8 @@ func TestAdminBoardGroupACL(t *testing.T) {
 	h := newHarness(t)
 	roleID := h.seedRole("user", false)
 	admin := h.boardAdmin(h.seedUser("mod", roleID, 1, false), roleID)
-	g1 := h.seedGroup("va")
-	g2 := h.seedGroup("vb")
+	h.seedGroup("va")
+	h.seedGroup("vb")
 	boardID := h.seedBoard("ga", 0, false)
 	pub := h.boardPublicID(boardID)
 
@@ -183,8 +183,8 @@ func TestAdminBoardGroupACL(t *testing.T) {
 	}
 
 	items, err := h.svc.ReplaceBoardGroupACL(h.ctx, admin, pub, []AdminGroupACLItem{
-		{GroupID: g1, CanPost: true},
-		{GroupID: g2, DenyReply: true},
+		{GroupKey: "va", CanPost: true},
+		{GroupKey: "vb", DenyReply: true},
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -195,20 +195,20 @@ func TestAdminBoardGroupACL(t *testing.T) {
 
 	// 三处不静默：矛盾 / 重复 / 组不存在
 	assertCode(t, mustFail(t, func() error {
-		_, err := h.svc.ReplaceBoardGroupACL(h.ctx, admin, pub, []AdminGroupACLItem{{GroupID: g1, CanPost: true, DenyPost: true}})
+		_, err := h.svc.ReplaceBoardGroupACL(h.ctx, admin, pub, []AdminGroupACLItem{{GroupKey: "va", CanPost: true, DenyPost: true}})
 		return err
 	}), "common.invalid_input")
 	assertCode(t, mustFail(t, func() error {
-		_, err := h.svc.ReplaceBoardGroupACL(h.ctx, admin, pub, []AdminGroupACLItem{{GroupID: g1, CanPost: true}, {GroupID: g1}})
+		_, err := h.svc.ReplaceBoardGroupACL(h.ctx, admin, pub, []AdminGroupACLItem{{GroupKey: "va", CanPost: true}, {GroupKey: "va"}})
 		return err
 	}), "common.invalid_input")
 	assertCode(t, mustFail(t, func() error {
-		_, err := h.svc.ReplaceBoardGroupACL(h.ctx, admin, pub, []AdminGroupACLItem{{GroupID: 999999}})
+		_, err := h.svc.ReplaceBoardGroupACL(h.ctx, admin, pub, []AdminGroupACLItem{{GroupKey: "ghost"}})
 		return err
 	}), "common.invalid_input")
 
 	// 全量替换：少给一行就真删掉
-	if _, err := h.svc.ReplaceBoardGroupACL(h.ctx, admin, pub, []AdminGroupACLItem{{GroupID: g2, CanReply: true}}); err != nil {
+	if _, err := h.svc.ReplaceBoardGroupACL(h.ctx, admin, pub, []AdminGroupACLItem{{GroupKey: "vb", CanReply: true}}); err != nil {
 		t.Fatal(err)
 	}
 	if n := h.countRows(t, "SELECT count(*) FROM board_group_acls WHERE board_id = $1", boardID); n != 1 {

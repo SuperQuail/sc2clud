@@ -9,12 +9,13 @@ import { imagePath } from '@/lib/url';
 import { icon16 } from '@/ui/icons';
 import { Username } from '@/ui/user/username';
 import type { AdminACLItem, AdminBoard, AdminModeratorItem, Role } from '@/lib/api/admin';
+import type { AdminGroup, AdminGroupACLItem } from '@/lib/api/groups';
 import { DataTable } from '../data-table';
 import { ConfirmDialog, DangerAction } from '../confirm';
 import { DisabledReason, KV, Numbers, Panel, Pill, ScreenHead, Stat, StatRow } from '../bits';
 import { ImageUploader } from '@/ui/rich/image-uploader';
 import { DefaultCover } from '@/ui/topic/default-cover';
-import { BoardAclPanel } from './boards-acl';
+import { BoardAclPanel, GroupAclPanel, type AclToggleField } from './boards-acl';
 import { NewBoardDialog } from './boards-new';
 
 // 屏 c：分区管理 + BoardACL（13.4 + 14.3–14.4 + D6）。
@@ -64,9 +65,17 @@ export type BoardsScreenProps = {
   /** 当前分区的矩阵（GET /admin/boards/{id}/acl） */
   acl: AdminACLItem[];
   aclLoading?: boolean;
-  /** 保存矩阵（全量替换：整张一次 PUT） */
+  /** 保存矩阵（全量替换：整张一次 PUT）。宿主会滤掉超管的行（D40：写入不收） */
   onAclSave: (acls: AdminACLItem[]) => void;
   aclSaving?: boolean;
+  /** 用户组目录（GET /admin/groups）：按组名单的行就是它（D38） */
+  groups: AdminGroup[];
+  /** 当前分区的按组名单（GET /admin/boards/{id}/group-acl） */
+  groupAcl: AdminGroupACLItem[];
+  groupAclLoading?: boolean;
+  /** 保存按组名单（全量替换：整张一次 PUT） */
+  onGroupAclSave: (acls: AdminGroupACLItem[]) => void;
+  groupAclSaving?: boolean;
   /** 版主任期（GET /admin/boards/{id}/moderators，**含已卸任的历史行**） */
   moderators: AdminModeratorItem[];
   /** 可任命的用户（GET /admin/users 第一页）。拿不到时是空数组，屏上会说为什么 */
@@ -89,6 +98,7 @@ export function BoardsScreen({
   boards, loading = false, error = null, boardId, onSelect,
   onSave, saving = false, savedAt = 0, onUploadCover, coverUploading = false, onMove, reordering = false,
   roles, acl, aclLoading = false, onAclSave, aclSaving = false,
+  groups, groupAcl, groupAclLoading = false, onGroupAclSave, groupAclSaving = false,
   moderators, candidates, onGrantModerator, onRevokeModerator, onCreate, onSetStatus,
   canManage, busy = false, receipt,
 }: BoardsScreenProps) {
@@ -101,6 +111,7 @@ export function BoardsScreen({
   // 拿它当依赖就会在每次渲染后把管理员刚敲的字冲掉）。这是 users 屏那个 UserAvatar 教训的同一类。
   const [draft, setDraft] = useState<BoardPatch | null>(null);
   const [aclDraft, setAclDraft] = useState<Record<number, AdminACLItem> | null>(null);
+  const [groupAclDraft, setGroupAclDraft] = useState<Record<string, AdminGroupACLItem> | null>(null);
 
   const board = boards.find((b) => b.id === boardId) ?? boards[0] ?? null;
   const index = board ? boards.findIndex((b) => b.id === board.id) : -1;
@@ -111,6 +122,7 @@ export function BoardsScreen({
   // 也只在「草稿还等于刚发出去的那一份」的情况下才对它 —— 见下面 save() 的那一处重置。
   const d: BoardPatch = draft ?? (board ? toPatch(board) : EMPTY);
   const aclRows = aclDraft ?? Object.fromEntries(acl.map((a) => [a.role_id, { ...a }]));
+  const groupAclRows = groupAclDraft ?? Object.fromEntries(groupAcl.map((a) => [a.group_key, { ...a }]));
 
   // 只发改动过的字段（后端 PATCH 的 body 全是指针，没发的键不动；空 body 会 400）
   const patch: Partial<BoardPatch> = {};
@@ -140,6 +152,15 @@ export function BoardsScreen({
     });
   })();
 
+  const groupAclChanged = (() => {
+    const rows = Object.values(groupAclRows);
+    if (rows.length !== groupAcl.length) return true;
+    return rows.some((a) => {
+      const s = groupAcl.find((x) => x.group_key === a.group_key);
+      return !s || s.can_post !== a.can_post || s.can_reply !== a.can_reply || s.deny_post !== a.deny_post || s.deny_reply !== a.deny_reply;
+    });
+  })();
+
   function setAcl(roleId: number, field: AclField, on: boolean) {
     const cur = aclRows[roleId] ?? { role_id: roleId, role_key: '', can_post: false, can_reply: false, deny_post: false, deny_reply: false };
     const next = { ...cur, [field]: on };
@@ -148,6 +169,15 @@ export function BoardsScreen({
     const flip: Record<AclField, AclField> = { can_post: 'deny_post', can_reply: 'deny_reply', deny_post: 'can_post', deny_reply: 'can_reply' };
     if (on) next[flip[field]] = false;
     setAclDraft({ ...aclRows, [roleId]: next });
+  }
+
+  // 按组名单的同款互斥（同一行「允许」与「禁止」不能同时勾上，后端会拒）
+  function setGroupAcl(groupKey: string, field: AclToggleField, on: boolean) {
+    const cur = groupAclRows[groupKey] ?? { group_key: groupKey, can_post: false, can_reply: false, deny_post: false, deny_reply: false };
+    const next = { ...cur, [field]: on };
+    const flip: Record<AclToggleField, AclToggleField> = { can_post: 'deny_post', can_reply: 'deny_reply', deny_post: 'can_post', deny_reply: 'can_reply' };
+    if (on) next[flip[field]] = false;
+    setGroupAclDraft({ ...groupAclRows, [groupKey]: next });
   }
 
   // 上移/下移：把这一行与邻居换位，然后把**全部 id** 的完整新顺序发上去（后端要求全量）
@@ -181,7 +211,7 @@ export function BoardsScreen({
             </span>
             <span className='truncate text-[11px] text-muted-foreground'>/{b.slug} · {b.topic_count} 帖子</span>
             <span className='mt-0.5 flex flex-wrap items-center gap-1'>
-              <Pill tone={b.acl_enabled ? 'ok' : 'warn'}>{b.acl_enabled ? '按 ACL' : '登录即可'}</Pill>
+              <Pill tone={b.acl_enabled ? 'ok' : 'warn'}>{b.acl_enabled ? '按名单' : '登录即可'}</Pill>
               {b.status === 'archived' ? <Pill tone='danger'>已归档</Pill> : null}
               {b.moderators.length > 0 ? <Pill tone='outline'>{b.moderators.length} 版主</Pill> : null}
             </span>
@@ -194,8 +224,8 @@ export function BoardsScreen({
   return (
     <div className='flex flex-col gap-3'>
       <ScreenHead
-        title='分区管理 · BoardACL'
-        note='13.4 + D6：分区表驱动（新增分区零代码改动）；发言权限落在 board_acls 上，boards.acl_enabled 关闭时整张表不生效。'
+        title='分区管理'
+        note='建分区、排序、换封面、启停发言名单；改动只作用于这一个分区。'
         actions={
           <>
             <Button primary inline={false} height={ControlsHeight.M} icon={icon16(Plus)} disabled={!canManage || busy} onClick={() => setShowNew(true)}>
@@ -207,11 +237,11 @@ export function BoardsScreen({
       />
 
       <StatRow>
-        <Stat label='分区' value={boards.length} hint='含归档；表驱动，非枚举' />
-        <Stat label='启用 ACL' value={boards.filter((b) => b.acl_enabled).length} tone='info' hint='其余为「登录即可发言」' />
-        <Stat label='归档' value={boards.filter((b) => b.status === 'archived').length} hint='归档只读；后端没有删除端点' />
-        <Stat label='帖子总数' value={boards.reduce((s, b) => s + b.topic_count, 0)} hint='只算 visibility=normal 且已过审的' />
-        <Stat label='今日新增' value={boards.reduce((s, b) => s + b.today_count, 0)} hint='按站点时区的今天零点起算' />
+        <Stat label='分区' value={boards.length} hint='含已归档的分区' />
+        <Stat label='启用发言名单' value={boards.filter((b) => b.acl_enabled).length} tone='info' hint='其余分区登录即可发言' />
+        <Stat label='归档' value={boards.filter((b) => b.status === 'archived').length} hint='归档的分区只能恢复，不能删除' />
+        <Stat label='帖子总数' value={boards.reduce((s, b) => s + b.topic_count, 0)} hint='全部正常可见的帖子' />
+        <Stat label='今日新增' value={boards.reduce((s, b) => s + b.today_count, 0)} hint='从今天 0 点起算' />
       </StatRow>
 
       {error ? (
@@ -223,7 +253,7 @@ export function BoardsScreen({
 
       <div className='grid items-start gap-3 xl:grid-cols-[minmax(264px,304px)_minmax(0,1fr)]'>
         <div className='flex min-w-0 flex-col gap-2 xl:sticky xl:top-3'>
-          <Panel title='分区列表' note='列表顺序 = 后端给的 position（sort 升序的行号）；改顺序在右侧「分区排序」里'>
+          <Panel title='分区列表' note='点一行编辑；顺序在右侧「分区排序」里调整'>
             <DataTable
               columns={listColumns}
               rows={boards}
@@ -251,7 +281,7 @@ export function BoardsScreen({
             <>
               <Panel
                 title={'分区资料 · ' + board.name}
-                note='只发改动过的字段（后端 PATCH 的 body 全是指针，没发的键不动）；slug 建后不可改，所以这里是只读的。'
+                note='改动后按「保存」生效；未保存的改动会标注出来。'
                 actions={
                   <>
                     {changed.length > 0 ? <Pill tone='warn'>未保存</Pill> : <Pill tone='ok'>已保存</Pill>}
@@ -263,10 +293,10 @@ export function BoardsScreen({
               >
                 {/* 受控输入：草稿在宿主手里，切换分区时整份换掉（不会被上一个分区的值粘住） */}
                 <Input label='名称' value={d.name} disabled={!canEdit} onChange={(e) => setDraft({ ...d, name: e.target.value })} />
-                <Input label='slug（URL 用，建后不可改）' value={board.slug} disabled help='PATCH 不接受 slug：改它等于废掉所有外链' />
+                <Input label='分区地址（slug，建后不可改）' value={board.slug} disabled help='它是分区链接地址的一部分，建好后不能改。' />
                 <Input label='一句话简介' value={d.description} disabled={!canEdit} onChange={(e) => setDraft({ ...d, description: e.target.value })} />
                 <Input
-                  label='最低发帖等级（min_post_level，0 = 不限）'
+                  label='最低发帖等级（0 = 不限）'
                   value={String(d.min_post_level)}
                   disabled={!canEdit}
                   onChange={(e) => setDraft({ ...d, min_post_level: Number(e.target.value.replace(/[^0-9]/g, '') || 0) })}
@@ -310,7 +340,7 @@ export function BoardsScreen({
                     <span className='text-[11px] leading-relaxed text-muted-foreground'>
                       {coverUploading
                         ? '正在上传封面…'
-                        : '换封面 = 先走图片通道拿 hash（POST /me/cover）再 PATCH 上来，选完即生效；清空 = 发 cover_hash:""（置 NULL），要按上面那颗保存。'}
+                        : '更换封面选完即生效；清空封面要点「保存」后才会移除。'}
                     </span>
                   </div>
                 </div>
@@ -326,7 +356,7 @@ export function BoardsScreen({
 
               <Panel
                 title='分区排序'
-                note='position 是后端算出来的行号；重排一次发全部 id 的新顺序（少一个就会有分区留在原位与别人撞在一起）'
+                note='上移 / 下移调整整个列表的顺序；保存以列表实际回到的顺序为准'
                 actions={
                   <span className='flex items-center gap-1'>
                     <Button inline={false} height={ControlsHeight.S} icon={icon16(ArrowUp)} disabled={!canManage || reordering || index <= 0} onClick={() => move(-1)}>上移</Button>
@@ -335,7 +365,6 @@ export function BoardsScreen({
                 }
               >
                 <KV k='当前位置' v={(index + 1) + ' / ' + boards.length} hint='分区页签从上到下就是这个顺序' />
-                <KV k='position' v={board.position} hint='后端 row_number() OVER (ORDER BY sort, id)，展示用' />
                 <div className='mt-1.5'>
                   <DisabledReason>
                     {!canManage
@@ -344,35 +373,34 @@ export function BoardsScreen({
                         ? '已经是第一个（最上面），上移已禁用'
                         : index === boards.length - 1
                           ? '已经是最后一个，下移已禁用'
-                          : '重排会写一条 board.reorder 审计；结果以重新拉取的列表为准，界面不自己猜顺序'}
+                          : '保存后列表会按新顺序刷新显示'}
                   </DisabledReason>
                 </div>
               </Panel>
 
               <Panel
-                title='发言权限（boards.acl_enabled）'
-                note='这一个开关决定 board_acls 整张表生不生效——它是 D6 的第 3 步，比角色矩阵更早判定'
+                title='发言名单判定'
+                note='打开后按下面的名单与等级门槛判定；关闭则任何登录用户都能在此发帖与回复。'
                 actions={
                   <Toggle
                     checked={d.acl_enabled}
                     disabled={!canEdit}
                     onChange={(e) => setDraft({ ...d, acl_enabled: e.target.checked })}
                   >
-                    {d.acl_enabled ? '按 ACL 判定' : '登录即可发言'}
+                    {d.acl_enabled ? '按名单判定' : '登录即可发言'}
                   </Toggle>
                 }
               >
                 <span className='flex flex-wrap items-center gap-2'>
-                  <Pill tone={d.acl_enabled ? 'ok' : 'warn'}>当前结论：{d.acl_enabled ? '按 ACL 判定' : '登录即可发言'}</Pill>
-                  <Pill tone='outline'>D6 第 {d.acl_enabled ? '4–6' : '3'} 步先命中</Pill>
+                  <Pill tone={d.acl_enabled ? 'ok' : 'warn'}>当前状态：{d.acl_enabled ? '按名单判定' : '登录即可发言'}</Pill>
                   {archived ? <Pill tone='danger'>分区已归档：开关只读</Pill> : null}
                   {d.acl_enabled !== board.acl_enabled ? <Pill tone='warn'>改动还没保存</Pill> : null}
                 </span>
                 <div className='mt-2 flex flex-col gap-1 rounded-md border border-dashed border-border px-2.5 py-2 text-[12px] leading-relaxed text-muted-foreground'>
-                  <span className='font-medium text-foreground'>关掉这个开关 = 把分区交还给「登录即可发言」，具体是这三件事：</span>
-                  <span>① 任何登录用户都能发帖与回复——判定在第 3 步直接放行，后面的 ACL 不再看；</span>
-                  <span>② 下面那张角色矩阵整体失效（勾选保留，重新打开就恢复，不用重配）；</span>
-                  <span>③ 但分区级禁言（Sanction）仍然生效：它在第 2 步就更早判定（20.2 第 21 条）。</span>
+                  <span className='font-medium text-foreground'>关掉这个开关后，会同时发生三件事：</span>
+                  <span>① 任何登录用户都能在这里发帖与回复（名单与等级门槛都不再检查）；</span>
+                  <span>② 下面两张名单（按角色 / 按用户组）暂不生效——勾选保留，重新打开即恢复，不用重配；</span>
+                  <span>③ 被停言的用户依然不能发言（停言比名单更早判定）。</span>
                 </div>
               </Panel>
 
@@ -389,13 +417,29 @@ export function BoardsScreen({
                   dirty={aclChanged}
                   saving={aclSaving}
                   onSet={setAcl}
-                  onSave={() => onAclSave(Object.values(aclRows))}
+                  onSave={() => onAclSave(Object.values(aclRows).filter((a) => a.role_key !== 'superadmin'))}
+                />
+              )}
+
+              {groupAclLoading ? (
+                <p className='text-[12px] text-muted-foreground'>正在取按组名单…</p>
+              ) : (
+                <GroupAclPanel
+                  boardName={board.name}
+                  groups={groups}
+                  acl={groupAcl}
+                  draft={groupAclRows}
+                  canEdit={canEdit}
+                  dirty={groupAclChanged}
+                  saving={groupAclSaving}
+                  onSet={setGroupAcl}
+                  onSave={() => onGroupAclSave(Object.values(groupAclRows))}
                 />
               )}
 
               <Panel
                 title='分区版主任免'
-                note='board_moderators（带期限；卸任 = 置 grown_at，不删行，所以这里连历史任期一起显示）'
+                note='任命可带期限；卸任的记录保留，历史任期在这里一并显示。'
                 actions={
                   canManage
                     ? <Button inline={false} height={ControlsHeight.S} icon={icon16(Plus)} disabled={archived || busy} onClick={() => setGrantOpen((v) => !v)}>任命版主</Button>
@@ -430,13 +474,12 @@ export function BoardsScreen({
                   <div className='mt-2 flex flex-col gap-2 rounded-md border border-dashed border-border p-2'>
                     {candidates.length === 0 ? (
                       <DisabledReason>
-                        候选人列表是空的（GET /admin/users 的第一页没返回、或本账号没有 user.ban 读不了它）——
-                        后端没有「按 handle 搜用户」的轻量读口，所以先去用户管理搜到那个人，再回来任命。
+                        候选人列表是空的（读取用户列表需要 user.ban）——先去用户管理搜到那个人，再回来任命。
                       </DisabledReason>
                     ) : (
                       <Select
                         type={SelectType.INPUT}
-                        label='用户（GET /admin/users 第一页；要更精确先去用户管理里搜）'
+                        label='任命的用户（列表第一页可挑；要更精确先去用户管理里搜）'
                         data={[{ key: '', label: '（选一个人）' }, ...candidates.map((u) => ({ key: u.id, label: u.nickname + '（' + u.username + '）' }))]}
                         selected={candidates.find((u) => u.id === grantTo) ? { key: grantTo, label: candidates.find((u) => u.id === grantTo)!.nickname } : SLUG_FALLBACK}
                         onSelect={(item) => { if (item) setGrantTo(String(item.key)); }}
@@ -447,7 +490,7 @@ export function BoardsScreen({
                       value={grantUntil}
                       onChange={(e) => setGrantUntil(e.target.value)}
                       placeholder='2026-12-31'
-                      help='给日期就按当天 23:59:59 UTC 算；给了必须是将来（过去的时间等于任命完立刻卸任，后端 400）'
+                      help='填日期按当天结束时刻生效；必须是将来的日期。'
                     />
                     <div className='flex items-center justify-end gap-2'>
                       <Button onClick={() => setGrantOpen(false)}>取消</Button>
@@ -459,7 +502,7 @@ export function BoardsScreen({
                 ) : null}
               </Panel>
 
-              <Panel title='危险动作' note='归档写一条 board.update 审计，可逆；后端没有删除分区端点，所以这里不画删除'>
+              <Panel title='危险动作' note='归档可以撤销；分区暂不支持删除'>
                 <div className='flex flex-wrap items-center gap-2'>
                   {archived ? (
                     <Button inline={false} height={ControlsHeight.S} disabled={!canManage || busy} onClick={() => setPending('unarchive')}>取消归档（改回 active）</Button>
@@ -470,8 +513,8 @@ export function BoardsScreen({
                   )}
                 </div>
                 <p className='mt-2 mb-0 text-[11px] leading-relaxed text-muted-foreground'>
-                  归档 = PATCH status='archived'：分区不再出现在公开列表，帖子与回复保留可读，ACL 勾选随之失效但不会被改动（取消归档就恢复）。
-                  删除分区这一轮没有端点（§21.2 只列了建 / 改 / 重排）——要删得先在后端想清楚「帖子归谁」，界面不假装能删。
+                  归档后分区不再出现在公开列表，帖子与回复保留可读；名单勾选原样保留，取消归档即恢复。
+                  分区暂不支持删除。
                 </p>
               </Panel>
             </>

@@ -19,7 +19,13 @@ import type {
   AdminACLItem,
   AdminBoard,
 } from '@/lib/api/admin';
+import type { AdminGroupACLItem } from '@/lib/api/groups';
 import { isApiError } from '@/lib/api/errors';
+import {
+  fetchBoardGroupAcl,
+  fetchGroups,
+  replaceBoardGroupAcl,
+} from '@/lib/api/groups';
 import { can, useSession } from '@/lib/perms';
 import { errorLine } from './_shared';
 import { BoardsScreen, type BoardPatch } from '@/devroom/pages/15-admin/screens/boards';
@@ -49,6 +55,8 @@ export function BoardsScreenContainer() {
   const id = board?.id ?? '';
 
   const acl = useQuery({ queryKey: qk.adminBoardAcl(id), queryFn: ({ signal }) => fetchBoardAcl(id, signal), enabled: id !== '' });
+  const groupAcl = useQuery({ queryKey: qk.adminBoardGroupAcl(id), queryFn: ({ signal }) => fetchBoardGroupAcl(id, signal), enabled: id !== '' });
+  const groups = useQuery({ queryKey: qk.adminGroups(), queryFn: ({ signal }) => fetchGroups(signal) });
   const mods = useQuery({ queryKey: qk.adminBoardModerators(id), queryFn: ({ signal }) => fetchBoardModerators(id, signal), enabled: id !== '' });
   const roles = useQuery({ queryKey: qk.adminRoles(), queryFn: ({ signal }) => fetchRoles(signal) });
   // 任命版主要有 user_id（uuid），而**没有「按 handle 搜用户」的轻量读口**：只取用户列表第一页给人挑。
@@ -96,8 +104,14 @@ export function BoardsScreenContainer() {
   });
   const saveAcl = useMutation({
     mutationFn: (v: { id: string; acls: AdminACLItem[] }) => replaceBoardAcl(v.id, v.acls),
-    onSuccess: (items) => { setReceipt('矩阵已保存（全量替换：' + items.length + ' 行）'); void qc.setQueryData(qk.adminBoardAcl(id), items); },
-    onError: (e) => setReceipt('矩阵保存失败：' + (errorLine(e) ?? '')),
+    onSuccess: (items) => { setReceipt('名单已保存（全量替换：' + items.length + ' 行；超级管理员不受名单控制，其行不随矩阵保存）'); void qc.setQueryData(qk.adminBoardAcl(id), items); },
+    onError: (e) => setReceipt('名单保存失败：' + (errorLine(e) ?? '')),
+  });
+  const saveGroupAcl = useMutation({
+    // 按组名单也**全量替换**（后端少给一行就真删掉）：屏上把整张草稿发上来。
+    mutationFn: (v: { id: string; acls: AdminGroupACLItem[] }) => replaceBoardGroupAcl(v.id, v.acls),
+    onSuccess: (items) => { setReceipt('按组名单已保存（全量替换：' + items.length + ' 行）'); void qc.setQueryData(qk.adminBoardGroupAcl(id), items); },
+    onError: (e) => setReceipt('按组名单保存失败：' + (errorLine(e) ?? '')),
   });
   const grant = useMutation({
     mutationFn: (v: { id: string; userId: string; until: string }) => grantBoardModerator(v.id, v.userId, v.until),
@@ -135,6 +149,11 @@ export function BoardsScreenContainer() {
       aclLoading={acl.isPending && id !== ''}
       onAclSave={(acls) => { if (board) saveAcl.mutate({ id: board.id, acls }); }}
       aclSaving={saveAcl.isPending}
+      groups={groups.data ?? []}
+      groupAcl={groupAcl.data ?? []}
+      groupAclLoading={groupAcl.isPending && id !== ''}
+      onGroupAclSave={(acls) => { if (board) saveGroupAcl.mutate({ id: board.id, acls }); }}
+      groupAclSaving={saveGroupAcl.isPending}
       moderators={mods.data ?? []}
       candidates={(users.data?.items ?? []).map((u) => ({ id: u.id, username: u.username, nickname: u.nickname }))}
       // expires_at 是 RFC3339：屏上给的是日期，这里补成当天 23:59:59Z（空 = 永久）

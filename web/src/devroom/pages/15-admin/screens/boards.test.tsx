@@ -39,6 +39,9 @@ function renderScreen(onSave: (patch: Partial<BoardPatch>) => void, board: Admin
       roles={[]}
       acl={[]}
       onAclSave={() => {}}
+      groups={[]}
+      groupAcl={[]}
+      onGroupAclSave={() => {}}
       moderators={[]}
       candidates={[]}
       onGrantModerator={() => {}}

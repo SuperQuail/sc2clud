@@ -4,10 +4,11 @@ import { CURRENT_ADMIN } from './mock/perms';
 import { DEMO_AI_CONFIG, DEMO_AI_PAYLOAD, DEMO_AI_TEST, DEMO_PERMISSIONS, DEMO_ANNOUNCEMENTS, DEMO_AUDIT, DEMO_BANNERS, DEMO_DOMAINS, DEMO_DONATIONS, DEMO_DONATION_STATS, DEMO_MAIL, DEMO_MAIL_TPL, DEMO_MAILTPL_BUILTIN, DEMO_MAILTPL_PREVIEW, DEMO_NOTICE_DEFAULTS, DEMO_REPORTS, DEMO_REVIEW, DEMO_ROLES, DEMO_SETTINGS, DEMO_TITLES, DEMO_USER_DETAIL, DEMO_USERS } from './mock/fixtures';
 import { AdminShell, type AdminSelf } from './shell';
 import { SCREEN_KEYS, type ScreenKey } from './nav';
-import { ADMIN_ACLS, ADMIN_BOARDS, DIAGNOSTICS_ROOM } from './room-data';
+import { ADMIN_ACLS, ADMIN_BOARDS, ADMIN_GROUP_ACLS, DEMO_GROUPS, DIAGNOSTICS_ROOM } from './room-data';
 import { AiReviewScreen } from './screens/ai-review';
 import { AuditScreen, type AuditFilter } from './screens/audit';
 import { BoardsScreen, type BoardPatch } from './screens/boards';
+import { GroupsScreen, type GroupsScreenProps } from './screens/groups';
 import { DiagnosticsScreen } from './screens/diagnostics';
 import { MailScreen } from './screens/mail';
 import { MailTemplateScreen } from './screens/mail-tpl';
@@ -30,6 +31,7 @@ import { UsersScreen, type UsersCounts, type UsersFilter } from './screens/users
 const SCREENS: Record<ScreenKey, () => React.ReactNode> = {
   users: () => <UsersRoom />,
   roles: () => <RolesRoom />,
+  groups: () => <GroupsRoom />,
   boards: () => <BoardsRoom />,
   review: () => <ReviewRoom />,
   reports: () => <ReportsRoom />,
@@ -67,7 +69,10 @@ function BoardsRoom() {
       onMove={(next) => { setBoards((prev) => next.map((x) => prev.find((b) => b.id === x)!)); say('顺序已保存（' + next.length + ' 个分区，全量顺序）'); }}
       roles={DEMO_ROLES}
       acl={ADMIN_ACLS[id] ?? []}
-      onAclSave={(acls) => say('矩阵已保存（全量替换：' + acls.length + ' 行）')}
+      onAclSave={(acls) => say('名单已保存（全量替换：' + acls.length + ' 行）')}
+      groups={DEMO_GROUPS}
+      groupAcl={ADMIN_GROUP_ACLS[id] ?? []}
+      onGroupAclSave={(acls) => say('按组名单已保存（全量替换：' + acls.length + ' 行）')}
       moderators={board ? board.moderators.map((m, i) => ({ ...m, grown_at: i === board.moderators.length - 1 && board.moderators.length > 1 ? '2026-08-01T00:00:00Z' : null })) : []}
       candidates={DEMO_USERS.slice(0, 6).map((u) => ({ id: u.id, username: u.username, nickname: u.nickname }))}
       onGrantModerator={(userId) => say('任命 ' + userId + ' 为版主')}
@@ -75,6 +80,54 @@ function BoardsRoom() {
       onCreate={(b) => { say('新建分区 /' + b.slug + '（slug 建后不可改）'); setBoards((prev) => [...prev, { ...ADMIN_BOARDS[0]!, id: 'b-new', slug: b.slug, name: b.name, description: b.description, topic_count: 0, post_count: 0, today_count: 0, moderators: [] }]); }}
       onSetStatus={(status, reason) => { setBoards((prev) => prev.map((b) => (b.id === id ? { ...b, status } : b))); say('状态改成 ' + status + (reason ? '（说明：' + reason + '）' : '')); }}
       canManage
+      receipt={receipt ? <p className='text-[12px] text-muted-foreground'>{receipt}</p> : null}
+    />
+  );
+}
+
+/** 用户组屏的房间版（D38）：目录来自 ./room-data 的演示组，动作只留一条回执（房间不发请求）。 */
+function GroupsRoom() {
+  const [groups, setGroups] = useState<GroupsScreenProps['groups']>(DEMO_GROUPS);
+  const [groupId, setGroupId] = useState<string | null>(DEMO_GROUPS[0]?.id ?? null);
+  const [members, setMembers] = useState<GroupsScreenProps['members']>([
+    { user_id: 'u1', handle: 'demo-admin', nickname: '示范管理员', added_at: '2026-09-01T02:00:00Z' },
+    { user_id: 'u6', handle: 'demo-lead', nickname: '地图工坊主', added_at: '2026-09-14T02:00:00Z' },
+  ]);
+  const [receipt, setReceipt] = useState<string | null>(null);
+  const say = (msg: string) => setReceipt('（房间演示：这里不发请求）' + msg);
+  return (
+    <GroupsScreen
+      key={groupId}
+      groups={groups}
+      groupId={groupId}
+      onSelect={(next) => { setGroupId(next); setReceipt(null); }}
+      onCreate={(b) => {
+        const g = { id: 'g-new-' + (groups.length + 1), key: b.key, name: b.name, description: b.description, member_count: 0, created_at: '2026-10-15T04:00:00Z', updated_at: '2026-10-15T04:00:00Z' };
+        setGroups((prev) => [...prev, g]);
+        setGroupId(g.id);
+        say('已建组「' + b.name + '」（key=' + b.key + '，建后不可改）');
+      }}
+      onSave={(gid, patch) => {
+        setGroups((prev) => prev.map((g) => (g.id === gid ? { ...g, ...patch } : g)));
+        say('已保存组资料（' + Object.keys(patch).join('、') + '）');
+      }}
+      onDelete={(gid) => {
+        setGroups((prev) => prev.filter((g) => g.id !== gid));
+        say('已删除该组（成员与按组授权行同时清空）');
+      }}
+      members={members}
+      candidates={DEMO_USERS.slice(0, 6).map((u) => ({ id: u.id, username: u.username, nickname: u.nickname }))}
+      onAddMember={(userId) => {
+        const u = DEMO_USERS.find((x) => x.id === userId);
+        if (u) setMembers((prev) => [{ user_id: u.id, handle: u.username, nickname: u.nickname, added_at: '2026-10-15T04:00:00Z' }, ...prev]);
+        say('已拉「' + (u?.nickname ?? userId) + '」入组（判定当场生效）');
+      }}
+      onRemoveMember={(userId) => {
+        setMembers((prev) => prev.filter((m) => m.user_id !== userId));
+        say('已移出该成员（按组授予的资格立刻失效）');
+      }}
+      canManage
+
       receipt={receipt ? <p className='text-[12px] text-muted-foreground'>{receipt}</p> : null}
     />
   );

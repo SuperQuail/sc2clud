@@ -9,6 +9,7 @@ import { can, useSession } from '@/lib/perms';
 import { AiReviewScreenContainer } from './admin/ai';
 import { AuditScreenContainer } from './admin/audit';
 import { BoardsScreenContainer } from './admin/boards';
+import { GroupsScreenContainer } from './admin/groups';
 import { DiagnosticsScreenContainer } from './admin/diagnostics';
 import { MailScreenContainer } from './admin/mail';
 import { MailTemplateScreenContainer } from './admin/mail-tpl';
@@ -36,6 +37,7 @@ import { Empty, ErrorState, Loading } from './_parts/state';
 const PERM_BY_SCREEN: Record<ScreenKey, string> = {
   users: 'user.ban',
   roles: 'role.edit',
+  groups: 'user.ban',
   boards: 'board.manage',
   review: 'post.review',
   reports: 'report.handle',
@@ -58,6 +60,7 @@ type AnyScreen = ComponentType<Record<string, never>>;
 const SCREEN_COMPONENT: Record<ScreenKey, AnyScreen> = {
   users: UsersScreenContainer,
   roles: RolesScreenContainer,
+  groups: GroupsScreenContainer,
   boards: BoardsScreenContainer,
   review: ReviewScreenContainer,
   reports: ReportsScreenContainer,

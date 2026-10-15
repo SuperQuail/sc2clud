@@ -1,4 +1,5 @@
 import type { AdminACLItem, AdminBoard, Diagnostics } from '@/lib/api/admin';
+import type { AdminGroup, AdminGroupACLItem } from '@/lib/api/groups';
 import { BOARDS, BOARD_MODERATORS } from './mock';
 
 // DevRoom 15-admin **这两屏**的房间演示数据（boars / diagnostics）。
@@ -52,6 +53,28 @@ export const ADMIN_ACLS: Record<string, AdminACLItem[]> = Object.fromEntries(
       { role_id: ROLE_ID['r_admin']!, role_key: 'admin', can_post: true, can_reply: true, deny_post: false, deny_reply: false },
       { role_id: ROLE_ID['r_superadmin']!, role_key: 'superadmin', can_post: true, can_reply: true, deny_post: false, deny_reply: false },
     ],
+  ]),
+);
+
+// ── 用户组（D38）房间的演示数据 ─────────────────────────────────
+// id 用与 BOARD_ID 同一套「可读假 uuid」做法；成员挂在 DEMO_USERS 上（room 只演示）。
+
+/** 组目录（GET /admin/groups 的投影）。 */
+export const DEMO_GROUPS: AdminGroup[] = [
+  { id: 'g0000000-0000-4000-8000-000000000001', key: 'va', name: '视觉组', description: '地图美工与素材作者', member_count: 2, created_at: '2026-09-01T02:00:00Z', updated_at: '2026-10-02T02:00:00Z' },
+  { id: 'g0000000-0000-4000-8000-000000000002', key: 'beta', name: '内测组', description: '提前试玩新版 HMS 的成员', member_count: 1, created_at: '2026-09-10T02:00:00Z', updated_at: '2026-10-05T02:00:00Z' },
+];
+
+/** 每分区一张按组名单（GET /admin/boards/{id}/group-acl 的投影）。缺行 = 没授。 */
+export const ADMIN_GROUP_ACLS: Record<string, AdminGroupACLItem[]> = Object.fromEntries(
+  ADMIN_BOARDS.map((b, i) => [
+    b.id,
+    i === 0
+      ? [
+          { group_id: 1, group_key: 'va', can_post: true, can_reply: true, deny_post: false, deny_reply: false },
+          { group_id: 2, group_key: 'beta', can_post: false, can_reply: true, deny_post: false, deny_reply: false },
+        ]
+      : [],
   ]),
 );
 

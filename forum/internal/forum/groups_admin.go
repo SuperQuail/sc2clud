@@ -51,9 +51,9 @@ type AdminGroupMember struct {
 	AddedAt  time.Time `json:"added_at"`
 }
 
-// AdminGroupACLItem 是分区 × 组矩阵的一格（形状照 AdminACLItem，键是组）。
+// AdminGroupACLItem 是分区 × 组矩阵的一格。行以 **group_key** 为标识（组目录给前端的是
+// key，自增 id 不出 API 拍板同款；校验/落库在 service 里照 key 做）。
 type AdminGroupACLItem struct {
-	GroupID   int64  `json:"group_id"`
 	GroupKey  string `json:"group_key"`
 	CanPost   bool   `json:"can_post"`
 	CanReply  bool   `json:"can_reply"`
@@ -379,7 +379,7 @@ func adminGroupACLItems(rows []pgsql.AdminGroupACLRow) []AdminGroupACLItem {
 	out := make([]AdminGroupACLItem, 0, len(rows))
 	for _, r := range rows {
 		out = append(out, AdminGroupACLItem{
-			GroupID: r.GroupID, GroupKey: r.GroupKey,
+			GroupKey: r.GroupKey,
 			CanPost: r.CanPost, CanReply: r.CanReply, DenyPost: r.DenyPost, DenyReply: r.DenyReply,
 		})
 	}
@@ -419,22 +419,20 @@ func (s *Service) ReplaceBoardGroupACL(ctx context.Context, actor *authz.Actor, 
 	if err := requireBoardManage(actor); err != nil {
 		return nil, err
 	}
-	seen := make(map[int64]bool, len(items))
+	keys := make([]string, 0, len(items))
+	seen := make(map[string]bool, len(items))
 	for i, it := range items {
-		if it.GroupID <= 0 {
-			return nil, invalid("acls", "第 "+itoa64(int64(i+1))+" 行没有 group_id")
+		if strings.TrimSpace(it.GroupKey) == "" {
+			return nil, invalid("acls", "第 "+itoa64(int64(i+1))+" 行没有 group_key")
 		}
-		if seen[it.GroupID] {
+		if seen[it.GroupKey] {
 			return nil, invalid("acls", "同一个组只能有一行")
 		}
-		seen[it.GroupID] = true
+		seen[it.GroupKey] = true
 		if (it.DenyPost && it.CanPost) || (it.DenyReply && it.CanReply) {
 			return nil, invalid("acls", "同一行的「允许」与「禁止」不能同时勾上")
 		}
-	}
-	ids := make([]int64, 0, len(items))
-	for _, it := range items {
-		ids = append(ids, it.GroupID)
+		keys = append(keys, it.GroupKey)
 	}
 	var out []AdminGroupACLItem
 	err := s.withTx(ctx, func(tx *ent.Tx) error {
@@ -445,9 +443,9 @@ func (s *Service) ReplaceBoardGroupACL(ctx context.Context, actor *authz.Actor, 
 		if err := pgsql.LockBoard(ctx, tx, boardID); err != nil {
 			return err
 		}
-		if n, err := pgsql.GroupsExist(ctx, tx, ids); err != nil {
+		if n, err := pgsql.GroupsExistByKey(ctx, tx, keys); err != nil {
 			return err
-		} else if n != len(ids) {
+		} else if n != len(keys) {
 			return invalid("acls", "有组不存在（可能刚被删掉），请刷新组列表")
 		}
 		before, err := s.repo.AdminGroupACL(ctx, tx, boardID, true)
@@ -457,7 +455,7 @@ func (s *Service) ReplaceBoardGroupACL(ctx context.Context, actor *authz.Actor, 
 		rows := make([]pgsql.AdminGroupACLRow, 0, len(items))
 		for _, it := range items {
 			rows = append(rows, pgsql.AdminGroupACLRow{
-				GroupID: it.GroupID, CanPost: it.CanPost, CanReply: it.CanReply,
+				GroupKey: it.GroupKey, CanPost: it.CanPost, CanReply: it.CanReply,
 				DenyPost: it.DenyPost, DenyReply: it.DenyReply,
 			})
 		}
