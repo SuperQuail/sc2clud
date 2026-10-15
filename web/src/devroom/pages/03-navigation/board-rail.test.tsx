@@ -34,13 +34,13 @@ it('有封面的分区画图，图的地址是 /img/<裸哈希>', () => {
 });
 
 it('没有封面的分区落**默认封面图**：美术资产那张弥音（不是首字色块，用户 2026-10-15 判定）', () => {
-  const { container } = render(<BoardCover slug='emperor' name='皇帝区' hash='' />);
+  const { container } = render(<BoardCover hash='' />);
   const box = container.firstElementChild as HTMLElement;
   // 旧行为：textContent === '皇'（首字 + slug 色相块）。用户原话「完全没有关联的字」。
   expect(box.textContent).toBe('');
   expect(container.querySelector('img')?.getAttribute('src')).toBe('/art/' + DEFAULT_COVER_ART);
   // 有封面时仍然走图片端点（/img/<裸哈希>），两条路不许混
-  const withCover = render(<BoardCover slug='emperor' name='皇帝区' hash='abc' />);
+  const withCover = render(<BoardCover hash='abc' />);
   expect(withCover.container.querySelector('img')?.getAttribute('src')).toBe('/img/abc');
 });
 
