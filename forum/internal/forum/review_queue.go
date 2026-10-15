@@ -97,19 +97,19 @@ type ReviewQueueInput struct {
 // 与 TopicCardDTO 分开：队列要的是「审核相关的列」（AI 说了什么、谁判的），
 // 而卡片要的是「读者看的列」（回复数、封面）。硬把两者合成一个 DTO 会让两边都长出没人用的字段。
 type ReviewQueueItemDTO struct {
-	ID          string       `json:"id"`
-	Board       BoardRefDTO  `json:"board"`
-	Author      UserBriefDTO `json:"author"`
-	Kind        string       `json:"kind"`
-	Title       string       `json:"title"`
-	Excerpt     string       `json:"excerpt"`
+	ID      string       `json:"id"`
+	Board   BoardRefDTO  `json:"board"`
+	Author  UserBriefDTO `json:"author"`
+	Kind    string       `json:"kind"`
+	Title   string       `json:"title"`
+	Excerpt string       `json:"excerpt"`
 	// BodyMD 是 1 楼正文全文（Markdown 源，D25①）：审核员要能就地读到被审内容 ——
 	// 标题、正文、作者、来源四样齐了才叫「预览」。**只读文本**：图片字节不上行，也不在这里下发，
 	// 正文里的 `![alt](/img/<hash>)` 是模型与你唯一能看到「这里有图」的地方（见 aireview 的实测用例）。
 	BodyMD string `json:"body_md"`
-	// BodyTruncated 为 true = 正文超过 maxReviewBody 被截断，屏幕必须说出来（不能说半句当全文）。
-	BodyTruncated bool `json:"body_truncated"`
-	ReviewState string       `json:"review_state"`
+	// BodyTruncated 为 true = 正文超过 MaxTopicContent 被截断，屏幕必须说出来（不能说半句当全文）。
+	BodyTruncated bool   `json:"body_truncated"`
+	ReviewState   string `json:"review_state"`
 	// ReviewNote 是当前生效的那条理由：AI 判的与人工写的都落在这一列（谁写的看 review_source）。
 	// 没有第三列可读 —— topics 表从来就没有 ai_review_note。
 	ReviewNote   *string `json:"review_note"`

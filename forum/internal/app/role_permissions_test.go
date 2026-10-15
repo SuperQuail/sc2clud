@@ -51,7 +51,7 @@ func TestMigratedRolePermissionMatrixMatchesSpec(t *testing.T) {
 		rewardVerify, "mail.manage", "site.setting", "audit.view", "audit.export",
 	}
 	want := map[string][]string{
-		"user": {topicCreate, topicEditOwn, topicDelOwn},
+		"user":    {topicCreate, topicEditOwn, topicDelOwn},
 		"creator": {topicCreate, topicEditOwn, topicDelOwn, topicPin, topicMove, topicLock, resPublish},
 		"admin": {
 			topicCreate, topicEditOwn, topicDelOwn, topicPin, resPublish, topicMove, topicLock, topicDelAny,
