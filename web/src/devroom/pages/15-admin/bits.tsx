@@ -41,14 +41,15 @@ export function Panel({ title, note, actions, children, className, 'data-testid'
   );
 }
 
-export function Stat({ label, value, hint, tone = 'neutral' }: {
+export function Stat({ label, value, hint, tone = 'neutral', 'data-testid': testId }: {
   label: string;
   value: ReactNode;
   hint?: string;
   tone?: 'neutral' | 'info' | 'danger';
+  'data-testid'?: string;
 }) {
   return (
-    <div className='min-w-[104px] flex-1 rounded-md border border-border bg-card px-3 py-2'>
+    <div data-testid={testId} className='min-w-[104px] flex-1 rounded-md border border-border bg-card px-3 py-2'>
       <div className='text-[11px] text-muted-foreground'>{label}</div>
       <div className={cn('text-[17px] leading-tight font-semibold',
         tone === 'info' && 'text-primary',

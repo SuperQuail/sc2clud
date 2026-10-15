@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { CURRENT_ADMIN } from './mock/perms';
-import { DEMO_AI_CONFIG, DEMO_AI_TEST, DEMO_PERMISSIONS, DEMO_ANNOUNCEMENTS, DEMO_AUDIT, DEMO_BANNERS, DEMO_DOMAINS, DEMO_DONATIONS, DEMO_DONATION_STATS, DEMO_MAIL, DEMO_NOTICE_DEFAULTS, DEMO_REPORTS, DEMO_REVIEW, DEMO_ROLES, DEMO_SETTINGS, DEMO_TITLES, DEMO_USER_DETAIL, DEMO_USERS } from './mock/fixtures';
+import { DEMO_AI_CONFIG, DEMO_AI_PAYLOAD, DEMO_AI_TEST, DEMO_PERMISSIONS, DEMO_ANNOUNCEMENTS, DEMO_AUDIT, DEMO_BANNERS, DEMO_DOMAINS, DEMO_DONATIONS, DEMO_DONATION_STATS, DEMO_MAIL, DEMO_NOTICE_DEFAULTS, DEMO_REPORTS, DEMO_REVIEW, DEMO_ROLES, DEMO_SETTINGS, DEMO_TITLES, DEMO_USER_DETAIL, DEMO_USERS } from './mock/fixtures';
 import { AdminShell, type AdminSelf } from './shell';
 import { SCREEN_KEYS, type ScreenKey } from './nav';
 import { ADMIN_ACLS, ADMIN_BOARDS, DIAGNOSTICS_ROOM } from './room-data';
@@ -15,7 +15,7 @@ import { RewardsScreen, type RewardsFilter } from './screens/rewards';
 import { RolesScreen } from './screens/roles';
 import { SettingsScreen } from './screens/settings';
 import { TitlesScreen } from './screens/titles';
-import { UsersScreen, type UsersFilter } from './screens/users';
+import { UsersScreen, type UsersCounts, type UsersFilter } from './screens/users';
 
 // DevRoom 15 · 管理后台（对照老站 13.1–13.15 与后端 §9.8 / §20.4 D6 / §21.2）。
 // 对照表在 ./admin-map.md。
@@ -82,15 +82,23 @@ function DiagnosticsRoom() {
   return <DiagnosticsScreen data={DIAGNOSTICS_ROOM} canSetting />;
 }
 
-/** AI 审核屏的房间版。 */
+/** AI 审核屏的房间版。
+ *  **payload 预览在房间里是静态的**：真站那两块由 POST /admin/ai/payload 组装（dry-run 不外呼），
+ *  房间没有后端，所以给一份「那条端点会回什么」的投影（DEMO_AI_PAYLOAD）—— 与真站渲染**同一个组件**。
+ *  样例编辑器在房间里照常可改（受控 state），只是预览不会跟着重算：房里的预览不是服务端算的那一份。 */
 function AiRoom() {
   const [cfg, setCfg] = useState(DEMO_AI_CONFIG);
   const [test, setTest] = useState(DEMO_AI_TEST);
+  const [probe, setProbe] = useState(DEMO_AI_CONFIG.probe_sample);
   const [receipt, setReceipt] = useState<string | null>(null);
   return (
     <AiReviewScreen
       config={cfg}
       canSetting
+      probe={probe}
+      defaultProbe={DEMO_AI_CONFIG.probe_sample}
+      onProbeChange={(next) => { setProbe(next); setReceipt('（房间演示：这里不发请求）样例已临时改动，只影响这一次测试'); }}
+      payload={DEMO_AI_PAYLOAD}
       onPatch={(p) => { setCfg((c) => ({ ...c, ...p })); setReceipt('（房间演示：这里不发请求）已保存 ' + Object.keys(p).join('、')); }}
       onSaveSecret={() => { setCfg((c) => ({ ...c, has_secret: true, secret_updated_at: new Date().toISOString() })); setReceipt('（房间演示：这里不发请求）密钥已保存（只写不回显）'); }}
       onTest={() => { setTest(DEMO_AI_TEST); setReceipt(null); }}
@@ -269,16 +277,44 @@ function UsersRoom() {
   const [filter, setFilter] = useState<UsersFilter>({ q: '', status: 'all', role: 'all' });
   const [activeId, setActiveId] = useState<string | null>(null);
   const [receipt, setReceipt] = useState<string | null>(null);
+  // 翻页在房间里也要真的换数据：**切本页那 20 行**（真站是换游标去取下一页，见 routes/admin/users.tsx）。
+  // 这里不假装「共 N 人」是服务端给的 —— 房间的 counts 就是本地的演示数，数出来的与本页同源。
+  const [page, setPage] = useState(1);
   const say = (msg: string) => setReceipt('（房间演示：这里不发请求）' + msg);
+  // 房间的演示数据只有 6 个人，用 4 条一页才看得到翻页（真站是 20，见 lib/api/paging.ts 的 PAGE_LIMIT）
+  const roomSize = 4;
+  // 筛选在房间里要真的筛：真站在服务端筛（?q=&status=&role=），房间只有这一份数据。
+  // 三根轴的口径照 auth/pgsql/admin_users.go：status / activated_at / email_verified_at **不合并**。
+  const q = filter.q.trim().toLowerCase();
+  const hit = DEMO_USERS.filter((u) =>
+    (!q || [u.username, u.nickname, u.email].some((v) => v.toLowerCase().includes(q)))
+    && (filter.status === 'all'
+      || (filter.status === 'banned' && u.status === 'banned')
+      || (filter.status === 'normal' && u.status !== 'banned' && u.activated_at !== null)
+      || (filter.status === 'pending_act' && u.activated_at === null)
+      || (filter.status === 'unverified' && u.email_verified_at === null))
+    && (filter.role === 'all' || u.role.key === filter.role));
+  const counts: UsersCounts = {
+    total: hit.length,
+    banned: hit.filter((u) => u.status === 'banned').length,
+    pending_activation: hit.filter((u) => !u.activated_at).length,
+    email_unverified: hit.filter((u) => !u.email_verified_at).length,
+  };
+  const pages = Math.max(1, Math.ceil(counts.total / roomSize));
+  const shown = hit.slice((page - 1) * roomSize, page * roomSize);
   return (
     <UsersScreen
-      users={DEMO_USERS}
+      users={shown}
       // 房间里的「详情」就是本地的三张表（真站那一份由 GET /admin/users/{id} 给，见 routes/admin/users.tsx）
       detail={activeId ? DEMO_USER_DETAIL[activeId] ?? null : null}
       onSelect={setActiveId}
-      total={DEMO_USERS.length}
+      counts={counts}
+      page={page}
+      canNext={page < pages}
+      onPage={setPage}
+      size={roomSize}
       filter={filter}
-      onFilterChange={setFilter}
+      onFilterChange={(f) => { setFilter(f); setPage(1); }}
       roles={DEMO_ROLES}
       titles={DEMO_TITLES}
       canBan={can('user.ban')}

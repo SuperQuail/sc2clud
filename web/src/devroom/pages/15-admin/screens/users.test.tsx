@@ -1,11 +1,15 @@
 import { fireEvent, render, screen } from '@testing-library/react';
 import { expect, it, vi } from 'vitest';
-import { UsersScreen, type UsersFilter } from './users';
+import { UsersScreen, type UsersFilter, type UsersCounts } from './users';
 import type { AdminUser, AdminUserDetail, Role, Title } from '@/lib/api/admin';
 
 // D29 的手工激活：站点关掉自动激活后，管理员这一屏是**唯一**的激活入口。
 // 旧行为下这条断言必红：这一屏只有「停用 / 解封」，没有任何办法把一个人的 activated_at 点亮，
 // 于是「等管理员激活」这条路在界面上根本走不到底。
+//
+// FIX-USERS：这一屏同时要回答「一共多少人、共几页」并让翻页真的发请求。
+// 旧行为下前三条断言必红 —— 屏上只有「本页用户 = users.length」，页码是本地 state 自己加一，
+// 点了「下一页」既不换数据也没人知道该去取第几页。
 
 function user(over: Partial<AdminUser>): AdminUser {
   return {
@@ -20,15 +24,21 @@ function user(over: Partial<AdminUser>): AdminUser {
 
 const detail = (u: AdminUser): AdminUserDetail => ({ ...u, sanctions: [], user_permissions: [], user_titles: [] });
 
-function renderScreen(u: AdminUser) {
+const COUNTS: UsersCounts = { total: 137, banned: 4, pending_activation: 9, email_unverified: 12 };
+
+function renderScreen(u: AdminUser, over: { page?: number; canNext?: boolean; onPage?: (p: number) => void } = {}) {
   const onActivate = vi.fn();
+  const onPage = over.onPage ?? vi.fn();
   const filter: UsersFilter = { q: '', status: 'all', role: 'all' };
   render(
     <UsersScreen
       users={[u]}
       detail={detail(u)}
       onSelect={() => {}}
-      total={1}
+      counts={COUNTS}
+      page={over.page ?? 1}
+      canNext={over.canNext ?? true}
+      onPage={onPage}
       filter={filter}
       onFilterChange={() => {}}
       roles={[] as Role[]}
@@ -43,7 +53,7 @@ function renderScreen(u: AdminUser) {
       onGrantTitle={() => {}}
     />,
   );
-  return { onActivate };
+  return { onActivate, onPage };
 }
 
 it('未激活账号有「激活账号」，点了走 onActivate（只写 activated_at）', () => {
@@ -61,4 +71,42 @@ it('未激活账号有「激活账号」，点了走 onActivate（只写 activat
 it('已激活的账号没有那颗按钮（激活是单向的，不是开关）', () => {
   renderScreen(user({ activated_at: '2026-10-14T12:00:00Z' }));
   expect(screen.queryByRole('button', { name: /激活账号/ })).toBeNull();
+});
+
+it('第一格显示的是总人数（不是本页条数），并给出共几页', () => {
+  renderScreen(user({}));
+  // 137 人 / 每页 20 → 7 页；137 必须是服务端给的整个筛选结果集
+  expect(screen.getByTestId('users-page-info').textContent).toContain('共 137 人');
+  expect(screen.getByTestId('users-page-info').textContent).toContain('第 1 / 7 页');
+});
+
+it('三根轴的计数也显示全量（不是本页数）', () => {
+  renderScreen(user({}));
+  expect(screen.getByTestId('users-stat-banned').textContent).toContain('4');
+  expect(screen.getByTestId('users-stat-pending').textContent).toContain('9');
+  expect(screen.getByTestId('users-stat-unverified').textContent).toContain('12');
+});
+
+it('点「下一页」把页码交给宿主（页码只由宿主改，屏里不自己 +1）', () => {
+  const { onPage } = renderScreen(user({}), { page: 1, canNext: true });
+  fireEvent.click(screen.getByRole('button', { name: '下一页' }));
+  expect(onPage).toHaveBeenCalledWith(2);
+});
+
+it('第一页「上一页」禁用；没有下一页时「下一页」禁用（游标栈到底）', () => {
+  renderScreen(user({}), { page: 1, canNext: false });
+  expect(screen.getByRole('button', { name: '上一页' }).hasAttribute('disabled')).toBe(true);
+  expect(screen.getByRole('button', { name: '下一页' }).hasAttribute('disabled')).toBe(true);
+});
+
+it('跳到某一页也交给宿主（游标栈只支持已经到过的下一页，超范围就地拒绝）', () => {
+  const { onPage } = renderScreen(user({}), { page: 2, canNext: true });
+  const box = screen.getByRole('textbox', { name: /跳页/ });
+  fireEvent.change(box, { target: { value: '3' } });
+  fireEvent.keyDown(box, { key: 'Enter' });
+  expect(onPage).toHaveBeenCalledWith(3);
+  // 越界（99 页）不发请求
+  fireEvent.change(box, { target: { value: '99' } });
+  fireEvent.keyDown(box, { key: 'Enter' });
+  expect(onPage).toHaveBeenCalledTimes(1);
 });

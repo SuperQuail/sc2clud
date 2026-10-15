@@ -11,7 +11,8 @@ import { Username } from '@/ui/user/username';
 import { RoleBadge } from '@/ui/user/role-badge';
 import { TitleBadge } from '@/ui/user/title-badge';
 import type { AdminUser, AdminUserDetail, Role, Title } from '@/lib/api/admin';
-import { DataTable, TableFooter, type Sort } from '../data-table';
+import { DataTable, type Sort } from '../data-table';
+import { PAGE_SIZE, UsersFooter } from './users-footer';
 import { ConfirmDialog, DangerAction } from '../confirm';
 import { DisabledReason, GateNote, KV, Numbers, Panel, Pill, ScreenHead, Stat, StatRow, Toolbar } from '../bits';
 
@@ -39,6 +40,9 @@ const STATUS_OPTIONS: { key: StatusFilter; label: string }[] = [
 /** 三个筛选一起送后端（?q=&status=&role=）—— 过滤在服务端做，前端不拿全表筛。 */
 export type UsersFilter = { q: string; status: StatusFilter; role: string };
 
+/** 整个筛选结果集的四个数（后端 v2 包络的 counts）。字段名照 auth 的 AdminUsersCountsDTO 抄。 */
+export type UsersCounts = { total: number; banned: number; pending_activation: number; email_unverified: number };
+
 export type UsersScreenProps = {
   users: AdminUser[];
   /** 选中那一行的详情（GET /admin/users/{id}）：三张关联表只有它有。没选中或还没到就是 null */
@@ -46,8 +50,17 @@ export type UsersScreenProps = {
   detailLoading?: boolean;
   /** 点一行 → 宿主去取详情（右栏的三张表要它） */
   onSelect: (id: string) => void;
-  /** 后端游标分页的累计条数（宿主给；拿不到就传 users.length） */
-  total: number;
+  /** 整个筛选结果集的计数（v2 包络的 counts）：总数与三根状态轴，**不是本页条数**。
+   *  为什么必须是服务端给的：本页只有 20 行，数本页会同时出现「共 137 人」和「本页已封禁 0」。 */
+  counts: UsersCounts;
+  /** 当前页码（1 起）。页码**只由宿主改**——屏里自己 +1 就会与游标对不上（旧版就是这么坏的） */
+  page: number;
+  /** 游标栈里还有没有下一页：没有就禁用「下一页」 */
+  canNext: boolean;
+  /** 翻页请求（上一页/下一页/跳页都走它；跳页只允许 <= 已经到过的下一页） */
+  onPage: (page: number) => void;
+  /** 每页条数（= 请求里的 limit）。默认 20，与 lib/api/paging.ts 的 PAGE_LIMIT 一致 */
+  size?: number;
   loading?: boolean;
   /** 取不到时的错误（宿主把 useQuery 的 error 原样传下来；屏里如实显示，不假装成功） */
   error?: { message: string; status: number } | null;
@@ -74,7 +87,9 @@ export type UsersScreenProps = {
 };
 
 export function UsersScreen({
-  users, detail, detailLoading = false, onSelect, total, loading = false, error = null, filter, onFilterChange,
+  users, detail, detailLoading = false, onSelect, counts, page, canNext, onPage,
+  size = PAGE_SIZE,
+  loading = false, error = null, filter, onFilterChange,
   roles, titles, canBan, canAssignRole, canGrantTitle,
   onBan, onActivate, onRevokeSessions, onSetRole, onGrantTitle, receipt,
 }: UsersScreenProps) {
@@ -87,8 +102,6 @@ export function UsersScreen({
   const [pending, setPending] = useState<{ kind: 'ban' | 'unban' | 'activate'; ids: string[] } | null>(null);
   const [grantTo, setGrantTo] = useState<string | null>(null);
   const [roleTo, setRoleTo] = useState<string | null>(null);
-  const [page, setPage] = useState(1);
-  const [size, setSize] = useState(20);
 
   // 详情接口那一份优先（它多三张表）；回退到列表项只在「详情还没到」的空档里用
   const activeUser: AdminUserDetail | AdminUser | null = detail ?? null;
@@ -168,12 +181,19 @@ export function UsersScreen({
         actions={<Button inline={false} height={ControlsHeight.S} icon={icon16(Search)} onClick={() => onFilterChange({ ...filter, q: '' })}>重置筛选</Button>}
       />
 
+      {/* 四格都是**整个筛选结果集**的数（后端 v2 的 counts）：换成筛选条件时它们跟着变。
+          本页的分布不在这里数 —— 那会与「共 N 人」并排出现两个口径的数。 */}
       <StatRow>
-        <Stat label='本页用户' value={total} hint='后端游标分页不给总数（只有 next_cursor），所以这里只数本页' />
-        <Stat label='本页已封禁' value={users.filter((u) => u.status === 'banned').length} tone='danger' />
-        <Stat label='本页待激活' value={users.filter((u) => !u.activated_at).length} hint='可读不可写（activated_at）' />
-        <Stat label='本页邮箱未验证' value={users.filter((u) => !u.email_verified_at).length} hint='不能登录' />
-        <Stat label='已选' value={selected.length} tone={selected.length ? 'info' : 'neutral'} hint='批量操作的对象' />
+        <Stat
+          label='总人数'
+          value={counts.total}
+          tone={counts.total > 0 ? 'info' : 'neutral'}
+          hint='当前筛选条件下的全部用户（不是本页条数）'
+          data-testid='users-stat-total'
+        />
+        <Stat label='已封禁' value={counts.banned} tone={counts.banned > 0 ? 'danger' : 'neutral'} hint='status = banned，全量口径' data-testid='users-stat-banned' />
+        <Stat label='待激活' value={counts.pending_activation} hint='activated_at 为空（可读不可写），全量口径' data-testid='users-stat-pending' />
+        <Stat label='邮箱未验证' value={counts.email_unverified} hint='email_verified_at 为空（不能登录），全量口径' data-testid='users-stat-unverified' />
       </StatRow>
 
       {!canAssignRole ? (
@@ -242,7 +262,7 @@ export function UsersScreen({
             minWidth={604}
             empty='没有符合条件的用户'
           />
-          <TableFooter total={total} page={page} size={size} onPage={setPage} onSize={setSize} />
+          <UsersFooter counts={counts} page={page} canNext={canNext} onPage={onPage} size={size} />
         </div>
 
         <div className='flex flex-col gap-2'>
