@@ -96,6 +96,30 @@ model / max_output_tokens / strict_mode / tool_name / categories
     **我不去抢这两个文件** —— 抢了就是把它的在途工作冲掉。我这一包的交付边界就落在后端，
     前端那半由它完成；冲突点记在这里，Lead 若要我做请说一声（我按它那一刻的版本增量改）。
 
+## 收口（2026-10-15 10:12，本包交付完成）
+
+四个 commit，按顺序：
+| commit | 内容 |
+|---|---|
+| `bbbd5af` | `platform/ai`：有图 = content 块数组，无图 = 与从前逐字同形 |
+| `f012d1c` | 取图 / 上限 4 张·2 MiB（截断计数）/ 读图失败转人工 / 迁移 0053 留痕 / `/admin/ai/test` 带帖试跑 / app 接线 / 旧断言翻两条 |
+| `33696c6` | 线上形状硬证据（真外呼 + 假上游抓请求体）+ `topic_public_id` 寻址 |
+| `a73129d` | 前端增量：`ai-payload.tsx` 两处 `**粗体**` 改 `<b>`（出图看出来的）+ 本文件 |
+
+**验证（可复跑）**
+- `forum`：`go test ./... -count=1` → 36 个包 ok / 0 FAIL（在 `f012d1c` 上跑的）；
+  之后改过 handler/service/dto/sql/errors 的包再跑一次 `go test ./internal/aireview/ ./internal/app/ -count=1`
+  → `ok aireview 21.985s` / `ok app 14.283s`。`gofmt -l .` 空、`go vet ./...` 干净。
+- `web`：`pnpm typecheck` 绿；**`pnpm lint` 与 `npx vitest run` 当前是红的，但两条都不是本包的改动**：
+  · lint 唯一 error = `web/src/preview/admin-fixtures.ts:10 'rawContent' is defined but never used`（别人的在途文件）；
+  · vitest 3 条 = `src/routes/admin/ai.test.tsx` 的「连通测试按钮没挂上来」—— `routes/admin/ai.tsx` 正在被
+    FIX-AI2 改（那一屏在途），旧用例还没跟上。**这一条要盯着**：AI 屏改造完必须让这三条转绿。
+
+**没有下一步**。留给接手者的两句话：
+① 前端渲染那半（`ai-payload.tsx` / `ai-review.tsx` / `review.tsx` / `routes/admin/ai.tsx`）是 FIX-AI2 的在途工作，
+   我按你的更正只做了验证 + 一处定点修补；
+② 真 key 打真上游的「跑一次」是 dev 实例上的验收动作，本机没有 key，这条只能用假上游的线上形状用例证明。
+
 ## 两处必须写清的取舍
 
 1. **data URL 而不是公网 URL**：官方另一条路要求图片「60 秒内能被服务端取回」的**公网地址**，
