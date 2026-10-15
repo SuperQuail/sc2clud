@@ -50,8 +50,12 @@ func scanPost(rows *sql.Rows, p *PostRow, extra ...any) error {
 // 排序键是 p.id 而不是 created_at：id 是 identity，与 created_at 同序，但它是单列——
 // 游标只装一个整数；而 created_at 由 now() 写入，同一毫秒内两条回复会出现真并列（identity 不会）。
 //
-// 可见性：楼层跟随主题，没有第二根轴；例外是作者本人能看见自己被隐藏 / 软删的楼层
-// （他自己得知道自己删了什么）。主题本身不可见时本端点整条拒绝，不在这里再判一次主题状态。
+// 可见性：楼层跟随主题，没有第二根轴。**对所有人一个口径**：非 normal 的楼层谁都不列。
+// 这里曾有过一个作者例外（p.author_id = viewer 能看到自己被隐藏/软删的楼）——D64（2026-10-15
+// 用户实测「删除的评论用户侧仍显示」）把它摘了：PostDTO 不下发 visibility，作者例外在界面上
+// 就是「自己删的回复照普通评论渲染回来」，删了等于没删。想精确取回那一行的调用方走单条寻址
+// （postRef 仍保留作者例外，分享链接与直接 API 不受影响）。
+// 主题本身不可见时本端点整条拒绝，不在这里再判一次主题状态。
 func (s *Store) TopLevelReplies(ctx context.Context, topicID, viewerID, cursorID int64, limit int) ([]PostRow, error) {
 	sqlText := `
 WITH roots AS (
@@ -62,7 +66,7 @@ WITH roots AS (
     FROM posts p
    WHERE p.topic_id = $1
      AND p.parent_id IS NULL
-     AND (p.visibility = 'normal' OR p.author_id = $2)
+     AND p.visibility = 'normal'
      AND p.id < $3::bigint
    ORDER BY p.id DESC
    LIMIT $4
