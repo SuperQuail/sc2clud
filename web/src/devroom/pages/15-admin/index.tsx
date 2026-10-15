@@ -433,6 +433,8 @@ function UsersRoom() {
       onRevokeSessions={(id) => say('踢掉 ' + id + ' 的全部会话')}
       onSetRole={(id, roleId) => say('把 ' + id + ' 的基线角色改成 ' + roleId)}
       onGrantTitle={(userId, titleId) => say('给 ' + userId + ' 授予 ' + titleId)}
+      // D56：房间演示同样有这个动作，但只回一条演示密码（真站才发 POST /admin/users/:id/password）
+      onResetPassword={async () => ({ password: 'Demo-pass-' + Math.floor(100000 + Math.random() * 900000) + 'q', revoked: 1 })}
       receipt={receipt ? <p className='text-[12px] text-muted-foreground'>{receipt}</p> : null}
     />
   );

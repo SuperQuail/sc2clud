@@ -1,5 +1,5 @@
-import { fireEvent, render, screen } from '@testing-library/react';
-import { expect, it, vi } from 'vitest';
+import { render, screen } from '@testing-library/react';
+import { expect, it } from 'vitest';
 import { AdminShell, type AdminSelf } from './shell';
 
 // D14：管理页右上角那张「当前管理员」卡以前写死 DevRoom 的 mock（示范管理员 @demo-admin / 管理员），

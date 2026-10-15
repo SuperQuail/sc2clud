@@ -1,5 +1,5 @@
 import { fireEvent, render, screen } from '@testing-library/react';
-import { expect, it, vi } from 'vitest';
+import { expect, it, vi, type Mock } from 'vitest';
 import { UsersScreen, type UsersFilter, type UsersCounts } from './users';
 import { ApiError } from '@/lib/api/errors';
 import type { AdminUser, AdminUserDetail, Role, Title } from '@/lib/api/admin';
@@ -27,10 +27,12 @@ const detail = (u: AdminUser): AdminUserDetail => ({ ...u, sanctions: [], user_p
 
 const COUNTS: UsersCounts = { total: 137, banned: 4, pending_activation: 9, email_unverified: 12 };
 
-function renderScreen(u: AdminUser, over: { page?: number; canNext?: boolean; onPage?: (p: number) => void; onReset?: ReturnType<typeof vi.fn> } = {}) {
+type ResetSig = (userId: string, password: string) => Promise<{ password?: string; revoked: number }>;
+
+function renderScreen(u: AdminUser, over: { page?: number; canNext?: boolean; onPage?: (p: number) => void; onReset?: Mock<ResetSig> } = {}) {
   const onActivate = vi.fn();
   const onPage = over.onPage ?? vi.fn();
-  const onReset = over.onReset ?? vi.fn();
+  const onReset = over.onReset ?? (vi.fn() as Mock<ResetSig>);
   const filter: UsersFilter = { q: '', status: 'all', role: 'all' };
   render(
     <UsersScreen
@@ -62,7 +64,7 @@ function renderScreen(u: AdminUser, over: { page?: number; canNext?: boolean; on
 // ── D56 管理员重置密码 ────────────────────────────────────────────────
 
 it('D56：重置密码留空提交 → onReset(id, "")，一次性临时密码只在弹层里给一次', async () => {
-  const onReset = vi.fn().mockResolvedValue({ password: 't3mp7kqkmrz4', revoked: 2 });
+  const onReset = vi.fn<ResetSig>().mockResolvedValue({ password: 't3mp7kqkmrz4', revoked: 2 });
   renderScreen(user({ activated_at: '2026-10-14T12:00:00Z' }), { onReset });
   // 行内与右栏各有入口；点第一颗即可
   fireEvent.click(screen.getAllByRole('button', { name: '重置密码' })[0]!);
@@ -78,7 +80,7 @@ it('D56：重置密码留空提交 → onReset(id, "")，一次性临时密码�
 });
 
 it('D56：显式密码原文上送，不出回显位', async () => {
-  const onReset = vi.fn().mockResolvedValue({ revoked: 0 });
+  const onReset = vi.fn<ResetSig>().mockResolvedValue({ revoked: 0 });
   renderScreen(user({}), { onReset });
   fireEvent.click(screen.getAllByRole('button', { name: '重置密码' })[0]!);
   const box = await screen.findByRole('textbox', { name: /新密码/ });
@@ -90,7 +92,7 @@ it('D56：显式密码原文上送，不出回显位', async () => {
 });
 
 it('D56：失败不关弹层，字段理由就近可见（D48 同策略）', async () => {
-  const onReset = vi.fn().mockRejectedValue(new ApiError(400, 'common.invalid', '参数无效', undefined, { password: '密码长度必须是 8-128 个字节' }));
+  const onReset = vi.fn<ResetSig>().mockRejectedValue(new ApiError(400, 'common.invalid', '参数无效', undefined, { password: '密码长度必须是 8-128 个字节' }));
   renderScreen(user({}), { onReset });
   fireEvent.click(screen.getAllByRole('button', { name: '重置密码' })[0]!);
   fireEvent.click(screen.getByTestId('pw-reset-submit'));
@@ -101,7 +103,7 @@ it('D56：失败不关弹层，字段理由就近可见（D48 同策略）', asy
 
 // 无 user.ban 既不画行内也不画右栏入口（权限的口径与其它动作一致）
 it('D56：canBan=false 不画任何重置入口', () => {
-  const onReset = vi.fn();
+  const onReset = vi.fn<ResetSig>();
   render(
     <UsersScreen
       users={[user({})]}
