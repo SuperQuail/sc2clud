@@ -54,11 +54,24 @@ func (s *Service) canSpeak(ctx context.Context, actor *authz.Actor, boardID int6
 	if !row.ACLEnabled {
 		return s.checkMinLevel(ctx, actor, minLevel, action)
 	}
-	if row.Deny(action) {
+	// 显式 deny 终局（D38 拍板语义②）：基线角色那一行与组的行**任一层** deny 都直接拒绝，
+	// 另一层 can 多少都救不回来 —— 与同表 CHECK 的「一行不矛盾」是同一个精神，跨两层同样成立。
+	if row.Deny(action) || row.DenyGroup(action) {
 		return ErrACLDenied
 	}
-	if row.Can(action) {
+	// 组授是**加法授权**（语义①）：白名单之下多出一条可发 / 可回的路径。
+	// 基线角色那一行 can（第 5 步照旧）或任一组行 can，都只走到等级门槛，不改变先后顺序。
+	if row.Can(action) || row.CanGroup(action) {
 		return s.checkMinLevel(ctx, actor, minLevel, action)
+	}
+	// 组白名单在场上（板上配了组规则）时把「为什么不行」说人话（同一码 board.acl_denied，不发新码）：
+	// 管理员把组配进名单了，进来的人却不在任何组里 —— 拒绝理由组比角色更贴切。
+	if row.BoardGroupRows {
+		what := "回帖"
+		if action == "post" {
+			what = "发帖"
+		}
+		return ErrACLDenied.WithMsg("本分区仅特定用户组的成员可以在此" + what + "；你不具有该分区的发言资格")
 	}
 	return ErrACLDenied
 }
