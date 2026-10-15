@@ -428,6 +428,119 @@ func TestAdminUsersHTTPEnvelope(t *testing.T) {
 	}
 }
 
+// ── v2：总数与三根轴的计数（用户报的「只显示 20 人、看不到总人数」） ─────────────────
+//
+// v1 的包络只有 {data,next_cursor} —— UI 拿不到总人数，也无法知道「共几页」，
+// 于是「上一页/下一页」只能改本地页码而不换数据。v2 在**同一个请求**里给出 total 与三根轴的计数：
+// 拆成一条 count 端点会变成两次往返，而且两次查询之间有人注册就会得到「列表 21 条、总数 20」这种自相矛盾的屏。
+
+// bulkInsertUsers 直接插 n 行用户（绕开注册与口令哈希：分页用例不需要能登录的账号）。
+func bulkInsertUsers(t *testing.T, f *fixture, prefix string, n int) {
+	t.Helper()
+	mustExec(t, f.ctx, f.pool, `
+INSERT INTO users (public_id, username, email, password_hash, nickname, role_id, status, email_verified_at, activated_at)
+SELECT gen_random_uuid(), $1 || '-' || g, $1 || '-' || g || '@example.com', 'x', $1 || '-' || g,
+       (SELECT id FROM roles WHERE key = 'user'), 'active', now(), now()
+  FROM generate_series(1, $2) g`, prefix, n)
+}
+
+// v2 给 total 与三根轴的计数，且**计数跟着筛选走**（筛了就有、没筛就是全体）。
+func TestAdminUsersV2CarriesTotalAndCounts(t *testing.T) {
+	f := newFixture(t)
+	admin := seedUsers(t, f)          // root2(admin) / alice(banned) / bob(creator) / carol(未验证+未激活)
+	bulkInsertUsers(t, f, "bulk", 25) // 25 个普通用户：一页装不下（默认 20）
+	_ = admin
+	r := f.newAdminRouter()
+	tok := f.login("root2", "pw-root2-1")
+
+	page, _, counts := usersPageV2(t, f, r, tok, "?v=2")
+	if len(page) != 20 {
+		t.Fatalf("默认一页应当是 20 条，实际 %d", len(page))
+	}
+	if counts.Total != 29 {
+		t.Fatalf("总人数应当是 29（4 个种子 + 25 个批量），实际 %d", counts.Total)
+	}
+	if counts.Banned != 1 {
+		t.Fatalf("已封禁应当是 1（alice），实际 %d", counts.Banned)
+	}
+	if counts.Pending != 1 {
+		t.Fatalf("待激活应当是 1（carol），实际 %d", counts.Pending)
+	}
+	if counts.Unverified != 1 {
+		t.Fatalf("邮箱未验证应当是 1（carol），实际 %d", counts.Unverified)
+	}
+
+	// 第二页的总数必须与第一页**同一个数**：它表示整个筛选结果集，不是本页条数。
+	_, next, _ := usersPageV2(t, f, r, tok, "?v=2")
+	if next == nil || *next == "" {
+		t.Fatal("29 个人、一页 20 条时必须有 next_cursor")
+	}
+	page2, _, counts2 := usersPageV2(t, f, r, tok, "?v=2&cursor="+*next)
+	if len(page2) != 9 {
+		t.Fatalf("第二页应当是 9 条，实际 %d", len(page2))
+	}
+	if counts2.Total != counts.Total {
+		t.Fatalf("第二页的 total 必须与第一页一致：%d vs %d", counts2.Total, counts.Total)
+	}
+
+	// 筛选后的 total 必须跟着变（q=alice 只命中 1 人）——「COUNT(*) 在筛选条件下也要对」。
+	_, _, alice := usersPageV2(t, f, r, tok, "?v=2&q=alice")
+	if alice.Total != 1 || alice.Banned != 1 {
+		t.Fatalf("q=alice 的计数应当是 total=1/banned=1，实际 %+v", alice)
+	}
+	// 轴筛选同理：只看未激活的
+	_, _, pend := usersPageV2(t, f, r, tok, "?v=2&activated=false")
+	if pend.Total != 1 || pend.Pending != 1 {
+		t.Fatalf("activated=false 的计数应当是 total=1/pending=1，实际 %+v", pend)
+	}
+	// 角色的 EXISTS 子查询也要进计数：creator 只有 bob
+	_, _, creators := usersPageV2(t, f, r, tok, "?v=2&role=creator")
+	if creators.Total != 1 {
+		t.Fatalf("role=creator 的 total 应当是 1，实际 %d", creators.Total)
+	}
+}
+
+// v1 的老契约不能被顺手改掉：没写 v=2 时包络必须与从前**逐字**一样（老客户端照旧）。
+func TestAdminUsersV1EnvelopeHasNoTotal(t *testing.T) {
+	f := newFixture(t)
+	seedUsers(t, f)
+	r := f.newAdminRouter()
+	tok := f.login("root2", "pw-root2-1")
+
+	var env map[string]json.RawMessage
+	w := f.doJSON(r, "GET", "/api/v1/admin/users", tok, "")
+	if w.Code != 200 {
+		t.Fatalf("应当 200，实际 %d：%s", w.Code, w.Body.String())
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &env); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := env["total"]; ok {
+		t.Fatalf("v1 的包络里不该多出 total：%s", w.Body.String())
+	}
+	if _, ok := env["counts"]; ok {
+		t.Fatalf("v1 的包络里不该多出 counts：%s", w.Body.String())
+	}
+}
+
+// usersPageV2 解 v2 包络 {data,next_cursor,counts}。counts 缺失时返回零值 —— 用例自己判。
+func usersPageV2(t *testing.T, f *fixture, r *gin.Engine, tok, query string) ([]AdminUserDTO, *string, AdminUsersCountsDTO) {
+	t.Helper()
+	w := f.doJSON(r, "GET", "/api/v1/admin/users"+query, tok, "")
+	if w.Code != 200 {
+		t.Fatalf("GET %s 应当 200，实际 %d：%s", query, w.Code, w.Body.String())
+	}
+	var env struct {
+		Data       []AdminUserDTO      `json:"data"`
+		NextCursor *string             `json:"next_cursor"`
+		Counts     AdminUsersCountsDTO `json:"counts"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &env); err != nil {
+		t.Fatalf("响应不是 {data,next_cursor,counts}：%s", w.Body.String())
+	}
+	return env.Data, env.NextCursor, env.Counts
+}
+
 func mustFirst(t *testing.T, w *httptest.ResponseRecorder) []byte {
 	t.Helper()
 	var env struct {

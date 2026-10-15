@@ -110,56 +110,97 @@ type AdminUserDetailDTO struct {
 
 // ListAdminUsers 返回一页用户与下一页游标（按 id DESC：uuid v7 时间有序，新注册的在最前）。
 func (s *Service) ListAdminUsers(ctx context.Context, actor *authz.Actor, in AdminUsersQuery) ([]AdminUserDTO, string, error) {
-	if err := requirePerm(actor, authz.PermUserBan); err != nil {
-		return nil, "", err
-	}
-	q := strings.TrimSpace(in.Q)
-	if len([]rune(q)) > 100 {
-		return nil, "", invalid("q", "最多 100 字")
-	}
-	status := strings.TrimSpace(in.Status)
-	if status != "" && status != StatusActive && status != StatusBanned && status != StatusDeleted {
-		return nil, "", invalid("status", "只能是 active / banned / deleted")
-	}
-	limit := normalizeLimit(in.Limit)
-
-	var after int64
-	if in.Cursor != "" {
-		v, err := decodeUserCursor(in.Cursor)
-		if err != nil {
-			return nil, "", err
-		}
-		after = v
-	}
-	rows, err := pgsql.ListAdminUsers(ctx, s.db, pgsql.AdminUsersFilter{
-		Q: q, Status: status, RoleKey: strings.TrimSpace(in.Role),
-		Activated: in.Activated, EmailVerified: in.EmailVerified,
-		AfterID: after, Limit: limit + 1, // 多取一行判有没有下一页
-	})
+	p, err := s.ListAdminUsersPage(ctx, actor, in)
 	if err != nil {
 		return nil, "", err
 	}
-	out := make([]AdminUserDTO, 0, len(rows))
-	if len(rows) == 0 {
-		return out, "", nil
+	return p.Items, p.Next, nil
+}
+
+// AdminUsersCountsDTO 是整个筛选结果集的四个数（不是本页条数）。
+type AdminUsersCountsDTO struct {
+	Total      int `json:"total"`
+	Banned     int `json:"banned"`
+	Pending    int `json:"pending_activation"`
+	Unverified int `json:"email_unverified"`
+}
+
+// AdminUsersPageDTO 是 v2 的用户列表包络（data + next_cursor + counts）。
+//
+// 为什么不新开一条 GET /admin/users/count：两次往返之间有人注册，屏上就会出现
+// 「列表 21 条、总数 20」这种自相矛盾的数；而两个数的 WHERE 还得各写一份、各自漂移。
+type AdminUsersPageDTO struct {
+	Items  []AdminUserDTO      `json:"items"`
+	Next   string              `json:"next_cursor"`
+	Counts AdminUsersCountsDTO `json:"counts"`
+}
+
+// ListAdminUsersPage 是 v2：一页用户 + 下一页游标 + 整个筛选结果集的计数。
+func (s *Service) ListAdminUsersPage(ctx context.Context, actor *authz.Actor, in AdminUsersQuery) (*AdminUsersPageDTO, error) {
+	if err := requirePerm(actor, authz.PermUserBan); err != nil {
+		return nil, err
 	}
+	f, limit, err := s.adminUsersFilter(in)
+	if err != nil {
+		return nil, err
+	}
+	f.Limit = limit + 1 // 多取一行判有没有下一页
+	rows, err := pgsql.ListAdminUsers(ctx, s.db, f)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]AdminUserDTO, 0, min(len(rows), limit))
 	next := ""
 	if len(rows) > limit {
 		rows = rows[:limit]
 		next = encodeUserCursor(rows[len(rows)-1].ID)
 	}
-	ids := make([]int64, 0, len(rows))
-	for _, r := range rows {
-		ids = append(ids, r.ID)
-	}
-	counts, err := pgsql.AdminUserContentCounts(ctx, s.db, ids)
+	// 计数与列表用**同一份筛选**（pgsql 里就是一个常量）：筛出来的条数与总数必须对得上。
+	c, err := pgsql.AdminUsersCounts(ctx, s.db, f)
 	if err != nil {
-		return nil, "", err
+		return nil, err
 	}
-	for _, r := range rows {
-		out = append(out, adminUserDTO(r, counts[r.ID]))
+	if len(rows) > 0 {
+		ids := make([]int64, 0, len(rows))
+		for _, r := range rows {
+			ids = append(ids, r.ID)
+		}
+		content, err := pgsql.AdminUserContentCounts(ctx, s.db, ids)
+		if err != nil {
+			return nil, err
+		}
+		for _, r := range rows {
+			out = append(out, adminUserDTO(r, content[r.ID]))
+		}
 	}
-	return out, next, nil
+	return &AdminUsersPageDTO{
+		Items: out, Next: next,
+		Counts: AdminUsersCountsDTO{Total: c.Total, Banned: c.Banned, Pending: c.Pending, Unverified: c.Unverified},
+	}, nil
+}
+
+// adminUsersFilter 校验查询并摊成 SQL 的筛选（v1 与 v2 共用一份校验，不各写一套）。
+func (s *Service) adminUsersFilter(in AdminUsersQuery) (pgsql.AdminUsersFilter, int, error) {
+	q := strings.TrimSpace(in.Q)
+	if len([]rune(q)) > 100 {
+		return pgsql.AdminUsersFilter{}, 0, invalid("q", "最多 100 字")
+	}
+	status := strings.TrimSpace(in.Status)
+	if status != "" && status != StatusActive && status != StatusBanned && status != StatusDeleted {
+		return pgsql.AdminUsersFilter{}, 0, invalid("status", "只能是 active / banned / deleted")
+	}
+	var after int64
+	if in.Cursor != "" {
+		v, err := decodeUserCursor(in.Cursor)
+		if err != nil {
+			return pgsql.AdminUsersFilter{}, 0, err
+		}
+		after = v
+	}
+	return pgsql.AdminUsersFilter{
+		Q: q, Status: status, RoleKey: strings.TrimSpace(in.Role),
+		Activated: in.Activated, EmailVerified: in.EmailVerified, AfterID: after,
+	}, normalizeLimit(in.Limit), nil
 }
 
 // AdminUserDetail 是详情：用户行 + sanctions / user_permissions / user_titles。

@@ -403,6 +403,11 @@ type adminUsersQueryReq struct {
 	EmailVerified *bool  `form:"email_verified"`
 	Limit         int    `form:"limit"`
 	Cursor        string `form:"cursor"`
+	// V 是包络版本。**不传就是 v1**（{data,next_cursor}，与从前逐字一样）——
+	// v2 多一个 counts（总数与三根轴的计数）。
+	// 为什么要版本开关：老前端按 {data,next_cursor} 解析，同一条路径直接加字段会改变它的包络契约；
+	// 而新前端只需要把 v=2 写在一个地方（lib/api/admin.ts 的 fetchUsers）。
+	V string `form:"v"`
 }
 
 func (h *Handler) adminListUsers(c *gin.Context) {
@@ -411,11 +416,21 @@ func (h *Handler) adminListUsers(c *gin.Context) {
 		httpx.Fail(c, err)
 		return
 	}
-	items, next, err := h.svc.ListAdminUsers(c.Request.Context(), actorFrom(c), AdminUsersQuery{
+	in := AdminUsersQuery{
 		Q: req.Q, Status: req.Status, Role: req.Role,
 		Activated: req.Activated, EmailVerified: req.EmailVerified,
 		Limit: req.Limit, Cursor: req.Cursor,
-	})
+	}
+	if req.V == "2" {
+		page, err := h.svc.ListAdminUsersPage(c.Request.Context(), actorFrom(c), in)
+		if err != nil {
+			httpx.Fail(c, err)
+			return
+		}
+		httpx.OKListCounts(c, page.Items, page.Next, page.Counts)
+		return
+	}
+	items, next, err := h.svc.ListAdminUsers(c.Request.Context(), actorFrom(c), in)
 	if err != nil {
 		httpx.Fail(c, err)
 		return

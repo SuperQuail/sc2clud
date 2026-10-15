@@ -41,6 +41,18 @@ func OKList(c *gin.Context, items any, next string) {
 	c.JSON(http.StatusOK, gin.H{"data": items, "next_cursor": next})
 }
 
+// OKListCounts 是 OKList 加一个 counts（整个筛选结果集的计数，不是本页条数）。
+//
+// 为什么计数与列表同一次请求给出：分两次（列表一次、count 一次）时，两次之间有人注册，
+// 屏上就会出现「列表 21 条、总数 20」——两个数都来自真查询，读起来却自相矛盾。
+func OKListCounts(c *gin.Context, items any, next string, counts any) {
+	if next == "" {
+		c.JSON(http.StatusOK, gin.H{"data": items, "next_cursor": nil, "counts": counts})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"data": items, "next_cursor": next, "counts": counts})
+}
+
 // NoContent 写 204。没有响应体，所以没有包络。
 func NoContent(c *gin.Context) {
 	c.Status(http.StatusNoContent)

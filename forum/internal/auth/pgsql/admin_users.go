@@ -34,7 +34,25 @@ type AdminUsersFilter struct {
 //     但那样 users 与 roles 的行都要进哈希，EXISTS 走 uq_roles_key 的 Index Scan 更直白；
 //   - activated / email_verified 的布尔是**两根独立的轴**（拍板 §9.12），
 //     所以是两个参数而不是一个三态；
-//   - 排序键与游标逐字对齐：(u.id < $8)，第一页由 service 传 MaxInt64 的哨兵。
+//   - 排序键与游标逐字对齐：(u.id < $6)，第一页由 service 传 MaxInt64 的哨兵。
+//
+// adminUsersFilterSQL 是筛选条件本身（$1..$5），**列表与计数共用这一份**。
+// 复制一份给 count 就会漂移：改了列表的筛选而忘了改计数，屏上出现
+// 「筛出来 3 条、标题写着共 137 人」——两边各自看着都正常。
+const adminUsersFilterSQL = `($1::text IS NULL OR (u.username ILIKE $1 OR u.nickname ILIKE $1 OR u.email ILIKE $1))
+   AND ($2::text IS NULL OR u.status = $2)
+   AND ($3::text IS NULL OR EXISTS (SELECT 1 FROM roles rr WHERE rr.id = u.role_id AND rr.key = $3))
+   AND ($4::bool IS NULL OR (u.activated_at IS NOT NULL) = $4)
+   AND ($5::bool IS NULL OR (u.email_verified_at IS NOT NULL) = $5)`
+
+// adminUsersArgs 把筛选摊成上面那 5 个参数（列表与计数各用一次，顺序必须一致）。
+func adminUsersArgs(f AdminUsersFilter) []any {
+	return []any{
+		likePattern(f.Q), nullText(f.Status), nullText(f.RoleKey),
+		f.Activated, f.EmailVerified,
+	}
+}
+
 const adminUsersSQL = `
 SELECT u.id, u.public_id, u.username, u.nickname, u.email,
        u.status, u.email_verified_at, u.activated_at, u.trusted, u.level,
@@ -42,11 +60,7 @@ SELECT u.id, u.public_id, u.username, u.nickname, u.email,
        r.key, r.name, COALESCE(r.badge_color, '')
   FROM users u
   JOIN roles r ON r.id = u.role_id
- WHERE ($1::text IS NULL OR (u.username ILIKE $1 OR u.nickname ILIKE $1 OR u.email ILIKE $1))
-   AND ($2::text IS NULL OR u.status = $2)
-   AND ($3::text IS NULL OR EXISTS (SELECT 1 FROM roles rr WHERE rr.id = u.role_id AND rr.key = $3))
-   AND ($4::bool IS NULL OR (u.activated_at IS NOT NULL) = $4)
-   AND ($5::bool IS NULL OR (u.email_verified_at IS NOT NULL) = $5)
+ WHERE ` + adminUsersFilterSQL + `
    AND u.id < $6
  ORDER BY u.id DESC
  LIMIT $7`
@@ -91,8 +105,7 @@ func ListAdminUsers(ctx context.Context, q Querier, f AdminUsersFilter) ([]Admin
 		after = math.MaxInt64
 	}
 	rows, err := q.QueryContext(ctx, adminUsersSQL,
-		likePattern(f.Q), nullText(f.Status), nullText(f.RoleKey),
-		f.Activated, f.EmailVerified, after, f.Limit)
+		append(adminUsersArgs(f), after, f.Limit)...)
 	if err != nil {
 		return nil, err
 	}
@@ -107,6 +120,55 @@ func ListAdminUsers(ctx context.Context, q Querier, f AdminUsersFilter) ([]Admin
 	}
 	return out, rows.Err()
 }
+
+// AdminUsersCounts 是「整个筛选结果集」的四个数：总数 + 三根状态轴的计数。
+//
+// 为什么要一次算四个数：用户报的缺陷就是「只显示 20 人、看不到总人数」，
+// 而上面那三格（已封禁/待激活/未验证）如果只数本页，屏上会同时出现
+// 「共 137 人」和「本页已封禁 0」——两个数都真，读起来却自相矛盾。
+// 一条 SQL + GROUP BY 三根轴的布尔表达式即可（三根轴都是 NULL 判定，不用三次 count）。
+func AdminUsersCounts(ctx context.Context, q Querier, f AdminUsersFilter) (AdminUsersCount, error) {
+	var c AdminUsersCount
+	rows, err := q.QueryContext(ctx, adminUsersCountSQL, adminUsersArgs(f)...)
+	if err != nil {
+		return c, err
+	}
+	defer rows.Close()
+	// 分组可能有 0～8 行（三根布尔轴的组合），全不存在时**一行都没有**。
+	for rows.Next() {
+		var n, banned, pending, unverified int
+		if err := rows.Scan(&n, &banned, &pending, &unverified); err != nil {
+			return c, err
+		}
+		c.Total += n
+		c.Banned += banned
+		c.Pending += pending
+		c.Unverified += unverified
+	}
+	return c, rows.Err()
+}
+
+// AdminUsersCount 是上面那条查询的结果。
+type AdminUsersCount struct {
+	Total      int
+	Banned     int
+	Pending    int
+	Unverified int
+}
+
+// adminUsersCountSQL 给整个筛选结果集的四个数：总数 + 三根状态轴的计数。
+//
+// 三根轴在原列上都是 NULL 判定，所以 GROUP BY 三个布尔表达式一次扫完（不用三次 count）。
+// 它按**同一份** adminUsersFilterSQL 过滤：筛了「只看未激活」时，总数就是未激活的人数。
+const adminUsersCountSQL = `
+SELECT count(*),
+       count(*) FILTER (WHERE u.status = 'banned'),
+       count(*) FILTER (WHERE u.activated_at IS NULL),
+       count(*) FILTER (WHERE u.email_verified_at IS NULL)
+  FROM users u
+  JOIN roles r ON r.id = u.role_id
+ WHERE ` + adminUsersFilterSQL + `
+ GROUP BY (u.status = 'banned'), (u.activated_at IS NULL), (u.email_verified_at IS NULL)`
 
 // AdminUserByPublicID 是详情那一行。id 是 public_id 的**文本形式**
 // （pgx 按参数的静态类型 uuid 编码；转成 pgtype.UUID 反而要多一次转换，见 scanUUID 的注释）。
