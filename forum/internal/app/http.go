@@ -119,7 +119,12 @@ func registerAPIRoutes(r *gin.Engine, cfg *config.Config, m *Modules) {
 	mail.NewHandler(m.Mail, auth.FromGin).Register(v1, m.requireLogin, m.perm)
 	report.NewHandler(m.Report, auth.FromGin).Register(v1, m.requireLogin, m.perm, m.limit)
 	// AI 审核的配置与连通测试（d7 §8）：权限点沿用 site.setting，不新造。
-	aireview.NewHandler(m.AIReview, auth.FromGin).Register(v1, m.requireLogin, m.perm)
+	// 样例图是 multipart、最大 4×2 MiB ≈ 10.7 MiB（D34 契约）——组级 BodyLimit 默认 1 MiB
+	// 是给 JSON 写路径的，且**外层包装首先生效**（内层再包救不回来），所以这两条端点要
+	// 独立成组（2026-10-15 prod 实测 >1 MiB 的样例直接断流 400/413）。LoadPrincipal
+	// 在这里补上——v1 组上的那份只属于它自己的链，别的组要自己带。
+	ai := r.Group("/api/v1", httpx.BodyLimit(16<<20), m.Auth.LoadPrincipal())
+	aireview.NewHandler(m.AIReview, auth.FromGin).Register(ai, m.requireLogin, m.perm)
 	// 申诉与反馈（C4 免登录 + C5 作者申诉）：**每请求一个 handler**，
 	// 因为它的 Store 上带着「当前事务执行器」这一份可变状态（见 app/appeal.go 的说明）。
 	registerAppeal(r, v1, m)
