@@ -46,6 +46,7 @@ export function ImageUploader({
   cropEdge,
   cropAspect,
   cropAspectOptions,
+  onCropOpenChange,
 }: {
   images: UploadedImage[];
   onChange: (next: UploadedImage[]) => void;
@@ -87,6 +88,10 @@ export function ImageUploader({
   cropAspect?: number;
   /** D59 框上的比例预设（切完即时生效）。仅 crop 且给了它时出现选择器 */
   cropAspectOptions?: { label: string; value: number }[];
+  /** D69 二轮：裁剪框开合上抛（true=开始裁 / false=裁完或取消）——宿主用它把自己那颗
+   *  native modal <dialog> 暂时关掉（两颗 top-layer modal 并存时 Chromium 的层叠不可控，
+   *  封面链路实测 picker 反盖 cropper）。React 侧状态不动，只动 native dialog。 */
+  onCropOpenChange?: (open: boolean) => void;
 }) {
   // 头像与封面都是「一个槽」：已有的那张是「现在这张」，再选一张是换掉它。
   const single = variant !== 'list';
@@ -132,6 +137,7 @@ export function ImageUploader({
     const first = usable[0];
     if (crop && single && first) {
       setCropping({ url: URL.createObjectURL(first), file: first });
+      onCropOpenChange?.(true);
       if (input.current) input.current.value = '';
       return;
     }
@@ -181,6 +187,7 @@ export function ImageUploader({
       URL.revokeObjectURL(url);
       setBusy(false);
       setCropping(null);
+      onCropOpenChange?.(false);
     }
   }
 
@@ -205,6 +212,7 @@ export function ImageUploader({
       onCancel={() => {
         URL.revokeObjectURL(cropping.url);
         setCropping(null);
+        onCropOpenChange?.(false);
       }}
     />
   ) : null;

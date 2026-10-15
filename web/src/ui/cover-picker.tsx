@@ -38,6 +38,10 @@ export function CoverPicker({ cover, onPick, actions, pending = false, onReady, 
   // 的用例就是靠数它来判的 —— 多一个就说明入口漏出来了，实测红过）。
   const [everOpened, setEverOpened] = useState(false);
   const dialog = useRef<HTMLDialogElement>(null);
+  // D69 二轮：cropper 打开期间把**自己的** native dialog 暂时 close（React 状态 open 不动，
+  // 只是 DOM 层收起来）——cropper 完事再 showModal 收回来。close 会触发 onClose 事件把
+  // open 状态翻掉导致 cropper 连带卸载，所以要一把「请勿翻状态」的锁。
+  const suppressClose = useRef(false);
 
   // 命令式开合：<dialog> 的 showModal/close 才是真正的开关（写 open 属性不会进模态层）。
   useEffect(() => {
@@ -61,7 +65,7 @@ export function CoverPicker({ cover, onPick, actions, pending = false, onReady, 
       )}
       <dialog
         ref={dialog}
-        onClose={() => setOpen(false)}
+        onClose={() => { if (!suppressClose.current) setOpen(false); }}
         aria-label='设置封面'
         /* D69：Tailwind preflight 把 UA 的 dialog margin:auto 重置没了，showModal 的 fixed
            元素 margin:0 就钉在左上角 —— 显式 m-auto + inset-0 把居中要回来。 */
@@ -76,6 +80,18 @@ export function CoverPicker({ cover, onPick, actions, pending = false, onReady, 
           /* D59：选完先裁（横幅比例，框上可切 21:9 / 16:9 / 3:2），裁完才走 onPick ——
              上传仍由调用方发（弹层只交回字节，三处「选完干什么」的语义不变）。 */
           crop
+          onCropOpenChange={(o) => {
+            const el = dialog.current;
+            if (!el) return;
+            if (o) {
+              // 暂时收起自己；ESC/关闭事件这一次不许把 open 状态翻掉
+              suppressClose.current = true;
+              if (el.open) el.close();
+            } else {
+              suppressClose.current = false;
+              if (el && open && !el.open) el.showModal();
+            }
+          }}
           cropAspect={21 / 9}
           cropAspectOptions={[
             { label: '21:9', value: 21 / 9 },

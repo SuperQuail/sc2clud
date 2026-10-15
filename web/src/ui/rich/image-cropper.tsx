@@ -130,8 +130,8 @@ export function ImageCropper({ source, aspect = 1, round = aspect === 1, aspectO
         <div className='flex flex-col items-center gap-2'>
           <div
             data-testid='crop-frame'
-            className={round ? 'relative size-[min(300px,78vw)] overflow-hidden rounded-full border border-border bg-muted/40'
-              : 'relative w-[min(300px,78vw)] overflow-hidden rounded-md border border-border bg-muted/40'}
+            className={round ? 'relative size-[min(300px,78vw)] overflow-hidden rounded-full border border-border bg-foreground/5'
+              : 'relative w-[min(300px,78vw)] overflow-hidden rounded-md border border-border bg-foreground/5'}
             style={round ? undefined : { aspectRatio: String(ratio) }}
           >
             {url ? (
