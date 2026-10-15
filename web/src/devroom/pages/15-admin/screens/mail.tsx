@@ -129,7 +129,7 @@ export function MailScreen({ accounts, loading = false, error = null, canManage,
 
       {noUsable && accounts.length > 0 ? (
         <p role='alert' data-testid='mail-no-usable' className='rounded-md border border-warning/40 bg-warning/10 px-3 py-2 text-[12px] text-foreground'>
-          现在**一封邮件都发不出去**：没有一个「已启用 + 已配凭据」的账号。注册验证与找回密码都会失败
+          现在<strong>一封邮件都发不出去</strong>：没有一个「已启用 + 已配凭据」的账号。注册验证与找回密码都会失败
           （<code className='rounded-sm bg-muted px-1'>auth.mail_unavailable</code>）—— 点每一行的「换凭据」把密钥补上。
         </p>
       ) : null}

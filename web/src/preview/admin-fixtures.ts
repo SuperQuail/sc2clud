@@ -264,7 +264,13 @@ export function adminFixtureFor(u: string): Reply | undefined {
   if (p.endsWith('/api/v1/admin/roles')) return { body: { data: ROLES } };
   if (p.endsWith('/api/v1/admin/permissions')) return { body: { data: PERMISSIONS } };
   if (p.endsWith('/api/v1/admin/titles')) return { body: { data: TITLES } };
-  if (p.endsWith('/api/v1/admin/mail/accounts')) return { body: { data: MAIL } };
+  if (p.endsWith('/api/v1/admin/mail/accounts')) {
+    // ?mailNoSecret=1 演「迁移过来的账号」（密文被置 NULL → 一封都发不出去）那一态，见 mail.tsx 的 mail-no-usable
+    const rows = page.get('mailNoSecret') === '1'
+      ? MAIL.map((a) => ({ ...a, secret_configured: false, secret_updated_at: null }))
+      : MAIL;
+    return { body: { data: rows } };
+  }
   if (p.endsWith('/api/v1/admin/site-settings')) return { body: { data: SETTINGS } };
   if (p.endsWith('/api/v1/admin/site-domains')) return { body: { data: [{ domain: 'sc2clud.example' }] } };
   if (p.endsWith('/api/v1/admin/announcements')) return { body: { data: ANNOUNCEMENTS } };

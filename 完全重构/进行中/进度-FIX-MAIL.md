@@ -69,3 +69,37 @@
     `pnpm typecheck` 1 条 `src/devroom/pages/11-profile/sponsor-card.test.tsx(11,47): Cannot find module '@testing-library/user-event'`；
     `pnpm lint` 1 条 `CHANNEL_BYTES is defined but never used`（同一文件）。请 Lead 让那位收口。
     另：`web/shots/` 既没进 .gitignore 也没被跟踪，我的图按仓库既有做法留在本地、不进提交。
+    另：`web/shots/` 既没进 .gitignore 也没被跟踪，我的图按仓库既有做法留在本地、不进提交。
+
+- [x] 第 2 步：**换凭据**（D26 的「无法配置已有账户」）—— 产品页出真回执图 + 后端 HTTP 契约先红后绿
+  - 做了什么：① 产品侧 `onSecret` 走 `updateMailAccount(id, {secret, options_json})`（第 1 步已接，本步补的是**真回执与出图**）；
+    ② 出图桩 `preview/admin-fixtures.ts` 加 `?mailNoSecret=1`（读页面查询串，与既有的 `?empty=1` / `?fail=1` 同一套写法）——
+    用来演「迁移过来的账号：密文置 NULL」那一态；③ `screens/mail.tsx` 的「一封都发不出去」告警里 `**…**` 改成 `<strong>`
+    （图上真看得见星号，而这不是设计稿里的排版记号）；④ 新增后端 `forum/internal/mail/admin_http_test.go`。
+  - 证据：
+    **后端 HTTP 契约先红后绿**：`go test ./internal/mail/ -run TestAdminAccountCreateAndRotateOverHTTP -v`
+    → 先把 `mail/dto.go` 的 `secret_configured` 标签改成 `secretConfigured`（前端读的就是这个键）→ `--- FAIL … 回执字段不对（前端读 id / secret_configured / secret_updated_at）`；
+    改回去 → `--- PASS`。随后整包 `go test ./internal/mail/ -count=1` → `ok forum/internal/mail 16.562s`（含 W-C9 那条未跟踪的路径闸用例）。
+    这条钉的是**前端真正依赖的三件事**：201 建号、回执里 `secret_configured=true` 且**不出现 secret 字段**、PATCH 换凭据后 `secret_updated_at` 变新。
+    **产品页出图看图**（`admin.html?route=/admin/mail&asAdmin=1`，真壳真路由真容器 + 桩数据）：
+    `shots/fixmail/d26-product-mail.png`（同一份 View：顶栏「管理后台」、左栏 12 项、右栏「+ 新增账号」）、
+    `d26-product-new.png`（新增账号弹层在**产品页**里逐像素同形）、`d26-product-cred.png`（换凭据弹层：provider 固定 resend、只有一个 api_key、
+    未填时「保存凭据」禁用 + 一行「resend 的 api_key 必填」）、`d26-product-no-secret.png`（两行都「未配置」时顶部出现告警
+    「现在**一封邮件都发不出去**：没有一个『已启用 + 已配凭据』的账号…」，「已配密钥」格为 0）。
+    `npx vitest run` 全量 **53 files / 264 passed**；`pnpm typecheck` / `pnpm lint` 我的文件 0 条。
+  - 下一步：第 3 步（**已判定不做**，理由见下）与第 4 步 —— 把「生产带不带这屏」写进 `上线步骤.md`，并给 Lead 一份选路结论。
+  - 阻塞：无。
+
+### 第 3 步的取舍：**不做**「后端按 provider 校验凭据形状」，理由（不是省事，是判据）
+
+原本打算给 `CreateAccount` / `UpdateAccount` 补一条（resend 缺 `api_key`、smtp 缺 `options_json.host` → 400）。
+实测判据后**决定不做**：
+1. **前端已经堵住了这个洞**：`credMissing()` 在提交前就要求 api_key / host / username+password 齐（三处出图可见按钮是禁用的）；
+   而 `mail-cred.test.tsx` 把这条判定钉住了（第 1 步先红后绿）。再加一层是**重复校验**，两处迟早会漂。
+2. **后端本来就是「配置错 → 显式失败」而不是静默**：`platform/mail/provider.go` 的 `provider()` 对 resend 缺 `api_key`、
+   smtp 缺 `host` 都返回 `ErrPermanent`，`tasks.go` 把它写成 `mail_logs.status=failed` + `last_error`，界面上是红字「失败 + 原因」——
+   这是**管理员能看见、能修**的失败（`mail.accounts.go` 的 `SendTest` 另有同步校验：停用/归档/凭据解不开都会当场报错）。
+3. **加了反而更糟**：迁移过来的老账号**就是没凭据**（密文置 NULL，迁移审计 `:287-302`），收紧写路径会让它们连
+   「先改个额度」都做不到 —— 上一句「重填 API key 是运维动作」是既定的恢复路径，不该被写路径挡住。
+
+若日后要加，判据是这条**而不是「更安全」**：需要能说出「哪一种账号是合法的但会在投递时才失败」。现在说不出来。
