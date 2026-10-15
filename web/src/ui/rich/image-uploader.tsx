@@ -5,6 +5,7 @@ import Toggle from '@jetbrains/ring-ui-built/components/toggle/toggle';
 import { ImagePlus, X } from 'lucide-react';
 import { icon16 } from '@/ui/icons';
 import { UserAvatar } from '@/ui/user/avatar';
+import { ImageCropper } from './image-cropper';
 import { imagePath } from '@/lib/url';
 import { AVATAR_EDGE, AVATAR_MAX_BYTES, AVATAR_TARGET, COMPRESS_LABEL, formatBytes, IMAGE_ACCEPT, planImages, POST_IMAGE_MAX_BYTES, processImage } from './image-pipeline';
 
@@ -41,6 +42,8 @@ export function ImageUploader({
   targetBytes,
   onReady,
   headless = false,
+  crop = false,
+  cropEdge,
 }: {
   images: UploadedImage[];
   onChange: (next: UploadedImage[]) => void;
@@ -71,6 +74,13 @@ export function ImageUploader({
    * 与 cover-picker 的 headless 同一用法。限额/错误仍走 onError。
    */
   headless?: boolean;
+  /**
+   * 单图（avatar）形态：选完之后先弹**裁剪框**选启用区域（D23），确认了才算选中 ——
+   * 用户要求「选图后能选区域」。非 avatar 形态（配图/封面）不做：那些是按原比例展示的矩形。
+   */
+  crop?: boolean;
+  /** 裁剪输出的长边上限（默认 512）；成品目标仍由 targetBytes / 形态决定 */
+  cropEdge?: number;
 }) {
   // 头像与封面都是「一个槽」：已有的那张是「现在这张」，再选一张是换掉它。
   const single = variant !== 'list';
@@ -79,6 +89,8 @@ export function ImageUploader({
   const input = useRef<HTMLInputElement>(null);
   const [useOriginal, setUseOriginal] = useState(false);
   const [busy, setBusy] = useState(false);
+  // 选了但还没裁的那一张。**必须留在这里**：裁剪框是这一步的结果，裁完才 onChange。
+  const [cropping, setCropping] = useState<{ url: string; file: File } | null>(null);
   // **提示只有宿主那一份**（onError）。控件自己再画一行的话，宿主照约定画出来就是**同一句话出现两次**
   // —— D1 就是这么被用户看见的。控件内部因此不留 error state。
 
@@ -110,6 +122,13 @@ export function ImageUploader({
     // 过大的先剔掉，再按余额截断：否则一张超大图会把名额占掉，后面正常的图反而进不来
     const usable = list.filter((f) => f.size <= sizeLimit);
     if (free === 0 || usable.length === 0) return;
+    // 裁剪通道：不进管线（还没到压的时候），先把选中的原图交给裁剪框。
+    const first = usable[0];
+    if (crop && single && first) {
+      setCropping({ url: URL.createObjectURL(first), file: first });
+      if (input.current) input.current.value = '';
+      return;
+    }
     setBusy(true);
     const out: UploadedImage[] = [];
     for (const f of usable.slice(0, free)) {
@@ -133,6 +152,32 @@ export function ImageUploader({
     if (input.current) input.current.value = '';
   }
 
+  /** 裁完这一块：交给管线做成品压缩（与直接选图**同一条路**），再当作「选中了」报给宿主。 */
+  async function confirmCrop(blob: Blob) {
+    if (!cropping) return;
+    const name = cropping.file.name;
+    const url = cropping.url;
+    setBusy(true);
+    try {
+      const out = await processImage(new File([blob], name, { type: blob.type }), {
+        existing: 0,
+        max: 1,
+        compress,
+        useOriginal,
+        maxBytes: sizeLimit,
+        maxEdge: variant === 'avatar' ? AVATAR_EDGE : undefined,
+        targetBytes: targetBytes ?? (variant === 'avatar' ? AVATAR_TARGET : undefined),
+      });
+      onChange([{ id: Math.random().toString(36).slice(2), name, size: out.size, url: URL.createObjectURL(out), original: compress === false || useOriginal, file: out }]);
+    } catch {
+      onError?.('裁剪后没能生成图片，换一张试试');
+    } finally {
+      URL.revokeObjectURL(url);
+      setBusy(false);
+      setCropping(null);
+    }
+  }
+
   const fileInput = (
     <input
       ref={input}
@@ -144,8 +189,28 @@ export function ImageUploader({
     />
   );
 
+  const cropper = cropping ? (
+    <ImageCropper
+      source={cropping.file}
+      maxEdge={cropEdge}
+      onCropped={(b) => void confirmCrop(b)}
+      onCancel={() => {
+        URL.revokeObjectURL(cropping.url);
+        setCropping(null);
+      }}
+    />
+  ) : null;
+
   // headless：只交回 input（句柄已经由上面的 useEffect 给出去），不渲染预览与按钮。
-  if (headless) return fileInput;
+  // **但裁剪框照旧渲染** —— 本人主页那颗头像用的就是 headless 形态（挂载点在页根）。
+  if (headless) {
+    return (
+      <>
+        {fileInput}
+        {cropper}
+      </>
+    );
+  }
 
   if (single) {
     const current = images[0];
@@ -153,6 +218,7 @@ export function ImageUploader({
     return (
       <div className='flex items-center gap-4'>
         {fileInput}
+        {cropper}
         {current ? (
           <img
             src={imagePath(current.url)}

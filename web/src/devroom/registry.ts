@@ -285,6 +285,25 @@ export const VERIFIED: VerifiedControl[] = [
     ],
   },
   {
+    name: 'image-cropper',
+    path: '@/ui/rich/image-cropper',
+    page: '11-profile',
+    verifiedOn: '2026-10-15',
+    props: [
+      'ImageCropper：source（Blob 或 objectURL 字符串）/ frame（方框边长，默认 300；窄屏由 CSS 收到 min(300px,78vw)）/ maxEdge（输出长边上限，默认 512）',
+      'onCropped(blob)：裁完交回的原始字节（还没压）；onCancel()；pending',
+      '一般不从业务代码直接用：它是 @/ui/rich/image-uploader 的 crop 开关拉起来的（选图 → 裁剪 → 才 onChange）',
+      'image-uploader 新增两个 props：crop（avatar 形态才生效）、cropEdge',
+    ],
+    notes: [
+      '**为什么框是圆的**：头像是圆的（UserAvatar 的 rounded-full），内接正方形才是它的可视区域 —— 裁出来是正方形（cropRect 保证），但框画成圆才能让用户看到「头像里真正会露出来的那一块」。',
+      '交互只有拖动（pointer 事件，鼠标与触摸同一套）与两档缩放（1x–4x）。**没有滑杆**：Ring 没有 slider，自画一个 range 就走不到登记表这条路，而两颗「放大/缩小」按钮已经把这件事说完了。',
+      '裁剪的算术在 @/ui/rich/image-crop（纯函数，image-crop.test.ts 钉住「取的是图片内的正方形」「缩放真的进到裁切里」）—— 与 DOM 混在一起就只剩「出图看着对」这一种验证手段，而裁剪错位在图里未必看得出来。',
+      '裁完的字节仍走 image-pipeline（长边 256、目标 64KB）与服务端 POST /me/avatar —— 前后两条路没有分叉。',
+      'jsdom 里 createImageBitmap / canvas / getBoundingClientRect 都要替（见 image-cropper.test.tsx）。',
+    ],
+  },
+  {
     name: 'search-panel',
     path: '@/devroom/pages/19-search/search-panel',
     page: '19-search',

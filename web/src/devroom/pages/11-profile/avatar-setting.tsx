@@ -27,6 +27,8 @@ export function AvatarSetting({ avatar, onChange, onReady, actions }: AvatarSett
         variant='avatar'
         label='上传头像'
         compress
+        // D23：选完先弹裁剪框选启用区域（非正方形/主体偏一边的图，不裁就会被圆形头像切掉四边）
+        crop
         onError={setError}
         // 现头像塞进唯一的预览位：image-uploader 对 avatar 形态是**换掉**它，不是「名额已满」
         images={avatar ? [{ id: 'me', name: 'avatar.webp', size: 0, url: imagePath(avatar), original: false, file: new Blob() }] : []}

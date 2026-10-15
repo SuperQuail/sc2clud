@@ -264,10 +264,15 @@ export function ProfilePage() {
       />
 
       {/* 头像的上传器：只有 file input 与句柄（headless），界面入口是 hero 上那颗头像本身。
-          「移除头像」放在设置页（那里有体积提示与配套说明），这里只做「换一张」。 */}
+          「移除头像」放在设置页（那里有体积提示与配套说明），这里只做「换一张」。
+          **只有本人主页才挂它**（看别人时连 file input + 裁剪框都不进 DOM）—— 与「别人主页不出现」同一条口径：
+          入口不给只是不显示，DOM 里还留着一条上传通道 = 谁都可能把它摸出来。 */}
+      {isSelf ? (
       <ImageUploader
         variant='avatar'
         headless
+        // D23：头像自己就是入口，选完弹裁剪框选启用区域；裁完才发 POST /me/avatar。
+        crop
         images={[]}
         onReady={(api) => { avatarApi.current = api; }}
         onError={() => {}}
@@ -276,6 +281,7 @@ export function ProfilePage() {
           if (file) avatarSave.mutate(file);
         }}
       />
+      ) : null}
 
       {/* 封面就地换：与 /settings 那处、后台分区屏那处**同一个弹层**（cover-picker.tsx）。
           hero 右上那颗「更换封面」不弹它自己的窗口 —— 它只是通过句柄代点这里，入口只有一处代码。 */}

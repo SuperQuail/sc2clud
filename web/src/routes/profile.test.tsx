@@ -197,6 +197,17 @@ it('D19：未登录看到的是去登录的引导（不是一颗点了没反应�
   expect(link.getAttribute('href') ?? '').toContain('login');
 });
 
+// D23：裁剪只在本人主页存在 —— 看别人时连**上传通道本身**都不该在 DOM 里。
+// （先证明它会红：不挂 isSelf 那层时，这一页的 headless 上传器仍然渲染出一个 file input，
+//  而它背后是 POST /me/avatar —— 别人的主页上留着一条通往上传播的通道。）
+it('D23：别人主页没有头像上传通道（连 file input 都不在 DOM 里）', async () => {
+  stubProfile({ me: false, handle: 'demo-voidray' });
+  const { container } = renderProfile('demo-voidray');
+  await screen.findByText('示范管理员');
+  expect(container.querySelectorAll('input[type=file]')).toHaveLength(0);
+  expect(screen.queryByTestId('avatar-upload-entry')).toBeNull();
+});
+
 // 没有头衔且是本人：不显示假占位（接 D16 的口径）
 it('D18：本人没有头衔时不画假占位（不出现「无头衔」）', async () => {
   mockApi((path) => {

@@ -32,3 +32,16 @@
     由 `image-uploader` 的 `crop` 开关接上（`avatar` 形态才弹）；`routes/profile.tsx` 与 `routes/settings.tsx` 两处头像共用同一条路，
     看别人主页时不出现（入口本来就只在 `isSelf`）。
   - 阻塞：无
+
+- [x] 2026-10-15 第三步：D23 —— 头像选图后**弹裁剪框**选启用区域（复用房子件 Dialog + 现有图片管线，无新依赖）
+  - 证据：几何先钉住（`src/ui/rich/image-crop.test.ts` 5 条）——把 `cropRect` 故意改坏（`size` 乘 1.37）后
+    「取的区域是图片内的正方形」「放大之后取的是一块更小的区域」「取的区域是原图内的正方形」三条**真的红**，改回即绿；
+    弹层交互 `src/ui/rich/image-cropper.test.tsx` 4 条（drawImage 的 src 矩形是方、在图内、缩放真的进裁切、1x/4x 到顶）。
+    接线两处：`avatar-setting.tsx`（设置页/房间那格）与 `routes/profile.tsx`（本人主页那颗头像，headless 形态）；
+    裁完仍走 `image-pipeline`（长边 256、目标 64KB）→ `POST /me/avatar`，传输那一段一行没改。
+    「看别人主页时不出现」压实到 DOM：不挂 `isSelf` 那层时新断言 `input[type=file]` 数量 0 **红**（实测），挂上即绿。
+    出图看图：`shots/fix-donate-d23-room-1440.png`（框里是圆的头像可视区 + 缩小/放大/百分比/复位/取消/就用这一块）、
+    `shots/fix-donate-d23-room-zoomed.png`（点两次放大 → 150%，图真的变大）。
+    新件按规矩登记进 `devroom/registry.ts`（`image-cropper`，page 11-profile）→ `check-controls` 报「49 个控件」。
+  - 下一步：收口 —— `pnpm typecheck && pnpm lint && npx vitest run` 全绿后提交；三条（D22/D23/D24）的验收面在进度里各自留了证据行。
+  - 阻塞：无
