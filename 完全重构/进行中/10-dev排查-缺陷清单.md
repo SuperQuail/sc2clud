@@ -363,6 +363,12 @@ D34 补的是**管理端当场自助**这一缺环。
 | **D69** | 封面/壁纸弹层悬在左上角；白色覆盖层盖住裁剪区无法操作 | 实机复现（cdp-shot 注入文件 + elementFromPoint）：①「封面/背景」native dialog **margin:0px** 钉左上角——Tailwind preflight 吃掉 UA 的 dialog margin:auto，showModal 的 fixed 元素就钉角落；②裁剪框命中测试 = **外层 picker dialog**（hit=DIALOG、inside:false）——ImageCropper 的 Ring Dialog 是封面 dialog 的**子孙**，native modal 后代进不了 top layer 的正确层级 → 白覆盖/拖不动 | **Lead 已修**（13ab193）：①显式 m-auto + inset-0 + h-fit 找回居中；②ImageCropper Dialog 改 createPortal(document.body)——两颗 dialog 成兄弟（头像链路一直正常的形状）。cdp-shot 工具加 cookie/nav/diag2/stufffile 动作（会话注入+文件注入+命中诊断可复用）。**归档/清理：demo 诊断会话已删（sessions user1→0，恰证明重置自封也把 D56 的临时会话踢光——D56 与 D69 两轮共用同一把「踢全会话」事实）In dev** |**13ab193 一轮：dialog 居中 + portal 到 body（dev 复验：居中好了但 picker 反盖 cropper——两颗 top-layer modal 并存的层叠不可控）。**01a3b0f 二轮：改行为级——ImageUploader 新增 onCropOpenChange，cropper 打开期间 CoverPicker 把自己的 native dialog 暂时 close（React 状态不动 + suppressClose 锁 onClose），裁完/取消 showModal 收回；crop-frame 底 bg-foreground/5（contain letterbox 不再发白）。**dev 实机复验通过**（截图+digits： Picker open:false 收起、cropper 唯一 top-layer、命中可达、无白覆盖） | |
 | **D70** | 「没能保存这条来源」500（编号 da414cc6…） | prod 只读日志：POST /api/v1/topics/:id/sources 撞 **ck_topic_sources_size**（23514 → common.internal 500）——size_text 的格式正则约束 + 服务端零校验直写 DB | **Lead 已修**（014d830）：用户拍板「不托管文件、大小就是普通文本」——0057 迁移 DROP 约束 + 列宽 16→64（自由文本不再触第二个 500）；ent schema 同步（MaxLen 64）；**ck_topic_sources_url 的 https 保留**（协议防线）。**已提交 014d830；dev 部署时随迁移生效** |
 
+### 1p-production. 本轮按用户指令直接上生产（2026-10-15 23:30；用户：「没什么时间了，没发现问题就上生产」）
+
+- 部署：prod `8414f37 → de609af`（迁移 56→**57**），deploy 全 9 步走完，备份 `/srv/sc2clud-prod/backups/pre-deploy-de609af-20261015-153035.dump`；健康 200、bin/web 版本一致、systemd active、错误日志 0。
+- 后验（只读）：`ck_topic_sources_size` 已从 prod 库消失（D70 生效全网）；site/boards/topics/首页 全 200；房间目录 prod 照旧不发布（install.sh 设计：产品产物无 devroom）。
+- 本轮全部 13 条（D60-D70 计 11 条 + D69/D70 补报）**同时生效于 dev 与 prod**。
+
 ## 2. 派发分组（互不重叠的文件作用域）
 
 | 包 | 覆盖 | 主要文件 |
