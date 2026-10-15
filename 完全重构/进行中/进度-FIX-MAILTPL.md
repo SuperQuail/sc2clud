@@ -1,0 +1,4 @@
+- [x] 迁移 0054_mail_templates + platform/mail 自定义模板编译件（Override/CompileTemplate/Compiled.Render/Builtin）
+  - 证据：go vet ./internal/platform/mail 先红（undefined: Override）→ go test ./internal/platform/mail/ ok（含 TestCompileTemplateRejectsBadTemplate 5 组错误原话带行位、TestBuiltinSourcesRoundTrip 回落同源、TestCompiledRenderPartial 部分覆盖）
+  - 下一步：internal/mail —— pgsql 四条模板查询 + Service 模板缓存（PUT 进程内失效）+ tasks.go render 接 override
+  - 阻塞：无

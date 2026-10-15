@@ -63,27 +63,10 @@ type layoutData struct {
 // 缺必需字段（验证码类没有 Code、notice 没有 Title）返回错误——那是**调用方的代码 bug**，
 // 调用方据此把这条投递置 failed 且不重试（d6 §6.11）。
 func Render(kind string, d Data) (Message, error) {
-	subject, ok := subjectOf[kind]
-	if !ok {
-		return Message{}, fmt.Errorf("mail: 不认识的模板 %q", kind)
+	subject, d, err := prepare(kind, d)
+	if err != nil {
+		return Message{}, err
 	}
-	if d.SiteName == "" {
-		d.SiteName = "论坛"
-	}
-	switch kind {
-	case "verify_email", "reset_password":
-		if d.Code == "" {
-			return Message{}, fmt.Errorf("mail: 模板 %s 缺 Code", kind)
-		}
-		if d.ExpiresIn == "" {
-			d.ExpiresIn = "10 分钟"
-		}
-	case "notice":
-		if d.Title == "" {
-			return Message{}, fmt.Errorf("mail: 模板 notice 缺 Title")
-		}
-	}
-
 	text, err := execText(kind+".txt", d)
 	if err != nil {
 		return Message{}, err
@@ -101,6 +84,32 @@ func Render(kind string, d Data) (Message, error) {
 		return Message{}, err
 	}
 	return Message{Subject: subject, Text: text, HTML: html}, nil
+}
+
+// prepare 是内置与自定义两条渲染路径共用的校验与兜底（必须同源，避免两处各默认一次）：
+// 返回值是「内置主题 + 兜完底的数据」。缺必需字段返回错误 —— 那是调用方的代码 bug。
+func prepare(kind string, d Data) (string, Data, error) {
+	subject, ok := subjectOf[kind]
+	if !ok {
+		return "", d, fmt.Errorf("mail: 不认识的模板 %q", kind)
+	}
+	if d.SiteName == "" {
+		d.SiteName = "论坛"
+	}
+	switch kind {
+	case "verify_email", "reset_password":
+		if d.Code == "" {
+			return "", d, fmt.Errorf("mail: 模板 %s 缺 Code", kind)
+		}
+		if d.ExpiresIn == "" {
+			d.ExpiresIn = "10 分钟"
+		}
+	case "notice":
+		if d.Title == "" {
+			return "", d, fmt.Errorf("mail: 模板 notice 缺 Title")
+		}
+	}
+	return subject, d, nil
 }
 
 // execHTML 渲染 HTML：html/template 按上下文转义，昵称与正文里的 < > 都变成实体。
