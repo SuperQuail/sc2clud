@@ -363,7 +363,7 @@ func UpdateIssue(ctx context.Context, tx Querier, issueID int64, title, bodyMD, 
 	), issueID, title, bodyMD, bodyHTML, bodyText, status, assigneeID, actorID, now.UTC(), clearAssignee)
 }
 
-// IssueComments 是 Issue 的顶层评论一页（§7.8 Q12）。游标按 id，与帖子回复同一套。
+// IssueComments 是 Issue 的顶层评论一页（§7.8 Q12）。游标按 id，与帖子回复同一套（同升序、老在上，D66）。
 // **不做 ?sort=hot**：热排序没有稳定游标，而「最热 / 最新」是同一页数据上的前端排序。
 func (s *Store) IssueComments(ctx context.Context, issueID, viewerID, cursorID int64, limit int) ([]IssueCommentRow, error) {
 	var out []IssueCommentRow
@@ -377,8 +377,8 @@ SELECT c.id, c.public_id, c.issue_id, c.parent_id, par.public_id, c.body_html, c
   LEFT JOIN issue_comments par ON par.id = c.parent_id
   LEFT JOIN likes my ON my.user_id = $2 AND my.target_type = 'issue_comment' AND my.target_id = c.id
  WHERE c.issue_id = $1 AND c.visibility = 'normal' AND c.parent_id IS NULL
-   AND c.id < $3::bigint
- ORDER BY c.id DESC
+   AND c.id > $3::bigint
+ ORDER BY c.id ASC
  LIMIT $4`,
 		[]any{issueID, viewerID, cursorID, limit}, func(rows *sql.Rows) error {
 			var r IssueCommentRow

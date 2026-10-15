@@ -147,10 +147,13 @@ func pageCursor(s string) (time.Time, int64, error) {
 	return decodeCursor(s)
 }
 
-// intCursor 是只按 id 翻页的列表（回复、楼中楼、Issue 评论）。
+// intCursor 是只按 id 翻页的列表（回复、楼中楼、Issue 评论）。**方向是升序**（D66，与两条
+// 查询的 ORDER BY 同步翻）：第一页的哨兵是 0——「键在哨兵之后」在升序里是 id > 0，恒真；
+// 降序时代用的是 MaxInt64（sentinelID），它在这里**不能**再用：升序第一页遇它恒假、永远零行
+// （与 sentinelTimeAsc 那条注释同一个坑）。只有方向也一起翻的查询才许用它。
 func intCursor(s string) (int64, error) {
 	if s == "" {
-		return sentinelID, nil
+		return 0, nil
 	}
 	raw, err := base64.RawURLEncoding.DecodeString(s)
 	if err != nil {

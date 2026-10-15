@@ -50,6 +50,10 @@ func scanPost(rows *sql.Rows, p *PostRow, extra ...any) error {
 // 排序键是 p.id 而不是 created_at：id 是 identity，与 created_at 同序，但它是单列——
 // 游标只装一个整数；而 created_at 由 now() 写入，同一毫秒内两条回复会出现真并列（identity 不会）。
 //
+// 方向是**升序**（D66，2026-10-15 用户实测「评论区新评论在上，应老评论在上」）：顶层从最老的
+// 一条起，游标 = 取到的最后一条 id，向后越翻越新。曾经的方向是 DESC——「最新的 20 条」
+// 让长帖的**开头**根本不在第一页里，读帖的人要滚到最底才够到 1 楼之后的最早讨论。
+//
 // 可见性：楼层跟随主题，没有第二根轴。**对所有人一个口径**：非 normal 的楼层谁都不列。
 // 这里曾有过一个作者例外（p.author_id = viewer 能看到自己被隐藏/软删的楼）——D64（2026-10-15
 // 用户实测「删除的评论用户侧仍显示」）把它摘了：PostDTO 不下发 visibility，作者例外在界面上
@@ -67,8 +71,8 @@ WITH roots AS (
    WHERE p.topic_id = $1
      AND p.parent_id IS NULL
      AND p.visibility = 'normal'
-     AND p.id < $3::bigint
-   ORDER BY p.id DESC
+     AND p.id > $3::bigint
+   ORDER BY p.id ASC
    LIMIT $4
 )
 SELECT r.id, r.public_id, r.topic_id, r.parent_id, par.public_id, r.floor, r.content_html,
@@ -87,7 +91,7 @@ SELECT r.id, r.public_id, r.topic_id, r.parent_id, par.public_id, r.floor, r.con
              ORDER BY q.id LIMIT 3) x
   ) preview ON true
   LEFT JOIN likes my ON my.user_id = $2 AND my.target_type = 'post' AND my.target_id = r.id
- ORDER BY r.id DESC`
+ ORDER BY r.id ASC`
 
 	var out []PostRow
 	err := s.query(ctx, sqlText, []any{topicID, viewerID, cursorID, limit}, func(rows *sql.Rows) error {
