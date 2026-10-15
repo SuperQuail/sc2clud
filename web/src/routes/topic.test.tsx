@@ -205,7 +205,8 @@ function SearchProbe() {
 
 function renderPage(state?: unknown) {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-  return render(
+  const out = render(
+    // D67 的用例需要拿这颗 QueryClient 断言「哪几段缓存被失效」，所以把它挂回返回值
     <QueryClientProvider client={qc}>
       <MemoryRouter initialEntries={[{ pathname: '/t/' + WIRE.id, state }]}>
         <Routes>
@@ -218,6 +219,7 @@ function renderPage(state?: unknown) {
       </MemoryRouter>
     </QueryClientProvider>,
   );
+  return Object.assign(out, { qc });
 }
 
 it('整页画得出来：正文、四件右栏、审核横幅与理由、来源可点、来源标签用后端词表', async () => {
@@ -398,6 +400,61 @@ it('L6：revision_requested 与「拒绝」是两套文案，且能查看最后�
   const dialog = await screen.findByRole('dialog');
   expect(dialog.textContent).toContain('最后过审版本');
   expect(dialog.textContent).toContain('这是上一次过审时的正文。');
+  mocks.topic.current = null;
+});
+
+// D67（2026-10-15 用户实测「首页卡片的评论数点进才见真数」）：回复列是 topics.reply_count 的
+// **缓存快照** ——发 / 删回复只会失效帖内那两段缓存，['topics', …]（首页 / 分区页 / 搜索里的卡片）
+// 与 ['profile', handle, 'topics']（个人主页）不洗牌的话，卡片上的数要等 30s 才对上。
+// 用例判据就是这两段缓存的 isInvalidated：成功一次动作后它们必须变 true。
+it('D67：回复 / 删回复之后，信息流与个人主页的列表缓存一并失效', async () => {
+  mocks.posts.current = {
+    items: [
+      {
+        id: 'p-mine',
+        parent_id: null,
+        floor: 2,
+        author: { handle: 'Alenger', nickname: '爱兰琪尔', avatar_hash: null },
+        content_md: '我自己的一条',
+        content_html: '<p>我自己的一条</p>',
+        created_at: '2026-10-13T01:00:00Z',
+        updated_at: '2026-10-13T01:00:00Z',
+        like_count: 0,
+        my_vote: 0,
+      },
+    ],
+    next: null,
+  };
+  mocks.createPost.mockResolvedValue({});
+  mocks.deletePost.mockResolvedValue(null);
+  mocks.topic.current = { can_reply: true };
+  const { qc } = renderPage();
+  await screen.findByTestId('topic-main');
+  const feedKey = ['topics', { board: undefined, sort: 'latest' }] as const;
+  const mineKey = ['profile', 'Alenger', 'topics'] as const;
+  qc.setQueryData(feedKey, { data: [], next: null });
+  qc.setQueryData(mineKey, { data: [], next: null });
+  expect(qc.getQueryState(feedKey)?.isInvalidated).toBeFalsy();
+
+  // 发一条回复：['topics'] 前缀 + ['profile'] 前缀都要失效（个人主页的 userTopics 在它下面）
+  fireEvent.change(await screen.findByLabelText('假编辑器（测试注入）'), { target: { value: EDITOR_JSON } });
+  fireEvent.click(screen.getByTestId('reply-publish'));
+  await waitFor(() => expect(mocks.createPost).toHaveBeenCalled());
+  await waitFor(() => expect(qc.getQueryState(feedKey)?.isInvalidated).toBe(true));
+  await waitFor(() => expect(qc.getQueryState(mineKey)?.isInvalidated).toBe(true));
+
+  // 删自己的回复：同一组失效
+  mocks.createPost.mockClear();
+  qc.setQueryData(feedKey, { data: [], next: null });
+  qc.setQueryData(mineKey, { data: [], next: null });
+  fireEvent.click(screen.getAllByTestId('comment-delete')[0]!);
+  await waitFor(() => expect(mocks.deletePost).toHaveBeenCalledWith('p-mine'));
+  await waitFor(() => expect(qc.getQueryState(feedKey)?.isInvalidated).toBe(true));
+  expect(qc.getQueryState(mineKey)?.isInvalidated).toBe(true);
+
+  mocks.createPost.mockReset();
+  mocks.deletePost.mockReset();
+  mocks.posts.current = null;
   mocks.topic.current = null;
 });
 

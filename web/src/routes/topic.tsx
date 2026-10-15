@@ -176,9 +176,14 @@ export function TopicPage() {
     mutationFn: (v: { parentId: string | null; body: { json: string; html: string } }) =>
       createPost(topicId, { content_md: editorJsonToMarkdown(v.body.json), parent_id: v.parentId ?? undefined }),
     onSuccess: () => {
-      // 回复成功后失效「回复列表 + 主题」（主题的 reply_count 会变）——按影响面失效，不全量 invalidate
+      // 回复成功后失效「回复列表 + 主题」（主题的 reply_count 会变）——按影响面失效，不全量 invalidate。
+      // 首页/分区页的**信息流也吃这个数**（D67，2026-10-15 用户实测「首页卡片评论数点进才见真数」）：
+      // 卡片的 reply_count 来自 ['topics', …] 的缓存，不失效的话只会在 30s 后才对上。
       void queryClient.invalidateQueries({ queryKey: qk.posts(topicId) });
       void queryClient.invalidateQueries({ queryKey: qk.topic(topicId) });
+      void queryClient.invalidateQueries({ queryKey: ['topics'] });
+      // 个人主页的「TA 的帖子 N 条回复」同一列（qk.userTopics 挂在 profile 前缀下）
+      void queryClient.invalidateQueries({ queryKey: ['profile'] });
     },
   });
   const removeReply = useMutation({
@@ -186,6 +191,9 @@ export function TopicPage() {
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: qk.posts(topicId) });
       void queryClient.invalidateQueries({ queryKey: qk.topic(topicId) });
+      // D67：删回复同样要让信息流 / 个人主页的计数列重新拉一次真数
+      void queryClient.invalidateQueries({ queryKey: ['topics'] });
+      void queryClient.invalidateQueries({ queryKey: ['profile'] });
       setReceipt('这条回复已删除。');
     },
   });
