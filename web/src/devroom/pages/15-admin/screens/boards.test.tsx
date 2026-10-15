@@ -63,6 +63,18 @@ it('清空封面：改的是 cover_hash，点保存时把它发出去（空串 =
   expect(seen[0]).toEqual({ cover_hash: '' });
 });
 
+// D27（2026-10-15 用户实测「管理页分区管理稳定裂图」）：封面是**图片端点**的资源，只能走
+// imagePath（/img/<hash>，会补 /dev 前缀）。旧行为用的是 assetUrl —— 那是 **public/art 静态素材**的
+// 拼法（appPath('art/' + file)），于是地址成了 /art/img/<hash>：站上没有这条路径 → 稳定裂图，
+// 而且因为它「看起来像一张图」，直到有人真的把这张图删掉才会暴露。
+it('D27：封面图的地址是 imagePath 那条（/img/<裸哈希>），不是 assetUrl 的 /art/img/<哈希>', () => {
+  renderScreen(() => {});
+  const hash = 'a'.repeat(64);
+  // 两处封面：列表行那一枚（32×32）与右侧「分区资料」里的预览（96×56）
+  expect(document.querySelector('img[width="32"]')?.getAttribute('src')).toBe('/img/' + hash);
+  expect(document.querySelector('img[width="96"]')?.getAttribute('src')).toBe('/img/' + hash);
+});
+
 it('换封面：换了图也不进「未保存的改动」（它走图片通道，选完即生效）', async () => {
   const seen: Array<Partial<BoardPatch>> = [];
   renderScreen((p) => seen.push(p));

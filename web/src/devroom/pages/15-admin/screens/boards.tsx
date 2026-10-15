@@ -5,7 +5,7 @@ import Select, { Type as SelectType } from '@jetbrains/ring-ui-built/components/
 import Toggle from '@jetbrains/ring-ui-built/components/toggle/toggle';
 import { ControlsHeight } from '@jetbrains/ring-ui-built/components/global/controls-height';
 import { ArrowDown, ArrowUp, Archive, Image as ImageIcon, Plus } from 'lucide-react';
-import { assetUrl } from '@/lib/url';
+import { imagePath } from '@/lib/url';
 import { icon16 } from '@/ui/icons';
 import { Username } from '@/ui/user/username';
 import type { AdminACLItem, AdminBoard, AdminModeratorItem, Role } from '@/lib/api/admin';
@@ -169,7 +169,7 @@ export function BoardsScreen({
       render: (b: AdminBoard) => (
         <span className='flex min-w-0 items-start gap-2'>
           {b.cover_hash
-            ? <img src={assetUrl('/img/' + b.cover_hash)} alt='' width={32} height={32} className='mt-0.5 shrink-0 rounded-sm border border-border object-cover' />
+            ? <img src={imagePath('/img/' + b.cover_hash)} alt='' width={32} height={32} className='mt-0.5 shrink-0 rounded-sm border border-border object-cover' />
             : <span className='mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-sm border border-dashed border-border text-muted-foreground'><ImageIcon size={14} aria-hidden /></span>}
           <span className='flex min-w-0 flex-col leading-tight'>
             <span className='flex min-w-0 items-center gap-1.5'>
@@ -274,7 +274,7 @@ export function BoardsScreen({
                 <div className='mt-1 flex items-start gap-3'>
                   <span className='flex h-14 w-24 shrink-0 items-center justify-center overflow-hidden rounded-sm border border-border bg-muted'>
                     {d.cover_hash
-                      ? <img src={assetUrl('/img/' + d.cover_hash)} alt='' width={96} height={56} className='h-full w-full object-cover' />
+                      ? <img src={imagePath('/img/' + d.cover_hash)} alt='' width={96} height={56} className='h-full w-full object-cover' />
                       : <ImageIcon size={16} aria-hidden />}
                   </span>
                   <div className='flex min-w-0 flex-col gap-1.5'>

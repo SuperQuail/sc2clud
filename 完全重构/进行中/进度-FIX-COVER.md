@@ -59,3 +59,30 @@
     只是 review 时别以为「topic-view.tsx 的封面改动」属于 D22。
   - 下一步：D27（后台分区管理的裂图）。
   - 阻塞：无。
+
+- [x] **D27（管理页「分区管理」稳定裂图）：两处封面用的是 `assetUrl`（public/art 的拼法），改回 `imagePath`**
+  - 根因（与 D21 **分别取证**，两条不是同一个原因）：`assetUrl(file) = appPath('art/' + file)` 是 **public/art 静态素材**的拼法；
+    而分区封面是**图片端点**的资源（生产由后端 media 读口给 `/img/<hash>`）。于是
+    `assetUrl('/img/' + cover_hash)` 拼出来的是 **`/dev/art/img/<hash>`** —— 站上没有这条路径 → 稳定裂图。
+    两处都在 `15-admin/screens/boards.tsx`：列表行缩略图（32×32，:172）与「分区资料」里的预览（96×56，:277）。
+    **D21 是字段名读错（读不到哈希），D27 是 URL 拼错（拿到了哈希却拼错前缀）** —— 现象像，根因不同。
+  - 改法：两行 `assetUrl` → `imagePath`（`@/lib/url` 的全站唯一 URL 入口）。`assetUrl` 的 import 随之删掉。
+  - **删掉一张掩盖它的假映射**：`web/public/art/img/c0c0c0…`（018a952 出的图那次加进去的，注释里只提了
+    `public/img/<hash>`）。它让**错的那个 URL 在出图里也能解析**，所以这条缺陷在截图里一直看不见；
+    代码里没有任何地方引用 `art/img`（grep 0 命中），删掉它、缺陷才在出图里现形。
+    （真实的五个分区封面在 dev 上是 `nav-*.webp` 的 sha256，`art/img/` 下**一个都没有** → 用户看到的就是五张裂图。）
+  - **断言先红**（`15-admin/screens/boards.test.tsx` 新增「D27：封面图的地址是 imagePath 那条」）：
+    改之前 —— `AssertionError: expected '/art/img/aaaa…' to be '/img/aaaa…'`。
+  - 证据（出图，`.tmp-fixcover-dist` + `serve-preview.ts 5296` + `admin.html?route=/admin/boards&asAdmin=1`）：
+    · `web/shots/fix-cover/d27-product-admin-boards-before-1440.png`：**临时**把两行还原成 `assetUrl`、重建后拍到的**裂图**
+      （列表里「自制战役」那一格与右侧预览都是碎图标）—— 缺陷可复现；
+    · `web/shots/fix-cover/d27-product-admin-boards-1440.png`：改回 `imagePath` 后同一屏，两处都出图（缩略图 + 96×56 预览），
+      同屏还能看到另外三行（`cover_hash` 为空）的虚线占位 —— 两条分支一张图里都在；
+      两张图左下角都有 `MARKER-ADMIN /admin/boards`（证明拍的是当前源码）。
+    · URL 对照（对同一个 hash 直接取）：`/img/<hash>` → **200**（10822 字节）、`/art/img/<hash>` → **404**。
+  - 证据（门禁）：`npx vitest run` **55 文件 / 275 用例全绿**；`npx tsc --noEmit` **0 错**；`npx eslint` 两个文件 0 问题；
+    `gate:size` 通过（`boards.tsx` 510 行，与改前**一行不差** —— 登记里写着「行数只减不增」，所以我没往里加注释，
+    理由写在这里与测试名里）；`gate:urls` / `gate:ui` / `gate:tokens` / `gate:controls` 全通过。
+  - 下一步：无（D21 / D27 两条都收工）。给 Lead 的验收建议：真站上重开一次 `/dev/admin/boards`（硬刷新，旧 bundle 有缓存）
+    看五张分区封面；帖子页 `/dev/t/<id>` 左栏看同一批封面。
+  - 阻塞：无。
