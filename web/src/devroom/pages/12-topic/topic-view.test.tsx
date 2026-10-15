@@ -200,6 +200,28 @@ it('D4：下载来源在正文上方，且整行是可新标签页打开的转�
   expect(link.getAttribute('rel')).toBe('noopener');
 });
 
+// D60（2026-10-15 用户实测「下载源名称猜不中显示其他」）：topic_sources.label 是**用户自定义名**，
+// 行的主名优先用它；label 空着的行也不能只剩一个「其他」—— 用原始链接的主机名让这条源可辨认。
+it('D60：来源行的主名是作者写的 label，label 空时回落站点名并摆出链接主机名', async () => {
+  const withLabel = render(<TopicView {...viewProps({ sourcesLinked: true })} />);
+  await screen.findByTestId('comment-total');
+  // 主名 = label（第三章整合包），站点名（百度网盘）退为注脚 —— 顺序即优先级
+  const link = screen.getByRole('link', { name: /第三章整合包/ });
+  expect(link.textContent!.indexOf('第三章整合包')).toBeLessThan(link.textContent!.indexOf('百度网盘'));
+  withLabel.unmount();
+
+  // label 空 + provider 在词表外（老库的 netdisk 也算）：站点回落「其他」时主名还必须有料 —— 主机名
+  const bare = {
+    ...TOPIC,
+    sources: [{ id: 's2', provider: 'other', label: '', go_path: '/api/v1/go', url: 'https://cdn.example.net/miyin.exe', size: '', verified_at: '', upkeep: 'active' as const }],
+  };
+  render(<TopicView {...viewProps({ topic: bare, sourcesLinked: true })} />);
+  const link2 = screen.getByRole('link', { name: /cdn\.example\.net/ });
+  expect(link2.textContent).toContain('其他');
+  expect(link2.textContent).toContain('cdn.example.net');
+  expect(link2.textContent!.trim().length).toBeGreaterThan('其他'.length); // 不再是一行只有「其他」
+});
+
 // D8（2026-10-14 用户实测）：帖子里两个发帖者都点不进主页 —— 私信/看 TA 的帖子整条测不了。
 it('D8：正文头部与右栏作者卡的头像/昵称都点得进 /u/<handle>', async () => {
   const { container } = render(<TopicView {...viewProps()} />);

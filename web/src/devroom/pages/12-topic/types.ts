@@ -39,6 +39,8 @@ export type TopicSource = {
   label: string;
   /** 302 转链按钮指向的端点，形如 /api/v1/topics/{id}/sources/{sid}/go */
   go_path: string;
+  /** 服务端存的原始链接（SourceDTO.url）：作者没写 label 时，行里拿它的主机名让这条源可辨认 */
+  url?: string;
   extraction_code?: string | null;
   size: string;
   verified_at: string;

@@ -28,10 +28,19 @@ const SOURCE_SITE: Record<string, { label: string; Icon: LucideIcon }> = {
   other: { label: '其他', Icon: Link2 },
 };
 
-/** 查不到的 provider 一律回落到 other 的图标 + 来源自己的 label，不用 if/else 猜 */
+/** 站点身份只管图标；行名在 SourceRow 里定（label 优先，见 D60） */
 function siteOf(s: TopicSource): { label: string; Icon: LucideIcon } {
-  const key = s.provider as string;
-  return SOURCE_SITE[key] ?? { ...SOURCE_SITE.other!, label: s.label };
+  return SOURCE_SITE[s.provider as string] ?? SOURCE_SITE.other!;
+}
+
+/** 没 label 时用链接的主机名让这条源可辨认（摘不出主机就空串，不硬猜） */
+function hostOf(url?: string): string {
+  if (!url) return '';
+  try {
+    return new URL(url).host;
+  } catch {
+    return '';
+  }
 }
 
 // 一行 = 站点图标 + 站点名 + 来源名 + 提取码 + 维护状态。
@@ -73,13 +82,22 @@ function SourceRow({ source, linked }: { source: TopicSource; linked: boolean })
   // 一行共用同一套 class：链接版是可聚焦的 <a>（带 hover 与焦点环），房间版是 aria-disabled 的行
   const row =
     'flex min-w-0 flex-1 items-center gap-2 rounded-md px-2 py-1.5 text-left ring-1 ring-border outline-none';
+  // D60（2026-10-15 用户实测）：topic_sources.label 就是作者写的显示名，行的主名**优先用它**；
+  // 没写的时候回落站点名。两格都没字（「其他」+ 空 label）的行谁也认不出 —— 那时把原始链接的
+  // 主机名当注脚摆出来（不猜名字，只摆事实）。
+  const name = source.label.trim() || site.label;
+  const footnote = source.label.trim() ? site.label : hostOf(source.url);
   const inner = (
     <>
       <Icon aria-hidden className='size-4 shrink-0 text-muted-foreground' />
-      <span className='shrink-0 text-[12px] font-medium text-foreground'>{site.label}</span>
-      <span className='min-w-0 flex-1 truncate text-[12px] text-muted-foreground' title={source.label}>
-        {source.label}
+      <span className='min-w-0 flex-1 truncate text-[12px] font-medium text-foreground' title={name}>
+        {name}
       </span>
+      {footnote ? (
+        <span className='hidden shrink-0 text-[11px] text-muted-foreground sm:inline' title={source.url}>
+          {footnote}
+        </span>
+      ) : null}
       {source.extraction_code ? (
         <span className='inline-flex shrink-0 items-center gap-1 text-[11px] text-muted-foreground'>
           <KeyRound aria-hidden className='size-3 shrink-0' />
@@ -97,11 +115,11 @@ function SourceRow({ source, linked }: { source: TopicSource; linked: boolean })
     return (
       <li
         aria-disabled='true'
-        title={protoTitle('下载转链端点') + ' · ' + site.label + ' · ' + source.label}
+        title={protoTitle('下载转链端点') + ' · ' + name}
         className={row + ' cursor-not-allowed'}
       >
         {inner}
-        <span className='sr-only'>{'未做：打开 ' + site.label + '：' + source.label}</span>
+        <span className='sr-only'>{'未做：打开 ' + name}</span>
       </li>
     );
   }
@@ -112,11 +130,11 @@ function SourceRow({ source, linked }: { source: TopicSource; linked: boolean })
         // 新标签页：点下去是服务端 302 到网盘/GitHub，当前页不该被带走
         target='_blank'
         rel='noopener'
-        title={'在新标签页打开 ' + site.label + '：' + source.label}
+        title={'在新标签页打开 ' + name}
         className={row + ' hover:ring-primary focus-visible:ring-[3px] focus-visible:ring-ring/50'}
       >
         {inner}
-        <span className='sr-only'>{'（新标签页）打开 ' + site.label + '：' + source.label}</span>
+        <span className='sr-only'>{'（新标签页）打开 ' + name}</span>
       </a>
     </li>
   );

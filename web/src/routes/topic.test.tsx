@@ -228,9 +228,11 @@ it('整页画得出来：正文、四件右栏、审核横幅与理由、来源�
   // review_state=rejected：横幅与 review_note 都要在（只有作者看得到，这条响应就是作者视角）
   expect(screen.getByTestId('review-banner').getAttribute('data-state')).toBe('rejected');
   expect(screen.getByText(/正文含未标明来源的下载地址/)).toBeTruthy();
-  // 下载来源：真站是可点的转链（房间那份不可点），且 provider=pan123 走的是后端词表不是回落
-  const source = screen.getByRole('link', { name: /打开 123 云盘/ });
+  // 下载来源：真站是可点的转链（房间那份不可点）；行主名是作者写的 label，
+  // provider=pan123 的站点名退成注脚（同一格还在链接里，词表没有回落成「其他」）。
+  const source = screen.getByRole('link', { name: /打开 第三章整合包/ });
   expect(source.getAttribute('href')).toContain('/api/v1/topics/01a13540/sources/s1/go');
+  expect(source.textContent).toContain('123 云盘');
   // 作者头像：avatar_hash 拼成 /img/<hash>（UserAvatar 挨着昵称时 alt 留空，所以按 src 找）
   expect(document.querySelector('img[src*="/img/a1b2c3"]')).toBeTruthy();
   // 反馈入口计数来自详情里的 issue_open_count

@@ -119,6 +119,8 @@ export function toDesignSource(s: ApiSource): TopicSource {
     provider: s.provider,
     label: s.label,
     go_path: appPath(s.go_path),
+    // 原始链接原样带上（SourceDTO.url）：label 空着时，行名用它的主机名兜底（D60）
+    url: s.url ?? '',
     extraction_code: s.extraction_code ?? null,
     size: s.size ?? '',
     verified_at: s.verified_at ? formatTime(s.verified_at) : '未核对',
