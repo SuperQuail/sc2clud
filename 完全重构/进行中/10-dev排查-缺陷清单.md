@@ -190,6 +190,15 @@ FIX-COVER staging 之后、commit 之前，**索引被并发的 `git reset` 清�
 
 ---
 
+### D33 ③ 权威事实（用户给的官方文档，2026-10-15 09:35 已核对）
+
+来源：https://api-docs.deepseek.com/zh-cn/guides/vision ——
+- **`deepseek-flash` 本身支持图片输入**（旧名 `deepseek-v4-flash-vision-exp` 已下线，请求由最新 Flash 承接）⇒ **不用换模型**；
+- 支持 **JPEG / PNG / GIF / WebP**，**按文件内容判断**而非文件名/MIME ⇒ **我们的 webp 直接发，不用转格式**；
+- 请求形状 = 标准 OpenAI 兼容 content 块数组：`messages[].content = [{type:text},{type:image_url,image_url:{url:"data:…;base64,…"}}]`；
+- **base64 内联计入 48 MiB 请求体上限**；另一条路是公网 URL（≤8192 字符、图 ≤32 MiB、60s 内取回）——**dev 没有公网图片地址，必须走 data URL**。
+
+派 **FIX-VLM**（后端 payload/取图/上限/记录 + 管理端预览与连通性测试；因无法给已派出的子 agent 发更正，预览那一半并入本包）。
 ## 2. 派发分组（互不重叠的文件作用域）
 
 | 包 | 覆盖 | 主要文件 |
