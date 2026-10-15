@@ -211,6 +211,21 @@ FIX-AI2 被中途停止（无收尾报告），其半成品由 Lead 接手收完
 
 ---
 
+## 1i. 第六轮（用户实测 dev `c743e24` 之后）
+
+| # | 现象 | 处理 |
+|---|---|---|
+| **D34** | **连通性测试样例无法自己配图**（只能改文字）→ 无法用自己图当场带图测试 | 派 **FIX-VLM2**：`/admin/ai/test` 与 `/admin/ai/payload` 接受 **multipart**（`probe` 文本 + ≤4 张 `file`），图片**只在内存里走**（不写 topic_images、不落 review_events、不留文件 —— 沿用 TestTopic「一个字都不落库」的既定语义）；前端 ProbeEditor 加选图（格式/张数/单张体积的拒绝理由就地显示——与 topic 路径同一套上限常量），选完即重算 payload 干跑（所见即所发）；**JSON 路径保持原样**（向后兼容）。无 schema 变更，**不加迁移** |
+
+**先决事实（已实测）**：多模态主链路在线上是通的 —— 2026-10-15 用程序生成的伪二维码 PNG 走 `TestTopic{topic_public_id}`：
+回执 `verdict=review`、reason「含**伪二维码图**…交人工」、`image_count=1`（存档 shots/dev-live/vlm-receipt.json）。
+D34 补的是**管理端当场自助**这一缺环。
+
+---
+
+| **D35** | **图片体积的服务端硬上限未实现**：前端闸（头像 128KB 目标 / 10MiB 拒收）只是 UI 拦截，绕过前端直接 POST 无约束（服务端只验图片格式，不验字节） | 小改动：media 域按档位做字节上限（头像 128KB / 封面与配图 PostMax），加会红用例 |
+| **D36** | `web/src/ui/rich/attachment-slot.tsx`（发帖附件位）**没有测试**，而 18-compose 在用它 | 补组件用例（min 修正类）：展示/移除/上限计数三条 |
+
 ## 2. 派发分组（互不重叠的文件作用域）
 
 | 包 | 覆盖 | 主要文件 |
