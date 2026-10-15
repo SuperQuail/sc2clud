@@ -15,3 +15,7 @@
   - 证据：src/routes/admin/ai-files.test.tsx 2 用例红→绿（payload multipart 2 部件、test 走 FormData 且 file 部件 2 枚）；全量 vitest 61 文件/301 用例全绿（基线 59/294 不变不碰红）
   - 下一步：DevRoom 出图 1440/390（双图、payload 图块、回执明细）
   - 阻塞：无
+- [x] 出图并看图（1440 与 390，DiffRoom→DevRoom？不：DevRoom 15-admin/ai，dsh 已看）
+  - 证据：CDP 出图（shots/fixvlm2-shot.mjs，非 agent-browser）：probe-files(1440/390) 双图 chips + 第 2 张 3.4 MB 红字「单张 3.4 MB 超过上限 2.0 MB，这一张没发」；receipt 两对图有「判了 2 张图」药丸 + 「只走一条请求不落库」注脚；payload 图块三行含「不发给模型 · 单张 3.3 MB 超过上限」（1440/390）—— 均有自证标记「FIX-VLM2 2026-10-15 @devroom 15-admin/ai (D34)」
+  - 下一步：无（D34 收口；搭配运行命令：cd web → pnpm typecheck && pnpm lint && npx vitest run；cd forum → gofmt -l . + go vet ./... + go test ./internal/aireview/ -count=1）
+  - 阻塞：无

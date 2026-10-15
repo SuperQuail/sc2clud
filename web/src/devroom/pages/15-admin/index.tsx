@@ -104,7 +104,17 @@ function AiRoom() {
       payload={DEMO_AI_PAYLOAD}
       onPatch={(p) => { setCfg((c) => ({ ...c, ...p })); setReceipt('（房间演示：这里不发请求）已保存 ' + Object.keys(p).join('、')); }}
       onSaveSecret={() => { setCfg((c) => ({ ...c, has_secret: true, secret_updated_at: new Date().toISOString() })); setReceipt('（房间演示：这里不发请求）密钥已保存（只写不回显）'); }}
-      onTest={() => { setTest(DEMO_AI_TEST); setReceipt(null); }}
+      onTest={() => {
+        // 房间不发请求：receipt 是「这条端点会回什么」的投影（D33③ 同款）。带了样例图（D34）就
+        // 按 TestSample 回执的形状投出「判了几张 / 逐张下场」—— 图元不在房间里，hash 用文件名。
+        setTest(sampleFiles.length > 0 ? {
+          ...DEMO_AI_TEST,
+          image_count: sampleFiles.length,
+          image_skipped: 0,
+          images: sampleFiles.map((f, i) => ({ position: i, floor: 0, hash: f.name, mime: f.type || 'image/png', bytes: f.size, sent: true, note: '' })),
+        } : DEMO_AI_TEST);
+        setReceipt(null);
+      }}
       testResult={test}
       receipt={receipt ? <p className='text-[12px] text-muted-foreground'>{receipt}</p> : null}
     />

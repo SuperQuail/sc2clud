@@ -28,7 +28,8 @@ export function TestResult({ result }: { result: AiTestView }) {
           <Pill tone='ok'>连通成功</Pill>
           <Pill tone={result.verdict === 'approve' ? 'ok' : result.verdict === 'reject' ? 'danger' : 'warn'}>{result.verdict}</Pill>
           <span className='text-[12px] text-foreground'>{result.model} · {result.latency_ms} ms</span>
-          {result.topic_id > 0 ? (
+          {/* D34：样例带图的那一路 topic_id=0，但「判了几张 / 为什么没发」同样要看得见 */}
+          {result.topic_id > 0 || result.image_count > 0 ? (
             <Pill tone={result.image_count > 0 ? 'ok' : 'neutral'}>{'判了 ' + result.image_count + ' 张图'}</Pill>
           ) : null}
           {result.image_skipped > 0 ? <Pill tone='danger'>{'没发 ' + result.image_skipped + ' 张'}</Pill> : null}
@@ -43,6 +44,10 @@ export function TestResult({ result }: { result: AiTestView }) {
         {result.topic_id > 0 ? (
           <p className='mt-1 text-[11px] leading-relaxed text-muted-foreground'>
             这一次是**真发**出去的一条真帖子（含图），但**一个字都没落库**：主题状态、判定事件、配额都没动。
+          </p>
+        ) : result.image_count > 0 ? (
+          <p className='mt-1 text-[11px] leading-relaxed text-muted-foreground'>
+            样例图只走了这一条请求：不写 topic_images、不落 review_events、不留文件，也**一个字都没落库**。
           </p>
         ) : null}
       </div>
