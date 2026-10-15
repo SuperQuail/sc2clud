@@ -282,6 +282,12 @@ D34 补的是**管理端当场自助**这一缺环。
 
 ---
 
+### 1n-sexies. 改分区事实上无效（用户 2026-10-15 17:3x 实测）
+
+| # | 现象 | 根因（实测） | 处理 |
+|---|---|---|---|
+| **D55** | 编辑页把分区改掉、保存后**分区没变** | 后端 `PATCH /topics/:id` **本来就支持 `board`**（`UpdateTopicInput.BoardSlug`，改分区要 `topic.move`），但前端 `updateTopic` 只发 `title`/`content_md` —— **界面让人随便改，那个值从来没上过行**。另：后端的 topic.move 检查写在 `UpdateTopicFields` **之后**（靠事务回滚兜住，行为对但读起来像先写后判） | ① 前端按「**只在分区真的变了时才发 `board`**」提交（每次都发会把没有 topic.move 的作者连保存都 403 掉）；② 没有 `topic.move` 时把分区栏 **锁上**（`disabled` + 页头说明），并让页头文案不再撒谎（原来写着「分区不在这一步改」）；③ 后端把 topic.move 检查**挪到写之前**；④ 钉子：Go `TestUpdateTopicBoardNeedsTopicMove`（无权限 → 403 **且分区没变**；只改标题照常能存；有权限 → 真改）、前端断言「没改分区时 PATCH 不带 board」 |
+
 ### 1n-quinquies. 编辑保存后 400「参数错误」（用户 2026-10-15 17:4x 实测）
 
 | # | 现象 | 根因（实测证据） | 处理 |

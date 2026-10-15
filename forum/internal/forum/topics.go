@@ -491,14 +491,17 @@ func (s *Service) UpdateTopic(ctx context.Context, actor *authz.Actor, publicID 
 		html, excerpt = h, clipExcerpt(plain)
 	}
 
+	// 移动分区只有持 topic.move 的人能做（拍板 §1.2）。
+	// **检查放在写之前**：原来这段写在 UpdateTopicFields 之后、靠事务回滚兜住（行为一样，但
+	// 「先写库再判权限」读起来像另一种东西 —— 2026-10-15 顺手正过来）。
+	if boardID != nil && !actor.IsSuper && !actor.Perms.Has(authz.PermTopicMove) {
+		return apperr.ErrForbidden
+	}
+
 	now := s.clk.Now().UTC()
 	return db.WithTx(ctx, s.db, func(tx *ent.Tx) error {
 		if err := pgsql.UpdateTopicFields(ctx, tx, ref.ID, title, kind, boardID, resourceStatus, clearResourceStatus, now); err != nil {
 			return err
-		}
-		// 移动分区只有持 topic.move 的人能做（拍板 §1.2）。
-		if boardID != nil && !actor.IsSuper && !actor.Perms.Has(authz.PermTopicMove) {
-			return apperr.ErrForbidden
 		}
 		if in.ContentMD != nil {
 			// **编辑不动原帖**（拍板 08 第二轮 · 6.2）：这条主题有线上内容的话，它就在 posts 里，

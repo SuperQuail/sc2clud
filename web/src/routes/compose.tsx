@@ -117,7 +117,10 @@ export function ComposePage() {
       // 发帖与编辑走同一条换算 —— 两处各写一份就会各自漂移（FIX-TOPIC 在反馈页已经踩过这个形状）。
       const content_md = editorJsonToMarkdown(doc.json);
       if (editing) {
-        await updateTopic(editId, { title: title.trim(), content_md });
+        // **分区只在真的改了的时候才发**：后端对「带 board 的 PATCH」要求 topic.move，
+        // 每次都发就等于把「没这个权限的作者」连保存都挡了。
+        const moved = existing.data && existing.data.board.slug !== board ? { board } : {};
+        await updateTopic(editId, { title: title.trim(), content_md, ...moved });
         return editId;
       }
       const created = await createTopic({ board, kind, title: title.trim(), content_md });
@@ -187,6 +190,11 @@ export function ComposePage() {
   // 权限键要写**后端真实的那个**：后端 24 个权限键里是 `topic.create`，没有 `post.create` ——
   // 写错的话连 superadmin 都过不了（perms 里根本没这个字符串），发帖框判成「没权限」。
   const allowed = can(session.session, 'topic.create');
+  // 改分区要 topic.move（后端 UpdateTopic 的判定）；超管由 can() 里的 is_super 短路。
+  // 没这个权限时把分区栏锁上：让人改一个发不出去的字段，比不许改更糟（2026-10-15 用户实测
+  // 「修改帖子分区事实上无效」—— 前端压根没发 board，界面却让人随便改）。
+  const canMove = can(session.session, 'topic.move');
+  const boardLocked = editing && !canMove;
   const activated = session.session?.email_verified === true;
   const writable = allowed && activated;
   const isResource = existing.data?.kind === 'resource';
@@ -198,7 +206,9 @@ export function ComposePage() {
           title={editing ? '编辑帖子' : writable ? '发帖' : '发帖（当前账号还不能写）'}
           description={
             editing
-              ? '改完保存即生效；标题与正文都会更新（分区不在这一步改）。'
+              ? canMove
+                ? '改完保存即生效：标题、正文与分区都会更新（改分区需要 topic.move）。'
+                : '改完保存即生效：标题与正文都会更新（分区要 topic.move 才能改，这一栏已锁）。'
               : '标题、分区、正文。配图直接插在正文里（它是正文节点，不是另一个字段）。'
           }
         />
@@ -252,7 +262,7 @@ export function ComposePage() {
               onSelect={(item) => {
                 if (item) setBoard(String(item.key));
               }}
-              disabled={!writable || boards.isPending}
+              disabled={!writable || boards.isPending || boardLocked}
             />
             {boards.isPending ? <span className='text-[11px] text-muted-foreground'>正在加载分区列表…</span> : null}
             {boards.isError ? (

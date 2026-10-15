@@ -231,6 +231,9 @@ it('上行（编辑正文）：PATCH /topics/{id} 的 content_md 也是 Markdown
   expect(patch.url).toContain('/api/v1/topics/tp-1');
   expect((patch.body as { content_md: string }).content_md).toBe('走到第二波就卡关。');
   expect(JSON.stringify(patch.body)).not.toContain('"root"');
+  // **没改分区就不许带 board**：后端对带 board 的 PATCH 要 topic.move，每次都发会把
+  // 「没有这个权限的作者」连保存都挡掉（2026-10-15 修「改分区无效」时定的形状）。
+  expect((patch.body as { board?: string }).board).toBeUndefined();
   // 保存后跳的是**真 id**（PATCH 回执 {ok:true} 里没有 id；用 undefined 拼路径会 400）
   await waitFor(() => expect(screen.getByTestId('probe-topic').textContent).toBe('/t/tp-1'));
 });
