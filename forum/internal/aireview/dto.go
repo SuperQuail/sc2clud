@@ -86,6 +86,9 @@ type SecretInput struct {
 
 // TestView 是 POST /admin/ai/test 的回执：耗时、实际模型名、原始 verdict（d7 §8）。
 // **不含密钥**，也不含请求体。
+//
+// 带 topic_id 试跑（D33③ 的「当场验证图片审核起效」）时后四个字段才有值：结论 + **判了几张图**。
+// 连通性样例那一路没有图，images 是空数组而不是 null（前端少一个分支）。
 type TestView struct {
 	Verdict    string   `json:"verdict"`
 	Reason     string   `json:"reason"`
@@ -93,6 +96,24 @@ type TestView struct {
 	Model      string   `json:"model"`
 	LatencyMS  int      `json:"latency_ms"`
 	Raw        string   `json:"raw"`
+
+	TopicID      int64          `json:"topic_id"`
+	ImageCount   int            `json:"image_count"`
+	ImageSkipped int            `json:"image_skipped"`
+	Images       []PayloadImage `json:"images"`
+}
+
+// PayloadImage 是 payload 里的一张配图 —— **发出去的那一份**的形状（D33③）。
+// position / floor 回答「哪张对应帖子里的哪个位置」；数组本身的顺序 = 页面顺序。
+// sent=false 时 note 一定非空（截断、超限、读不到），**不许静默丢**。
+type PayloadImage struct {
+	Position int    `json:"position"`
+	Floor    int    `json:"floor"`
+	Hash     string `json:"hash"`
+	MIME     string `json:"mime"`
+	Bytes    int    `json:"bytes"`
+	Sent     bool   `json:"sent"`
+	Note     string `json:"note"`
 }
 
 // PayloadView 是 POST /admin/ai/payload 的回执：**下一次真调用会发出去的那一份**（dry-run，不外呼）。
@@ -102,9 +123,9 @@ type TestView struct {
 //
 // 「哪里是标题、哪里是正文」不靠前端认字符串：**分段给**（user_title / user_body），
 // 两段中间隔两个换行，拼起来与真发出去的 user **逐字相等**（preview_test.go 拿假外呼收到的原文比）。
-// 图片：图片字节不上行（D25② 实测），所以这里只有 has_image_markdown（正文里有没有 ![](…) 字面量）
-// 与 image_attachment_count（图集 topic_images 里挂着几张）—— **两个数都要给**：
-// 只给前一个，会让「正文没写字面量、图集里有图」的帖子看起来像没图。
+// 图片（D33③ 起**真的会发**）：images[] 是逐张的下场，顺序 = 页面顺序；没发的每一张 note 都非空。
+// has_image_markdown（正文里有没有 ![](…) 字面量）与 image_attachment_count（图集里挂着几张）
+// 仍然都给：只给前一个，会让「正文没写字面量、图集里有图」的帖子看起来像没图。
 type PayloadView struct {
 	Source      string `json:"source"`   // probe（连通测试样例）| topic（一条真帖子）
 	TopicID     int64  `json:"topic_id"` // probe 时为 0
@@ -120,8 +141,19 @@ type PayloadView struct {
 	UserBody   string `json:"user_body"`  // topic 专用：正文那一段（含「正文：」前缀）
 	UserText   string `json:"user_text"`  // probe 专用：连通测试发的就是样例本身，不分段
 
+	// 图片：以前这里只有两个「事实数」（正文里有没有 ![] 字面量、图集里挂着几张），因为那时**一个字节都不上行**。
+	// 现在图真的会发出去（D33③），所以这里给的是**发出去的那一份**：逐张的下场 + 四个计数。
+	// has_image_markdown / image_attachment_count 保留：前者仍是「作者在正文里画了图」，后者 = len(images)。
 	HasImageMarkdown     bool `json:"has_image_markdown"`
 	ImageAttachmentCount int  `json:"image_attachment_count"`
+
+	Images          []PayloadImage `json:"images"`
+	ImageCount      int            `json:"image_count"`   // 真发出去的张数
+	ImageSkipped    int            `json:"image_skipped"` // 被上限截掉、没发的张数
+	ImageBytes      int            `json:"image_bytes"`   // 发出去的图原始字节合计（base64 后约 ×4/3）
+	ImageLimit      int            `json:"image_limit"`   // 上限本身：界面要能解释「为什么只有 4 张」
+	ImageMaxBytes   int            `json:"image_max_bytes"`
+	ImageReadFailed bool           `json:"image_read_failed"` // true = 有图读不到 → 这次会转人工（不是违规）
 
 	Model           string   `json:"model"`
 	MaxOutputTokens int      `json:"max_output_tokens"`

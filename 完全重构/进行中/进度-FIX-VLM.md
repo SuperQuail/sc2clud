@@ -33,10 +33,37 @@ model / max_output_tokens / strict_mode / tool_name / categories
   - 下一步：`forum/internal/media` 加「按 hash 读字节」的站内读口（复用 `image.Store.Open`，不自己拼路径）；迁移 0053 给
     `review_events` 加 `image_count`/`image_skipped`；`aireview` 取 `topic_images`（页面顺序）→ 上限 → 附到 user。
   - 阻塞：无（但见下「现场」一条）。
-- [ ] ② 迁移 0053 + media 读口
-- [ ] ③ aireview 取图/上限/转人工/留痕 + 翻旧断言
-- [ ] ④ preview/payload 端点带上 image 块 + `/admin/ai/test` 支持带图试跑
-- [ ] ⑤ app 接线
+- [x] ② 迁移 0053（`review_events.image_count` / `image_skipped`）+ media 的站内读字节口
+  - 证据：`forum/migrations/postgres/0053_ai_review_image_counts.{up,down}.sql`；
+    `media.Service.ReadImageBytes`（同一个 `image.Store.Open`，**不自己拼路径**、不过 `canView`、不回落占位图；
+    32 MiB 只是内存闸门，业务上限在 aireview）。`go build ./...` 空输出。
+  - 下一步：见 ③。
+  - 阻塞：无。
+- [x] ③ aireview 取图/上限/转人工/留痕 + 翻旧断言（`images.go` 一个文件装全部决定）
+  - 证据：`go test ./internal/aireview/ ./internal/media/ ./internal/platform/ai/ -count=1` → 三个包全 ok（19.8s / 出口码 0）。
+    先红：新断言写完先跑，红在「带图帖附了 0 张」与「review_events 没有 image_count 列」（迁移 0053 之前 42703）。
+    旧断言 `TestOutboundPayloadHasNoImageField` **拆成两条**（这正是任务要求的那两条）：
+    `TestOutboundPayloadCarriesImageBlocks`（带图帖必有 image 块 + 记 1/0 + model 非空）与
+    `TestOutboundPayloadHasNoImageBlockWithoutImages`（无图帖 0 张、**一次盘都不读**、文本里不许有 data:image）。
+    另加四条：上限截断计数（6 张 → 发 4 截 2）、超单张上限只截不转人工（1/1 且判定照常落库）、
+    **读图失败 → 转人工**（零外呼/零事件/状态仍 pending/不返回错误/写 last_error）、
+    有图超时抬到 60s 且超时原样报 `ai.ErrTransport`（可重试，绝不落成判定）。
+    `gofmt -l .` 空。
+  - 下一步：见 ④。
+  - 阻塞：无。
+- [x] ④ `/admin/ai/payload` 回图片块 + `/admin/ai/test` 支持带帖试跑
+  - 证据：`PayloadView` 新增 `images[] / image_count / image_skipped / image_bytes / image_limit /
+    image_max_bytes / image_read_failed`；`TestView` 新增 `topic_id / image_count / image_skipped / images[]`；
+    `Service.TestTopic` 走**与真判定同一条组装**（含图）但一个字都不落库。
+    顺带修了 FIX-AI2 那条已经写好、正红着的用例逼出来的真缺陷：`handler.payload` 的空 body 分支没实现
+    （注释写着"一个字节都没有不是错误"，代码却直接 Fail → 500），补 `!errors.Is(err, io.EOF)` 后
+    `TestPayloadEndpointIsWiredAndReadsTheRealTopic` 转绿。
+  - 下一步：见 ⑥（管理端渲染）。
+  - 阻塞：无。
+- [x] ⑤ app 接线：`aireview.New(in.Pool, nil, m.Media, …)`
+  - 证据：`forum/internal/app/modules.go` 一行 + 注释说明「传 nil 不崩，但带图帖一律转人工 = 这个功能没接线」。
+  - 下一步：见 ⑥。
+  - 阻塞：无。
 - [ ] ⑥ 管理端增量（预览显示 image 块、样例可见可编辑、带图验证出图）
 
 ## 现场（开工时的实测，不是推的）

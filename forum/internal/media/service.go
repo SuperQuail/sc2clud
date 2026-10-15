@@ -398,6 +398,50 @@ func (s *Service) DeletePaymentChannel(ctx context.Context, actor *authz.Actor, 
 	})
 }
 
+// ReadImageBytes 是**站内读者**的取字节口（D33③：AI 审核要把配图随审核请求发给模型）。
+//
+// 与 GET /img/{hash} 的分工：同一行 images、同一个 store（**磁盘路径由 store 自己拼**，
+// 本函数绝不碰目录布局），但**不过 canView** —— 那条可见性规则是给浏览器的；这里的读者是审核链路，
+// 它本来就在读同一篇帖子的正文。也**不回落占位图**：把占位图发给模型等于让它审一张假图。
+//
+// 读不到（行不在 / 行在文件丢）返回 ErrNotFound，调用方据此**转人工**（不是违规、也不是整帖判失败）。
+func (s *Service) ReadImageBytes(ctx context.Context, hash string) ([]byte, string, error) {
+	if !isHash(hash) {
+		return nil, "", ErrBadType.WithMsg("图片地址不正确")
+	}
+	meta, err := imageMeta(ctx, s.db, hash)
+	if err != nil {
+		return nil, "", err
+	}
+	if meta == nil {
+		return nil, "", ErrNotFound
+	}
+	rc, err := s.store.Open(ctx, image.Hash(hash))
+	if errors.Is(err, image.ErrNotFound) {
+		// 行在文件丢：运维事故，不是用户错（与 FetchImage 同一判）
+		s.log.Error("图片行在但文件不在", "hash", hash)
+		return nil, "", ErrNotFound
+	}
+	if err != nil {
+		return nil, "", err
+	}
+	defer func() { _ = rc.Close() }()
+	body, err := io.ReadAll(io.LimitReader(rc, readImageMaxBytes))
+	if err != nil {
+		return nil, "", err
+	}
+	if int64(len(body)) >= readImageMaxBytes {
+		// 内存闸门（不是业务上限）：见 readImageMaxBytes 的注释。
+		return nil, "", ErrTooLarge
+	}
+	return body, meta.Mime, nil
+}
+
+// readImageMaxBytes 是站内读口的内存闸门，**不是业务上限**：它比任何上传口的上限都大一个量级，
+// 只为挡住「images 里有一行几百 MB 的东西」。业务上限（一次发几张、每张多大）在 aireview ——
+// 它才是那条策略的唯一真源，media 不替它做决定。
+const readImageMaxBytes = 32 << 20
+
 // FetchImage 是 GET /img/{hash} 的落点：**唯一**的图片读路径。
 // 权限不足返回占位图（200 + no-store），绝不 404——<img> 只会把它画成裂图。
 func (s *Service) FetchImage(ctx context.Context, actor *authz.Actor, hash string) (*ImageResponse, error) {

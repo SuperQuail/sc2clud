@@ -1,8 +1,10 @@
 package aireview_test
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"log/slog"
 	"os"
 	"path/filepath"
@@ -52,18 +54,45 @@ func (q *fakeQueue) EnqueueTx(_ context.Context, _ *ent.Tx, t queue.Task) error 
 	return nil
 }
 
-// fakeJudge 是注入的假外呼：数次数、回预设判定，并记下收到的 prompt / 正文。
+// fakeJudge 是注入的假外呼：数次数、回预设判定，并记下收到的 prompt / 正文 / **附带的图**与这次的超时。
 type fakeJudge struct {
-	calls  int
-	next   ai.Result
-	prompt string
-	text   string
+	calls   int
+	next    ai.Result
+	err     error
+	prompt  string
+	text    string
+	images  []ai.Attachment
+	timeout time.Duration
 }
 
-func (f *fakeJudge) call(_ context.Context, _ ai.Config, prompt, text string) (ai.Result, error) {
+func (f *fakeJudge) call(_ context.Context, cfg ai.Config, prompt, text string, images []ai.Attachment) (ai.Result, error) {
 	f.calls++
-	f.prompt, f.text = prompt, text
-	return f.next, nil
+	f.prompt, f.text, f.images, f.timeout = prompt, text, images, cfg.Timeout
+	return f.next, f.err
+}
+
+// fakeImages 是配图读口的替身：**凡是在 images 表里登记过的 hash 都当成「文件在」**，
+// 字节 = 表里登记的 size 那么多个 0xAB。这样任何插入过 images 行的用例都不必再手工喂字节
+// （preview_test.go 的 withImage 就是这么用的）；要模拟「行在文件丢」就往 missing 里放一个 hash。
+type fakeImages struct {
+	pool    *pgxpool.Pool
+	missing map[string]bool
+	reads   int
+}
+
+func (f *fakeImages) ReadImageBytes(ctx context.Context, hash string) ([]byte, string, error) {
+	f.reads++
+	if f.missing[hash] {
+		return nil, "", errors.New("image: not found")
+	}
+	var (
+		size int
+		mime string
+	)
+	if err := f.pool.QueryRow(ctx, "SELECT size, mime FROM images WHERE hash = $1", hash).Scan(&size, &mime); err != nil {
+		return nil, "", err
+	}
+	return bytes.Repeat([]byte{0xAB}, size), mime, nil
 }
 
 type harness struct {
@@ -72,6 +101,7 @@ type harness struct {
 	pool         *pgxpool.Pool
 	crypter      *pgmail.Crypter
 	judge        *fakeJudge
+	reader       *fakeImages
 	queue        *fakeQueue
 	set          *settings
 	svc          *aireview.Service
@@ -94,7 +124,8 @@ func newHarness(t *testing.T) *harness {
 		queue: &fakeQueue{},
 		set:   &settings{enabled: true, limit: 3},
 	}
-	h.svc = aireview.New(pool, h.judge.call, crypt, h.queue, h.set,
+	h.reader = &fakeImages{pool: pool, missing: map[string]bool{}}
+	h.svc = aireview.New(pool, h.judge.call, h.reader, crypt, h.queue, h.set,
 		&clock.Fake{T: time.Date(2026, 10, 14, 12, 0, 0, 0, time.UTC)}, testLogger())
 	h.authorHandle = "author" + uuid.NewString()[:6]
 	h.authorID = h.user(h.authorHandle)
@@ -163,6 +194,41 @@ func (h *harness) topic(title, body string, reviewSource *string, state string) 
 		h.t.Fatalf("建 1 楼: %v", err)
 	}
 	return id
+}
+
+// attach 给主题挂一张图（images 行 + topic_images 引用行）——字节由 fakeImages 按登记的 size 合成，
+// 所以用例不必手工喂字节。sort 是 post 内的位置（uq_topic_images_sort 保证同楼不撞）。
+func (h *harness) attach(topicID int64, hash string, sort int) {
+	h.attachSized(topicID, hash, sort, 512)
+}
+
+func (h *harness) attachSized(topicID int64, hash string, sort, size int) {
+	h.t.Helper()
+	if _, err := h.pool.Exec(h.ctx,
+		"INSERT INTO images (hash, size, mime, width, height) VALUES ($1, $2, 'image/webp', 800, 600)",
+		hash, size); err != nil {
+		h.t.Fatalf("建图片: %v", err)
+	}
+	var postID int64
+	if err := h.pool.QueryRow(h.ctx, "SELECT id FROM posts WHERE topic_id = $1 AND floor = 1", topicID).Scan(&postID); err != nil {
+		h.t.Fatalf("读 1 楼: %v", err)
+	}
+	if _, err := h.pool.Exec(h.ctx,
+		"INSERT INTO topic_images (topic_id, post_id, image_hash, sort) VALUES ($1, $2, $3, $4)",
+		topicID, postID, hash, sort); err != nil {
+		h.t.Fatalf("挂配图: %v", err)
+	}
+}
+
+// eventImages 读最近一条 review_events 的「判了几张图 / 截了几张 / 用的哪个模型」。
+func (h *harness) eventImages(id int64) (count, skipped int, model string) {
+	h.t.Helper()
+	if err := h.pool.QueryRow(h.ctx,
+		"SELECT image_count, image_skipped, model FROM review_events WHERE topic_id = $1 ORDER BY id DESC LIMIT 1", id).
+		Scan(&count, &skipped, &model); err != nil {
+		h.t.Fatalf("读 review_events: %v", err)
+	}
+	return
 }
 
 // putKey 配好密钥（写进去的是密文，与发信账号同一套）。
@@ -324,36 +390,179 @@ func TestRejectWritesStateAndEvent(t *testing.T) {
 	}
 }
 
-// ⑤ D25 实测：**图片不发**。上行 payload 只有两段纯文本（system=prompt / user=text），
-// 正文里的图片只会作为 Markdown 字面量（![...](/img/<hash>)）待在 user 文本里 —— 模型看不到图。
-// 这条用例把**实际发出去的请求体形状**钉死：多一个字段、少一个字段都会红。
-// 依据：sqlSubject 只取 topics.title + posts(floor=1).content_md，**不 JOIN topic_images**；
-// platform/ai.Judge 只组 system + user 两条消息，没有任何图片/多模态字段。
-func TestOutboundPayloadHasNoImageField(t *testing.T) {
+// ⑤ D33③（2026-10-15 用户拍板真做多模态）：**带图帖必须有 image 块**。
+//
+// 这条推翻了原来 TestOutboundPayloadHasNoImageField 的结论（那时钉的是「不发图」），
+// 但钉的是同一件事的两面：**有图 → 必须有**（本条）、**无图 → 必须没有**（下一条）。
+// 只留一面都会漏：只钉「有图要发」，无图帖被塞进空图块也没人管；只钉「无图不发」，功能没接上也照样绿。
+//
+// 依据（现在）：sqlTopicImages 取 topic_images（页面顺序）→ loadImages 按上限读字节 →
+// platform/ai.JudgeImages 组 [text, image_url…] 的块数组。三处任一断掉这条都会红。
+func TestOutboundPayloadCarriesImageBlocks(t *testing.T) {
 	h := newHarness(t)
 	h.putKey()
 	body := "看图：\n\n![封面](/img/0123456789abcdef)\n\n正文若干。"
 	id := h.topic("带图的帖子", body, nil, "pending")
+	h.attach(id, hash64("a"), 0)
 
 	if err := h.svc.ReviewTopic(h.ctx, id, "create"); err != nil {
 		t.Fatalf("ReviewTopic: %v", err)
 	}
-
-	// 上行只有两条消息：system（prompt）与 user（text），**没有** image_url / content 数组。
-	sent := map[string]string{"system": h.judge.prompt, "user": h.judge.text}
-	for name, v := range sent {
-		if strings.Contains(v, "image_url") || strings.Contains(v, "data:image") {
-			t.Fatalf("%s 里出现了图片字段：模型会被塞进图，但本域不该发图", name)
-		}
+	if len(h.judge.images) != 1 {
+		t.Fatalf("带图帖必须附一张图，实际 %d 张", len(h.judge.images))
 	}
-	// user 文本 = 标题 + 正文原文，图片只是 Markdown 字面量（可以证明「图没被当成图发出去」）。
-	want := "标题：带图的帖子\n\n正文：\n" + body
-	if h.judge.text != want {
+	if n := len(h.judge.images[0].Data); n != 512 {
+		t.Fatalf("附上去的字节数不对：%d（fakeImages 按 images.size 合成）", n)
+	}
+	if h.judge.images[0].MIME != "image/webp" {
+		t.Fatalf("mime 该照 images 行给：%q", h.judge.images[0].MIME)
+	}
+	// 图是**附带**上去的，不是替换文本：user 文本仍是标题 + 正文原文（含那行 Markdown 字面量）。
+	if want := "标题：带图的帖子\n\n正文：\n" + body; h.judge.text != want {
 		t.Fatalf("上行 user 文本与预期不符：\n得到 %q\n想要 %q", h.judge.text, want)
 	}
-	// 图片引用原样留在文本里 —— 这是**唯一**让模型知道「这里有张图」的途径。
-	if !strings.Contains(h.judge.text, "![封面](/img/0123456789abcdef)") {
-		t.Fatal("正文里的图片 Markdown 没进 payload：连「有图」这件事都传不出去")
+	// 审核记录：判了几张图（迁移 0053 的两列）—— 申诉与复盘时唯一能信的数。
+	count, skipped, model := h.eventImages(id)
+	if count != 1 || skipped != 0 {
+		t.Fatalf("review_events 该记「判了 1 张、截了 0 张」，实际 %d / %d", count, skipped)
+	}
+	if model == "" {
+		t.Fatal("review_events.model 是空的：审核记录必须写清用的哪个模型")
+	}
+}
+
+// 无图帖**一个字节都不上行**：不许因为「反正字段在那儿」就给所有请求加空图块。
+// （旧断言的那一半在这里活下来 —— 它本来就是对的。）
+func TestOutboundPayloadHasNoImageBlockWithoutImages(t *testing.T) {
+	h := newHarness(t)
+	h.putKey()
+	id := h.topic("纯文字帖子", "正文里没有图片标记。", nil, "pending")
+
+	if err := h.svc.ReviewTopic(h.ctx, id, "create"); err != nil {
+		t.Fatalf("ReviewTopic: %v", err)
+	}
+	if h.judge.calls != 1 {
+		t.Fatalf("该外呼一次，实际 %d 次", h.judge.calls)
+	}
+	if len(h.judge.images) != 0 {
+		t.Fatalf("无图帖不许附图，实际 %d 张", len(h.judge.images))
+	}
+	if h.reader.reads != 0 {
+		t.Fatalf("无图帖不该去读盘，实际读了 %d 次", h.reader.reads)
+	}
+	if count, skipped, _ := h.eventImages(id); count != 0 || skipped != 0 {
+		t.Fatalf("无图帖该记 0/0，实际 %d / %d", count, skipped)
+	}
+	// 文本里也不许冒出 data URL / image_url 这类东西（那是「图被编进正文」的形状）。
+	for _, s := range []string{h.judge.prompt, h.judge.text} {
+		if strings.Contains(s, "image_url") || strings.Contains(s, "data:image") {
+			t.Fatal("无图帖的文本里出现了图片字段")
+		}
+	}
+}
+
+// 上限：超过 maxImages 张 —— **截断并计数**（review_events.image_skipped），不许静默丢一张。
+// 顺序照页面顺序：保住的是最前面那几张（正常帖子的图都在 1 楼）。
+func TestImageLimitTruncatesAndCounts(t *testing.T) {
+	h := newHarness(t)
+	h.putKey()
+	id := h.topic("图很多的帖子", "正文", nil, "pending")
+	// 6 张：上限是 4（images.go 的 maxImages）。这里写死数字是**有意的** —— 上限被改动时这条该红，
+	// 它钉的就是「4 张」这个决定，不是「某个常量等于它自己」。
+	for i := 0; i < 6; i++ {
+		h.attach(id, hash64(string(rune('a'+i))), i)
+	}
+
+	if err := h.svc.ReviewTopic(h.ctx, id, "create"); err != nil {
+		t.Fatalf("ReviewTopic: %v", err)
+	}
+	if len(h.judge.images) != 4 {
+		t.Fatalf("该发 4 张（截断），实际 %d 张", len(h.judge.images))
+	}
+	count, skipped, _ := h.eventImages(id)
+	if count != 4 || skipped != 2 {
+		t.Fatalf("记录该是「判了 4 张、截了 2 张」，实际 %d / %d", count, skipped)
+	}
+}
+
+// 单张超过上限：**跳过那一张继续判**（这是我们自己的额度上限，不是读不到 —— 不转人工），
+// 并且照样计数（截断不许静默）。
+func TestOversizeImageIsSkippedNotFatal(t *testing.T) {
+	h := newHarness(t)
+	h.putKey()
+	id := h.topic("有一张超大图", "正文", nil, "pending")
+	h.attachSized(id, hash64("a"), 0, 64)    // 正常
+	h.attachSized(id, hash64("b"), 1, 3<<20) // 3 MiB > 单张上限 2 MiB（images.go 的 maxImageBytes）
+
+	if err := h.svc.ReviewTopic(h.ctx, id, "create"); err != nil {
+		t.Fatalf("ReviewTopic: %v", err)
+	}
+	if len(h.judge.images) != 1 {
+		t.Fatalf("超限那张不该发，实际发了 %d 张", len(h.judge.images))
+	}
+	if count, skipped, _ := h.eventImages(id); count != 1 || skipped != 1 {
+		t.Fatalf("记录该是 1 / 1，实际 %d / %d", count, skipped)
+	}
+	// 判定照常落库（不是转人工）：state 与 source 都要动。
+	if state, _, source, _ := h.topicState(id); state != "approved" || source == nil || *source != "ai" {
+		t.Fatalf("超限只该截断那一张，判定仍要落库：state=%q source=%v", state, source)
+	}
+}
+
+// **读图失败 → 转人工**（D33③ 的硬要求）：文件丢了既不是违规、也不该让整帖判定失败。
+// 具体形状：不外呼、不写 review_events、不动 review_state、**不返回错误**（返回错误会让队列重试，
+// 而重试也是同样的结果）；只把原因记进 ai_config.last_error 让运维看得见。
+func TestUnreadableImageGoesToHuman(t *testing.T) {
+	h := newHarness(t)
+	h.putKey()
+	id := h.topic("配图丢了", "正文", nil, "pending")
+	missing := hash64("d")
+	h.attach(id, missing, 0)
+	h.reader.missing[missing] = true
+
+	if err := h.svc.ReviewTopic(h.ctx, id, "create"); err != nil {
+		t.Fatalf("读图失败不该当整帖判定失败（返回错误会让队列反复重试）：%v", err)
+	}
+	if h.judge.calls != 0 {
+		t.Fatalf("图都读不到，不该拿半份内容去外呼，实际 %d 次", h.judge.calls)
+	}
+	if n := h.eventCount(id); n != 0 {
+		t.Fatalf("转人工不是一次判定，不该留 review_events，实际 %d 条", n)
+	}
+	if state, _, source, _ := h.topicState(id); state != "pending" || source != nil {
+		t.Fatalf("该原样留在 pending 交人工：state=%q source=%v", state, source)
+	}
+	var lastError string
+	if err := h.pool.QueryRow(h.ctx, "SELECT last_error FROM ai_config WHERE id = 1").Scan(&lastError); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(lastError, "配图") {
+		t.Fatalf("ai_config.last_error 该说明原因（运维要靠它定位丢文件），实际 %q", lastError)
+	}
+}
+
+// 有图 = 更慢：这次外呼的超时必须被抬到 60s（配置里的 20s 不够），而且**超时是失败、不是违规** ——
+// 调用方必须拿到 ErrTransport（队列据此退避重试），状态与留痕一个字都不动。
+func TestImageCallGetsLongerTimeoutAndTimeoutIsNotAVerdict(t *testing.T) {
+	h := newHarness(t)
+	h.putKey()
+	id := h.topic("带图帖子", "正文", nil, "pending")
+	h.attach(id, hash64("a"), 0)
+
+	if err := h.svc.ReviewTopic(h.ctx, id, "create"); err != nil {
+		t.Fatalf("ReviewTopic: %v", err)
+	}
+	if h.judge.timeout != 60*time.Second {
+		t.Fatalf("有图的这次外呼该给到 60s（ai_config 的 CHECK 上限），实际 %v", h.judge.timeout)
+	}
+
+	// 同一个主题再来一次，这次让外呼超时失败。
+	h.judge.err = ai.ErrTransport
+	if err := h.svc.ReviewTopic(h.ctx, id, "report"); !errors.Is(err, ai.ErrTransport) {
+		t.Fatalf("超时必须原样报成可重试失败，实际 %v", err)
+	}
+	if state, _, source, _ := h.topicState(id); state != "approved" || source == nil || *source != "ai" {
+		t.Fatalf("超时不该改状态（上一轮的判定要留着）：state=%q source=%v", state, source)
 	}
 }
 

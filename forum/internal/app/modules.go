@@ -147,7 +147,10 @@ func newModules(ctx context.Context, cfg *config.Config, in *Infra) (*Modules, e
 	// crypter 从 mail 域拿 —— 主密钥只有一把，**不为 AI 再引一把**（d7 §2.1）。
 	// 主密钥没配时不拒绝启动（与 mail 域「缺主密钥也照启动、只是发信不可用」的既定决定一致）：
 	// AI 审核在真正要解密时会报「未配置」并转人工，不会让整站起不来。
-	m.AIReview = aireview.New(in.Pool, nil, m.Mail.Crypter, entQueue{in.Queue}, m.Site, in.Clock, in.Log)
+	// 第三个参数是**配图读口**（D33③）：AI 审核要把被审帖的配图随请求发给模型，
+	// 而图片字节的唯一读口是 media（内部走 image.Store，域不自己拼路径）。传 nil 不会崩，
+	// 但带图帖会一律**转人工**（loadImages 的注释）—— 那等于这个功能没接线。
+	m.AIReview = aireview.New(in.Pool, nil, m.Media, m.Mail.Crypter, entQueue{in.Queue}, m.Site, in.Clock, in.Log)
 	m.Report = report.NewService(in.DB, reportTargets{m}, reportUsers{m}, m.Site, m.AIReview,
 		m.audit, in.Clock, in.Log)
 	return m, nil

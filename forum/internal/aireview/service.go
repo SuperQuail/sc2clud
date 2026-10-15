@@ -3,12 +3,17 @@ package aireview
 import (
 	"context"
 	"encoding/json"
+	"errors"
+	"net/http"
+	"strings"
 	"time"
 
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"forum/internal/ent"
 	"forum/internal/platform/ai"
+	"forum/internal/platform/apperr"
 	"forum/internal/platform/clock"
 	"forum/internal/platform/queue"
 	"forum/internal/report"
@@ -43,8 +48,9 @@ const defaultPrompt = `你是中文社区（星际争霸战役作者社区）的
 理由（reason）用中文，不超过 60 字，直接说原因，不要复述规则。
 调用 submit_review 提交结论。`
 
-// JudgeFunc 是外呼口（platform/ai.Judge 的形状）：New 收到 nil 就用真的 Judge，用例注入假实现。
-type JudgeFunc func(ctx context.Context, cfg ai.Config, prompt, text string) (ai.Result, error)
+// JudgeFunc 是外呼口（platform/ai.JudgeImages 的形状）：New 收到 nil 就用真的实现，用例注入假实现。
+// images 为空切片 = 纯文本那一条（请求体与多模态上线之前逐字同形）。
+type JudgeFunc func(ctx context.Context, cfg ai.Config, prompt, text string, images []ai.Attachment) (ai.Result, error)
 
 // Settings 是站点设置的只读视图，由 app 注入 site.Service —— **别的模块读站点开关的唯一入口**：
 // 本域不自己查 site_settings，那样会有第二份缓存与第二套默认值。
@@ -73,16 +79,17 @@ type Service struct {
 	set     Settings
 	clk     clock.Clock
 	judge   JudgeFunc
+	imgs    ImageReader // 配图字节的读口（media）；nil = 没接线，带图帖一律转人工（见 loadImages）
 	log     Logger
 }
 
 // New 的签名就是接线契约（app/modules.go 的装配处）：库句柄是 pgx 原生池（ai_config 与
 // review_events 不加 ent schema），密钥加解密与发信**同一套**（d7 §2.1），judge 传 nil 走真外呼。
-func New(pool *pgxpool.Pool, judge JudgeFunc, crypter Crypter, q TxQueue, set Settings, clk clock.Clock, log Logger) *Service {
+func New(pool *pgxpool.Pool, judge JudgeFunc, imgs ImageReader, crypter Crypter, q TxQueue, set Settings, clk clock.Clock, log Logger) *Service {
 	if judge == nil {
-		judge = ai.Judge
+		judge = ai.JudgeImages
 	}
-	return &Service{pool: pool, crypter: crypter, q: q, set: set, clk: clk, judge: judge, log: log}
+	return &Service{pool: pool, imgs: imgs, crypter: crypter, q: q, set: set, clk: clk, judge: judge, log: log}
 }
 
 // ReviewTopic 是 d7 §6 的八步。ctx 来自任务，topicID 是**内部 id**（payload 里就是它）。
@@ -135,12 +142,25 @@ func (s *Service) ReviewTopic(ctx context.Context, topicID int64, trigger string
 	}
 
 	// 4) 组装：走 preview.go 那一个组装处（审核屏的预览读的就是它）——**不截断正文**（d7 §2.4），
-	// **不放作者信息**（d7 §11：昵称/邮箱/IP 与审核无关）。
+	// **不放作者信息**（d7 §2.4/§11：昵称/邮箱/IP 与审核无关）。
 	prompt := assemblePrompt(cfg, trigger == "report")
 	text := userText(reportPrefix(openReports, trigger), title, body)
 
-	// 5) 外呼（超时在 ai.Config 里）。
-	res, err := s.judge(ctx, s.aiConfig(cfg, key), prompt, text)
+	// 4b) 配图（D33③）：与正文同一条取数口（loadImages），上限/顺序/截断都在那里。
+	imgs, err := s.loadImages(ctx, topicID)
+	if err != nil {
+		return err
+	}
+	if imgs.ReadFailed {
+		// 读图失败 → **转人工**：不是违规，也不让整帖判定失败（不返回错误、不改状态、不写事件）。
+		// 记 last_error 让运维看得见（文件丢了是运维事故）。
+		s.markError(ctx, "配图读不到，转人工："+failingNote(imgs))
+		s.log.Warn("AI 审核：配图读不到，转人工", "topic_id", topicID)
+		return nil
+	}
+
+	// 5) 外呼（超时在 ai.Config 里；有图时下限 60s，见 images.go）。
+	res, err := s.judge(ctx, s.aiConfig(cfg, key, len(imgs.Attachments) > 0), prompt, text, imgs.Attachments)
 	if err != nil {
 		// 调用失败：记 last_error，**不改状态**（留在 pending 交人工）；返回错误让队列退避重试。
 		s.markError(ctx, err.Error())
@@ -165,7 +185,8 @@ func (s *Service) ReviewTopic(ctx context.Context, topicID int64, trigger string
 		res.Categories = []string{}
 	}
 	if _, err := tx.Exec(ctx, sqlInsertEvent, topicID, trigger, string(res.Verdict),
-		trimRunes(res.Reason, 200), res.Categories, res.Model, res.LatencyMS); err != nil {
+		trimRunes(res.Reason, 200), res.Categories, res.Model, res.LatencyMS,
+		imgs.sent(), imgs.skipped()); err != nil {
 		return err
 	}
 	hidden := trigger == "report" && res.Verdict == ai.Reject
@@ -190,7 +211,7 @@ func (s *Service) ReviewTopic(ctx context.Context, topicID int64, trigger string
 // 回执是 TestView 的字段形状，**不含密钥、不含请求体**。
 // probe 是要发的那段样例（空串 = DefaultProbeSample）。**不落库**：样例是排查用的输入，
 // 不是配置 —— 把它写进 ai_config 要加列 + 迁移，而它下一次排查就该被换掉（界面上也标着「临时覆盖」）。
-func (s *Service) Test(ctx context.Context, probe string) (map[string]any, error) {
+func (s *Service) Test(ctx context.Context, probe string) (*TestView, error) {
 	cfg, err := s.GetConfig(ctx)
 	if err != nil {
 		return nil, err
@@ -199,16 +220,74 @@ func (s *Service) Test(ctx context.Context, probe string) (map[string]any, error
 	if err != nil {
 		return nil, err
 	}
-	res, err := s.judge(ctx, s.aiConfig(cfg, key), assemblePrompt(cfg, false), probeText(probe))
+	res, err := s.judge(ctx, s.aiConfig(cfg, key, false), assemblePrompt(cfg, false), probeText(probe), nil)
 	if err != nil {
 		s.markError(ctx, err.Error())
 		return nil, err
 	}
 	s.markOK(ctx)
-	return map[string]any{
-		"verdict": string(res.Verdict), "reason": res.Reason, "categories": res.Categories,
-		"model": res.Model, "latency_ms": res.LatencyMS, "raw": res.Raw,
-	}, nil
+	return viewOfTest(res), nil
+}
+
+// TestTopic 是「拿一条真帖子试跑一次」（D33③ 的当场验证）：组装与真判定**同一条**
+// （assemblePrompt + userText + loadImages，含图），外呼也真发，但**一个字都不落库** ——
+// topics 的状态、review_events、配额计数全都不动。它是管理端的排查工具，不是审核动作。
+//
+// 与 ReviewTopic 的差别只有两处，都是有意的：① 不做「已删/已人工判」的短路（管理员就是要看它会怎么判）；
+// ② 不写状态机。费用上它和一次真判定一样贵，所以它挂在 site.setting 权限点后面，且没有自动触发。
+func (s *Service) TestTopic(ctx context.Context, topicID int64) (*TestView, error) {
+	cfg, err := s.GetConfig(ctx)
+	if err != nil {
+		return nil, err
+	}
+	key, err := s.LoadKey(ctx)
+	if err != nil {
+		return nil, err
+	}
+	var (
+		id          int64
+		publicID    string
+		title       string
+		body        *string
+		visibility  string
+		source      *string
+		openReports int
+		attached    int // 图集里的引用行数（loadImages 才是取字节的那一步）
+	)
+	err = s.pool.QueryRow(ctx, sqlSubject, topicID).Scan(
+		&id, &publicID, &title, &body, &visibility, &source, &openReports, &attached)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil, apperr.ErrNotFound
+	}
+	if err != nil {
+		return nil, err
+	}
+	imgs, err := s.loadImages(ctx, topicID)
+	if err != nil {
+		return nil, err
+	}
+	if imgs.ReadFailed {
+		return nil, apperr.New("ai.image_unreadable", http.StatusBadGateway, "配图读不到，这条帖子的试跑结果不可信："+failingNote(imgs))
+	}
+	res, err := s.judge(ctx, s.aiConfig(cfg, key, len(imgs.Attachments) > 0),
+		assemblePrompt(cfg, false), userText("", title, deref(body)), imgs.Attachments)
+	if err != nil {
+		s.markError(ctx, err.Error())
+		return nil, err
+	}
+	s.markOK(ctx)
+	out := viewOfTest(res)
+	out.TopicID, out.Images = topicID, imageViews(imgs)
+	out.ImageCount, out.ImageSkipped = imgs.sent(), imgs.skipped()
+	return out, nil
+}
+
+// viewOfTest 是回执的唯一组装处（探针与带帖试跑共用）：字段形状 = dto.go 的 TestView。
+func viewOfTest(res ai.Result) *TestView {
+	return &TestView{
+		Verdict: string(res.Verdict), Reason: res.Reason, Categories: res.Categories,
+		Model: res.Model, LatencyMS: res.LatencyMS, Raw: res.Raw, Images: []PayloadImage{},
+	}
 }
 
 // TriggerReportReview 是举报域的 ReviewTrigger（d7 §1/§7）：举报到阈值 → 复核。
@@ -250,13 +329,30 @@ func (s *Service) TriggerReportReview(ctx context.Context, tx *ent.Tx, in report
 }
 
 // aiConfig 把库里的配置翻成外呼参数（外呼口只认这一个形状）。
-func (s *Service) aiConfig(cfg *Config, key string) ai.Config {
+// withImages = 这次要发图：多图更慢，所以超时**只升不降**地抬到 imageTimeoutFloor
+// （配置比它大就照配置；60s 是 ai_config.timeout_ms 的 CHECK 上限，抬不过去）。
+// 超时仍然是可重试失败 —— 绝不因为「图多来不及」就把一篇帖子判成违规。
+func (s *Service) aiConfig(cfg *Config, key string, withImages bool) ai.Config {
+	timeout := time.Duration(cfg.TimeoutMS) * time.Millisecond
+	if withImages && timeout < imageTimeoutFloor {
+		timeout = imageTimeoutFloor
+	}
 	return ai.Config{
 		BaseURL: cfg.BaseURL, Model: cfg.Model, APIKey: key,
 		Thinking: cfg.Thinking, StrictMode: cfg.StrictMode,
 		MaxOutputTokens: cfg.MaxOutputTokens,
-		Timeout:         time.Duration(cfg.TimeoutMS) * time.Millisecond,
+		Timeout:         timeout,
 	}
+}
+
+// failingNote 取第一张读不到的图上的那句话（markError 只要一句可读的原因）。
+func failingNote(p *imagePayload) string {
+	for _, f := range p.Facts {
+		if !f.Sent && strings.HasPrefix(f.Note, "读不到：") {
+			return f.Note
+		}
+	}
+	return "有配图读不到"
 }
 
 // outcome 把三态判定翻成 topics 的两列。**review（拿不准）返回 nil**：sql.go 的 sqlUpdateTopic

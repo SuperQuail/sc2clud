@@ -58,6 +58,8 @@ type Payload struct {
 
 	HasImageMarkdown     bool
 	ImageAttachmentCount int
+	// Images 是这次要附上去的图（含每一张的下场）。nil = 还没取（probe 那一路没有图）。
+	Images *imagePayload
 
 	Model           string
 	MaxOutputTokens int
@@ -150,6 +152,13 @@ func (s *Service) Preview(ctx context.Context, in PayloadInput) (*PayloadView, e
 		return nil, err
 	}
 
+	// 配图：**与真判定同一条取数口**（loadImages）。预览因此会做与真发一样的事 ——
+	// 包括按上限截断、包括发现"这张读不到"（那正是要让人看见的：它会让这次审核转人工）。
+	imgs, err := s.loadImages(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+
 	return previewView(&Payload{
 		Source: "topic", TopicID: id, Title: title, Trigger: trigger, OpenReports: openReports,
 		System: prompt, Prefix: reportPrefix(openReports, trigger),
@@ -157,6 +166,7 @@ func (s *Service) Preview(ctx context.Context, in PayloadInput) (*PayloadView, e
 
 		HasImageMarkdown:     hasImageMarkdown(deref(body)),
 		ImageAttachmentCount: images,
+		Images:               imgs,
 		Model:                cfg.Model, MaxOutputTokens: cfg.MaxOutputTokens, StrictMode: cfg.StrictMode,
 		ToolName: ToolName, Categories: ai.Categories,
 	}), nil
@@ -177,7 +187,7 @@ func (s *Service) PreviewProbe(ctx context.Context, probe string) (*PayloadView,
 
 // previewView 把内部 Payload 翻成线格式。**只有这一个出口**，两个来源（probe / topic）走同一条路。
 func previewView(p *Payload) *PayloadView {
-	return &PayloadView{
+	out := &PayloadView{
 		Source: p.Source, TopicID: p.TopicID, Title: p.Title, Trigger: p.Trigger,
 		OpenReports: p.OpenReports,
 		System:      p.System, UserPrefix: p.Prefix, UserTitle: p.UserTitle,
@@ -185,5 +195,25 @@ func previewView(p *Payload) *PayloadView {
 		HasImageMarkdown: p.HasImageMarkdown, ImageAttachmentCount: p.ImageAttachmentCount,
 		Model: p.Model, MaxOutputTokens: p.MaxOutputTokens, StrictMode: p.StrictMode,
 		ToolName: p.ToolName, Categories: p.Categories,
+		Images: []PayloadImage{}, ImageLimit: maxImages, ImageMaxBytes: maxImageBytes,
 	}
+	if p.Images != nil {
+		out.Images = imageViews(p.Images)
+		out.ImageCount, out.ImageSkipped = p.Images.sent(), p.Images.skipped()
+		out.ImageBytes = p.Images.Bytes
+		out.ImageReadFailed = p.Images.ReadFailed
+	}
+	return out
+}
+
+// imageViews 是 imageFact -> 线格式的唯一翻译处（预览与带帖试跑共用）。
+func imageViews(p *imagePayload) []PayloadImage {
+	out := make([]PayloadImage, 0, len(p.Facts))
+	for _, f := range p.Facts {
+		out = append(out, PayloadImage{
+			Position: f.Position, Floor: f.Floor, Hash: f.Hash,
+			MIME: f.MIME, Bytes: f.Bytes, Sent: f.Sent, Note: f.Note,
+		})
+	}
+	return out
 }

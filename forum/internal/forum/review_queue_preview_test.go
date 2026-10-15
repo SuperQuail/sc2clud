@@ -15,8 +15,11 @@ import (
 // 审核员面对一篇正文上千字的帖子只能看到开头一句，剩下全靠猜。
 //
 // 另有一条**产品事实**钉在这里：正文里的图片是 Markdown 字面量（`![封面](/img/<hash>)`），
-// 图片字节既不上行给模型（aireview 的 TestOutboundPayloadHasNoImageField）也不在本 DTO 里，
-// 所以审核员看到的是「有一张图」这件事，不是图本身。预览必须让这件事一眼可见。
+// 它在本 DTO 里只是那段文本，**图本身不在队列 DTO 里**，所以审核员看到的是「有一张图」这件事。
+// （模型那边不一样了：2026-10-15 起 aireview 会把配图随请求发给模型 —— 判据是 aireview 的
+//
+//	TestOutboundPayloadCarriesImageBlocks；这条 DTO 不跟着搬图片字节 —— 队列是列表接口，
+//	一次几十条一起塞图片没有道理。预览要看图就去 /img/<hash>。）
 func TestReviewQueueCarriesBodyForPreview(t *testing.T) {
 	h := newHarness(t)
 	h.clk.T = time.Now().UTC() // 队列游标吃时钟（陷阱 §5）

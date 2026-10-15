@@ -51,6 +51,17 @@ const sqlSubject = `
 	  LEFT JOIN posts p ON p.topic_id = t.id AND p.floor = 1
 	 WHERE t.id = $1`
 
+// sqlTopicImages 取一篇主题的配图引用行，**按页面顺序**（楼层 → 该楼内的 sort，hash 兜底稳定序）。
+// 顺带取 images 里登记的 mime/size：字节要不要读由 loadImages 按上限决定 ——
+// 注定不发的那几张（超张数/超单张上限）不该白白读盘。
+const sqlTopicImages = `
+	SELECT ti.image_hash, ti.sort, COALESCE(p.floor, 0), i.mime, i.size
+	  FROM topic_images ti
+	  LEFT JOIN posts  p ON p.id = ti.post_id
+	  LEFT JOIN images i ON i.hash = ti.image_hash
+	 WHERE ti.topic_id = $1
+	 ORDER BY COALESCE(p.floor, 0), ti.sort, ti.image_hash`
+
 // sqlCallsToday 是「单帖当日 AI 调用次数」（d7 硬规则 3）：数 review_events 里 source='ai' 且今天的条数。
 // 用 UTC 日期界：服务器时区不该让配额漂。
 const sqlCallsToday = `
@@ -58,9 +69,12 @@ const sqlCallsToday = `
 	 WHERE topic_id = $1 AND source = 'ai'
 	   AND (created_at AT TIME ZONE 'UTC')::date = (now() AT TIME ZONE 'UTC')::date`
 
+// image_count / image_skipped 是迁移 0053 加的两列（D33③）：判了几张、截了几张。
+// 要能从记录本身读出来 —— 事后按 topic_images 重算会撒谎（作者可以事后加图删图）。
 const sqlInsertEvent = `
-	INSERT INTO review_events (topic_id, trigger, source, verdict, reason, categories, model, latency_ms)
-	VALUES ($1, $2, 'ai', $3, $4, $5, $6, $7)`
+	INSERT INTO review_events (topic_id, trigger, source, verdict, reason, categories, model, latency_ms,
+	                           image_count, image_skipped)
+	VALUES ($1, $2, 'ai', $3, $4, $5, $6, $7, $8, $9)`
 
 // sqlUpdateTopic 只改该改的那几列：$2 为 NULL（verdict=review）时整段不动，
 // 这样「AI 拿不准」不会把人工填的 review_note 覆盖掉。

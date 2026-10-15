@@ -101,6 +101,7 @@ func (h *Handler) saveSecret(c *gin.Context) {
 
 // test 是「测试连通」：真发一次请求，回耗时 / 实际模型名 / 原始 verdict（d7 §8）。
 // body 可以不带（老调用方）：带了 probe 就发那一段，没带就发默认样例（D33②③，**不落库**）。
+// 带了 topic_id 则换一条路：真发一次**这条帖子**（含配图）的 payload，回执里带「判了几张图」。
 func (h *Handler) test(c *gin.Context) {
 	if _, err := h.require(c); err != nil {
 		httpx.Fail(c, err)
@@ -111,6 +112,17 @@ func (h *Handler) test(c *gin.Context) {
 	// 只放过**一个字节都没有**这一种（`EOF`），其余解析失败照常报出去。
 	if err := httpx.Bind(c, &in); err != nil && !errors.Is(err, io.EOF) {
 		httpx.Fail(c, err)
+		return
+	}
+	// 带 topic_id = **拿一条真帖子试跑一次**（D33③ 的当场验证：预览里看到图 → 跑 → 回执里看到
+	// 结论与「判了几张图」）。组装与真判定同源（含图），外呼也真发，但一个字都不落库。
+	if in.TopicID > 0 {
+		out, err := h.svc.TestTopic(c.Request.Context(), in.TopicID)
+		if err != nil {
+			httpx.Fail(c, err)
+			return
+		}
+		httpx.OK(c, out)
 		return
 	}
 	out, err := h.svc.Test(c.Request.Context(), in.Probe)
@@ -130,7 +142,10 @@ func (h *Handler) payload(c *gin.Context) {
 		return
 	}
 	var in payloadReq
-	if err := httpx.Bind(c, &in); err != nil {
+	// 与 test 同一条规矩：一个字节都没有 = 「只想看样例」那一路，不是错误。
+	// 这条分支不能省：preview_test.go 的 TestPayloadEndpointIsWiredAndReadsTheRealTopic 拿空 body 打这条端点，
+	// 少了它就是 500（Bind 把 EOF 当解析失败报上来）。
+	if err := httpx.Bind(c, &in); err != nil && !errors.Is(err, io.EOF) {
 		httpx.Fail(c, err)
 		return
 	}
