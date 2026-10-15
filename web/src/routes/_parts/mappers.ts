@@ -1,4 +1,5 @@
 import { BASE } from '@/lib/base';
+import { formatMinute } from '@/lib/format';
 import type { Board as ApiBoard, Topic as ApiTopic, Post, TopicKind as ApiKind } from '@/lib/api/forum';
 import type { CommentData } from '@/ui/comment/types';
 import type { Topic } from '@/devroom/pages/14-home/mock';
@@ -72,7 +73,8 @@ export function toComments(posts: Post[]): CommentData[] {
     id: p.id,
     author: { ...p.author, avatar: imageUrl(p.author.avatar_hash) },
     body: p.content_html,
-    createdAt: p.created_at,
+    // D74：评论动作行渲染过整个 RFC3339 —— 换算只在这层做，落到分钟精度
+    createdAt: formatMinute(p.created_at),
     likes: p.like_count,
     // J3（拍板）：踩数**按身份下发** —— 后端给普通用户 / 游客的响应里根本没有 `dislike_count` 这个键
     // （DTO 上带 omitempty）。所以这里**不能回落成 0**：`?? 0` 会把「接口没下发」渲染成「0 个踩」，

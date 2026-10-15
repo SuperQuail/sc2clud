@@ -1,5 +1,12 @@
 // 展示层的格式化：接口给的一律是 RFC3339 UTC 与整数分（后端方案 §14.7）
 
+/** 「2026-10-16 07:31」：sv-SE 的 short/short 恰好是分钟精度（D74：评论区不吃整串 RFC3339） */
+export function formatMinute(iso: string): string {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return '';
+  return new Intl.DateTimeFormat('sv-SE', { dateStyle: 'short', timeStyle: 'short' }).format(d);
+}
+
 export function formatTime(iso: string): string {
   const then = new Date(iso);
   const minutes = Math.floor((Date.now() - then.getTime()) / 60_000);
