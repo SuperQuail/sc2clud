@@ -17,6 +17,16 @@ import (
 // 与 TestTopic「一个字不落库」同语义。上限与记账沿用带帖路径**同一份**（images.go 的
 // maxImages / maxImageBytes 与 imagePayload）：分散实现 = 干跑里看到的图与真发出去的会漂。
 
+// readErr 把部件读失败翻成对外的码：**超限是 413（ErrTooLarge）**，不是一句含糊的 400 ——
+// MaxBytesReader 的错被 io.ReadAll 原样带回来，用它区分「图片真坏了」与「配额掐了流」。
+func readErr(err error, msg string) *apperr.Error {
+	var tooLarge *http.MaxBytesError
+	if errors.As(err, &tooLarge) {
+		return apperr.ErrTooLarge
+	}
+	return apperr.Invalid(map[string]string{"_": msg})
+}
+
 // formProbe / formFile 是 multipart 的字段名（前端 lib/api/admin 的 FormData 同名绑定）。
 const (
 	formProbe = "probe"
@@ -50,13 +60,13 @@ func readProbeMultipart(r *http.Request) (probe string, files []ProbeImage, err 
 		case formProbe:
 			b, err := io.ReadAll(part)
 			if err != nil {
-				return "", nil, apperr.Invalid(map[string]string{"_": "样例文本读不出来"})
+				return "", nil, readErr(err, "样例文本读不出来")
 			}
 			probe = string(b)
 		case formFile:
 			data, err := io.ReadAll(part)
 			if err != nil {
-				return "", nil, apperr.Invalid(map[string]string{"_": "样例图片读不出来"})
+				return "", nil, readErr(err, "样例图片读不出来")
 			}
 			name := ""
 			if fn := part.FileName(); fn != "" {

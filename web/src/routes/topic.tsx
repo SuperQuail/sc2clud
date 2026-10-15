@@ -384,7 +384,8 @@ export function TopicPage() {
         canReply ? undefined : (
           <p className='flex flex-wrap items-center gap-2 rounded-lg border border-dashed border-border px-3 py-3 text-[13px] text-muted-foreground'>
             {loggedIn ? '你的账号还不能发帖回复（未激活或没有 topic.create 权限）。' : '登录后可以回复、点赞与收藏。'}
-            <Button href={appPath('login?next=' + encodeURIComponent(routePath('t/' + t.id)))}>
+            {/* 已登录的人去账号设置页看原因（2026-10-15 实测：原来恒给 /login —— 登录态里点它又落回登录页） */}
+            <Button href={loggedIn ? appPath('settings') : appPath('login?next=' + encodeURIComponent(routePath('t/' + t.id)))}>
               {loggedIn ? '查看账号状态' : '去登录'}
             </Button>
           </p>

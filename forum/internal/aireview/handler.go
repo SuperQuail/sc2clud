@@ -35,9 +35,12 @@ func (h *Handler) Register(rg *gin.RouterGroup, requireLogin func() gin.HandlerF
 	admin.GET("/ai/config", perm(authz.PermSiteSetting), h.getConfig)
 	admin.PATCH("/ai/config", perm(authz.PermSiteSetting), h.patchConfig)
 	admin.POST("/ai/config/secret", perm(authz.PermSiteSetting), h.saveSecret)
-	admin.POST("/ai/test", perm(authz.PermSiteSetting), h.test)
+	// 样例图走 multipart（D34）：契约是单张 ≤2 MiB × 4 张 ≈ 10.7 MiB —— 但 /api/v1 组上挂着
+	// BodyLimit(默认 1 MiB)，2026-10-15 prod 实测大于 1 MiB 的样例直接把 multipart 读流掐断
+	//（表现：「样例图片读不出来」400）。这两条路由按契约给 16 MiB：数据 10.7 + boundary/文字余量。
+	admin.POST("/ai/test", perm(authz.PermSiteSetting), httpx.BodyLimit(16<<20), h.test)
 	// D33①：审核屏要显示的「真正发给模型的那一份」。dry-run，**一次外呼都不发**。
-	admin.POST("/ai/payload", perm(authz.PermSiteSetting), h.payload)
+	admin.POST("/ai/payload", perm(authz.PermSiteSetting), httpx.BodyLimit(16<<20), h.payload)
 }
 
 // getConfig 的回执里**没有密钥字段**（d7 §8：密钥永不回显，只有 has_secret 与 secret_updated_at）。

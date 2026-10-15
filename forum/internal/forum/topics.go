@@ -264,6 +264,18 @@ func (s *Service) TopicDetail(ctx context.Context, actor *authz.Actor, publicID 
 		}
 	}
 	d := s.topicDetailDTO(*row, sources, viewerID(actor), canReview(actor), rev, draft)
+	// 前端的回复框 / 编辑按钮以这两个字段为准（routes/topic.tsx 只在**字段缺失**时才自己兜底，
+	// 而这一行从没赋过值 → DTO 恒 false）：所有登录用户都看到「还不能发帖回复」、帖主与超管
+	// 都看不到编辑按钮（2026-10-15 prod 实测，用户报告）。语义与写路径逐字同源：
+	//   can_reply：锁定的帖谁都不能回（CreateReply 先拒 locked）；其余走 canSpeak 六步
+	//             （超管在那里短路，普通用户过 ACL/禁言/等级）；
+	//   can_edit ：与 PATCH /topics、/posts 的同一支判定（canEditTopic：作者 own / any / 板主）。
+	if actor != nil {
+		d.CanEdit = canEditTopic(actor, authz.PermTopicEditOwn, authz.PermTopicDeleteAny, row.Author.ID, row.BoardID)
+		if !row.Locked {
+			d.CanReply = s.canSpeak(ctx, actor, row.BoardID, "reply") == nil
+		}
+	}
 	return &d, nil
 }
 
