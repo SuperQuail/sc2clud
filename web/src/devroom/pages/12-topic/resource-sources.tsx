@@ -47,7 +47,8 @@ function hostOf(url?: string): string {
 // **为什么是紧凑一行而不是一排圆形 logo**（D4，2026-10-14 用户实测）：原来一列 116px 的方块阵占掉
 // 三行高度、还得让人先读懂控件；资源帖的读者要的是「点哪、提取码是多少」，一行就够。
 // 链接版（linked）整行是一个 <a href={go_path}>：点下去由服务端计数后 302 到真实地址，前端不拼外链；
-// **必须 target=_blank rel=noopener** —— 转链会把当前页带到网盘去，读者回来时帖子就没了（D4 第二条）。
+// **必须 target=_blank rel=noopener noreferrer**（D61）——转链会把当前页带到网盘去，读者回来时帖子就没了（D4 第二条）；
+// noreferrer 同时不让转链目标拿到 rel 通道（网盘站不应知道读者从哪条帖子来）。
 // 房间（/dev/devroom/）没有这个端点，点它会走到房间外 —— 所以房间里传 false，渲染成不可点的行（原因写在 title）。
 export function ResourceSources({ sources, linked = false }: { sources: TopicSource[]; linked?: boolean }) {
   if (sources.length === 0) {
@@ -129,7 +130,7 @@ function SourceRow({ source, linked }: { source: TopicSource; linked: boolean })
         href={source.go_path}
         // 新标签页：点下去是服务端 302 到网盘/GitHub，当前页不该被带走
         target='_blank'
-        rel='noopener'
+        rel='noopener noreferrer'
         title={'在新标签页打开 ' + name}
         className={row + ' hover:ring-primary focus-visible:ring-[3px] focus-visible:ring-ring/50'}
       >

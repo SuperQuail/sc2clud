@@ -195,9 +195,9 @@ it('D4：下载来源在正文上方，且整行是可新标签页打开的转�
   expect(link.textContent).toContain('提取码');
   expect(link.textContent).toContain('sc2c');
   expect(link.getAttribute('href')).toBe(TOPIC.sources[0]!.go_path);
-  // ③ 当前页不许被带走（转链是服务端 302 到网盘）：新标签页 + noopener
+  // ③ 当前页不许被带走（转链是服务端 302 到网盘）：新标签页 + noopener noreferrer（D61）
   expect(link.getAttribute('target')).toBe('_blank');
-  expect(link.getAttribute('rel')).toBe('noopener');
+  expect(link.getAttribute('rel')).toBe('noopener noreferrer');
 });
 
 // D60（2026-10-15 用户实测「下载源名称猜不中显示其他」）：topic_sources.label 是**用户自定义名**，
