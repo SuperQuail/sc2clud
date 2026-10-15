@@ -185,6 +185,20 @@ export type MailAccount = {
   created_at: string;
   updated_at: string;
 };
+/** 邮件模板（D37，mail/templates.go 的 TemplateView）：custom=false 时三段源就是内置的（编辑框填现状）。 */
+export type MailTemplate = {
+  kind: string;
+  custom: boolean;
+  subject: string;
+  html_body: string;
+  text_body: string;
+  updated_at: string | null;
+  updated_by: number | null;
+};
+/** PUT 的入参：三段模板源一起写（mail.go 的 TemplateInput）。 */
+export type MailTemplateInput = { subject: string; html_body: string; text_body: string };
+/** 预览回执：三份都是**渲染后**的（HTML 已按模板语义转义，前端只负责进 sandbox iframe）。 */
+export type MailTemplatePreview = { subject: string; text: string; html: string };
 export type MailAccountInput = {
   name: string;
   provider: string;

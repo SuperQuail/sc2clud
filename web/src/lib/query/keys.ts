@@ -47,6 +47,8 @@ export const qk = {
   adminNoticeDefaults: () => ['admin', 'rewards', 'notice-defaults'] as const,
   adminTitles: () => ['admin', 'titles'] as const,
   adminMail: () => ['admin', 'mail'] as const,
+  /** 邮件模板（D37）：列表一次拿四行（含内置源回显），不按 kind 分 key */
+  adminMailTemplates: () => ['admin', 'mail-templates'] as const,
   adminSiteSettings: () => ['admin', 'site-settings'] as const,
   adminDomains: () => ['admin', 'site-domains'] as const,
   adminAnnouncements: () => ['admin', 'announcements'] as const,

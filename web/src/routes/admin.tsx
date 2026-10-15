@@ -11,6 +11,7 @@ import { AuditScreenContainer } from './admin/audit';
 import { BoardsScreenContainer } from './admin/boards';
 import { DiagnosticsScreenContainer } from './admin/diagnostics';
 import { MailScreenContainer } from './admin/mail';
+import { MailTemplateScreenContainer } from './admin/mail-tpl';
 import { ReportsScreenContainer } from './admin/reports';
 import { ReviewScreenContainer } from './admin/review';
 import { RewardsScreenContainer } from './admin/rewards';
@@ -41,6 +42,7 @@ const PERM_BY_SCREEN: Record<ScreenKey, string> = {
   rewards: 'reward.verify',
   titles: 'title.manage',
   mail: 'mail.manage',
+  mailtpl: 'site.setting',
   ai: 'site.setting',
   settings: 'site.setting',
   audit: 'audit.view',
@@ -62,6 +64,7 @@ const SCREEN_COMPONENT: Record<ScreenKey, AnyScreen> = {
   rewards: RewardsScreenContainer,
   titles: TitlesScreenContainer,
   mail: MailScreenContainer,
+  mailtpl: MailTemplateScreenContainer,
   settings: SettingsScreenContainer,
   ai: AiReviewScreenContainer,
   audit: AuditScreenContainer,

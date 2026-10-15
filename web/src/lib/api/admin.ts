@@ -26,6 +26,9 @@ import type {
   DonationStats,
   MailAccount,
   MailAccountInput,
+  MailTemplate,
+  MailTemplateInput,
+  MailTemplatePreview,
   NoticeDefault,
   Permission,
   Report,
@@ -318,6 +321,28 @@ export function deleteMailAccount(id: string): Promise<{ archived: boolean }> {
 
 export function testMailAccount(id: string, to: string): Promise<{ mail_log_id: number }> {
   return api('admin/mail/accounts/' + encodeURIComponent(id) + '/test', { method: 'POST', body: { to } });
+}
+
+// ── 邮件模板（D37，mail/templates.go）────────────────────────────────────
+// 列表一次给四行（缺行的回落内置源 —— 编辑框先填成现状），four rows 不翻页。
+
+export function fetchMailTemplates(signal?: AbortSignal): Promise<MailTemplate[]> {
+  return api<MailTemplate[]>('admin/mail-templates', { signal });
+}
+
+/** 全量三段一起写；编译不过后端回 400 + fields（字段名对上编辑框，错误原话带行位）。 */
+export function saveMailTemplate(kind: string, b: MailTemplateInput): Promise<MailTemplate> {
+  return api<MailTemplate>('admin/mail-templates/' + encodeURIComponent(kind), { method: 'PUT', body: b });
+}
+
+/** 恢复内置：删行，下一次渲染落回 embed（幂等）。 */
+export function resetMailTemplate(kind: string): Promise<MailTemplate> {
+  return api<MailTemplate>('admin/mail-templates/' + encodeURIComponent(kind), { method: 'DELETE' });
+}
+
+/** 预览 = 把编辑框里还没保存的那份实渲染一遍；三段可选，空的段回落内置。 */
+export function previewMailTemplate(b: { kind: string } & Partial<MailTemplateInput>): Promise<MailTemplatePreview> {
+  return api<MailTemplatePreview>('admin/mail-templates/preview', { method: 'POST', body: b });
 }
 
 // ── 站点设置（site/dto.go）────────────────────────────────────────────────

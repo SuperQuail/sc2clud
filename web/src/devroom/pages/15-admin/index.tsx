@@ -1,6 +1,7 @@
 import { useState } from 'react';
+import type { MailTemplatePreview } from '@/lib/api/admin';
 import { CURRENT_ADMIN } from './mock/perms';
-import { DEMO_AI_CONFIG, DEMO_AI_PAYLOAD, DEMO_AI_TEST, DEMO_PERMISSIONS, DEMO_ANNOUNCEMENTS, DEMO_AUDIT, DEMO_BANNERS, DEMO_DOMAINS, DEMO_DONATIONS, DEMO_DONATION_STATS, DEMO_MAIL, DEMO_NOTICE_DEFAULTS, DEMO_REPORTS, DEMO_REVIEW, DEMO_ROLES, DEMO_SETTINGS, DEMO_TITLES, DEMO_USER_DETAIL, DEMO_USERS } from './mock/fixtures';
+import { DEMO_AI_CONFIG, DEMO_AI_PAYLOAD, DEMO_AI_TEST, DEMO_PERMISSIONS, DEMO_ANNOUNCEMENTS, DEMO_AUDIT, DEMO_BANNERS, DEMO_DOMAINS, DEMO_DONATIONS, DEMO_DONATION_STATS, DEMO_MAIL, DEMO_MAIL_TPL, DEMO_MAILTPL_BUILTIN, DEMO_MAILTPL_PREVIEW, DEMO_NOTICE_DEFAULTS, DEMO_REPORTS, DEMO_REVIEW, DEMO_ROLES, DEMO_SETTINGS, DEMO_TITLES, DEMO_USER_DETAIL, DEMO_USERS } from './mock/fixtures';
 import { AdminShell, type AdminSelf } from './shell';
 import { SCREEN_KEYS, type ScreenKey } from './nav';
 import { ADMIN_ACLS, ADMIN_BOARDS, DIAGNOSTICS_ROOM } from './room-data';
@@ -9,6 +10,7 @@ import { AuditScreen, type AuditFilter } from './screens/audit';
 import { BoardsScreen, type BoardPatch } from './screens/boards';
 import { DiagnosticsScreen } from './screens/diagnostics';
 import { MailScreen } from './screens/mail';
+import { MailTemplateScreen } from './screens/mail-tpl';
 import { ReportsScreen, type ReportFilter } from './screens/reports';
 import { ReviewScreen, type ReviewFilter } from './screens/review';
 import { RewardsScreen, type RewardsFilter } from './screens/rewards';
@@ -34,6 +36,7 @@ const SCREENS: Record<ScreenKey, () => React.ReactNode> = {
   rewards: () => <RewardsRoom />,
   titles: () => <TitlesRoom />,
   mail: () => <MailRoom />,
+  mailtpl: () => <MailTplRoom />,
   settings: () => <SettingsRoom />,
   ai: () => <AiRoom />,
   audit: () => <AuditRoom />,
@@ -202,6 +205,41 @@ function MailRoom() {
       onSecret={(id, p) => { setAccounts((prev) => prev.map((a) => (a.id === id ? { ...a, secret_configured: true, secret_updated_at: '2026-10-15T02:00:00Z' } : a))); setReceipt('（房间演示：这里不发请求）已换凭据 ' + Object.keys(p).join('、')); }}
       onDelete={(id) => { setAccounts((prev) => prev.filter((a) => a.id !== id)); setReceipt('（房间演示：这里不发请求）账号已删除'); }}
       onTest={(id, to) => setReceipt('（房间演示：这里不发请求）给 ' + to + ' 发一封测试信（账号 ' + id + '）')}
+      receipt={receipt ? <p className='text-[12px] text-muted-foreground'>{receipt}</p> : null}
+    />
+  );
+}
+
+
+/** 邮件模板屏的房间版（D37）：四行 + 「这条端点会回什么」的投影预览，动作只留回执。 */
+function MailTplRoom() {
+  const [templates, setTemplates] = useState(DEMO_MAIL_TPL);
+  const [preview, setPreview] = useState<MailTemplatePreview | null>(DEMO_MAILTPL_PREVIEW);
+  const [receipt, setReceipt] = useState<string | null>(null);
+  const say = (msg: string) => setReceipt('（房间演示：这里不发请求）' + msg);
+  return (
+    <MailTemplateScreen
+      templates={templates}
+      canManage
+      preview={preview}
+      onSave={(_kind, body) => {
+        setTemplates((prev) => prev.map((t) => (t.kind === _kind ? { ...t, custom: true, ...body, updated_at: '2026-10-15T12:30:00Z', updated_by: 4 } : t)));
+        setPreview(null);
+        say('已保存三段模板源（真站：PUT /admin/mail-templates/' + _kind + '，保存前双模板编译校验）');
+      }}
+      onReset={(kind) => {
+        const b = DEMO_MAILTPL_BUILTIN[kind];
+        setTemplates((prev) => prev.map((t) => (t.kind === kind && b ? { ...t, ...b, custom: false, updated_at: null, updated_by: null } : t)));
+        setPreview(null);
+        say('已恢复内置（真站：DELETE，下一次渲染落回 embed；编辑框回显的是内置三段源）');
+      }}
+      onPreview={(_kind, body) => {
+        setPreview({
+          ...DEMO_MAILTPL_PREVIEW,
+          subject: (body.subject ?? DEMO_MAILTPL_PREVIEW.subject),
+        });
+        setReceipt('（房间演示：这里不发请求）用还没保存的那份渲染 —— 真站会按站点设置取站名、样本昵称带 <script>');
+      }}
       receipt={receipt ? <p className='text-[12px] text-muted-foreground'>{receipt}</p> : null}
     />
   );

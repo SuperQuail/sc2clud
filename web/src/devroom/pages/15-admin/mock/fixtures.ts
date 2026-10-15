@@ -1,4 +1,4 @@
-import type { AdminUser, AdminUserDetail, AiConfig, AiPayloadView, AiTestView, Announcement, AuditItem, Banner, Permission, Donation, DonationStats, Domain, MailAccount, NoticeDefault, Report, ReviewQueueItem, Role, SettingItem, Title } from '@/lib/api/admin';
+import type { AdminUser, AdminUserDetail, AiConfig, AiPayloadView, AiTestView, Announcement, AuditItem, Banner, Permission, Donation, DonationStats, Domain, MailAccount, MailTemplate, MailTemplatePreview, NoticeDefault, Report, ReviewQueueItem, Role, SettingItem, Title } from '@/lib/api/admin';
 
 // DevRoom 15-admin 的演示数据（**只给房间用**；产品路由由 ./admin-screens.tsx 的容器喂真端点）。
 //
@@ -467,3 +467,70 @@ export const DEMO_AI_PAYLOAD: AiPayloadView = {
   categories: ['spam', 'ad', 'abuse', 'off_topic', 'illegal', 'other'],
 };
 
+
+/** 邮件模板的演示数据（D37）：字段名照 mail/templates.go 的 TemplateView —— custom=false 的三段源就是内置的。 */
+export const DEMO_MAIL_TPL: MailTemplate[] = [
+  {
+    kind: 'verify_email', custom: false, subject: '邮箱验证码',
+    html_body: '<p>{{if .Nickname}}{{.Nickname}}，你好：{{else}}你好：{{end}}</p>\n<p>你的邮箱验证码是：</p>\n<p style="font-size:28px;font-weight:700;letter-spacing:6px">{{.Code}}</p>\n<p>验证码 {{.ExpiresIn}} 内有效，只能使用一次。不是你本人操作就忽略这封邮件。</p>',
+    text_body: '{{if .Nickname}}{{.Nickname}}，你好：{{else}}你好：{{end}}\n\n你的邮箱验证码是：{{.Code}}\n\n验证码 {{.ExpiresIn}} 内有效，只能使用一次。不是你本人操作就忽略这封邮件。\n\n-- {{.SiteName}}',
+    updated_at: null, updated_by: null,
+  },
+  {
+    kind: 'reset_password', custom: true, subject: '重置你的密码 {{.Code}}',
+    html_body: '<p>你正在重置密码，验证码是：</p>\n<p style="font-size:28px;font-weight:700">{{.Code}}</p>',
+    text_body: '自定义重置 {{.Code}}',
+    updated_at: '2026-10-15T12:00:00Z', updated_by: 4,
+  },
+  {
+    kind: 'test', custom: false, subject: '发信测试',
+    html_body: '<p>这是一封测试邮件，用来验证这个发信账号配置正确。</p>\n<p>发件人：{{.From}}<br>时间：{{.Now}}</p>',
+    text_body: '这是一封测试邮件，用来验证这个发信账号配置正确。\n\n发件人：{{.From}}\n时间：{{.Now}}\n\n-- {{.SiteName}}',
+    updated_at: null, updated_by: null,
+  },
+  {
+    kind: 'notice', custom: true, subject: '《SC2CLUD》{{.Title}}',
+    html_body: '<p>{{if .Nickname}}{{.Nickname}}，你好：{{else}}你好：{{end}}</p>\n<p>{{.Body}}</p>{{if .Link}}<p><a href="{{.Link}}">查看详情</a></p>{{end}}',
+    text_body: '{{if .Nickname}}{{.Nickname}}，你好：{{else}}你好：{{end}}\n\n{{.Body}}\n{{if .Link}}\n查看详情：{{.Link}}\n{{end}}\n\n-- {{.SiteName}}',
+    updated_at: '2026-10-14T09:00:00Z', updated_by: 4,
+  },
+];
+
+/** 房间预览是「这条端点会回什么」的投影（与 AiPayloadView 同一策略）：样本昵称带 <script>，HTML 里是转义后的字面量。 */
+export const DEMO_MAILTPL_PREVIEW: MailTemplatePreview = {
+  subject: '重置你的密码 123456',
+  text: '自定义重置 123456\n\n爱<>(如:<script>alert(1)</script>',
+  html: '<!DOCTYPE html><html lang="zh-CN"><head><meta charset="utf-8"><title>重置你的密码 123456</title></head>'
+    + '<body style="margin:0;background:#f5f5f5"><div style="max-width:560px;margin:0 auto;padding:32px 16px">'
+    + '<div style="font-size:16px;font-weight:600">测试站</div>'
+    + '<div style="background:#fff;border:1px solid #e5e5e5;border-radius:8px;padding:24px;font-size:14px">'
+    + '<p>你正在重置密码，验证码是：</p><p style="font-size:28px;font-weight:700">123456</p>'
+    + '<p>收件人：爱&lt;&gt;(如:&lt;script&gt;alert(1)&lt;/script&gt;</p></div>'
+    + '<p style="font-size:12px;color:#888">这封邮件由 测试站 系统自动发出，请勿直接回复。</p>'
+    + '</div></body></html>',
+};
+
+
+/** 内置模板的三段源（真站由 GET /admin/mail-templates 对缺行返回；房间用它展示「恢复内置后的回显」）。 */
+export const DEMO_MAILTPL_BUILTIN: Record<string, { subject: string; html_body: string; text_body: string }> = {
+  reset_password: {
+    subject: '重置密码验证码',
+    html_body: '<p>{{if .Nickname}}{{.Nickname}}，你好：{{else}}你好：{{end}}</p>\n<p>你正在重置密码，验证码是：</p>\n<p style="font-size:28px;font-weight:700;letter-spacing:6px;margin:16px 0">{{.Code}}</p>\n<p>验证码 {{.ExpiresIn}} 内有效，只能使用一次。不是你本人操作就忽略这封邮件，你的密码没有被改动。</p>',
+    text_body: '{{if .Nickname}}{{.Nickname}}，你好：{{else}}你好：{{end}}\n\n你正在重置密码，验证码是：{{.Code}}\n\n验证码 {{.ExpiresIn}} 内有效，只能使用一次。不是你本人操作就忽略这封邮件，你的密码没有被改动。\n\n-- {{.SiteName}}',
+  },
+  notice: {
+    subject: '站内通知',
+    html_body: '<p>{{if .Nickname}}{{.Nickname}}，你好：{{else}}你好：{{end}}</p>\n<p>{{.Body}}</p>\n{{if .Link}}<p><a href="{{.Link}}">查看详情</a></p>{{end}}',
+    text_body: '{{if .Nickname}}{{.Nickname}}，你好：{{else}}你好：{{end}}\n\n{{.Body}}\n{{if .Link}}\n查看详情：{{.Link}}\n{{end}}\n\n-- {{.SiteName}}',
+  },
+  verify_email: {
+    subject: '邮箱验证码',
+    html_body: '<p>{{if .Nickname}}{{.Nickname}}，你好：{{else}}你好：{{end}}</p>\n<p>你的邮箱验证码是：</p>\n<p style="font-size:28px;font-weight:700;letter-spacing:6px;margin:16px 0">{{.Code}}</p>\n<p>验证码 {{.ExpiresIn}} 内有效，只能使用一次。不是你本人操作就忽略这封邮件。</p>',
+    text_body: '{{if .Nickname}}{{.Nickname}}，你好：{{else}}你好：{{end}}\n\n你的邮箱验证码是：{{.Code}}\n\n验证码 {{.ExpiresIn}} 内有效，只能使用一次。不是你本人操作就忽略这封邮件。\n\n-- {{.SiteName}}',
+  },
+  test: {
+    subject: '发信测试',
+    html_body: '<p>这是一封测试邮件，用来验证这个发信账号配置正确。</p>\n<p>发件人：{{.From}}<br>时间：{{.Now}}</p>',
+    text_body: '这是一封测试邮件，用来验证这个发信账号配置正确。\n\n发件人：{{.From}}\n时间：{{.Now}}\n\n-- {{.SiteName}}',
+  },
+};

@@ -7,7 +7,7 @@
 // 会在切进后台的第一秒一起发出去。等哪天后端给了这几个计数端点再挂回来。
 export type ScreenKey =
   | 'users' | 'roles' | 'boards' | 'review' | 'reports' | 'rewards'
-  | 'titles' | 'mail' | 'ai' | 'settings' | 'audit' | 'diagnostics';
+  | 'titles' | 'mail' | 'mailtpl' | 'ai' | 'settings' | 'audit' | 'diagnostics';
 
 export const NAV: { grp: string; items: { key: ScreenKey; title: string; note: string }[] }[] = [
   {
@@ -31,6 +31,7 @@ export const NAV: { grp: string; items: { key: ScreenKey; title: string; note: s
       { key: 'rewards', title: '打赏核验', note: '12.4-12.7 / 13.8 人工核验队列' },
       { key: 'titles', title: '头衔目录', note: '13.6 建 / 改 / 归档 + 发头衔' },
       { key: 'mail', title: '发信账号', note: '13.9 优先级 · 日额度 · 测试发信' },
+      { key: 'mailtpl', title: '邮件模板', note: 'D37 主题/HTML/纯文本 · 双模板编译校验 · 转义预览 · 恢复内置' },
     ],
   },
   {
