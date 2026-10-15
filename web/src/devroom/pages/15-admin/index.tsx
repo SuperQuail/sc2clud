@@ -306,7 +306,11 @@ function TitlesRoom() {
     <TitlesScreen
       titles={titles}
       canManage
-      onCreate={(b) => { setTitles((p) => [...p, { id: 't-' + (p.length + 1), ...b, archived_at: null }]); setReceipt('（房间演示：这里不发请求）已新建「' + b.name + '」'); }}
+      onCreate={async (b) => {
+        setTitles((p) => [...p, { id: 't-' + (p.length + 1), ...b, archived_at: null }]);
+        setReceipt('（房间演示：这里不发请求）已新建「' + b.name + '」');
+        return true; // 房间里必成功：真页面的成败由后端回执决定
+      }}
       onUpdate={(id, b) => { setTitles((p) => p.map((t) => (t.id === id ? { ...t, ...b, archived_at: b.archived ? '2026-10-12T13:45:00Z' : null } : t))); setReceipt('（房间演示：这里不发请求）已保存'); }}
       receipt={receipt ? <p className='text-[12px] text-muted-foreground'>{receipt}</p> : null}
     />

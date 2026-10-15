@@ -44,7 +44,16 @@ export function TitlesScreenContainer() {
         </p>
       ) : null}
       canManage={can(session.session, 'title.manage')}
-      onCreate={(b) => create.mutate(b)}
+      // 返回 Promise<boolean>：屏据此**只在建成时关窗**；失败时把理由留在弹窗里（输入不丢）。
+      // 先 reset 再打，否则上一次的 error 会留在屏上。
+      onCreate={(b) => {
+        create.reset();
+        return create.mutateAsync(b).then(
+          () => true,
+          () => false,
+        );
+      }}
+      createError={create.error ? errorLine(create.error) : null}
       onUpdate={(id, body) => update.mutate({ id, body })}
       busy={create.isPending || update.isPending}
       receipt={receipt ? (

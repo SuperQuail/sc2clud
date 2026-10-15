@@ -5,6 +5,7 @@ import Input from '@jetbrains/ring-ui-built/components/input/input';
 import { ControlsHeight } from '@jetbrains/ring-ui-built/components/global/controls-height';
 import { Archive, Plus } from 'lucide-react';
 import { icon16 } from '@/ui/icons';
+import { HexColorPicker } from 'react-colorful';
 import { TitleBadge } from '@/ui/user/title-badge';
 import type { Title } from '@/lib/api/admin';
 import { DataTable, type Sort } from '../data-table';
@@ -28,14 +29,17 @@ export type TitlesScreenProps = {
   loading?: boolean;
   error?: ReactNode;
   canManage: boolean;
-  onCreate: (b: { key: string; name: string; color: string; description: string }) => void;
+  /** 返回 true = 建成了（弹窗据此关闭）；false = 失败，**弹窗必须留着**把输入与原因摆在人眼前 */
+  onCreate: (b: { key: string; name: string; color: string; description: string }) => Promise<boolean>;
+  /** 新建失败的理由（字段级理由由 errorLine 带出来）；有它就在弹窗里显示，不关窗 */
+  createError?: string | null;
   onUpdate: (id: string, b: { key: string; name: string; color: string; description: string; archived: boolean }) => void;
   /** 是否在提交中（禁用按钮，避免重复点） */
   busy?: boolean;
   receipt?: ReactNode;
 };
 
-export function TitlesScreen({ titles, loading = false, error = null, canManage, onCreate, onUpdate, busy = false, receipt }: TitlesScreenProps) {
+export function TitlesScreen({ titles, loading = false, error = null, canManage, onCreate, createError = null, onUpdate, busy = false, receipt }: TitlesScreenProps) {
   const [sort, setSort] = useState<Sort>({ key: 'key', dir: 'asc' });
   const [activeId, setActiveId] = useState<string | null>(null);
   const [archive, setArchive] = useState<Title | null>(null);
@@ -146,8 +150,13 @@ export function TitlesScreen({ titles, loading = false, error = null, canManage,
       <CreateTitleDialog
         open={createOpen}
         busy={busy}
+        error={createError}
         onClose={() => setCreateOpen(false)}
-        onCreate={(b) => { onCreate(b); setCreateOpen(false); }}
+        // **失败不关窗**（2026-10-15 实测）：原来无论成败都立刻关，失败时人只看到「弹窗关了」= 以为建好了，
+        // 列表里没有那一行 —— 就成了「创建后消失」的观感。现在只有真的建成才关。
+        onCreate={async (b) => {
+          if (await onCreate(b)) setCreateOpen(false);
+        }}
       />
     </div>
   );
@@ -172,7 +181,7 @@ function EditTitleForm({ title, canManage, busy, onSave }: {
       <KV k='key（不可改）' v={title.key} hint='改 key 等于换一个头衔，后端只按 id 寻址' />
       <KV k='archived_at' v={title.archived_at ? title.archived_at.slice(0, 10) : '未归档'} />
       <Input className='mt-2' label='显示名' value={name} disabled={!canManage} onChange={(e) => setName(e.target.value)} />
-      <Input label='颜色（hex）' value={color} disabled={!canManage} onChange={(e) => setColor(e.target.value)} />
+      <ColorFieldRow color={color} disabled={!canManage} onChange={setColor} />
       <Input label='说明' value={description} disabled={!canManage} onChange={(e) => setDescription(e.target.value)} />
       <div className='mt-2 flex justify-end gap-2'>
         <Button disabled={!dirty} onClick={() => { setName(title.name); setColor(title.color); setDescription(title.description); }}>放弃</Button>
@@ -188,11 +197,30 @@ function EditTitleForm({ title, canManage, busy, onSave }: {
   );
 }
 
-function CreateTitleDialog({ open, busy, onClose, onCreate }: {
+/** 颜色行：react-colorful 的取色器 + 当前值（十六进制）。**不自造取色控件**（用户 2026-10-15 明确）。
+ *  库输出就是 `#rrggbb` 小写，正好是后端与 DB CHECK 的形状，不需要再校验。 */
+function ColorFieldRow({ color, disabled, onChange }: { color: string; disabled?: boolean; onChange: (hex: string) => void }) {
+  return (
+    <div className='flex flex-col gap-1.5'>
+      <span className='text-[12px] font-medium text-foreground'>颜色</span>
+      <div className='flex items-start gap-3' aria-disabled={disabled}>
+        <div className={disabled ? 'pointer-events-none opacity-50' : undefined}>
+          <HexColorPicker color={color} onChange={onChange} style={{ width: 168, height: 120 }} />
+        </div>
+        <span className='mt-1 font-mono text-[12px] text-muted-foreground'>{color}</span>
+      </div>
+    </div>
+  );
+}
+
+function CreateTitleDialog({ open, busy, error, onClose, onCreate }: {
   open: boolean;
   busy: boolean;
+  /** 上一次提交失败的理由（含后端字段级理由）：显示在弹窗里，输入不丢 */
+  error?: string | null;
   onClose: () => void;
-  onCreate: (b: { key: string; name: string; color: string; description: string }) => void;
+  /** 返回值 = 是否建成（调用方据此决定关不关窗） */
+  onCreate: (b: { key: string; name: string; color: string; description: string }) => Promise<void>;
 }) {
   const [key, setKey] = useState('');
   const [name, setName] = useState('');
@@ -206,10 +234,10 @@ function CreateTitleDialog({ open, busy, onClose, onCreate }: {
   const normalizeKey = (v: string) => v.toLowerCase().replace(/[\s-]+/g, '_');
   const keyError = /^[a-z0-9_]{1,32}$/.test(key.trim()) ? null : '只能是小写字母、数字、下划线，1-32 位（连字符请用 _）';
   const nameError = name.trim() === '' ? '不能为空' : [...name.trim()].length > 32 ? '不能超过 32 字' : null;
-  const colorError = color.trim() === '' || /^#[0-9a-fA-F]{6}$/.test(color.trim()) ? null : '必须是 #rrggbb（例如 #2563eb）';
+  // 颜色不再校验：取色器（react-colorful）输出的就是合法 #rrggbb
   const descError = [...description].length > 200 ? '不能超过 200 字' : null;
   if (!open) return null;
-  const ready = !keyError && !nameError && !colorError && !descError;
+  const ready = !keyError && !nameError && !descError;
   return (
     <Dialog show label='新建头衔' onCloseAttempt={onClose} onOverlayClick={onClose} onEscPress={onClose}>
       <div className='flex w-[420px] max-w-full flex-col gap-3 p-4'>
@@ -228,13 +256,7 @@ function CreateTitleDialog({ open, busy, onClose, onCreate }: {
           placeholder='速通达人'
           error={name.trim() ? (nameError ?? undefined) : undefined}
         />
-        <Input
-          label='颜色'
-          value={color}
-          onChange={(e) => setColor(e.target.value)}
-          placeholder='#2563eb'
-          error={color.trim() ? (colorError ?? undefined) : undefined}
-        />
+        <ColorFieldRow color={color} onChange={setColor} />
         <Input
           label='说明'
           value={description}
@@ -242,6 +264,11 @@ function CreateTitleDialog({ open, busy, onClose, onCreate }: {
           placeholder='这条头衔是给谁的'
           error={descError ?? undefined}
         />
+        {error ? (
+          <p role='alert' data-testid='title-create-error' className='rounded-md border border-destructive/40 bg-destructive/8 px-3 py-2 text-[12px] text-foreground'>
+            {error}
+          </p>
+        ) : null}
         <div className='flex justify-end gap-2'>
           <Button onClick={onClose}>取消</Button>
           <Button
