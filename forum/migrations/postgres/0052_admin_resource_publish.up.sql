@@ -19,6 +19,18 @@
 -- 判据在 forum/internal/app/role_permissions_test.go：迁移后的 role_permissions 必须与
 -- 拍板 §1.2/§1.3 的矩阵逐点相同。
 
+-- 前置断言：权限点或角色不在表里时**必须红**。JOIN 不到就是 0 行，迁移会「成功」而什么都没补 ——
+-- 那种静默失败正是这一条要修的病（0017 漏点也是静默的）。
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM permissions WHERE key = 'resource.publish') THEN
+    RAISE EXCEPTION '0052: permissions 表里没有 resource.publish —— 0017_seed_authz 没跑过？';
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM roles WHERE key = 'admin') THEN
+    RAISE EXCEPTION '0052: roles 表里没有 admin —— 0017_seed_authz 没跑过？';
+  END IF;
+END $$;
+
 INSERT INTO role_permissions (role_id, permission_id)
 SELECT r.id, p.id
   FROM roles r
