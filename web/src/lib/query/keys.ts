@@ -41,6 +41,8 @@ export const qk = {
   adminRoles: () => ['admin', 'roles'] as const,
   adminPermissions: () => ['admin', 'permissions'] as const,
   adminReview: (f: unknown) => ['admin', 'review', f] as const,
+  /** Issue 管理屏（归档档位 / 状态 / 类型 / 搜索词 / 游标都在里面） */
+  adminIssues: (f: unknown) => ['admin', 'issues', f] as const,
   adminReports: (f: unknown) => ['admin', 'reports', f] as const,
   adminRewards: (f: unknown) => ['admin', 'rewards', f] as const,
   adminRewardStats: () => ['admin', 'rewards', 'stats'] as const,

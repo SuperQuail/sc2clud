@@ -2,6 +2,9 @@ import { api, apiEnvelope, apiPage } from './client';
 import { pageQuery, PAGE_LIMIT } from './paging';
 // 类型只在 admin-types.ts 定义；这里原样再出口一次，调用方一个 import 就够（省得记哪个类型在哪）。
 export type * from './admin-types';
+// Issue 管理那一屏的 DTO 与请求函数（体量原因单开一份，同 admin-types 的理由）；再出口一次，调用方照旧。
+export type * from './admin-issues';
+export { adminArchiveIssue, adminRestoreIssue, fetchAdminIssues } from './admin-issues';
 
 import type {
   AdminACLItem,
