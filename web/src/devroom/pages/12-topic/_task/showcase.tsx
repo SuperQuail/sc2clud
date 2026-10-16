@@ -4,7 +4,7 @@ import { assetUrl } from '@/lib/url';
 import { TopicTaskTabs, type TopicTaskTab } from './task-tabs';
 import { IssueKindButton } from './issue-kind-button';
 import { IssueCard } from './issue-card';
-import { ISSUE_KIND_META, type IssueKind, type IssueSummary } from './types';
+import { resolveKindName, type IssueKind, type IssueSummary } from './types';
 
 // W1 · 帖子页共享件的**验证现场**（页面 key = 12-topic）。
 // 只放控件与它们的两态/多档，不放三栏页面本体——本体由 W2 组装，合并时删掉这个 import 即可。
@@ -98,7 +98,7 @@ export function TopicTaskShowcase() {
             ))}
           </div>
           <span className='text-[11px] text-muted-foreground'>
-            当前选择：{kind ? ISSUE_KIND_META[kind].label : '未选择'}
+            当前选择：{kind ? resolveKindName(kind) : '未选择'}
           </span>
         </Block>
         <Block label='size 三档 · sm / md / lg' hint='以「汇报 Bug」为例；不传 onSelect 即纯展示（不可点）'>

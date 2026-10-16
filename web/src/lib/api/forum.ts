@@ -216,6 +216,12 @@ export function setTopicFeatured(id: string, on: boolean) {
   return api<void>('topics/' + encodeURIComponent(id) + '/feature', { method: 'POST', body: { featured: on } });
 }
 
+/** 锁定 / 解锁（权限点 **topic.lock**，与上面两颗不是同一个 —— handler.go:89 挂的是 PermTopicLock）：
+ *  体字段照后端 lockBody，回执同样是 {ok:true}（不是详情），所以界面要失效 qk.topic 回读 topic.locked。 */
+export function setTopicLocked(id: string, on: boolean) {
+  return api<void>('topics/' + encodeURIComponent(id) + '/lock', { method: 'POST', body: { locked: on } });
+}
+
 /** 回复的赞/踩：value 只可能是 1 或 -1 */
 export function setPostVote(id: string, value: 1 | -1 | 0) {
   return api<void>('posts/' + encodeURIComponent(id) + '/vote', {

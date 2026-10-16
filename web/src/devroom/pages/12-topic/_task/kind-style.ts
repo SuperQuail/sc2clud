@@ -19,3 +19,16 @@ export const ISSUE_KIND_ACCENT: Record<IssueKind, string> = {
   difficulty: '[--k:var(--ring-warning-color)]',
   other: '[--k:var(--ring-purple-text-color)]',
 };
+
+// 后端的值域是**数据驱动**的（加一类不发前端版），而图标与颜色是前端的设计决定 ——
+// 新那一类必然没有登记。回落成「其他」那一套（图标 + 紫色）而不是崩掉/透明：
+// 界面上的名字仍然用它自己的（resolveKindName 走端点的 name），只是外观暂缺。
+const FALLBACK_KIND = 'other';
+
+export function kindIcon(kind: IssueKind): LucideIcon {
+  return ISSUE_KIND_ICON[kind] ?? ISSUE_KIND_ICON[FALLBACK_KIND]!;
+}
+
+export function kindAccent(kind: IssueKind): string {
+  return ISSUE_KIND_ACCENT[kind] ?? ISSUE_KIND_ACCENT[FALLBACK_KIND]!;
+}

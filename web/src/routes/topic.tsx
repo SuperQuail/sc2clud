@@ -19,6 +19,7 @@ import {
   setTopicBookmark,
   setTopicFeatured,
   setTopicLike,
+  setTopicLocked,
   setTopicPinned,
   type ReportReason,
   type TopicDetail as ApiTopicDetail,
@@ -178,6 +179,12 @@ export function TopicPage() {
     mutationFn: (on: boolean) => setTopicFeatured(topicId, on),
     onSettled: () => queryClient.invalidateQueries({ queryKey: qk.topic(topicId) }),
   });
+  // 锁定缺的第三颗（端点 handler.go:89 早就挂着，权限点是**另一个** topic.lock）：回执同样是 {ok:true}，
+  // 所以与上面两颗同一个形状 —— 失效详情后按服务端回的 locked 重画。
+  const lock = useMutation({
+    mutationFn: (on: boolean) => setTopicLocked(topicId, on),
+    onSettled: () => queryClient.invalidateQueries({ queryKey: qk.topic(topicId) }),
+  });
 
   const vote = useMutation({
     // value=0 是「取消」，后端是 DELETE —— 同向再点一次就取消（幂等）
@@ -289,8 +296,11 @@ export function TopicPage() {
   const loggedIn = session.isLoggedIn;
   const me = { handle: session.session?.handle ?? '', nickname: session.session?.nickname ?? '', avatar: session.session?.avatar ?? null };
   // 能不能回复 / 编辑以后端算的 can_reply / can_edit 为准（它认 activation、分区 ACL、锁定），前端权限只兜底
-  // D73：两颗开关只看 topic.pin（与后端同一个权限点；前端权限只决定显不显示 §5.4）
+  // D73：两颗开关只看 topic.pin（与后端同一个权限点；前端权限只决定显不显示 §5.4）。
+  // 锁定是**另一个**权限点：后端 handler.go:89 挂的是 topic.lock（创作者/版主可能有其中一颗而没有另一颗），
+  // 所以这里单独判一次 —— 用 canMod 顺带给锁定把关就会「有 topic.lock 的人看不到锁定按钮」。
   const canMod = can(session.session, 'topic.pin');
+  const canLock = can(session.session, 'topic.lock');
   const canReply = wire.can_reply ?? (loggedIn && can(session.session, 'topic.create'));
   const canEdit = wire.can_edit ?? (loggedIn && t.author.handle === me.handle && can(session.session, 'topic.edit.own'));
   const designTopic = toDesignTopic(t, designAuthor);
@@ -309,6 +319,7 @@ export function TopicPage() {
     { what: '收藏', m: bookmark },
     { what: '置顶', m: pin },
     { what: '精华', m: feature },
+    { what: '锁定', m: lock },
   ];
   const failed = steps.find((s) => s.m.isError) ?? null;
 
@@ -366,6 +377,10 @@ export function TopicPage() {
       pinPending={canMod ? pin.isPending : undefined}
       onTogglePin={canMod ? (next) => pin.mutate(next) : undefined}
       onToggleFeature={canMod ? (next) => feature.mutate(next) : undefined}
+      // 锁定：与上面同款三件（当前值 / 在途 / 回调），权限点换 topic.lock
+      lockOn={canLock ? (t.locked ?? false) : undefined}
+      lockPending={canLock ? lock.isPending : undefined}
+      onToggleLock={canLock ? (next) => lock.mutate(next) : undefined}
       // B6：重新提交 = 进发帖页编辑（带上原帖标题与正文）→ 保存时 PATCH 打回 pending —— 与编辑同一个落点。
       // 「申请人工复核」后端没有端点（照旧给诚实回执）。
       onAppeal={() => setReceipt('「申请人工复核」的端点后端还没有，所以这一次没有真的提交。')}

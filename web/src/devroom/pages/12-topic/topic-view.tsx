@@ -97,12 +97,15 @@ export type TopicViewProps = {
   reportedIds: string[];
   onDelete?: () => void;
   deleting?: boolean;
-  /** 版主的两颗开关（D73）：含义与渲染规则见 TopicActions；房间不传就整组不渲染 */
+  /** 版主的三颗开关（D73 置顶/精华 + 锁定）：含义与渲染规则见 TopicActions；房间不传就整组不渲染 */
   pinOn?: boolean;
   featureOn?: boolean;
   pinPending?: boolean;
   onTogglePin?: (next: boolean) => void;
   onToggleFeature?: (next: boolean) => void;
+  lockOn?: boolean;
+  lockPending?: boolean;
+  onToggleLock?: (next: boolean) => void;
   /** 未通过审核时的两个出口：宿主不给就不渲染那颗按钮（后端还没有端点时，给了也只是回执） */
   onAppeal?: () => void;
   onResubmit?: () => void;
@@ -198,6 +201,9 @@ export function TopicView({
   pinPending,
   onTogglePin,
   onToggleFeature,
+  lockOn,
+  lockPending,
+  onToggleLock,
   onAppeal,
   onResubmit,
   comments,
@@ -317,6 +323,9 @@ export function TopicView({
             pinPending={pinPending}
             onTogglePin={onTogglePin}
             onToggleFeature={onToggleFeature}
+            lockOn={lockOn}
+            lockPending={lockPending}
+            onToggleLock={onToggleLock}
             deleteConfirm={
               layer === 'delete' ? (
                 <section className='flex flex-col gap-2 rounded-lg border border-destructive/40 bg-destructive/8 px-3 py-3'>

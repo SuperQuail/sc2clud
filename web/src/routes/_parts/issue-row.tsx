@@ -1,7 +1,7 @@
 import type { ReactNode } from 'react';
 import { cn } from '@/lib/utils';
 import { createReport, type ReportReason } from '@/lib/api/forum';
-import { IssueCard } from '@/devroom/pages/12-topic/_task/issue-card';
+import { IssueCard, type KindNames } from '@/devroom/pages/12-topic/_task/issue-card';
 import type { IssueSummary } from '@/devroom/pages/12-topic/_task/types';
 import { IssueReportButton } from '@/devroom/pages/13-issue/report-entry';
 
@@ -15,6 +15,7 @@ export function IssueRow({
   issueId,
   number,
   issue,
+  kindNames,
   selected,
   onOpen,
   onReported,
@@ -26,6 +27,8 @@ export function IssueRow({
   number: number;
   /** 设计件吃的行模型（IssueCard 只认它） */
   issue: IssueSummary;
+  /** kind → 中文名（来自 `GET /issues/kinds`）：卡片上那格标签用它，缺了回落前端话术 */
+  kindNames?: KindNames;
   selected: boolean;
   onOpen: () => void;
   /** 举报提交成功后的回执交给宿主显示 */
@@ -52,7 +55,7 @@ export function IssueRow({
         selected && 'bg-muted/60',
       )}
     >
-      <IssueCard issue={issue} />
+      <IssueCard issue={issue} kindNames={kindNames} />
       {/* 举报挂在行的右上角（绝对定位，不挤动卡片本身）；行本身仍然是同一个点击容器。 */}
       <span className='absolute top-2 right-2' onClick={(e) => e.stopPropagation()}>
         <IssueReportButton

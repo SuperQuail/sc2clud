@@ -3,7 +3,7 @@ import Tooltip from '@jetbrains/ring-ui-built/components/tooltip/tooltip';
 import { CircleCheckBig, CircleDot, type LucideIcon } from 'lucide-react';
 import { UserBadge } from '@/ui/user/user-badge';
 import { cn } from '@/lib/utils';
-import { ISSUE_KIND_META, ISSUE_STATUS_LABEL, type IssueKind, type IssueStatus, type IssueSummary } from './types';
+import { ISSUE_STATUS_LABEL, type IssueKind, type IssueStatus, type IssueSummary, resolveKindName } from './types';
 
 // Issue 列表的一行（照 GitHub Issue 列表项）：**纯展示**——不写链接、不写点击，
 // 点击行为由列表容器决定（外面套 <a> 或挂 onClick），所以分区页、Issue 页、搜索页共用同一行。
@@ -23,11 +23,17 @@ const KIND_TAG: Record<IssueKind, TagType> = {
 };
 
 /** 一个 Issue 的展示所需：id / kind / title / status / author / commentCount / createdAt / updatedAt（见 types.ts） */
+/** kind → 标签的显示名。**默认走前端那份已知话术**，而值域来自端点的页面会把端点的 name 传进来
+ *  （宿主已经拿得到它，就不必为了「列表上那一格中文名」再多发一次请求）。 */
+export type KindNames = Record<string, string>;
+
 export type IssueCardProps = {
   issue: IssueSummary;
+  /** kind → 中文名（选项来自 `GET /issues/kinds` 时由宿主给）。缺这个 kind 就回落前端话术。 */
+  kindNames?: KindNames;
 };
 
-export function IssueCard({ issue }: IssueCardProps) {
+export function IssueCard({ issue, kindNames }: IssueCardProps) {
   const status = STATUS[issue.status];
   const StatusIcon = status.icon;
   const statusLabel = ISSUE_STATUS_LABEL[issue.status];
@@ -45,7 +51,8 @@ export function IssueCard({ issue }: IssueCardProps) {
       <div className='flex min-w-0 flex-1 flex-col gap-1.5'>
         <div className='flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1'>
           <span className='min-w-0 text-[15px] font-medium text-foreground'>{issue.title}</span>
-          <Tag tagType={KIND_TAG[issue.kind]}>{ISSUE_KIND_META[issue.kind].label}</Tag>
+          {/* 未登记的 kind 回落成「其他」的标签色（值域是数据驱动的，外观是前端的设计决定） */}
+          <Tag tagType={KIND_TAG[issue.kind] ?? KIND_TAG.other!}>{resolveKindName(issue.kind, kindNames?.[issue.kind])}</Tag>
         </div>
         <div className='flex flex-wrap items-center gap-x-2 gap-y-1 text-[12px] text-muted-foreground'>
           <span className='font-medium tabular-nums'>#{issue.id}</span>

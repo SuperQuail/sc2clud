@@ -8,7 +8,10 @@ import type { BoardRef, Paged, TopicAuthorSummary } from './forum';
 // 请求体照 handler.go:560-652 的 listIssuesQuery / createIssueBody / updateIssueBody / createCommentBody。
 // 这一层只声明形状与发请求：不认识路由、不认识 React（前端方案 §4.1 的依赖方向）。
 
-export type IssueKind = 'bug' | 'feature' | 'difficulty' | 'other';
+/** 类型值的**唯一真源是 `GET /issues/kinds`**（后端的 issue_kinds 表，拍板 08 · J6）：
+ *  这里因此是 `string` 而不是四种字面量的联合 —— 写死联合就等于在代码里又放了一份值域，
+ *  加一类仍然要发版，正是 J6 要避免的那件事。界面上的中文名一律取端点的 name。 */
+export type IssueKind = string;
 export type IssueStatus = 'open' | 'closed';
 /** 后端 parseIssueSort 只认这三个；comments 是聚合排序，**带 cursor 会 400**（issues.go:31 ErrSortUnpageable）。 */
 /**
@@ -44,6 +47,15 @@ export type Issue = {
 export type IssueDetail = Issue & { body_html: string };
 
 /** IssueCommentDTO（dto.go:191）：my_vote 是 0 / 1 / -1，与 PostDTO 同款（不是 viewer.value）。 */
+/** IssueKindDTO（dto.go:303）：key 是机器名（上行 kind / ?kind= 用它），name 是给人看的标签。 */
+export type IssueKindDTO = { key: string; name: string };
+
+/** `GET /issues/kinds`：列表筛选与新建入口的值域。**游客可读**（handler.go:72 挂在公开读组里），
+ *  所以未登录也要能画得出四个入口与下拉 —— 点下去之后才要求登录。 */
+export function fetchIssueKinds(signal?: AbortSignal): Promise<IssueKindDTO[]> {
+  return api<IssueKindDTO[]>('issues/kinds', { signal });
+}
+
 export type IssueComment = {
   id: string;
   parent_id: string | null;

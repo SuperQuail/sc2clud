@@ -23,6 +23,14 @@ export const qk = {
   /** 关注状态（L5）：对象进 key —— 改一个分区的关注不影响另一个 */
   followBoard: (slug: string) => ['follow', 'board', slug] as const,
   followUser: (handle: string) => ['follow', 'user', handle] as const,
+  /** 关注者（L5 第二批）：分区页 / 主页各一格；对象进 key，换个人就是另一次查询 */
+  boardFollowers: (slug: string) => ['follow', 'followers', 'board', slug] as const,
+  userFollowers: (handle: string) => ['follow', 'followers', 'user', handle] as const,
+  /** 「我关注的」两档（设置页）：本人视角，不随对象变（就是我自己） */
+  followingBoards: () => ['follow', 'following', 'boards'] as const,
+  followingUsers: () => ['follow', 'following', 'users'] as const,
+  /** 登录设备（GET /me/sessions）：设置页那一格 */
+  sessions: () => ['me', 'sessions'] as const,
   /** 某人**持有**的头衔 + 佩戴中的那一个（lib/api/title.ts）：本人主页的下拉靠它 */
   userTitles: (handle: string) => ['titles', handle] as const,
   unreadMessages: () => ['messages', 'unread'] as const,
@@ -63,6 +71,8 @@ export const qk = {
   adminBoardGroupAcl: (id: string) => ['admin', 'boards', id, 'group-acl'] as const,
   /** 搜索：type 与 q 都在 key 里 —— 换一个词就是另一次查询，不能互相覆盖 */
   search: (type: string, q: string) => ['search', type, q] as const,
+  /** Issue 类型值域（GET /issues/kinds）：一次部署才可能变，所以不按任何参数分 key */
+  issueKinds: () => ['issues', 'kinds'] as const,
   /** 打赏域（lib/api/rewards.ts）：本人的收款码 / 设置 / 我发出的申报，以及某个人的收款码 */
   paymentChannels: () => ['rewards', 'channels'] as const,
   donationSettings: () => ['rewards', 'settings'] as const,

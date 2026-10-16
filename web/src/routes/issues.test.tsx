@@ -306,6 +306,37 @@ describe('问题反馈页（真端点）', () => {
     });
   });
 
+  // J6（拍板 08）：**类型值域来自端点** `GET /issues/kinds`（handler.go:72，游客可读），
+  // 不是代码里写死的四类 —— 后端往 issue_kinds 插一行就该多一个入口，不需要前端发版。
+  //
+  // 判据是**一个新的 key**（`balance`）真的出现在界面上：只断言「请求发了」的话，
+  // 前端照旧画写死的四类也照样绿 —— 而那正是这条门禁要挡的形状。
+  it('J6：四个类型入口与筛选下拉读 GET /issues/kinds（值域加一类，界面就多一个入口，不发版）', async () => {
+    const calls = mockApi((u) => {
+      if (u.includes('/api/v1/me')) return { body: { data: ME } };
+      if (u.includes('/api/v1/issues/kinds')) {
+        return {
+          body: {
+            data: [
+              { key: 'bug', name: 'Bug 汇报' },
+              { key: 'feature', name: '功能建议' },
+              { key: 'difficulty', name: '难度建议' },
+              { key: 'balance', name: '平衡性' },
+            ],
+            next_cursor: null,
+          },
+        };
+      }
+      return { body: { data: [], next_cursor: null } };
+    });
+    renderIssues('/issues');
+
+    // 端点被调用（且是那条路径，不是别名的列表）
+    await waitFor(() => expect(calls.some((c) => c.url.includes('/api/v1/issues/kinds'))).toBe(true));
+    // 新那一类的入口真的画出来了：文案用**服务端给的 name**（前端没有 balance 这个词）
+    expect(await screen.findByRole('button', { name: /平衡性/ })).toBeTruthy();
+  });
+
   // J5：排序多了一档 **old（升序）** —— 2026-10-14 后端补的（`IssueSortOld` = created_at ASC, id ASC）。
   // 原先三种排序全是 DESC，「最早创建」这个需求没有落点。
   it('J5：排序的第 4 档「最早创建」是 ?sort=old，且下拉里真的有它', async () => {

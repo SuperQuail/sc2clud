@@ -11,7 +11,8 @@ import { RoleBadge } from '@/ui/user/role-badge';
 import { UserAvatar } from '@/ui/user/avatar';
 import { UserBadge } from '@/ui/user/user-badge';
 import { Username } from '@/ui/user/username';
-import { ISSUE_KIND_META, ISSUE_STATUS_LABEL } from '../12-topic/_task/types';
+import { ISSUE_STATUS_LABEL, resolveKindName } from '../12-topic/_task/types';
+import type { KindNames } from '../12-topic/_task/issue-card';
 import type { IssueDetail } from './types';
 
 // 主从布局的右半：反馈正文 + 状态开关 + 评论区。
@@ -27,6 +28,7 @@ export function IssueDetail({
   onComment,
   onVote,
   report,
+  kindNames,
   onClose,
 }: {
   issue: IssueDetail;
@@ -43,6 +45,8 @@ export function IssueDetail({
    *  「没有接线的那一档不亮一个点了必失败的按钮」。
    *  做成「传进来的一件」而不是 onReport 回调：只有宿主手上有 issue 的 public_id（详情件的 id 是 #编号）。 */
   report?: ReactNode;
+  /** kind → 中文名（来自 `GET /issues/kinds`）。不给就用前端那份已知话术。 */
+  kindNames?: KindNames;
   onClose: () => void;
 }) {
   const open = issue.status === 'open';
@@ -64,7 +68,7 @@ export function IssueDetail({
         <div className='flex flex-wrap items-center gap-x-3 gap-y-2 text-[12px] text-muted-foreground'>
           <span className='rounded-[3px] bg-muted px-1.5 py-0.5 tabular-nums'>#{issue.id}</span>
           <Tag tagType={TagType.DEFAULT} className='text-[11px]'>
-            {ISSUE_KIND_META[issue.kind].label}
+            {resolveKindName(issue.kind, kindNames?.[issue.kind])}
           </Tag>
           {issue.labels.map((l) => (
             <Tag key={l} tagType={TagType.MAIN} className='text-[11px]'>

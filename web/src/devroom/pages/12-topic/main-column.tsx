@@ -58,6 +58,10 @@ export function MainColumn({
   pinPending,
   onTogglePin,
   onToggleFeature,
+  /** 锁定（D73 的同款第三颗）：原样传给动作条，renders 与否在那层按「回调给了没有」判 */
+  lockOn,
+  lockPending,
+  onToggleLock,
   onVote,
   onDeleteComment,
   onSubmitComment,
@@ -119,6 +123,10 @@ export function MainColumn({
   pinPending?: boolean;
   onTogglePin?: (next: boolean) => void;
   onToggleFeature?: (next: boolean) => void;
+  /** 锁定：含义与渲染规则见 TopicActions */
+  lockOn?: boolean;
+  lockPending?: boolean;
+  onToggleLock?: (next: boolean) => void;
   onVote: (id: string, value: 1 | -1) => void;
   /** 删回复（不是删帖）：parentId 非空表示它长在哪个主楼下 */
   onDeleteComment: (parentId: string | null, id: string) => void;
@@ -210,6 +218,9 @@ export function MainColumn({
         pinPending={pinPending}
         onTogglePin={onTogglePin}
         onToggleFeature={onToggleFeature}
+        lockOn={lockOn}
+        lockPending={lockPending}
+        onToggleLock={onToggleLock}
         designNote={receipt}
         deleteConfirm={deleteConfirm}
       />

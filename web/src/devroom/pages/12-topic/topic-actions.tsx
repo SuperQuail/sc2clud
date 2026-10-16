@@ -1,7 +1,7 @@
 import type { ReactNode } from 'react';
 import Button from '@jetbrains/ring-ui-built/components/button/button';
 import { ControlsHeight } from '@jetbrains/ring-ui-built/components/global/controls-height';
-import { Bookmark, Eye, Flag, Heart, Link2, MessageSquare, Pencil, Pin, Sparkles, Trash2 } from 'lucide-react';
+import { Bookmark, Eye, Flag, Heart, Link2, Lock, MessageSquare, Pencil, Pin, Sparkles, Trash2 } from 'lucide-react';
 import { icon16 } from '@/ui/icons';
 
 // 正文下的动作条。**每个动作都必须有可观察的结果**（缺陷处理总纲 §7）：
@@ -34,6 +34,10 @@ export function TopicActions({
   pinPending,
   onTogglePin,
   onToggleFeature,
+  /** 锁定（D73 的同款第三颗；权限点 topic.lock，与置顶/精华不是同一个）：不给就不渲染这一颗 */
+  lockOn,
+  lockPending,
+  onToggleLock,
   /** 设计稿反馈那一行：由页面插在动作条下面 */
   designNote,
   /** 删除确认（受控）：贴着删除按钮出现，别让人滚到页尾去找 */
@@ -65,6 +69,10 @@ export function TopicActions({
   /** 点击上行的是 !current */
   onTogglePin?: (next: boolean) => void;
   onToggleFeature?: (next: boolean) => void;
+  /** 已锁定（topic.locked）；文案与选中态都由它决定：未锁读「锁定」、已锁读「解锁」 */
+  lockOn?: boolean;
+  lockPending?: boolean;
+  onToggleLock?: (next: boolean) => void;
   designNote?: ReactNode;
   deleteConfirm?: ReactNode;
 }) {
@@ -163,6 +171,23 @@ export function TopicActions({
             onClick={() => onToggleFeature(!featureOn)}
           >
             精华
+          </Button>
+        ) : null}
+        {onToggleLock ? (
+          <Button
+            ghost
+            inline={false}
+            height={ControlsHeight.S}
+            active={lockOn}
+            disabled={lockPending}
+            icon={icon16(Lock)}
+            // 文案跟着状态走（未锁读「锁定」、已锁读「解锁」）：只写「锁定」的话，
+            // 已锁的帖子上那颗按钮读起来像「再锁一次」，人不敢点。
+            aria-label={lockOn ? '解除锁定' : '锁定这篇帖子（锁定后不能再回复）'}
+            data-testid='topic-lock-toggle'
+            onClick={() => onToggleLock(!lockOn)}
+          >
+            {lockOn ? '解锁' : '锁定'}
           </Button>
         ) : null}
         <span className='ml-auto flex items-center gap-4 text-[12px] text-muted-foreground'>

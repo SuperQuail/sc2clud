@@ -2,7 +2,6 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, expect, it, vi } from 'vitest';
 import { MemoryRouter, Route, Routes, useLocation } from 'react-router';
-import { mockFetch } from '@/test/fetch-mock';
 import { TopicPage } from './topic';
 // 映射函数 2026-10-14 搬到 _parts/topic-mappers（宿主只留取数与传参，见那边的注释）
 import { toMentionCandidates } from './_parts/topic-mappers';
@@ -201,7 +200,7 @@ vi.mock('@/lib/perms', () => ({
 }));
 
 afterEach(() => {
-  // D73：把 mockFetch 的 fetch 桩拆掉，别让它漏进别的用例
+  // 拆掉测试里装的 fetch 桩，别让它漏进别的用例（D73 那两条搬去了 topic.moderation.test.tsx）
   vi.unstubAllGlobals();
 });
 
@@ -608,47 +607,4 @@ it('作者关注：自己看自己不画按钮；看别人时点了真的调 /us
   fireEvent.click(btn);
   await waitFor(() => expect(mocks.followUser).toHaveBeenCalledWith('someone-else'));
   mocks.topic.current = null;
-});
-
-// D73（用户原话「无法设置帖子置顶/精华」）：POST /topics/{id}/pin 与 /feature 早挂在后端
-// （forum/handler.go:90-91，同一个权限点 topic.pin），前端零调用。这条盯宿主接线本身：
-// 版主的两颗开关出现在动作条上、active 反映当前值、点击上行 !current 且字段名照 pinBody / featureBody。
-// mockFetch 只拦网络边界（前端方案 §11）：这一页真会发 fetch 的还有 rewards 的收款码查询（模块没 mock），
-// 所以断言按 URL 挑 calls，不按下标。
-it('D73：版主看得到置顶/精华两颗开关，点击打到 POST /topics/{id}/pin|feature（体是 {pinned} / {featured}）', async () => {
-  const { calls } = mockFetch([
-    { body: { data: [] } },
-    { body: { data: [] } },
-    { body: { data: [] } },
-  ]);
-  renderPage();
-  const pin = await screen.findByTestId('topic-pin-toggle');
-  const feat = screen.getByTestId('topic-feature-toggle');
-  // 当前值就是详情里的 t.pinned / t.featured（WIRE 两项都是 true）——开关亮着
-  expect(pin.className).toContain('ring-button-active');
-  expect(feat.className).toContain('ring-button-active');
-
-  // 再点一次是「取消」：上行的是 !current
-  fireEvent.click(pin);
-  await waitFor(() => expect(calls.some((c) => c.url.includes('/topics/' + WIRE.id + '/pin'))).toBe(true));
-  const pinCall = calls.find((c) => c.url.includes('/topics/' + WIRE.id + '/pin'))!;
-  expect(pinCall.init?.method).toBe('POST');
-  expect(JSON.parse(String(pinCall.init?.body))).toEqual({ pinned: false });
-
-  fireEvent.click(feat);
-  await waitFor(() => expect(calls.some((c) => c.url.includes('/topics/' + WIRE.id + '/feature'))).toBe(true));
-  const featCall = calls.find((c) => c.url.includes('/topics/' + WIRE.id + '/feature'))!;
-  expect(featCall.init?.method).toBe('POST');
-  expect(JSON.parse(String(featCall.init?.body))).toEqual({ featured: false });
-  cleanup();
-});
-
-it('D73：没有 topic.pin 权限的人看不到这两颗开关（前端权限只管显不显示，后端仍是唯一拦截点）', async () => {
-  mocks.canImpl.current = false;
-  renderPage();
-  await screen.findByTestId('topic-main');
-  expect(screen.queryByTestId('topic-pin-toggle')).toBeNull();
-  expect(screen.queryByTestId('topic-feature-toggle')).toBeNull();
-  mocks.canImpl.current = true;
-  cleanup();
 });

@@ -1,7 +1,7 @@
 import { Suspense, lazy, useState, type ComponentType, type ReactNode } from 'react';
 import Button from '@jetbrains/ring-ui-built/components/button/button';
-import { ISSUE_KIND_META } from '../12-topic/_task/types';
-import { KINDS, IssueKindButton } from './shared';
+import { resolveKindName } from '../12-topic/_task/types';
+import { FALLBACK_KIND_OPTIONS, IssueKindButton } from './shared';
 import type { IssueKind } from './types';
 
 // 反馈页里**「填一条新反馈」那块表单区**（D7，2026-10-14 用户要求：不再是弹窗，而是页内一整块界面）。
@@ -34,6 +34,7 @@ export function NewIssuePanel({
   onClose,
   onSubmit,
   header,
+  kinds = FALLBACK_KIND_OPTIONS,
   Editor = BodyEditor,
 }: {
   initialKind: IssueKind;
@@ -43,6 +44,8 @@ export function NewIssuePanel({
   onSubmit: (draft: IssueDraft) => void;
   /** 宿主塞的额外头部（例如未登录时那句引导），不给就什么都不渲染 */
   header?: ReactNode;
+  /** 值域（`GET /issues/kinds`）。不给就用兜底四类 —— 房间与端点未回来时是这一档。 */
+  kinds?: { key: IssueKind; name: string }[];
   /** 标题 + 正文那两格（默认是按需加载的真编辑器） */
   Editor?: ComponentType<IssueEditorProps>;
 }) {
@@ -84,17 +87,19 @@ export function NewIssuePanel({
           类型
         </span>
         <div role='group' aria-labelledby='new-issue-kind-label' className='flex flex-wrap items-center gap-2'>
-          {KINDS.map((k) => (
+          {kinds.map((k) => (
             // 选中环画在容器上：共享件没有 className prop，也不该为这一处去改它的外观
             <span
-              key={k}
-              className={'inline-flex rounded-md ' + (kind === k ? 'ring-[3px] ring-ring/60' : 'ring-1 ring-transparent')}
+              key={k.key}
+              className={'inline-flex rounded-md ' + (kind === k.key ? 'ring-[3px] ring-ring/60' : 'ring-1 ring-transparent')}
             >
-              <IssueKindButton kind={k} onSelect={setKind} />
+              <IssueKindButton kind={k.key} name={k.name} onSelect={setKind} />
             </span>
           ))}
         </div>
-        <span className='text-[11px] text-muted-foreground'>当前选择：{ISSUE_KIND_META[kind].label}</span>
+        <span className='text-[11px] text-muted-foreground'>
+          当前选择：{resolveKindName(kind, kinds.find((k) => k.key === kind)?.name)}
+        </span>
       </div>
 
       <Suspense fallback={<p className='text-[13px] text-muted-foreground'>正在加载编辑器…</p>}>

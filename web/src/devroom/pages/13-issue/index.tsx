@@ -11,7 +11,7 @@ import { IssueRow } from '@/routes/_parts/issue-row';
 import { IssueFilterBar, SORT_LABEL, type Scope, type SortKey } from './issue-filter-bar';
 import { NewIssuePanel } from './new-issue-panel';
 import { matchesQuery, parseQuery } from './query';
-import { IssueKindButton, KINDS, TopicTaskTabs, type IssueKind } from './shared';
+import { FALLBACK_KIND_OPTIONS, IssueKindButton, TopicTaskTabs, type IssueKind } from './shared';
 import type { IssueComment, IssueDetail as Detail } from './types';
 
 // DevRoom 13 · 问题反馈页（仿 GitHub Issues + 帖子页同源的两个大按钮）。
@@ -193,9 +193,9 @@ export default function IssuePage() {
 
         {/* 窄屏两列：390 下 4 列会把标签截成「汇报 B / 功能建」（2026-10-14 FIX-COPY 在出图时抓到，两个入口一模一样地截）。 */}
         <div className='mt-4 grid grid-cols-2 gap-2 rounded-lg border border-dashed border-border p-3 sm:grid-cols-4' aria-label='我要反馈'>
-          {KINDS.map((k) => (
-            <span key={k} className='flex [&>*]:flex-1'>
-              <IssueKindButton kind={k} size='lg' onSelect={setDialogKind} />
+          {FALLBACK_KIND_OPTIONS.map((k) => (
+            <span key={k.key} className='flex [&>*]:flex-1'>
+              <IssueKindButton kind={k.key} name={k.name} size='lg' onSelect={setDialogKind} />
             </span>
           ))}
         </div>

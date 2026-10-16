@@ -1,7 +1,7 @@
 import Button from '@jetbrains/ring-ui-built/components/button/button';
 import { ControlsHeight } from '@jetbrains/ring-ui-built/components/global/controls-height';
-import { ISSUE_KIND_ACCENT, ISSUE_KIND_ICON } from './kind-style';
-import { ISSUE_KIND_META, type IssueKind } from './types';
+import { kindAccent, kindIcon } from './kind-style';
+import { ISSUE_KIND_META, type IssueKind, resolveKindName } from './types';
 
 // 四类反馈入口：一键开一类反馈（GitHub 的「New issue」模板选择那一步）。
 // 文案面向普通玩家，界面上不出现「Issue」这个词（用户 2026-10-12 明确提过）。
@@ -12,6 +12,9 @@ export type IssueKindButtonSize = 'sm' | 'md' | 'lg';
 
 export type IssueKindButtonProps = {
   kind: IssueKind;
+  /** 界面上显示的中文名。**值域来自 `GET /issues/kinds` 时把它的 name 传进来** ——
+   *  没传就回落前端那份已知话术（房间、以及端点还没回来的一瞬）。 */
+  name?: string;
   /** 点击回调（开面板用）；不传 = 纯展示（渲染出来但不可点） */
   onSelect?: (kind: IssueKind) => void;
   /** 导航用：传了就是链接（可新窗口打开、可右键复制地址），此时不要同时传 onSelect */
@@ -21,23 +24,25 @@ export type IssueKindButtonProps = {
 
 const HEIGHT = { sm: ControlsHeight.S, md: ControlsHeight.M, lg: ControlsHeight.L } as const;
 
-export function IssueKindButton({ kind, onSelect, href, size = 'md' }: IssueKindButtonProps) {
-  const meta = ISSUE_KIND_META[kind];
-  const Icon = ISSUE_KIND_ICON[kind];
+export function IssueKindButton({ kind, name, onSelect, href, size = 'md' }: IssueKindButtonProps) {
+  const label = resolveKindName(kind, name);
+  // 说明那句是已知四类的话术；端点新加的一类没有它，回落成中性的一句（别显示一个英文 key）
+  const description = ISSUE_KIND_META[kind]?.description ?? '选这一类，再写清「在哪、什么现象」';
+  const Icon = kindIcon(kind);
   return (
     <Button
       height={HEIGHT[size]}
-      className={ISSUE_KIND_ACCENT[kind]}
+      className={kindAccent(kind)}
       href={href}
       onClick={!href && onSelect ? () => onSelect(kind) : undefined}
-      title={meta.label + '：' + meta.description}
-      aria-label={meta.label + '：' + meta.description}
+      title={label + '：' + description}
+      aria-label={label + '：' + description}
     >
       <span className='inline-flex items-center gap-2'>
         <span className='grid size-5 shrink-0 place-items-center rounded-full bg-[color:color-mix(in_srgb,var(--k)_18%,transparent)] text-(--k)'>
           <Icon size={14} aria-hidden />
         </span>
-        <span className='font-medium text-(--k)'>{meta.label}</span>
+        <span className='font-medium text-(--k)'>{label}</span>
       </span>
     </Button>
   );

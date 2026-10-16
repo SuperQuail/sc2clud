@@ -9,6 +9,7 @@ import {
   fetchIssue,
   fetchIssueCommentReplies,
   fetchIssueComments,
+  fetchIssueKinds,
   fetchIssues,
   fetchTopicIssues,
   setIssueCommentVote,
@@ -24,8 +25,9 @@ import { IssueDetail } from '@/devroom/pages/13-issue/issue-detail';
 import { IssueFilterBar, type Scope, type SortKey } from '@/devroom/pages/13-issue/issue-filter-bar';
 import { NewIssuePanel, type IssueEditorProps } from '@/devroom/pages/13-issue/new-issue-panel';
 import { matchesQuery, parseQuery } from '@/devroom/pages/13-issue/query';
-import { IssueKindButton, KINDS, TopicTaskTabs } from '@/devroom/pages/13-issue/shared';
+import { FALLBACK_KIND_OPTIONS, IssueKindButton, TopicTaskTabs } from '@/devroom/pages/13-issue/shared';
 import { toIssueComment, toIssueDesignDetail, toIssueSummary, toMentionCandidates } from './_parts/issues-mappers';
+import { kindNameMap, listSummary, parseKind, SORT_TEXT, VIEW_PARAM, withinDomain } from './_parts/issue-kinds';
 import { issueDetailReport, IssueRow } from './_parts/issue-row';
 import { Empty, ErrorState, Loading } from './_parts/state';
 
@@ -43,34 +45,19 @@ import { Empty, ErrorState, Loading } from './_parts/state';
 // 入口参数：?topic=<资源帖 public id>（限定范围 + 新建的落点）、?kind=bug|feature|difficulty|other
 // （从帖子页四个入口点进来时直接开对应类型的反馈面板，13-issue/index.tsx:56-61 的语义）。
 
-/** 排序文案：**不抄 DevRoom 的 SORT_LABEL** —— 那张稿的 created 是升序（label「最早创建」，index.tsx:105），
- *  而后端三种排序列全是 DESC（pgsql/issues.go:110-113、157 行 ORDER BY … DESC）。照抄就是一句假话。 */
-const SORT_TEXT: Record<SortKey, string> = { updated: '最新更新', created: '最新创建', old: '最早创建', comments: '评论最多' };
-
-/** D5：顶上两个页签（帖子内容 / 问题反馈）的选中态写在地址上。
- *  写出来的唯一一处是 routes/topic.tsx 的 `onOpenIssue`（`issues?topic=<id>`，缺这个参数 = 反馈页）。 */
-const VIEW_PARAM = 'view';
-
-function parseKind(v: string | null): IssueKind | undefined {
-  return v === 'bug' || v === 'feature' || v === 'difficulty' || v === 'other' ? v : undefined;
-}
-
 // DTO → 设计件形状的四个映射搬到了 ./_parts/issues-mappers（纯函数、不认识 React，也不取数）。
 // 搬家的理由只有一个：这个文件已经超过 gate:size 的 500 行上限（用 useEffect 之外的办法越堆越长），
 // 而路由该留的只是「取数 + 传参」。
-export function IssuesPage({
-  NewIssueEditor,
-}: {
-  /** 测试注入点（透传给 NewIssuePanel 的 Editor）：Lexical 在 jsdom 里不产生真实的编辑事件 */
-  NewIssueEditor?: ComponentType<IssueEditorProps>;
-} = {}) {
+/** 测试注入点：Lexical 在 jsdom 里不产生真实的编辑事件，所以编辑器那一格可换（见 new-issue-panel 的 Editor） */
+export type IssuesPageProps = { NewIssueEditor?: ComponentType<IssueEditorProps> };
+
+export function IssuesPage({ NewIssueEditor }: IssuesPageProps = {}) {
   const [sp, setSp] = useSearchParams();
   const navigate = useNavigate();
   const session = useSession();
   const queryClient = useQueryClient();
 
   const topicId = sp.get('topic') ?? '';
-  const entryKind = parseKind(sp.get('kind'));
 
   const [pickedKind, setPickedKind] = useState<IssueKind | null>(null);
   const [statusTab, setStatusTab] = useState<IssueStatus>('open');
@@ -104,13 +91,28 @@ export function IssuesPage({
     staleTime: 30_000,
   });
 
+  // 类型值域（J6）：**端点才是真源**，所以筛选下拉与新建入口都读它。
+  // 游客也能读（后端挂在公开读组里），所以不 gate 登录态；staleTime 给足 —— 值域一次部署才可能变。
+  const kindsQuery = useQuery({
+    queryKey: qk.issueKinds(),
+    queryFn: ({ signal }) => fetchIssueKinds(signal),
+    staleTime: 10 * 60_000,
+  });
+  const kinds = kindsQuery.data && kindsQuery.data.length > 0 ? kindsQuery.data : FALLBACK_KIND_OPTIONS;
+  const kindKeys = useMemo(() => kinds.map((k) => k.key), [kinds]);
+  const kindNames = useMemo(() => kindNameMap(kinds), [kinds]);
+  // ?kind= 深链的入口类型：判据是端点值域（见 parseKind 的注释），所以排在 kinds 后面
+  const entryKind = parseKind(sp.get('kind'), kindKeys);
+
   const parsed = useMemo(() => parseQuery(query), [query]);
   const meHandle = session.session?.handle ?? '';
   // 范围是**服务端**筛选（author= / assignee=me，forum/handler.go:579-586），两个都要登录才拿得到「我」。
   // 未登录时不发这次请求：宁可给一句「先登录」，也不要发一条 author='' 的查询把全站反馈当成「我创建的」。
   const scopeReady = scope === 'all' || meHandle !== '';
   const wantStatus: IssueStatus = status ?? parsed.status ?? statusTab;
-  const wantKind = kind ?? parsed.kind;
+  // 值域之外的值不发出去（后端对不认识的 kind 回 400，不是静默当不限）：
+  // 落选时退回「不限」，页面上那一格下拉也回到「全部类型」，不会出现「选着一个不存在的类型」。
+  const wantKind = withinDomain(kind, kindKeys) ?? withinDomain(parsed.kind, kindKeys);
   // J5：自由词**发给后端搜**（`?q=`，标题 + 正文字面匹配）。
   // 为什么不留在前端过滤：前端只有当前这一页 —— 正文里的词、以及还没翻到的页，一律搜不到，
   // 而「搜了没结果」与「真的没有」在界面上长得一模一样（这正是交接单 §5.2 那种缺陷形态）。
@@ -231,37 +233,37 @@ export function IssuesPage({
     onSettled: () => void queryClient.invalidateQueries({ queryKey: ['issue', selectedId, 'comments'] }),
   });
 
-  const labelOptions = useMemo(() => [...new Set(rows.flatMap((r) => r.tags))], [rows]);
-  const topicTitle = rows[0]?.topic_title ?? '';
+  const { labelOptions, topicTitle } = useMemo(() => listSummary(rows), [rows]);
   const hasNext = sort !== 'comments' && list.hasNextPage;
   // D7：新建反馈是**页内的一块表单区**，不再是弹窗。三种进入方式共用它：
   // 四个类型入口（openKind）、空态里的「新建一条」、以及 ?kind= 深链（entryKind）。
   const formKind = pickedKind ?? entryKind ?? null;
-  const failed =
-    ([
-      { what: '提交反馈', m: create },
-      { what: '改状态', m: toggle },
-      { what: '发评论', m: comment },
-      { what: '评论投票', m: voteComment },
-    ].find((s) => s.m.isError) ?? null);
+  // 哪一步错了就把哪一步的名字亮出来（顺序即优先级）
+  const steps: Array<{ what: string; m: { isError: boolean; error: unknown } }> = [
+    { what: '提交反馈', m: create },
+    { what: '改状态', m: toggle },
+    { what: '发评论', m: comment },
+    { what: '评论投票', m: voteComment },
+  ];
+  const failed = steps.find((s) => s.m.isError) ?? null;
 
   /** 收起表单：本地那一份清掉，同时把地址里的 ?kind= 也擦干净（刷新后不会又弹回来） */
-  function closeForm() {
+  const closeForm = () => {
     setPickedKind(null);
     if (sp.get('kind')) {
       const next = new URLSearchParams(sp);
       next.delete('kind');
       setSp(next, { replace: true });
     }
-  }
+  };
 
-  function resetFilters() {
+  const resetFilters = () => {
     setQuery('');
     setStatus(undefined);
     setKind(undefined);
     setScope('all');
     setPickedLabels([]);
-  }
+  };
 
   /** 四个入口：未登录先引导登录，没有 topic 就说清反馈要挂在哪（不静默、也不假装能提交）。 */
   function openKind(k: IssueKind) {
@@ -308,9 +310,9 @@ export function IssuesPage({
         />
 
         <div className='mt-4 grid grid-cols-4 gap-2 rounded-lg border border-dashed border-border p-3' aria-label='我要反馈'>
-          {KINDS.map((k) => (
-            <span key={k} className='flex [&>*]:flex-1'>
-              <IssueKindButton kind={k} size='lg' onSelect={openKind} />
+          {kinds.map((k) => (
+            <span key={k.key} className='flex [&>*]:flex-1'>
+              <IssueKindButton kind={k.key} name={k.name} size='lg' onSelect={openKind} />
             </span>
           ))}
         </div>
@@ -327,6 +329,7 @@ export function IssuesPage({
             onSort={setSort}
             scope={scope}
             onScope={setScope}
+            kinds={kinds}
             labels={labelOptions}
             pickedLabels={pickedLabels}
             onToggleLabel={(l) => setPickedLabels((prev) => (prev.includes(l) ? prev.filter((x) => x !== l) : [...prev, l]))}
@@ -409,6 +412,7 @@ export function IssuesPage({
                   {visible.map((row) => (
                     <li key={row.id}>
                       <IssueRow
+                        kindNames={kindNames}
                         issueId={row.id}
                         number={row.number}
                         issue={toIssueSummary(row)}
@@ -446,6 +450,7 @@ export function IssuesPage({
               // 详情面板**只吃详情响应**：换页签把这条挤出列表时它照样在（列表那边只是筛选结果）
               <IssueDetail
                 issue={toIssueDesignDetail(detail.data, detail.data.body_html)}
+                kindNames={kindNames}
                 comments={thread.data ?? []}
                 me={me}
                 candidates={toMentionCandidates(mentions.data ?? [])}
@@ -481,9 +486,9 @@ export function IssuesPage({
           initialKind={formKind}
           pending={create.isPending}
           onClose={closeForm}
+          kinds={kinds}
           {...(NewIssueEditor ? { Editor: NewIssueEditor } : {})}
-          // D6：编辑器给的是 EditorState JSON，**上行前换成 Markdown** —— 后端 body_md 那一列
-          // 走 goldmark → bluemonday 渲染成 body_html，发 JSON 上去页面上显示的就是那段 JSON。
+          // D6：上行前必须把 EditorState JSON 换成 Markdown（同一个坑见 _parts/issues-mappers 的头注）
           onSubmit={(draft) =>
             create.mutate({ kind: draft.kind, title: draft.title, bodyJson: editorJsonToMarkdown(draft.bodyJson) })
           }

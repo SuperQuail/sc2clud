@@ -5,8 +5,8 @@ import Input from '@jetbrains/ring-ui-built/components/input/input';
 import Select, { Type, type SelectItem } from '@jetbrains/ring-ui-built/components/select/select';
 import { Search } from 'lucide-react';
 import { icon16 } from '@/ui/icons';
-import { ISSUE_KIND_META, ISSUE_STATUS_LABEL } from '../12-topic/_task/types';
-import { KINDS } from './shared';
+import { ISSUE_STATUS_LABEL } from '../12-topic/_task/types';
+import { FALLBACK_KIND_OPTIONS } from './shared';
 import { parseQuery } from './query';
 import type { IssueKind, IssueStatus } from './types';
 
@@ -45,10 +45,11 @@ const STATUS_OPTIONS: Array<SelectItem<StatusOption>> = [
   ...(['open', 'closed'] as IssueStatus[]).map((s) => ({ key: s, label: ISSUE_STATUS_LABEL[s], value: s })),
 ];
 
-const KIND_OPTIONS: Array<SelectItem<KindOption>> = [
-  { key: 'any', label: '全部类型' },
-  ...KINDS.map((k) => ({ key: k, label: ISSUE_KIND_META[k].label, value: k })),
-];
+// 「全部类型」+ 值域里的每一类。**值域是 prop**（宿主从 GET /issues/kinds 拿），
+// 不在这里写一份常量：那样后端加一类，下拉里永远选不到它（等于没做）。
+function kindOptions(kinds: { key: IssueKind; name: string }[]): Array<SelectItem<KindOption>> {
+  return [{ key: 'any', label: '全部类型' }, ...kinds.map((k) => ({ key: k.key, label: k.name, value: k.key }))];
+}
 
 const SCOPES: Array<{ key: Scope; label: string }> = [
   { key: 'all', label: '全部' },
@@ -89,6 +90,7 @@ export function IssueFilterBar({
   pickedLabels,
   onToggleLabel,
   onReset,
+  kinds = FALLBACK_KIND_OPTIONS,
 }: {
   query: string;
   onQuery: (next: string) => void;
@@ -104,12 +106,15 @@ export function IssueFilterBar({
   pickedLabels: string[];
   onToggleLabel: (label: string) => void;
   onReset: () => void;
+  /** 类型值域（`GET /issues/kinds`）：不给就用兜底四类（房间 / 端点未回来） */
+  kinds?: { key: IssueKind; name: string }[];
 }) {
   const parsed = useMemo(() => parseQuery(query), [query]);
   const boxRef = useRef<HTMLInputElement | null>(null);
   useSearchShortcut(() => boxRef.current?.focus());
+  const kindOptions_ = kindOptions(kinds);
   const statusItem = STATUS_OPTIONS.find((o) => o.value === status) ?? STATUS_OPTIONS[0]!;
-  const kindItem = KIND_OPTIONS.find((o) => o.value === kind) ?? KIND_OPTIONS[0]!;
+  const kindItem = kindOptions_.find((o) => o.value === kind) ?? kindOptions_[0]!;
   const sortItem = SORT_OPTIONS.find((o) => o.key === sort) ?? SORT_OPTIONS[0]!;
   const dirty = query !== '' || status !== undefined || kind !== undefined || scope !== 'all' || pickedLabels.length > 0;
 
@@ -148,7 +153,7 @@ export function IssueFilterBar({
         <span className='w-[160px]'>
           <Select
             type={Type.INPUT}
-            data={KIND_OPTIONS}
+            data={kindOptions_}
             selected={kindItem}
             label='类型'
             onChange={(item: SelectItem<KindOption> | null) => onKind(item?.value)}
