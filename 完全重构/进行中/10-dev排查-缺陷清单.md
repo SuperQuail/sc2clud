@@ -410,6 +410,13 @@ D34 补的是**管理端当场自助**这一缺环。
 - 双端黑盒（只读）：① `permissions.description`（topic.pin）=「置顶 / 精华（两个端点共用这一个权限点）」——**0059 在库里生效**；② **产物 JS 里「拍板」与「§」出现次数均为 0**（D76 真的进了线上包，不只是源码改了）；③ 错误信封带原因与字段：`/topics/not-a-uuid` → `参数错误` + `fields.id=格式不正确`（不再是空 message + 编号）。
 - 回滚：`pg_restore --clean --if-exists -d <dsn> …/pre-deploy-48dff12-*.dump` + `current → 70ff692`。
 
+#### 1r-addendum. D72 二轮（2026-10-16 09:1x，用户：入口改名「头衔编辑」+ 改复选框列表）
+
+- 实现（8b0b332）：`GrantTitleDialog` → **`TitleEditDialog`**；入口按钮与弹层标题都叫**「头衔编辑」**；弹层改为一列 `Checkbox`——行 = **目录未归档 ∪ 该用户已持有**（并集，否则持有已归档头衔就永远撤不掉），`佩戴中`/`已归档` 用 Pill 标注；**勾上即 POST 授予、取消勾即 DELETE 撤销，无保存按钮**；逐行 pending 且禁用其它行，成功 `invalidateQueries(qk.userTitles)` 回服务端真值，失败 errorLine 就地报错且**不乐观翻转**。接线合并：`onGrantTitle`+`onRevokeTitle` → `onSetTitle(userId, titleId, held)`（routes/admin/users.tsx 按 held 分发）。
+- 验证：真 node 下 vitest **350/350**（69 文件，净增 4 例）、tsc 0、build+budget（178.1/180 KB）+ 7 条静态门禁全过（Lead 独立复跑，非子代理自报）。
+- 上线：dev `8b0b332`（备份 pre-deploy-8b0b332-20261016-012108.dump）、prod `48dff12 → 8b0b332`（165.3s，备份 pre-deploy-8b0b332-20261016-012415.dump）；双端产物含「头衔编辑」×3、旧 testid `title-revoke-` 计数 **0**；prod 部署以来 journalctl ERROR=0，DELETE 端点未登录仍 401（路由在）。
+- 注：权限点显示名「发头衔」（nav.ts / audit / mock fixtures）**未改**——那是 `title.grant` 的点名，不是按钮文案。
+
 ---
 ## 2. 派发分组（互不重叠的文件作用域）
 
