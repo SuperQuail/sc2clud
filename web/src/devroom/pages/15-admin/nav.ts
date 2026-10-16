@@ -6,7 +6,7 @@
 // 不给 total，拿本页条数当「待处理总数」会少报），而且导航在**每一屏**都会渲染 —— 四屏的计数查询
 // 会在切进后台的第一秒一起发出去。等哪天后端给了这几个计数端点再挂回来。
 export type ScreenKey =
-  | 'users' | 'roles' | 'groups' | 'boards' | 'review' | 'reports' | 'rewards'
+  | 'users' | 'roles' | 'groups' | 'boards' | 'review' | 'reports' | 'issues' | 'rewards'
   | 'titles' | 'mail' | 'mailtpl' | 'ai' | 'settings' | 'audit' | 'diagnostics';
 
 export const NAV: { grp: string; items: { key: ScreenKey; title: string; note: string }[] }[] = [
@@ -24,6 +24,7 @@ export const NAV: { grp: string; items: { key: ScreenKey; title: string; note: s
       { key: 'boards', title: '分区管理', note: '排序 · 封面 · ACL 矩阵' },
       { key: 'review', title: '帖子审核', note: '待审队列 · 批量通过/拒绝' },
       { key: 'reports', title: '举报处理', note: 'open → handled / dismissed' },
+      { key: 'issues', title: 'Issue 管理', note: '归档 / 恢复 · 归档即从公开读里藏起来' },
     ],
   },
   {

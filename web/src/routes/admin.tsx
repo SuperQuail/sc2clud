@@ -12,6 +12,7 @@ import { AiReviewScreenContainer } from './admin/ai';
 import { AuditScreenContainer } from './admin/audit';
 import { BoardsScreenContainer } from './admin/boards';
 import { GroupsScreenContainer } from './admin/groups';
+import { IssuesAdminScreenContainer } from './admin/issues';
 import { DiagnosticsScreenContainer } from './admin/diagnostics';
 import { MailScreenContainer } from './admin/mail';
 import { MailTemplateScreenContainer } from './admin/mail-tpl';
@@ -43,6 +44,8 @@ const PERM_BY_SCREEN: Record<ScreenKey, string> = {
   boards: 'board.manage',
   review: 'post.review',
   reports: 'report.handle',
+  // Issue 的归档 / 恢复用**既有的 post.review**（契约：不新造权限点，RBAC 是 24 点）
+  issues: 'post.review',
   rewards: 'reward.verify',
   titles: 'title.manage',
   mail: 'mail.manage',
@@ -66,6 +69,7 @@ const SCREEN_COMPONENT: Record<ScreenKey, AnyScreen> = {
   boards: BoardsScreenContainer,
   review: ReviewScreenContainer,
   reports: ReportsScreenContainer,
+  issues: IssuesAdminScreenContainer,
   rewards: RewardsScreenContainer,
   titles: TitlesScreenContainer,
   mail: MailScreenContainer,
