@@ -16,7 +16,8 @@ const (
 	TypeNotifySanction = "notify:sanction" // ref_type=sanction，ref_id=<sanction id>
 
 	TypeSearchIndex = "search:index" // {"id": <topic id>}
-	// TypeAIReview 是 AI 审核（d7 §6）：payload {"topic_id": <bigint>, "trigger": "create"|"report"}
+	// TypeAIReview 是 AI 审核（d7 §6）：payload {"topic_id": <bigint>, "trigger": "create"|"report"|"edit"}。
+	// edit 来自**编辑正文**：UpdateTopic 把改动存进待审槽后入队一条（forum/topics.go 的 UpdateTopic）。
 	TypeAIReview       = "ai:review"
 	TypeImageGC        = "image:gc"        // {}
 	TypeJobCleanup     = "queue:cleanup"   // {}
