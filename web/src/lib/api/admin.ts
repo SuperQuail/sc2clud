@@ -309,6 +309,8 @@ export function grantTitle(userId: string, titleId: string): Promise<void> {
   return api<void>('admin/users/' + encodeURIComponent(userId) + '/titles/' + encodeURIComponent(titleId), { method: 'POST' });
 }
 
+/** D72 撤销用户已持有的头衔（grantTitle 的另一半，title/handler.go:42）。204 空回执 —— 读回以 GET 为准；
+ *  撤销的是**佩戴中**的那一个时后端自己会清 equipped_title_id（title/service.go 的 AssignTitle 收回分支）。 */
 export function revokeTitle(userId: string, titleId: string): Promise<void> {
   return api<void>('admin/users/' + encodeURIComponent(userId) + '/titles/' + encodeURIComponent(titleId), { method: 'DELETE' });
 }

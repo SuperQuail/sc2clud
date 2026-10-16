@@ -82,6 +82,8 @@ export type UsersScreenProps = {
   onRevokeSessions: (id: string) => void;
   onSetRole: (id: string, roleId: number) => void;
   onGrantTitle: (userId: string, titleId: string) => void;
+  /** D72 撤销已持有的头衔（title.grant 同一根权限）。返回 Promise：弹层就地 pending 与就地报错。 */
+  onRevokeTitle: (userId: string, titleId: string) => Promise<void>;
   /** D56 重置密码（忘记密码的后台通道）。返回 Promise：成功值带一次性临时密码（生成时），
    *  失败 reject——弹层留住并把错误挂到输入附近（同 D48「失败不关窗」）。 */
   onResetPassword: (userId: string, password: string) => Promise<{ password?: string; revoked: number }>;
@@ -94,7 +96,7 @@ export function UsersScreen({
   size = PAGE_SIZE,
   loading = false, error = null, filter, onFilterChange,
   roles, titles, canBan, canAssignRole, canGrantTitle,
-  onBan, onActivate, onRevokeSessions, onSetRole, onGrantTitle, onResetPassword, receipt,
+  onBan, onActivate, onRevokeSessions, onSetRole, onGrantTitle, onRevokeTitle, onResetPassword, receipt,
 }: UsersScreenProps) {
   const [selected, setSelected] = useState<string[]>([]);
   const [sort, setSort] = useState<Sort>({ key: 'created_at', dir: 'desc' });
@@ -412,6 +414,7 @@ export function UsersScreen({
         user={users.find((u) => u.id === grantTo) ?? null}
         onClose={() => setGrantTo(null)}
         onGrant={onGrantTitle}
+        onRevoke={onRevokeTitle}
       />
       <SetRoleDialog
         roles={roles}

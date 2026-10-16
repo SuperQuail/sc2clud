@@ -10,6 +10,7 @@ import {
   fetchUserDetail,
   fetchUsers,
   grantTitle,
+  revokeTitle,
   revokeUserSessions,
   setUserRole,
 } from '@/lib/api/admin';
@@ -132,6 +133,13 @@ export function UsersScreenContainer() {
     onSuccess: () => done('头衔已授予'),
     onError: (e) => setReceipt('发头衔失败：' + errorLine(e)),
   });
+  // D72：撤销已持有的头衔（DELETE /admin/users/{id}/titles/{titleId}，204 空回执）。
+  // 持有清单随后的收缩由弹层自己失效 qk.userTitles 负责（handle 只有弹层知道），这里只管发请求与回执。
+  const titleRevoke = useMutation({
+    mutationFn: (v: { userId: string; titleId: string }) => revokeTitle(v.userId, v.titleId),
+    onSuccess: () => done('头衔已收回'),
+    onError: (e) => setReceipt('撤销头衔失败：' + errorLine(e)),
+  });
   // D56：重置密码的成败**由弹层自己**吃到（成功展示一次性密码、失败不关窗）——
   // 容器只在成功后刷新缓存，回执写在弹层里，这里不再重复报一条。
   const resetPw = useMutation({
@@ -171,6 +179,7 @@ export function UsersScreenContainer() {
       onRevokeSessions={(id) => revoke.mutate(id)}
       onSetRole={(id, roleId) => role.mutate({ id, roleId })}
       onGrantTitle={(userId, titleId) => title.mutate({ userId, titleId })}
+      onRevokeTitle={(userId, titleId) => titleRevoke.mutateAsync({ userId, titleId })}
       onResetPassword={(id, password) => resetPw.mutateAsync({ id, password })}
       receipt={receiptNode}
     />

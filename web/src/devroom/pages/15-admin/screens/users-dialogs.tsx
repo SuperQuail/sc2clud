@@ -1,9 +1,12 @@
 import { useState } from 'react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import Button from '@jetbrains/ring-ui-built/components/button/button';
 import Dialog from '@jetbrains/ring-ui-built/components/dialog/dialog';
 import { ControlsHeight } from '@jetbrains/ring-ui-built/components/global/controls-height';
 import Input from '@jetbrains/ring-ui-built/components/input/input';
 import Select, { Type as SelectType } from '@jetbrains/ring-ui-built/components/select/select';
+import { qk } from '@/lib/query/keys';
+import { fetchUserTitles } from '@/lib/api/title';
 import { errorLine } from '../bits';
 import type { AdminUser, Role, Title } from '@/lib/api/admin';
 
@@ -11,17 +14,52 @@ import type { AdminUser, Role, Title } from '@/lib/api/admin';
 // 从 users.tsx 拆出来的理由是 gate:size：主体那一屏装不下这 140 行交互；
 // 它们只服务这一张屏（参数全是屏的 props 链上的类型），所以住同一份文件、各自一个组件。
 
-/** 发头衔（13.6 的第二半）：目录来自 GET /admin/titles，这里只能从目录里挑一个授予（title.grant）。 */
-export function GrantTitleDialog({ user, titles, onClose, onGrant }: {
+/** 发头衔（13.6 的第二半）：目录来自 GET /admin/titles，这里只能从目录里挑一个授予（title.grant）。
+ *
+ *  D72 撤销：后端 DELETE /admin/users/{id}/titles/{titleId} 早就有（title/handler.go:42，204 空回执，
+ *  且撤销佩戴中的那一个时后端自己会清 equipped_title_id），一直缺的是界面入口。弹层除了「授予」，
+ *  还把该用户**已持有的**头衔列出来、每行一颗「撤销」——持有清单走公共读 GET /users/{handle}/titles
+ *  （handle = username 行字段），撤销要走 onRevoke（容器发真请求），成功后弹层自己失效
+ *  qk.userTitles：handle 只有弹层知道，失效放在这里最短；失败把 errorLine 挂在清单旁边（D48 同策略）。
+ *
+ *  外壳不挂钩子：user=null（弹层没开）就一个 null —— 屏与测试里没有 Provider 的直渲染也不炸。 */
+export function GrantTitleDialog(props: {
   user: AdminUser | null;
   titles: Title[];
   onClose: () => void;
   onGrant: (userId: string, titleId: string) => void;
+  /** 撤销已持有的头衔（title.grant 同一根权限）。拿 Promise 是为了就地 pending 与就地报错 */
+  onRevoke: (userId: string, titleId: string) => Promise<void>;
+}) {
+  if (!props.user) return null;
+  return <GrantTitleDialogContent {...props} user={props.user} />;
+}
+
+function GrantTitleDialogContent({ user, titles, onClose, onGrant, onRevoke }: {
+  user: AdminUser;
+  titles: Title[];
+  onClose: () => void;
+  onGrant: (userId: string, titleId: string) => void;
+  onRevoke: (userId: string, titleId: string) => Promise<void>;
 }) {
   const [titleId, setTitleId] = useState<string>('');
-  if (!user) return null;
+  const [revoking, setRevoking] = useState<string | null>(null);
+  const [revokeError, setRevokeError] = useState<string | null>(null);
+  const qc = useQueryClient();
+  // 持有清单：弹层一开（user 非空）才读；这里是公共读，不需要 title.grant 之外的权限
+  const held = useQuery({
+    queryKey: qk.userTitles(user.username),
+    queryFn: ({ signal }) => fetchUserTitles(user.username, signal),
+  });
   const options = titles.filter((t) => !t.archived_at).map((t) => ({ key: t.id, label: t.name + '（' + t.key + '）' }));
   const chosen = titleId || options[0]?.key || '';
+  const revoke = (id: string) => {
+    setRevokeError(null);
+    setRevoking(id);
+    onRevoke(user.id, id)
+      .then(() => { setRevoking(null); return void qc.invalidateQueries({ queryKey: qk.userTitles(user.username) }); })
+      .catch((e) => { setRevoking(null); setRevokeError(errorLine(e) ?? '撤销没能完成'); });
+  };
   return (
     <Dialog show label='发头衔' onCloseAttempt={onClose} onOverlayClick={onClose} onEscPress={onClose}>
       <div className='flex w-[420px] max-w-full flex-col gap-3 p-4'>
@@ -40,6 +78,38 @@ export function GrantTitleDialog({ user, titles, onClose, onGrant }: {
             selected={options.find((o) => o.key === chosen) ?? null}
             onSelect={(item) => { if (item) setTitleId(String(item.key)); }}
           />
+        )}
+        {held.isPending ? (
+          <p className='m-0 text-[12px] text-muted-foreground'>正在读已持有的头衔…</p>
+        ) : held.isError ? (
+          <p role='alert' className='m-0 text-[12px] text-destructive'>持有清单没能加载：{errorLine(held.error)}</p>
+        ) : (
+          <div className='flex flex-col gap-1'>
+            {held.data!.items.length === 0 ? (
+              <p className='m-0 text-[12px] text-muted-foreground'>还没有持有任何头衔。</p>
+            ) : (
+              held.data!.items.map((t) => (
+                <div key={t.id} className='flex items-center justify-between gap-2 rounded-md border border-border bg-muted/40 px-2.5 py-1.5'>
+                  <span className='text-[13px] text-foreground'>
+                    {t.name}
+                    <span className='ml-1 text-[11px] text-muted-foreground'>（{t.key}）</span>
+                  </span>
+                  <Button
+                    danger
+                    data-testid={'title-revoke-' + t.id}
+                    inline={false}
+                    height={ControlsHeight.S}
+                    loader={revoking === t.id}
+                    disabled={revoking !== null}
+                    onClick={() => revoke(t.id)}
+                  >
+                    撤销
+                  </Button>
+                </div>
+              ))
+            )}
+            {revokeError ? <p role='alert' className='m-0 text-[12px] text-destructive'>{revokeError}</p> : null}
+          </div>
         )}
         <div className='flex items-center justify-end gap-2'>
           <Button onClick={onClose}>关闭</Button>

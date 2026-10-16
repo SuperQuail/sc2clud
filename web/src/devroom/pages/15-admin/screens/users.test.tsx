@@ -55,6 +55,7 @@ function renderScreen(u: AdminUser, over: { page?: number; canNext?: boolean; on
       onRevokeSessions={() => {}}
       onSetRole={() => {}}
       onGrantTitle={() => {}}
+      onRevokeTitle={async () => {}}
       onResetPassword={onReset}
     />,
   );
@@ -125,6 +126,7 @@ it('D56：canBan=false 不画任何重置入口', () => {
       onRevokeSessions={() => {}}
       onSetRole={() => {}}
       onGrantTitle={() => {}}
+      onRevokeTitle={async () => {}}
       onResetPassword={onReset}
     />,
   );
