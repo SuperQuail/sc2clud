@@ -392,6 +392,19 @@ D34 补的是**管理端当场自助**这一缺环。
 - 权限审查（用户指派，只读）：续写 `完全重构/RBAC权限树设计.md` §9 源码实测（角色×24 权限点矩阵 / 叠加次序 / superadmin 专属 / 九条发现含 schema_check admin 期望 16→17 自检常鸣、user.mute 与 resource.publish 两个「已授不判」点）；角色定位声明按用户要求置顶：**管理员=网站辅助管理者；超级管理员=网站开发/维护/所有者**。
 
 ---
+
+### 1r. 第十四轮（用户 2026-10-16 08:2x 提两条优化；四子代理并发，Lead 收敛）
+
+| # | 事项 | 事实/根因 | 处理 |
+|---|---|---|---|
+| **D76** | **页面里的「因为 XX 设计所以 XX / 因为某文档所以怎么样」文本全部剔除**（用户点名管理页最严重） | 可见文案里混入对设计稿/方案的**引注与自证**：管理页 25 处（`d7 §3.2`、`§9.8`、`（拍板 §8.11 U2）`、`（DB §4.11）`、`（技术方案 v2 §8.2）`…），其余产品页 24 处；**后端下发的文案同样带**——`site/settings.go` 的 Hint（管理端站点设置屏每个开关下面）与已入库的 `permissions.description`（角色矩阵屏渲染） | **已剔除**：A `5b0ad69`（管理页 21 文件 66 处：ScreenHead/Panel note、Input help、KV hint、GateNote/DisabledReason、表格旁白、nav.ts 14 条、mock hint）；B `7dffdbe`（其余产品页 17 文件 24 处；**顺带修掉 17-appeal 把一行 `//` 注释当 JSX 文本渲染进页面的乱码**）；D `4839df7` + 迁移 **0059**（Hint 去引注；已入库的 topic.pin 描述用精确 UPDATE 幂等清库，不覆盖管理员手改过的值）。口径：**删引注与自证、保留功能信息**；代码注释（// 与 `{/* */}`）、`*.md`、`registry.ts`/`preview/**`（房间文档）与 `room-links.tsx`（房间专用「未做」标注）**刻意不动** |
+| **D77** | **大量报错只显示编号、不显示具体原因** | 两条真根：① 前端 `client.ts` 用 `??` 接 message，**空串接不住** → 整行只剩「（错误编号 xxx）」；另有 8 处手写错误行各拼一遍（第二个真源）。② 后端 `httpx.Fail` 对未识别错误一律 `ErrInternal`，**真原因只进日志**——D70 那次 500 的真实原因是 PG check 约束 23514，用户只看到编号 | **已修**（C：34ec438/5c04b79/dd72907）：① 前端 `client.ts` 改空白兜底 + `errors.ts` 新增 `CODE_REASON`/`STATUS_REASON`/`fallbackReason`，`apiErrorLine` 正文 = message → fields 理由 → code/状态兜底（**绝不返回空**），编号恒在末尾；新增 `apiErrorLineWith` 供页面换业务正文；8 处手写处（appeal/compose/login/register/register-verify/settings/state/error-boundary）全部收编。② 后端按 SQLSTATE 归类 500 原因（23505/23503/23514/23502/22P02/40001/40P01/57014）写进 message，**code 仍 common.internal、status 仍 500**，表名/约束名/SQL 只进日志；`dbUnavailable`（pgx 连接类）→「数据库连接不可用」，**排在 isClosedConn 之前**（原先被吞成 200 空响应）；`ErrInternal` 文案补「详见服务端日志」。红→绿：web 7 条 + Go 4 条（含 D70 的 23514 场景，并断言不泄漏约束名） |
+
+**环境事实（本轮踩到、写下来免得重踩）**：本会话 `spawnSync("node", …)` 起的是 **Harness 的 Electron**（`process.execPath` = `DeepSeek Harness.exe`）——它会**静默吃掉 vitest**（status 0、零输出），于是「vitest 全绿」可以是假绿；而 tsc/门禁脚本因为纯 Node 仍能跑出真输出。web 门禁必须用**真 node**：`C:\Program Files\nodejs\node.exe`（或 dsh 运行时 `…dependencies\node\bin\node.exe`）。子代理 B 提的 `ELECTRON_RUN_AS_NODE=1` 变体在 vitest 5 上仍失败，别用它。
+
+**收敛门禁（Lead 用真 node / go.exe 复跑最终 HEAD）**：web `tsc` 0；vitest **346/346**（69 文件）；`vite build` 过；budget 首屏 JS **178.1/180 KB**；size（362 文件 / 3 条已登记超限）、tokens、urls、controls、security、ui-usage、conventions 全过。Go：`./internal/platform/... ./internal/site/...` 全 ok、`./internal/forum/...` 85.1s + pgsql 11.3s 全绿。
+
+---
 ## 2. 派发分组（互不重叠的文件作用域）
 
 | 包 | 覆盖 | 主要文件 |
