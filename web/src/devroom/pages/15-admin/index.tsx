@@ -442,9 +442,9 @@ function UsersRoom() {
       onActivate={(ids) => say('激活 ' + ids.length + ' 个账号（只写 activated_at）')}
       onRevokeSessions={(id) => say('踢掉 ' + id + ' 的全部会话')}
       onSetRole={(id, roleId) => say('把 ' + id + ' 的基线角色改成 ' + roleId)}
-      onGrantTitle={(userId, titleId) => say('给 ' + userId + ' 授予 ' + titleId)}
-      // D72：撤销入口也在弹层里；房间没有后端 → 只回演示回执（真站 DELETE /admin/users/{id}/titles/{titleId}）
-      onRevokeTitle={async (userId, titleId) => { say('收回 ' + userId + ' 的头衔 ' + titleId); }}
+      // 头衔编辑弹层的勾选：held=true 授予、false 撤销。房间没有后端 →
+      // 只回演示回执（真站 POST/DELETE /admin/users/{id}/titles/{titleId}）
+      onSetTitle={async (userId, titleId, held) => { say((held ? '授予 ' : '收回 ') + userId + ' 的头衔 ' + titleId); }}
       // D56：房间演示同样有这个动作，但只回一条演示密码（真站才发 POST /admin/users/:id/password）
       onResetPassword={async () => ({ password: 'Demo-pass-' + Math.floor(100000 + Math.random() * 900000) + 'q', revoked: 1 })}
       receipt={receipt ? <p className='text-[12px] text-muted-foreground'>{receipt}</p> : null}

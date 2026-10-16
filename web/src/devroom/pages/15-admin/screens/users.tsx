@@ -14,15 +14,15 @@ import { DataTable, type Sort } from '../data-table';
 import { PAGE_SIZE, UsersFooter } from './users-footer';
 import { ConfirmDialog, DangerAction } from '../confirm';
 import { DisabledReason, GateNote, KV, Numbers, Panel, Pill, ScreenHead, Stat, StatRow, Toolbar } from '../bits';
-import { GrantTitleDialog, ResetPasswordDialog, SetRoleDialog } from './users-dialogs';
+import { ResetPasswordDialog, SetRoleDialog, TitleEditDialog } from './users-dialogs';
 
-// 屏 a：用户管理（13.2 用户管理 + 13.7 处罚 + 13.6 发头衔）。
+// 屏 a：用户管理（13.2 用户管理 + 13.7 处罚 + 13.6 头衔编辑）。
 // 磁盘配额**不做**：D2 已定案放弃网盘，quota_bytes / used_bytes 不迁（见 admin-map.md）。
 //
 // **prop 驱动**（照 12-topic/topic-view.tsx 的做法）：数据与动作全部由宿主给，屏里不 import mock。
 // 之前这一屏直接 import ../mock —— 于是整个后台是一张示例表，后端改了也没人看得见。
 // 角色目录来自 GET /admin/roles（已实装）、头衔目录 GET /admin/titles（已实装）、
-// 角色 / 封号 / 踢会话 / 发头衔四个动作都走 auth 与 title 域**已实装**的管理端点。
+// 角色 / 封号 / 踢会话 / 头衔编辑四个动作都走 auth 与 title 域**已实装**的管理端点。
 // **GET /admin/users 与 /admin/users/{id} 已落地**（C1）。列表项与详情是**两个形状**：
 // 详情那三张表（sanctions / user_permissions / user_titles）只有 GET /admin/users/{id} 给，
 // 所以右栏在选中一行之后才去取它 —— 不在列表接口上假装那些字段存在（这正是上一版类型的错法）。
@@ -68,7 +68,7 @@ export type UsersScreenProps = {
   onFilterChange: (next: UsersFilter) => void;
   /** 角色目录（GET /admin/roles）：改角色与筛选都要它 */
   roles: Role[];
-  /** 头衔目录（GET /admin/titles）：发头衔时只能从这里挑 */
+  /** 头衔目录（GET /admin/titles）：编辑弹层的行从这里来（未归档的那些） */
   titles: Title[];
   canBan: boolean;
   canAssignRole: boolean;
@@ -81,9 +81,9 @@ export type UsersScreenProps = {
   /** 踢掉全部会话（封号不带踢，这是独立动作） */
   onRevokeSessions: (id: string) => void;
   onSetRole: (id: string, roleId: number) => void;
-  onGrantTitle: (userId: string, titleId: string) => void;
-  /** D72 撤销已持有的头衔（title.grant 同一根权限）。返回 Promise：弹层就地 pending 与就地报错。 */
-  onRevokeTitle: (userId: string, titleId: string) => Promise<void>;
+  /** 头衔编辑弹层里的每一次勾选（title.grant 同一根权限）：held=true 授予、false 撤销。
+   *  返回 Promise：弹层就地 pending 与就地报错，成功后由弹层失效 qk.userTitles 回填真值。 */
+  onSetTitle: (userId: string, titleId: string, held: boolean) => Promise<void>;
   /** D56 重置密码（忘记密码的后台通道）。返回 Promise：成功值带一次性临时密码（生成时），
    *  失败 reject——弹层留住并把错误挂到输入附近（同 D48「失败不关窗」）。 */
   onResetPassword: (userId: string, password: string) => Promise<{ password?: string; revoked: number }>;
@@ -96,7 +96,7 @@ export function UsersScreen({
   size = PAGE_SIZE,
   loading = false, error = null, filter, onFilterChange,
   roles, titles, canBan, canAssignRole, canGrantTitle,
-  onBan, onActivate, onRevokeSessions, onSetRole, onGrantTitle, onRevokeTitle, onResetPassword, receipt,
+  onBan, onActivate, onRevokeSessions, onSetRole, onSetTitle, onResetPassword, receipt,
 }: UsersScreenProps) {
   const [selected, setSelected] = useState<string[]>([]);
   const [sort, setSort] = useState<Sort>({ key: 'created_at', dir: 'desc' });
@@ -171,7 +171,7 @@ export function UsersScreen({
             ) : (
               <DangerAction why={banWhy} disabled={Boolean(banWhy)} onClick={() => setPending({ kind: 'ban', ids: [u.id] })}>停用</DangerAction>
             )}
-            {canGrantTitle ? <Button onClick={() => setGrantTo(u.id)}>发头衔</Button> : null}
+            {canGrantTitle ? <Button onClick={() => setGrantTo(u.id)}>头衔编辑</Button> : null}
             {canAssignRole ? <Button onClick={() => setRoleTo(u.id)}>改角色</Button> : null}
             {canBan ? <Button onClick={() => setResetTo(u.id)}>重置密码</Button> : null}
             <Button onClick={() => onSelect(u.id)}>详情</Button>
@@ -185,7 +185,7 @@ export function UsersScreen({
     <div className='flex flex-col gap-3'>
       <ScreenHead
         title='用户管理'
-        note='搜索登录名 / 昵称 / 邮箱，行内激活与停用、发头衔、批量选择；磁盘配额随网盘放弃，不做。'
+        note='搜索登录名 / 昵称 / 邮箱，行内激活与停用、头衔编辑、批量选择；磁盘配额随网盘放弃，不做。'
         actions={<Button inline={false} height={ControlsHeight.S} icon={icon16(Search)} onClick={() => onFilterChange({ ...filter, q: '' })}>重置筛选</Button>}
       />
 
@@ -409,12 +409,11 @@ export function UsersScreen({
         }}
       />
 
-      <GrantTitleDialog
+      <TitleEditDialog
         titles={titles}
         user={users.find((u) => u.id === grantTo) ?? null}
         onClose={() => setGrantTo(null)}
-        onGrant={onGrantTitle}
-        onRevoke={onRevokeTitle}
+        onSet={onSetTitle}
       />
       <SetRoleDialog
         roles={roles}

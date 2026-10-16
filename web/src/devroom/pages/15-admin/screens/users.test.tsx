@@ -29,7 +29,7 @@ const COUNTS: UsersCounts = { total: 137, banned: 4, pending_activation: 9, emai
 
 type ResetSig = (userId: string, password: string) => Promise<{ password?: string; revoked: number }>;
 
-function renderScreen(u: AdminUser, over: { page?: number; canNext?: boolean; onPage?: (p: number) => void; onReset?: Mock<ResetSig> } = {}) {
+function renderScreen(u: AdminUser, over: { page?: number; canNext?: boolean; canGrantTitle?: boolean; onPage?: (p: number) => void; onReset?: Mock<ResetSig> } = {}) {
   const onActivate = vi.fn();
   const onPage = over.onPage ?? vi.fn();
   const onReset = over.onReset ?? (vi.fn() as Mock<ResetSig>);
@@ -49,13 +49,12 @@ function renderScreen(u: AdminUser, over: { page?: number; canNext?: boolean; on
       titles={[] as Title[]}
       canBan
       canAssignRole={false}
-      canGrantTitle={false}
+      canGrantTitle={over.canGrantTitle ?? false}
       onBan={() => {}}
       onActivate={onActivate}
       onRevokeSessions={() => {}}
       onSetRole={() => {}}
-      onGrantTitle={() => {}}
-      onRevokeTitle={async () => {}}
+      onSetTitle={async () => {}}
       onResetPassword={onReset}
     />,
   );
@@ -102,6 +101,13 @@ it('D56：失败不关弹层，字段理由就近可见（D48 同策略）', asy
   expect(screen.getByTestId('pw-reset-submit')).toBeTruthy();
 });
 
+// 头衔入口是「头衔编辑」（不是旧的「发头衔」）：弹层里是一列复选框，勾上 = 授予、取消勾 = 撤销。
+it('入口按钮叫「头衔编辑」，旧文案「发头衔」不再出现', () => {
+  renderScreen(user({}), { canGrantTitle: true });
+  expect(screen.getByRole('button', { name: '头衔编辑' })).toBeTruthy();
+  expect(screen.queryByRole('button', { name: '发头衔' })).toBeNull();
+});
+
 // 无 user.ban 既不画行内也不画右栏入口（权限的口径与其它动作一致）
 it('D56：canBan=false 不画任何重置入口', () => {
   const onReset = vi.fn<ResetSig>();
@@ -125,8 +131,7 @@ it('D56：canBan=false 不画任何重置入口', () => {
       onActivate={() => {}}
       onRevokeSessions={() => {}}
       onSetRole={() => {}}
-      onGrantTitle={() => {}}
-      onRevokeTitle={async () => {}}
+      onSetTitle={async () => {}}
       onResetPassword={onReset}
     />,
   );

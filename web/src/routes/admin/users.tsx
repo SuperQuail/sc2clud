@@ -128,17 +128,13 @@ export function UsersScreenContainer() {
     onSuccess: () => done('基线角色已改（角色之间永不并集，这是替换）'),
     onError: (e) => setReceipt('改角色失败：' + errorLine(e)),
   });
+  // 头衔编辑弹层里的每一次勾选：held 决定发 POST（授予）还是 DELETE（撤销，title/handler.go:42，204 空回执）。
+  // 持有清单随后的变化由弹层自己失效 qk.userTitles 负责（handle 只有弹层知道），这里只管发请求与回执。
   const title = useMutation({
-    mutationFn: (v: { userId: string; titleId: string }) => grantTitle(v.userId, v.titleId),
-    onSuccess: () => done('头衔已授予'),
-    onError: (e) => setReceipt('发头衔失败：' + errorLine(e)),
-  });
-  // D72：撤销已持有的头衔（DELETE /admin/users/{id}/titles/{titleId}，204 空回执）。
-  // 持有清单随后的收缩由弹层自己失效 qk.userTitles 负责（handle 只有弹层知道），这里只管发请求与回执。
-  const titleRevoke = useMutation({
-    mutationFn: (v: { userId: string; titleId: string }) => revokeTitle(v.userId, v.titleId),
-    onSuccess: () => done('头衔已收回'),
-    onError: (e) => setReceipt('撤销头衔失败：' + errorLine(e)),
+    mutationFn: (v: { userId: string; titleId: string; held: boolean }) =>
+      v.held ? grantTitle(v.userId, v.titleId) : revokeTitle(v.userId, v.titleId),
+    onSuccess: (_r, v) => done((v.held ? '已授予 ' : '已收回 ') + (titles.data?.find((t) => t.id === v.titleId)?.name ?? v.titleId)),
+    onError: (e) => setReceipt('头衔改动失败：' + errorLine(e)),
   });
   // D56：重置密码的成败**由弹层自己**吃到（成功展示一次性密码、失败不关窗）——
   // 容器只在成功后刷新缓存，回执写在弹层里，这里不再重复报一条。
@@ -178,8 +174,7 @@ export function UsersScreenContainer() {
       onActivate={(ids) => activate.mutate(ids)}
       onRevokeSessions={(id) => revoke.mutate(id)}
       onSetRole={(id, roleId) => role.mutate({ id, roleId })}
-      onGrantTitle={(userId, titleId) => title.mutate({ userId, titleId })}
-      onRevokeTitle={(userId, titleId) => titleRevoke.mutateAsync({ userId, titleId })}
+      onSetTitle={(userId, titleId, held) => title.mutateAsync({ userId, titleId, held })}
       onResetPassword={(id, password) => resetPw.mutateAsync({ id, password })}
       receipt={receiptNode}
     />
