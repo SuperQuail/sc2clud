@@ -108,7 +108,6 @@ type TopicDetailDTO struct {
 	Author         UserBriefDTO `json:"author"`
 	ContentMD      string       `json:"content_md"`
 	ContentHTML    string       `json:"content_html"`
-	ContentDeleted bool         `json:"content_deleted"` // 1 楼被软删：标题还在、正文换成一句提示
 	ResourceStatus *string      `json:"resource_status"`
 	ReplyCount     int          `json:"reply_count"`
 	LikeCount      int          `json:"like_count"`

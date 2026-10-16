@@ -59,12 +59,10 @@ func (s *Service) topicDetailDTO(r pgsql.TopicDetailRow, sources []pgsql.SourceR
 	viewer int64, canSeePending bool, rev *pgsql.ApprovedRevisionRow, draft *string) TopicDetailDTO {
 	d := TopicDetailDTO{
 		ID: r.PublicID, Kind: r.Kind, Title: r.Title, Excerpt: r.Excerpt,
-		Board:  BoardRefDTO{Slug: r.BoardSlug, Name: r.BoardName},
-		Author: userBriefDTO(r.Author),
-		// 1 楼被软删时正文换成空串：标题还在，这就是「正文删了标题还在」。
+		Board:          BoardRefDTO{Slug: r.BoardSlug, Name: r.BoardName},
+		Author:         userBriefDTO(r.Author),
 		ContentMD:      r.ContentMD,
 		ContentHTML:    r.ContentHTML,
-		ContentDeleted: r.ContentDeleted,
 		ResourceStatus: r.ResourceStatus,
 		ReplyCount:     r.ReplyCount,
 		LikeCount:      r.LikeCount,
@@ -79,10 +77,6 @@ func (s *Service) topicDetailDTO(r pgsql.TopicDetailRow, sources []pgsql.SourceR
 		ReviewState: r.ReviewState,
 		Viewer:      ViewerDTO{Liked: r.MyVote == 1, Bookmarked: r.Bookmarked},
 		Sources:     sourceDTOs(sources),
-	}
-	const deletedHTML = "<p>正文已被作者删除</p>"
-	if d.ContentDeleted {
-		d.ContentMD, d.ContentHTML = "", deletedHTML
 	}
 	// 作者看到自己手上那一版：**只换正文，不换 RevisionOf** ——
 	// 「最后一个过审版本」这句话在有待审改动时才成立（没有它，revision_of 会与 content_md 重复）。

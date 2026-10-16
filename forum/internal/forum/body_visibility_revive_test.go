@@ -14,8 +14,8 @@ import (
 //	· 没过审的帖（pending / rejected）：编辑直接写 posts（pgsql.UpdatePostContent）；
 //	· 已过审的帖：编辑进待审槽，**放行那一刻**才替换（pgsql.PromotePendingRevision）。
 //
-// 两条都钉在这里：删正文是既有的有意行为（DeletePostRow「1 楼只软删自己」），
-// 但「写回正文」必须同时把它恢复可见。
+// 两条都钉在这里。「正文可被删除」已被判为错误设计：删楼层那条路现在拒绝 floor = 1，
+// 这个状态只可能来自迁移 0061 之前的历史数据（旧行还在库里），所以恢复是防御、不是主路径。
 func TestEditingRejectedTopicRevivesDeletedBody(t *testing.T) {
 	h := newHarness(t)
 	author, _ := h.author("alice", 5, true, authz.PermTopicCreate, authz.PermTopicEditOwn)
@@ -67,7 +67,8 @@ func TestApprovingRevisionRevivesDeletedBody(t *testing.T) {
 	}
 }
 
-// softDeleteBody 用 DeletePostRow 写的那一条语句，不另写一份「删除」语义。
+// softDeleteBody 造的是历史残留（删楼层那条路已拒绝 floor = 1），
+// 用 DeletePostRow 写的那一条语句，不另写一份「删除」语义。
 func (h *harness) softDeleteBody(t *testing.T, topicPublicID string) {
 	t.Helper()
 	if _, err := h.pool.Exec(h.ctx,

@@ -276,7 +276,11 @@ func (s *Service) UpdatePost(ctx context.Context, actor *authz.Actor, publicID, 
 	})
 }
 
-// DeletePost 是删楼层（§4.6）：1 楼只软删自己（标题还在），回复还要重算两个派生列。
+// DeletePost 是删楼层（§4.6）。**1 楼（主题正文）走不了这条路** —— 这是产品设计反转：
+// 正文不是评论，「正文出现在评论区」与「正文可被删除」两件都是错的。放行删正文只会留下
+// 「正文已被作者删除」的半死状态（标题还在、正文没了），用户实测那个状态**任何编辑都救不回来**
+// （靠 D79 的两处 visibility 恢复与迁移 0061 才补上）。要删整帖走删主题：那条路连标题一起删。
+// 回复（floor > 1）照旧软删，并重算两个派生列。
 func (s *Service) DeletePost(ctx context.Context, actor *authz.Actor, publicID string) error {
 	if _, err := requireActor(actor); err != nil {
 		return err
@@ -291,16 +295,18 @@ func (s *Service) DeletePost(ctx context.Context, actor *authz.Actor, publicID s
 	if !canEditTopic(actor, authz.PermTopicDeleteOwn, authz.PermTopicDeleteAny, ref.AuthorID, ref.BoardID) {
 		return apperr.ErrForbidden
 	}
+	// 权限之后才判这一条：没有删权的人拿到的仍是 403，不该从这条错误里读出「它是正文」。
+	if ref.Floor == 1 {
+		return invalid("id", "主题正文不是回复，不能在评论区删除；要删整帖请用删帖")
+	}
 	now := s.clk.Now().UTC()
 	return db.WithTx(ctx, s.db, func(tx *ent.Tx) error {
 		if err := pgsql.DeletePostRow(ctx, tx, ref.ID, now); err != nil {
 			return err
 		}
-		if ref.Floor > 1 {
-			// 楼中楼也跑这句：reply_count 与 last_reply_at 都是「帖子整体」的派生量，不区分层级。
-			if err := pgsql.RecountTopic(ctx, tx, ref.TopicID); err != nil {
-				return err
-			}
+		// 楼中楼也跑这句：reply_count 与 last_reply_at 都是「帖子整体」的派生量，不区分层级。
+		if err := pgsql.RecountTopic(ctx, tx, ref.TopicID); err != nil {
+			return err
 		}
 		return s.enqueue(ctx, tx, queue.Task{
 			Type: queue.TypeSearchIndex, Payload: map[string]int64{"id": ref.TopicID}, UniqueKey: "topic:" + itoa64(ref.TopicID),

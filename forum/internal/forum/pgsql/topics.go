@@ -304,7 +304,6 @@ type TopicDetailRow struct {
 	Bookmarked     bool
 	ContentMD      string
 	ContentHTML    string
-	ContentDeleted bool
 	// ReviewPendingHuman 是「这一轮审核已经转人工，人在判」（review_events 最新一条的
 	// verdict = 'review'）。拍板 08 §第三轮 6 要的那一档横幅文案就靠它。
 	ReviewPendingHuman bool
@@ -313,8 +312,8 @@ type TopicDetailRow struct {
 // TopicDetail 一条查询拿全：主题 + 作者 + 分区 + 我是否收藏 + 我的投票 + issue 未关闭数 + 1 楼正文。
 //
 // canSeePending 只在管理端审核详情里为 true；公开详情恒 false。
-// 1 楼被软删时内容列仍然返回（floor 不会消失，前端渲染成「正文已被作者删除」）——
-// 这就是「正文删了标题还在」的实现方式。
+// 正文行**不判 visibility**：删楼层那条路已拒绝 floor = 1（正文不是评论），
+// 「正文已被作者删除」这条渲染链已拆，残留的 deleted 只可能是迁移 0061 之前的历史数据。
 func (s *Store) TopicDetail(ctx context.Context, publicID string, viewerID int64, canSeePending bool) (*TopicDetailRow, error) {
 	sqlText := "SELECT " + topicColumns + " " + `,
        t.board_id, b.acl_enabled, b.min_post_level, t.review_note, t.resource_status,
@@ -333,7 +332,7 @@ func (s *Store) TopicDetail(ctx context.Context, publicID string, viewerID int64
        COALESCE((SELECT ev.verdict = 'review' FROM review_events ev
                   WHERE ev.topic_id = t.id
                   ORDER BY ev.created_at DESC, ev.id DESC LIMIT 1), false),
-       COALESCE(p.content_md, ''), COALESCE(p.content_html, ''), COALESCE(p.visibility <> 'normal', false)
+       COALESCE(p.content_md, ''), COALESCE(p.content_html, '')
   FROM topics t` + boardJoin + authorJoin + coverJoin + `
   JOIN roles r ON r.id = a.role_id
   LEFT JOIN posts p ON p.topic_id = t.id AND p.floor = 1
@@ -361,7 +360,7 @@ func (s *Store) TopicDetail(ctx context.Context, publicID string, viewerID int64
 			&roleKey, &roleName, &roleBadge,
 			&r.IssueOpenCount, &r.MyVote, &r.Bookmarked,
 			&r.ReviewPendingHuman,
-			&r.ContentMD, &r.ContentHTML, &r.ContentDeleted,
+			&r.ContentMD, &r.ContentHTML,
 		}
 		if err := rows.Scan(append(dest, extra...)...); err != nil {
 			return err
