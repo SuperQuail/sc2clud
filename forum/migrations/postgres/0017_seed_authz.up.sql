@@ -29,7 +29,7 @@ INSERT INTO permissions (key, grp, name, description) VALUES
   ('topic.delete.own',  'topic', '删除自己的内容',   '删自己的主题 / 回复'),
   ('topic.delete.any',  'topic', '删除任何人的内容', '删任何人的（service 配合归属判定）'),
   ('topic.lock',        'topic', '锁定主题',         '锁定 / 解锁'),
-  ('topic.pin',         'topic', '置顶与精华',       '置顶 / 精华（两个端点共用这一个权限点，v2 §21.2）'),
+  ('topic.pin',         'topic', '置顶与精华',       '置顶 / 精华（两个端点共用这一个权限点）'),
   ('topic.move',        'topic', '移动主题',         '把主题移到别的分区'),
   ('resource.publish',  'topic', '发资源帖',         '发 kind=resource 的主题（在普通发帖之上多这一条）'),
   ('board.manage',      'board', '分区管理',         '分区增删改、排序、封面、BoardACL'),

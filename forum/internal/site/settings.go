@@ -80,7 +80,7 @@ func SettingSpecs() []SettingSpec {
 		{Key: keyRegisterOpen, Label: "开放注册", Group: "注册与审核", Kind: kindToggle,
 			Default: valueOn, Hint: "关闭后只有管理员能建号"},
 		{Key: keyAutoActivate, Label: "注册后自动激活（发验证码）", Group: "注册与审核", Kind: kindToggle,
-			Default: valueOn, Hint: "打开 = 用户收到 6 位验证码后自助激活；关闭 = 用户注册后等管理员激活（拍板 §12.2）"},
+			Default: valueOn, Hint: "打开 = 用户收到 6 位验证码后自助激活；关闭 = 用户注册后等管理员激活"},
 		{Key: keyReviewPolicy, Label: "发帖审核策略", Group: "注册与审核", Kind: kindSelect,
 			Options: []string{"untrusted", "all", "off"}, Default: "untrusted",
 			Hint: "untrusted = 仅未标记 trusted 的作者进审核"},
