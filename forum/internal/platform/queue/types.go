@@ -16,8 +16,12 @@ const (
 	TypeNotifySanction = "notify:sanction" // ref_type=sanction，ref_id=<sanction id>
 
 	TypeSearchIndex = "search:index" // {"id": <topic id>}
-	// TypeAIReview 是 AI 审核（d7 §6）：payload {"topic_id": <bigint>, "trigger": "create"|"report"|"edit"}。
+	// TypeAIReview 是 AI 审核（d7 §6）。payload 两种形状（app/tasks.go 的 reviewTopic 分派）：
+	//   {"topic_id": <bigint>, "trigger": "create"|"report"|"edit"} —— 主题
+	//   {"issue_id": <bigint>, "trigger": "report"}                —— Issue（0062_issue_archive）
 	// edit 来自**编辑正文**：UpdateTopic 把改动存进待审槽后入队一条（forum/topics.go 的 UpdateTopic）。
+	// issue_id 来自**举报到阈值**（report/reports.go → aireview.TriggerReportReview）——
+	// 不新增任务类型：两种判定走同一条队列、同一套退避与优先级。
 	TypeAIReview       = "ai:review"
 	TypeImageGC        = "image:gc"        // {}
 	TypeJobCleanup     = "queue:cleanup"   // {}

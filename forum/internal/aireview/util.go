@@ -16,7 +16,17 @@ const (
 
 // payloadJSON 是 ai:review 的 payload：{topic_id, trigger}（d7 §6 的最小形状）。
 func payloadJSON(topicID int64, trigger string) string {
-	b, err := json.Marshal(map[string]any{"topic_id": topicID, "trigger": trigger})
+	return marshalPayload(map[string]any{"topic_id": topicID, "trigger": trigger})
+}
+
+// issuePayloadJSON 是 ai:review 的另一种 payload 形状：{issue_id, trigger}（0062_issue_archive）。
+// **不是新任务类型**：同一个 TypeAIReview，由 app/tasks.go 的 reviewTopic 按有没有 issue_id 分派。
+func issuePayloadJSON(issueID int64, trigger string) string {
+	return marshalPayload(map[string]any{"issue_id": issueID, "trigger": trigger})
+}
+
+func marshalPayload(m map[string]any) string {
+	b, err := json.Marshal(m)
 	if err != nil {
 		// 两个标量序列化不了就是代码 bug；返回空对象让任务解 payload 失败时 SkipRetry，不阻塞队列。
 		return "{}"

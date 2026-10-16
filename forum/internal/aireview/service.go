@@ -95,18 +95,12 @@ func New(pool *pgxpool.Pool, judge JudgeFunc, imgs ImageReader, crypter Crypter,
 
 // ReviewTopic 是 d7 §6 的八步。ctx 来自任务，topicID 是**内部 id**（payload 里就是它）。
 func (s *Service) ReviewTopic(ctx context.Context, topicID int64, trigger string) error {
-	// 1) 配置与开关：ai_config.enabled 与 site_settings 的 ai.review.enabled 是「且」。
-	cfg, err := s.GetConfig(ctx)
+	// 1) 配置与开关（与 ReviewIssue 同一处判定）。
+	cfg, key, goOn, err := s.reviewGate(ctx)
 	if err != nil {
 		return err
 	}
-	if !cfg.Enabled || !s.set.SettingBool(ctx, settingEnabled) {
-		return nil
-	}
-	key, err := s.LoadKey(ctx)
-	if err != nil {
-		// 没配密钥不是错误：主题留在 pending，人工队列里能看到（d7 §10 验收 1）。
-		s.markError(ctx, err.Error())
+	if !goOn {
 		return nil
 	}
 
@@ -133,10 +127,7 @@ func (s *Service) ReviewTopic(ctx context.Context, topicID int64, trigger string
 	}
 
 	// 3) 单帖当日调用上限（d7 §2.2）：超限就留在 pending 交人工。
-	limit := s.set.SettingInt(ctx, settingDailyLimit)
-	if limit <= 0 {
-		limit = defaultDailyLimit // 键未声明时 site 返回 0：那是「没配」，不是「不许调」
-	}
+	limit := s.settingLimit(ctx)
 	var today int
 	if err := s.pool.QueryRow(ctx, sqlCallsToday, topicID).Scan(&today); err != nil {
 		return err
@@ -219,6 +210,143 @@ func (s *Service) ReviewTopic(ctx context.Context, topicID int64, trigger string
 		})
 		// audit_logs.target_id 是 varchar：按既有约定存**对外 id**，不存自增 id（0003_authz 第 99 行）。
 		if _, err := tx.Exec(ctx, sqlInsertAudit, publicID, string(detail)); err != nil {
+			return err
+		}
+	}
+	return tx.Commit(ctx)
+}
+
+// settingLimit 是「单个判定对象当日 AI 调用次数」的上限（d7 §2.2 / 硬规则 3）。
+// 键未声明时 site 返回 0：那是「没配」，不是「不许调」。
+func (s *Service) settingLimit(ctx context.Context) int {
+	if n := s.set.SettingInt(ctx, settingDailyLimit); n > 0 {
+		return n
+	}
+	return defaultDailyLimit
+}
+
+// reviewGate 是两族判定共用的第 1 步：ai_config.enabled 与 site_settings 的 ai.review.enabled 是「且」，
+// 密钥读不到就**转人工**（不是错误）。
+//
+// 为什么抽出来：ReviewTopic 与 ReviewIssue 的这一步逐字相同，而它是**唯一的开关处** ——
+// 两份实现里改一处漏一处，就会出现「主题关了 AI、Issue 还在调」这种半开状态。
+func (s *Service) reviewGate(ctx context.Context) (*Config, string, bool, error) {
+	cfg, err := s.GetConfig(ctx)
+	if err != nil {
+		return nil, "", false, err
+	}
+	if !cfg.Enabled || !s.set.SettingBool(ctx, settingEnabled) {
+		return nil, "", false, nil
+	}
+	key, err := s.LoadKey(ctx)
+	if err != nil {
+		// 没配密钥不是错误：内容留在原状态，人工队列里能看到（d7 §10 验收 1）。
+		s.markError(ctx, err.Error())
+		return nil, "", false, nil
+	}
+	return cfg, key, true, nil
+}
+
+// ReviewIssue 是 Issue 版的举报复核（0062_issue_archive）：被举报到阈值 → AI 判一次。
+//
+// 与 ReviewTopic 的关系：**开关、限额、外呼、留痕四步同源**，差别只有两处，都是有意的：
+//
+//  1. **判什么**：issue 的 title + body_md（一条反馈没有「楼层」「待审槽」可言，永远是线上那一版）；
+//     给模型的上下文多一行所属主题标题 —— 「这个资源帖下面的一条反馈」是判它是否跑题的必需信息；
+//  2. **判定落到哪个状态机**：Issue 没有 review_state / visibility，只有**归档**这一档。
+//     reject → archived_at=now()（从公共读口隐身、管理后台可见且可恢复）；approve / review → 只留痕。
+//
+// **本期不发图**：Issue 没有配图通道（post_issues 没有 topic_images 那样的引用表，
+// 也没有图片上传入口），所以这里不调 loadImages、attachments 恒为空切片。
+// 取舍写清楚：以后 Issue 支持配图时，这里要接上与 ReviewTopic 同一条取数口（loadImages）。
+// 在那之前「少发图」不是漏掉的一步，而是**没有图可发**。
+func (s *Service) ReviewIssue(ctx context.Context, issueID int64, trigger string) error {
+	cfg, key, goOn, err := s.reviewGate(ctx)
+	if err != nil {
+		return err
+	}
+	if !goOn {
+		return nil
+	}
+
+	// 2) 取 Issue 与它的上下文。判的永远是**线上那一版**：Issue 没有待审槽。
+	var (
+		publicID    string
+		title       string
+		body        string
+		status      string
+		topicID     int64
+		topicTitle  string
+		openReports int
+	)
+	err = s.pool.QueryRow(ctx, sqlIssueSubject, issueID).Scan(
+		&publicID, &title, &body, &status, &topicID, &topicTitle, &openReports)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil // Issue 没了：没什么可审的，不是错误
+		}
+		return err
+	}
+	if status == "closed" {
+		return nil // 已关闭的反馈不再判：没有可归档的「在讨论的内容」
+	}
+
+	// 3) 单帖当日调用上限（与主题共用同一个上限键，见 sqlCallsToday 的注释）。
+	limit := s.settingLimit(ctx)
+	var today int
+	if err := s.pool.QueryRow(ctx, sqlCallsToday, topicID).Scan(&today); err != nil {
+		return err
+	}
+	if today >= limit {
+		return nil
+	}
+
+	// 4) 组装。提示词走 prompt_report（举报复核变体）；正文不截断，也不放作者信息。
+	prompt := assemblePrompt(cfg, true)
+	// 所属主题标题是**额外上下文**，所以拼在正文之后而不是塞进 userText 的正文参数里 ——
+	// 后者会让那行文字看起来像作者写的内容。
+	text := userText(reportPrefix(openReports, trigger), title, body) +
+		"\n\n所属主题：" + topicTitle
+	// 5) 外呼。**不发图**（见函数头）。
+	res, err := s.judge(ctx, s.aiConfig(cfg, key, false), prompt, text, nil)
+	if err != nil {
+		// 调用失败：记 last_error，不改状态（留给人工）；返回错误让队列退避重试。
+		s.markError(ctx, err.Error())
+		return err
+	}
+	s.markOK(ctx)
+
+	// 6) 单事务：写 review_events + （只在 reject 时）归档 + 审计。
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+	if res.Categories == nil {
+		res.Categories = []string{}
+	}
+	// verdict 用既有值域：approve→approved、reject→rejected、review→pending。
+	// 判定事件必须落库（哪怕只是「AI 说没问题」）—— 下一轮的轮次计数靠它。
+	if _, err := tx.Exec(ctx, sqlInsertIssueEvent, issueID, string(res.Verdict),
+		trimRunes(res.Reason, 200), res.Categories, res.Model, res.LatencyMS); err != nil {
+		return err
+	}
+	// **只有 reject 归档**：approve 是「这条反馈不违规」，review 是「拿不准」——
+	// 后两者的落点都是「什么都不做」，把判断交给人工队列（那里本来就有这条举报）。
+	if res.Verdict == ai.Reject {
+		reason := trimRunes(res.Reason, 500) // 列是 text：这个上限只是别把 2000 字理由整段抄进去
+		if _, err := tx.Exec(ctx, sqlArchiveIssue, issueID, reason, s.clk.Now().UTC()); err != nil {
+			return err
+		}
+		detail, _ := json.Marshal(map[string]any{
+			"reason": reason,
+			// source=ai 与「人按的」区分开：archived_by 是 NULL（AI 没有 user id），
+			// 而那一列的 NULL 还有「未归档」这一种含义，所以动作来源要在这里写明。
+			"source":       "ai",
+			"open_reports": openReports,
+		})
+		// target_id 存**对外 id**（audit_logs.target_id 是 varchar，0003_authz 第 99 行）。
+		if _, err := tx.Exec(ctx, sqlInsertIssueAudit, publicID, string(detail)); err != nil {
 			return err
 		}
 	}
@@ -412,18 +540,39 @@ func (s *Service) hasPending(ctx context.Context, topicID int64) (bool, error) {
 // TriggerReportReview 是举报域的 ReviewTrigger（d7 §1/§7）：举报到阈值 → 复核。
 // 它与举报行**同一个事务**（拍板 §5.4），所以入队走 tx，不走池。
 func (s *Service) TriggerReportReview(ctx context.Context, tx *ent.Tx, in report.ReportReviewInput) error {
+	// 到第二阈值：**不再调 AI**，直接转人工（防举报风暴打爆额度）。
+	// Issue 侧没有可落的「转人工」标记（post_issues 没有 review_source），所以 Human=true
+	// 的那条不会走到这里（reports.go 对 issue 直接不入队）；真走到了也只是不做事。
+	if in.IssueID > 0 {
+		if in.Human {
+			return nil
+		}
+		return s.enqueueReview(ctx, tx, "issue", in.IssueID,
+			func(n int64) []byte { return []byte(issuePayloadJSON(n, "report")) },
+			sqlCountIssueReportRounds)
+	}
 	if in.TopicID <= 0 {
 		return nil
 	}
-	// 到第二阈值：**不再调 AI**，直接转人工（防举报风暴打爆额度）。条件写在 SQL 里：
-	// 只在 review_source IS NULL 时落 manual，绝不覆盖既有判定。
+	// 主题的第二阈值：条件写在 SQL 里 —— 只在 review_source IS NULL 时落 manual，绝不覆盖既有判定。
 	if in.Human {
 		_, err := tx.ExecContext(ctx, sqlMarkManual, in.TopicID)
 		return err
 	}
-	// 第一阈值：入队一次复审。轮次 = 已发生的 report 类事件数，同一轮的多次举报只入队一条
-	//（unique_key 只在 pending/running 里去重，下一轮算出的轮次不同，所以不会被上一轮吃掉）。
-	rows, err := tx.QueryContext(ctx, sqlCountReportRounds, in.TopicID)
+	return s.enqueueReview(ctx, tx, "topic", in.TopicID,
+		func(n int64) []byte { return []byte(payloadJSON(n, "report")) },
+		sqlCountReportRounds)
+}
+
+// enqueueReview 是「第一阈值：入队一次复审」的唯一实现（主题与 Issue 共用）。
+//
+// 轮次 = 已发生的 report 类事件数，同一轮的多次举报只入队一条
+//（unique_key 只在 pending/running 里去重，下一轮算出的轮次不同，所以不会被上一轮吃掉）。
+// 两种对象各用各的计数 SQL（topic_id / issue_id 不是同一列），但形状与去重语义逐字相同 ——
+// 分开写两份会把「轮次怎么算」写两遍，那正是改一处漏一处的形状。
+func (s *Service) enqueueReview(ctx context.Context, tx *ent.Tx, kind string, id int64,
+	payload func(int64) []byte, countSQL string) error {
+	rows, err := tx.QueryContext(ctx, countSQL, id)
 	if err != nil {
 		return err
 	}
@@ -439,8 +588,8 @@ func (s *Service) TriggerReportReview(ctx context.Context, tx *ent.Tx, in report
 	}
 	return s.q.EnqueueTx(ctx, tx, queue.Task{
 		Type:      queue.TypeAIReview,
-		Payload:   json.RawMessage(payloadJSON(in.TopicID, "report")),
-		UniqueKey: "review:report:" + itoa64(in.TopicID) + ":" + itoa(round),
+		Payload:   json.RawMessage(payload(id)),
+		UniqueKey: "review:report:" + kind + ":" + itoa64(id) + ":" + itoa(round),
 		Priority:  priorityReview,
 		MaxRetry:  maxRetryReview,
 		RunAt:     s.clk.Now(),

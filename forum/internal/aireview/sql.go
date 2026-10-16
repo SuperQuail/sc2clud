@@ -167,19 +167,81 @@ const sqlMarkManual = `
 // sqlCountReportRounds 给 unique_key 当轮次：同一轮的多次举报只触发一次复核（d7 §6）。
 const sqlCountReportRounds = `SELECT count(*) FROM review_events WHERE topic_id = $1 AND trigger = 'report'`
 
+// sqlCountIssueReportRounds 是 Issue 版的同一个轮次（按 issue_id 数，不是 topic_id）：
+// 一条主题下可能挂着好几条 Issue，用 topic_id 数会把它们的轮次混成一个。
+const sqlCountIssueReportRounds = `SELECT count(*) FROM review_events WHERE issue_id = $1 AND trigger = 'report'`
+
 // sqlListEvents 是「审核历史」（D63(b)）：review_events 倒序连主题与判定人一起取——审计屏一页的
 // 全部展示列都在这条里，不为每个事件回头查一次主题（auth/audit.go 的 ListAuditSQL 同形状：
 // 筛选全走参数，行比较游标 (created_at, id) < (k, id)，首页以 $3 IS NULL 短路）。
+// Issue 判定（issue_id 非空）的 e.topic_id 是 NULL（0062 的 ck_review_events_subject 要求恰好一个非空），
+// 所以主题要从 Issue 自己所属的那条主题取 —— 否则历史屏会给这些事件显示空白。
+// topics 那一侧由 JOIN 改成 LEFT JOIN（主题硬删之后判定历史仍在，不该整页消失）。
 const sqlListEvents = `
 	SELECT e.id, e.created_at, e.trigger, e.source, e.verdict, e.reason, e.categories, e.model,
 	       e.latency_ms, e.image_count, e.image_skipped,
-	       t.public_id, t.title,
+	       COALESCE(it.public_id, t.public_id)::text, COALESCE(it.title, t.title, ''),
 	       u.public_id, u.username, COALESCE(NULLIF(u.nickname, ''), u.username)
 	  FROM review_events e
-	  JOIN topics t ON t.id = e.topic_id
-	  LEFT JOIN users u ON u.id = e.actor_id
+	  LEFT JOIN topics t       ON t.id = e.topic_id
+	  LEFT JOIN post_issues pi ON pi.id = e.issue_id
+	  LEFT JOIN topics it      ON it.id = pi.topic_id
+	  LEFT JOIN users u        ON u.id = e.actor_id
 	 WHERE ($1::text        IS NULL OR e.verdict = $1)
 	   AND ($2::text        IS NULL OR e.source  = $2)
 	   AND ($3::timestamptz IS NULL OR (e.created_at, e.id) < ($3, $4))
 	 ORDER BY e.created_at DESC, e.id DESC
 	 LIMIT $5`
+
+// ============================================================
+// Issue 的举报复核（0062_issue_archive）
+// ============================================================
+//
+// 与主题那一路的关系：**判定事件落在同一张 review_events**（历史屏只有一个读口），
+// 但状态机不同 —— Issue 没有 review_state / visibility，只有**归档**这一档。
+//
+// 三列都在这里，出错时一眼能看全（没有第二步、没有触发器）。
+
+// sqlIssueSubject 取一条 Issue 的全部判定输入 + 它的上下文：
+// 标题、正文（Markdown 源）、状态、所属主题（id + 标题）、未处理举报数、**对外 id**（审计要它）。
+//
+// **不含作者**：与 sqlSubject 同一条纪律（d7 §11：昵称/邮箱/IP 与审核无关）。
+// topic_id 也要取：它给模型的上下文是「这条反馈挂在哪个资源帖下面」。
+// 永远取 body_md 而不是 body_html：模型要的是作者写的原文，不是渲染过的 HTML。
+const sqlIssueSubject = `
+	SELECT i.public_id, i.title, i.body_md, i.status, i.topic_id, t.title,
+	       (SELECT count(*) FROM reports r
+	         WHERE r.target_type = 'issue' AND r.target_id = i.id AND r.state = 'open')
+	  FROM post_issues i
+	  JOIN topics t ON t.id = i.topic_id
+	 WHERE i.id = $1 AND i.archived_at IS NULL`
+
+// sqlInsertIssueEvent 写一条 Issue 判定事件。
+//
+// **topic_id 是 NULL（不是所属主题）**：0062 的 ck_review_events_subject 要求 topic_id 与 issue_id
+// **恰好一个非空**，两者都填会直接撞约束回滚。判定对象就是这条 Issue，主题只是它挂在哪；
+// 「历史屏按主题找到它」靠 issue_id → post_issues.topic_id 那一次 JOIN，不靠这一列存两份。
+// trigger 恒 'report'：Issue 的 AI 判定只有举报到阈值这一条触发路径（没有「新建审核」）。
+// image_count / image_skipped 恒 0：本期不发图（没有配图通道），0 是**真话**不是占位。
+const sqlInsertIssueEvent = `
+	INSERT INTO review_events (topic_id, issue_id, trigger, source, verdict, reason, categories,
+	                           model, latency_ms, image_count, image_skipped)
+	VALUES (NULL, $1, 'report', 'ai', $2, $3, $4, $5, $6, 0, 0)`
+
+// sqlArchiveIssue 是 reject 的落点。**与 forum/pgsql 的 ArchiveIssue 是同一个动作的两个实现**
+// （那边走 pgsql.Querier，这边是 pgx 原生，两种 Tx 接不到同一个事务上）——
+// **改一处必须改另一处**：后置条件逐条相同（archived_at / archived_by / archive_reason / updated_at）。
+// archived_by 恒 NULL：AI 没有 user id（与 sqlPromoteRevision 的 approved_by = NULL 同一个道理）。
+// WHERE 带 status 与 archived_at 双保险：人工抢先关掉 / 归档的那条不该被 AI 覆盖
+//（「AI 绝不覆盖人工判定」，d7 硬规则 2 的同一条）。
+const sqlArchiveIssue = `
+	UPDATE post_issues
+	   SET archived_at = $3, archived_by = NULL, archive_reason = $2, updated_at = $3
+	 WHERE id = $1 AND status <> 'closed' AND archived_at IS NULL`
+
+// sqlInsertIssueAudit 是 AI 归档的审计行。**不复用 sqlInsertAudit**：那条的 target_type 是 'topic'，
+// 动作名是 topic.ai_hide。$1 是 Issue 的**对外 id**（audit_logs.target_id 是 varchar；
+// 0003_authz 第 99 行的约定）。
+const sqlInsertIssueAudit = `
+	INSERT INTO audit_logs (actor_id, action, target_type, target_id, detail, created_at)
+	VALUES (NULL, 'issue.archive', 'issue', $1, $2::jsonb, now())`

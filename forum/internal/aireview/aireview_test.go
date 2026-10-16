@@ -707,7 +707,9 @@ func TestTriggerReportReview(t *testing.T) {
 	if task.Type != queue.TypeAIReview || task.Priority != 20 || task.MaxRetry != 2 {
 		t.Fatalf("任务形状不对: %+v", task)
 	}
-	if want := "review:report:" + strconv.FormatInt(id, 10) + ":0"; task.UniqueKey != want {
+	// kind 进 unique_key（"topic:"/"issue:"）：两种对象各有各的 id 空间，
+	// 只带数字时主题 7 与 Issue 7 会撞成同一个 key（互相吃掉对方的入队）。
+	if want := "review:report:topic:" + strconv.FormatInt(id, 10) + ":0"; task.UniqueKey != want {
 		t.Fatalf("unique_key=%q，要 %q（同一轮只触发一次）", task.UniqueKey, want)
 	}
 	var payload map[string]any

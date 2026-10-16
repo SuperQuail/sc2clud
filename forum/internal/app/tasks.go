@@ -106,18 +106,32 @@ func (m *Modules) indexTopic(ctx context.Context, payload []byte) error {
 	})
 }
 
-// reviewTopic 处理 ai:review（d7 §6）：payload {"topic_id": <bigint>, "trigger": "create"|"report"|"edit"}。
+// reviewTopic 处理 ai:review。payload 有两种形状，**同一个任务类型**（不新增类型）：
+//
+//	{"topic_id": <bigint>, "trigger": "create"|"report"|"edit"}  —— 主题
+//	{"issue_id": <bigint>, "trigger": "report"}                  —— Issue（0062_issue_archive）
+//
 // edit 来自**编辑正文**：UpdateTopic 把改动存进待审槽后入队一条（forum/topics.go 的 UpdateTopic）。
+// Issue 只有 report 一种触发（举报到阈值），所以那条分支恒走 ReviewIssue。
 //
 // 任务的返回值就是「要不要重试」：网络 / 5xx / 429 这类 return err 交给队列退避（max_retry=2 之后进 dead，
-// 主题留在 pending 交人工）；解析失败与「拿不准」都是成功返回 —— 重试也是同样的结果。
+// 内容留在原状态交人工）；解析失败与「拿不准」都是成功返回 —— 重试也是同样的结果。
 func (m *Modules) reviewTopic(ctx context.Context, payload []byte) error {
 	var p struct {
 		TopicID int64  `json:"topic_id"`
+		IssueID int64  `json:"issue_id"`
 		Trigger string `json:"trigger"`
 	}
-	if err := unmarshalPayload(payload, &p); err != nil || p.TopicID <= 0 {
+	if err := unmarshalPayload(payload, &p); err != nil {
 		return queue.ErrSkipRetry // payload 是我们自己写的：解不出就是代码 bug
+	}
+	if p.IssueID > 0 {
+		// Issue 判定**不补 search:index**：Issue 不进搜索索引（search:index 只服务主题），
+		// 那条补索引的链路（reviewThenIndex）对它是纯粹的无效负载。
+		return m.AIReview.ReviewIssue(ctx, p.IssueID, p.Trigger)
+	}
+	if p.TopicID <= 0 {
+		return queue.ErrSkipRetry
 	}
 	return reviewThenIndex(ctx, m.AIReview.ReviewTopic, m.in.Queue.Enqueue, p.TopicID, p.Trigger)
 }

@@ -520,6 +520,47 @@ func TestReportThresholdsTriggerReview(t *testing.T) {
 	}
 }
 
+// 0062_issue_archive：Issue 也是「到阈值触发复核」的对象（在此之前只有主题会触发）。
+// 判据与主题完全一样（越过阈值的那一刻、第二阈值不调 AI），差别只在 ReportReviewInput 里
+// 带的是 IssueID 而不是 TopicID。没有这条，举报一条 Issue 到第 3 个人只会安静地留下举报行 ——
+// AI 永远不会判它，归档功能就没有触发口。
+func TestIssueReportThresholdTriggersReview(t *testing.T) {
+	h := newHarness(t)
+	h.svc = h.svcWith(3, 5)
+	author := h.newUser("author")
+	issuePublicID := uuid.NewString()
+	issueID := h.targets.add(report.TargetIssue, issuePublicID, report.TargetInfo{
+		PublicID: issuePublicID, AuthorID: author.UserID, Label: "第三章崩了",
+	})
+
+	for i := 0; i < 3; i++ {
+		if _, err := h.svc.Create(h.ctx, h.newUser(fmt.Sprintf("ir%d", i)), report.CreateReportInput{
+			TargetType: report.TargetIssue, TargetID: issuePublicID, Reason: "spam",
+		}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	calls := h.review.calls()
+	if len(calls) != 1 {
+		t.Fatalf("Issue 到阈值 1 应当触发一次复核，实际 %d 次", len(calls))
+	}
+	if calls[0].IssueID != issueID || calls[0].TopicID != 0 || calls[0].OpenReports != 3 || calls[0].Human {
+		t.Fatalf("Issue 的触发形状不对: %+v", calls[0])
+	}
+
+	// 第二阈值：不再调 AI（Issue 侧没人可落「转人工」，所以也不入队）
+	for i := 3; i < 5; i++ {
+		if _, err := h.svc.Create(h.ctx, h.newUser(fmt.Sprintf("ir%d", i)), report.CreateReportInput{
+			TargetType: report.TargetIssue, TargetID: issuePublicID, Reason: "spam",
+		}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if n := len(h.review.calls()); n != 1 {
+		t.Fatalf("Issue 到第二阈值不该再调 AI，实际 %d 次", n)
+	}
+}
+
 // ============================================================
 // 队列与我的举报
 // ============================================================
