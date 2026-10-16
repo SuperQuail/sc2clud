@@ -369,6 +369,22 @@ D34 补的是**管理端当场自助**这一缺环。
 - 后验（只读）：`ck_topic_sources_size` 已从 prod 库消失（D70 生效全网）；site/boards/topics/首页 全 200；房间目录 prod 照旧不发布（install.sh 设计：产品产物无 devroom）。
 - 本轮全部 13 条（D60-D70 计 11 条 + D69/D70 补报）**同时生效于 dev 与 prod**。
 
+
+<!-- 1q 起：第十三轮（D71–D75），三子代理 + Lead 收敛 -->
+
+### 1q. 第十三轮（用户 2026-10-15 01:5x→07:4x 报五条：D71–D75；三子代理并发修复，Lead 收敛门禁）
+
+| # | 现象 | 根因（实测证据） | 处理 |
+|---|---|---|---|
+| **D71** | **帖子正文不该出现在评论区**（用户：「第 0 楼只是编号安排，正文不应作为评论显示」） | posts 表里**正文本身就是 floor=1 的一行**（0004 + InsertTopicBody），`TopLevelReplies` 的 roots CTE 把 1 楼当顶层回复返回 → GET /topics/:id/posts 第一条就是正文，评论区复读主楼；且 `reply_count` 口径 floor>1，列表与计数差 1；`CreatePost` 又允许 parent 指向 1 楼（这些楼中楼挂在正文名下，摘掉正文就成孤儿） | **已修**：① 列表剔除——roots CTE 加 `AND p.floor > 1`（3dadd94，口径与 reply_count 齐平）；② 写路径重挂——parent 的 Floor==1 时**按顶层回复落库**（32c8b3e，「回复正文就是回复帖子」）；③ 历史数据回填——迁移 **0058** 把挂在 1 楼名下的旧回复改为顶层（7835423，down=有注释 no-op，照 0019 有损回滚先例）；④ 前端双保险——toComments roots 过滤 `floor !== 1` + Post 补 `floor?`（cd15122，防 Web 先上/后端未上时的时序差）；⑤ 红→绿（ca59f2b 红批：TestListPostsExcludesTopicBody / TestReplyToTopicBodyIsTopLevel；reply_list 平移楼层断言、TestReplyParentRules 列表断言 2→1） |
+| **D72** | 无法撤销用户头衔 | `DELETE /admin/users/:id/titles/:titleId`、`RevokeTitle`（撤销佩戴中的后端自清 `equipped_title_id`）**自 D1 就挂好了**——是前端零调用 | **已修**（961d29f）：GrantTitleDialog 在「授予」之下列**已持有清单**（公共读 GET /users/{handle}/titles；handle=行上 username，已对 admin-types/ByUsername 核实），每行一颗 danger「撤销」走**既有** `revokeTitle` 客户端（不造第二个真源）；撤销经容器 `onRevoke` 发真请求、成功弹层自己失效 `qk.userTitles` 就地少一行、失败 errorLine 就近报；users-dialogs.test 钉 DELETE 路径与清单缩减 |
+| **D73** | 无法设置帖子置顶/精华 | 后端 `POST /topics/:id/pin|feature`（perm `topic.pin`，同一权限点管两事，拍板 §10.9）**一直在线**，前端零调用 | **已修**（5723106）：lib/api 补 `setTopicPinned/setTopicFeatured`（体 `{pinned}/{featured}` 照 handler.go:430-453）；话题动作条加**置顶 / 精华**两颗 ghost 开关（active 反映详情现值，可选 props 整组不给不渲染，房间容器零改动）；routes/topic.tsx 在 `can('topic.pin')` 时挂 mutation（onSettled 失效 qk.topic，失败并入 steps 回执）。topic.test 钉：版主见两颗开关且点击经真实 api 层打到端点、非版主整组不渲染 |
+| **D74** | 评论时间显示冗余（应精确到分钟） | `toComments` 把 `created_at` 原样 RFC3339 透传（线上显示 `2026-10-16T07:31:02.123+08:00`） | **已修**（66bbab4）：lib/format.ts 加 `formatMinute`（`Intl.DateTimeFormat('sv-SE', short/short)` → `2026-10-16 07:31`，Invalid Date 回空串）——「现有库」就是房内 format.ts，**零新依赖**；toComments 切过去；format.test 2 例 + mappers.test 3 例（含非法串回空、无 floor 老响应不误伤） |
+| **D75** | 退出登录应移到设置页最底部并标红 | 退出按钮长在 AccountPanel（页面中部）；Ring `Button danger` 全站唯一危险色口径已有 | **已修**（b095282）：AccountPanel `onLogout` 改可选（不给且非 loggedOut **整格不画**，房间 11-profile 照传、其测试零改动）；settings.tsx 页尾新增居中 danger 按钮（`data-testid=settings-logout`）；settings.test 钉三件事：settings-logout 存在且承载块是页面根**最后一个直接子元素**、AccountPanel 区不再有原退出钮、点击打 POST /auth/logout |
+
+**收敛门禁（Lead 在最终 HEAD 9 提交合并态复跑）**：Go `forum` 88.7s + `pgsql` 11.6s 全绿（-count=1）；web `tsc` 0、vitest 全量 **339/339**、`vite build` 过、budget（首屏 JS 177.8/180 KB、CSS 37.9/40、最大 chunk 98.7/120）、size/tokens/urls/controls/security/ui-usage/conventions 全过（size 超限仍是登记在册的 3 个：boards 565 / topic.test 655 / screens fixtures 537）。全仓 lint 有 23 条**既有**警告（only-export-components 等，不在本轮文件）——常态处理项，不入本轮门禁。
+
+---
 ## 2. 派发分组（互不重叠的文件作用域）
 
 | 包 | 覆盖 | 主要文件 |
