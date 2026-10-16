@@ -148,3 +148,28 @@ it('服务端说「当前密码不对」时，那句话来自 fields.old_passwor
   // 失败时**不能**显示成功态（房间里的本地判定在真站会被拿掉）
   expect(screen.queryByTestId('password-done')).toBeNull();
 });
+
+// 用户原话（D75）：退出登录应该在个人设置页**最下面**并且按钮**标红**。
+// 旧行为它塞在 AccountPanel（页面中部）里，而且没有 settings-logout 这一颗 —— 前两条必红。
+it('D75：退出登录搬到页底区块，AccountPanel 里不再有原退出按钮；点击打到 POST /auth/logout', async () => {
+  mockApi((url) => {
+    if (url.includes('/notifications/settings')) return { body: NOTICE };
+    if (url.includes('/me')) return { body: ME };
+    if (url.includes('/auth/logout')) return { body: { data: null } };
+    return { status: 404, body: { error: { code: 'common.not_found', message: 'no' } } };
+  });
+  renderSettings();
+  await waitFor(() => expect(screen.getByTestId('settings-logout')).toBeTruthy());
+  // 「最下面」是结构事实：承载它的块是设置页根容器的**最后一个**直接子元素（打赏记录那节已在它前面）。
+  // Footer 是设置页专用标签，靠它定位就不碰其它 section 的顺序。
+  const footer = screen.getByTestId('settings-logout').closest('footer')!;
+  expect(footer.parentElement!.lastElementChild).toBe(footer);
+  // AccountPanel 区域（onLogout 不再传）不再渲染它原来那颗退出按钮
+  expect(screen.queryByTestId('logout')).toBeNull();
+
+  fireEvent.click(screen.getByTestId('settings-logout'));
+  await waitFor(() => {
+    const post = calls.find((c) => c.method === 'POST' && c.url.includes('/auth/logout'));
+    expect(post).toBeTruthy();
+  });
+});

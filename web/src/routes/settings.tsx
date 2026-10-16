@@ -3,7 +3,8 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import Button from '@jetbrains/ring-ui-built/components/button/button';
 import Input, { Size } from '@jetbrains/ring-ui-built/components/input/input';
 import { ControlsHeight } from '@jetbrains/ring-ui-built/components/global/controls-height';
-import { Lock } from 'lucide-react';
+import { Lock, LogOut } from 'lucide-react';
+import { icon16 } from '@/ui/icons';
 import { UserBadge } from '@/ui/user/user-badge';
 import { type UploadedImage } from '@/ui/rich/image-uploader';
 import { NoticeSettings, type SettingRow } from '@/ui/message/notice-settings';
@@ -223,9 +224,10 @@ export function SettingsPage() {
         </span>
       </section>
 
-      {/* 头像 + 改密码 + 退出登录 = DevRoom 11-profile 的 AccountPanel（同一个件，不是抄一份）。
+      {/* 头像 + 改密码 = DevRoom 11-profile 的 AccountPanel（同一个件，不是抄一份）。
           三处与房间不同的地方都由 props 给：改密码发真请求（onSubmitPassword）、成功态等 200
-          （passwordDone）、「去登录」指真站的 /login（loginHref）。 */}
+          （passwordDone）、「去登录」指真站的 /login（loginHref）。
+          D75：不传 onLogout —— 退出登录的动作移到本页**最底部**（下面的 footer），面板里不再画第二颗。 */}
       <AccountPanel
         avatar={picked[0]?.url ?? me.avatar ?? null}
         onAvatarPick={(list) => {
@@ -237,7 +239,6 @@ export function SettingsPage() {
         onSubmitPassword={(body) => changePassword.mutate(body)}
         passwordPending={changePassword.isPending}
         passwordDone={changePassword.isSuccess}
-        onLogout={() => signOut.mutate()}
         loginHref={appPath('login')}
       />
 
@@ -368,6 +369,15 @@ export function SettingsPage() {
         onShowChannels={channels.onShowChannels}
       />
       <DonationRecordsPanel />
+
+      {/* D75（用户原话）：退出登录放设置页**最下面**、按钮标红。动作仍是上面沿用那份 signOut
+          （失败提示也在它原来的 FormAlert 位置），这里只是搬入口 + 危险色。 */}
+      <footer className='flex flex-col items-center gap-2 py-8'>
+        <Button danger inline={false} icon={icon16(LogOut)} data-testid='settings-logout' onClick={() => signOut.mutate()}>
+          退出登录
+        </Button>
+        <span className='text-[12px] text-muted-foreground'>只退出这台设备（其它设备不受影响）。想把所有设备都退掉，去改密码。</span>
+      </footer>
     </div>
   );
 }

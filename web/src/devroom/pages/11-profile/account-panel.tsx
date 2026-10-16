@@ -36,8 +36,9 @@ export type AccountPanelProps = {
    * 与 onSubmitPassword 同一条理由：真站上不能把「本地选中 = 换好了」留在页面上。
    */
   onAvatarPick?: (next: UploadedImage[]) => void;
-  /** 退出登录。真实页面：清会话 → 回登录页；这里是 mock 开关 */
-  onLogout: () => void;
+  /** 退出登录（D75）：真实页面的入口移到设置页**最底部**（那颗 danger 按钮在 routes/settings.tsx），
+   *  真站不再传它 —— 本格不渲染，页面上就不会出现两颗「退出登录」；房间填上即是原样。 */
+  onLogout?: () => void;
   /** 已退出登录后账号动作收起，只留「去登录」 */
   loggedOut?: boolean;
   /**
@@ -192,6 +193,9 @@ export function AccountPanel({
       </Island>
       )}
 
+      {/* 这格只在调用方给了 onLogout 或已退出时才画（D75）：真站把动作放设置页最底部，
+          这里再画一颗就是页面上有两颗同一动作的入口；loggedOut 时仍要它（只剩「去登录」一条路）。 */}
+      {onLogout || loggedOut ? (
       <Island withoutPaddings>
         <div className='flex flex-col gap-3 px-4 py-4'>
           <span className='flex items-center gap-2'>
@@ -216,6 +220,7 @@ export function AccountPanel({
           </span>
         </div>
       </Island>
+      ) : null}
     </div>
   );
 }
