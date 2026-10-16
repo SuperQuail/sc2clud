@@ -29,6 +29,7 @@ import { fetchBoardFollow, fetchUserFollow, followBoard, followUser, unfollowBoa
 import { formatCents } from '@/lib/format';
 import { DesignActionNote } from '@/devroom/pages/12-topic/design-action';
 import { TopicView } from '@/devroom/pages/12-topic/topic-view';
+import type { IssueKind } from '@/devroom/pages/12-topic/_task/types';
 import type { Board, BoardNav, BoardSlug } from '@/devroom/pages/12-topic/types';
 import { RailRouterLink } from './_parts/layout';
 import { ErrorState, Loading } from './_parts/state';
@@ -293,6 +294,9 @@ export function TopicPage() {
   const canReply = wire.can_reply ?? (loggedIn && can(session.session, 'topic.create'));
   const canEdit = wire.can_edit ?? (loggedIn && t.author.handle === me.handle && can(session.session, 'topic.edit.own'));
   const designTopic = toDesignTopic(t, designAuthor);
+  // **讨论帖不做问题反馈**：那是给可下载内容 / 地图的问题单（用户 2026-10-16 拍板）——
+  // 只有 resource / repost 才有反馈页签与那两处入口。其它 kind 保持原样，别顺手改成白名单。
+  const issuesEnabled = t.kind !== 'discussion';
 
   // 动作失败不许静默：哪一步错了，就把那一步的名字与错误显示在动作条下面（receipt 那个位置）
   const steps: Array<{ what: string; m: { isError: boolean; error: unknown } }> = [
@@ -433,15 +437,20 @@ export function TopicPage() {
       }
       donateLoggedIn={loggedIn}
       donateLoginHref={appPath('login?next=' + encodeURIComponent(routePath('t/' + t.id)))}
-      issueCount={wire.issue_open_count ?? 0}
-      // 反馈页已经上线（/issues，router.tsx:59），所以四个入口是**真链接**而不是回执：
-      //   kind 交给页面预设反馈类型，topic 限定列表范围与新建落点（issues.tsx:114-115）。
-      //   「看全部反馈」不带 kind（那一页自己按页签选），所以只给它 topic。
-      issueHrefFor={(kind) => appPath('issues?topic=' + encodeURIComponent(t.id) + '&kind=' + kind)}
-      feedbackHref={appPath('issues?topic=' + encodeURIComponent(t.id))}
-      // D5：顶上那个「问题反馈」页签原来点了什么都不发生（onOpenIssue 组件层默认 noop）——
-      // 现在它就是一次真导航（同一份反馈页，`?topic=` 限定到这张帖）。
-      onOpenIssue={() => void navigate(appPath('issues?topic=' + encodeURIComponent(t.id)))}
+      issuesEnabled={issuesEnabled}
+      {...(issuesEnabled
+        ? {
+            issueCount: wire.issue_open_count ?? 0,
+            // 反馈页已经上线（/issues，router.tsx:59），所以四个入口是**真链接**而不是回执：
+            //   kind 交给页面预设反馈类型，topic 限定列表范围与新建落点（issues.tsx:114-115）。
+            //   「看全部反馈」不带 kind（那一页自己按页签选），所以只给它 topic。
+            issueHrefFor: (kind: IssueKind) => appPath('issues?topic=' + encodeURIComponent(t.id) + '&kind=' + kind),
+            feedbackHref: appPath('issues?topic=' + encodeURIComponent(t.id)),
+            // D5：顶上那个「问题反馈」页签原来点了什么都不发生（onOpenIssue 组件层默认 noop）——
+            // 现在它就是一次真导航（同一份反馈页，`?topic=` 限定到这张帖）。
+            onOpenIssue: () => void navigate(appPath('issues?topic=' + encodeURIComponent(t.id))),
+          }
+        : {})}
       sourcesLinked
       receipt={failed ? <ErrorState what={failed.what} error={failed.m.error} /> : receiptText ? <DesignActionNote message={receiptText} /> : null}
     />

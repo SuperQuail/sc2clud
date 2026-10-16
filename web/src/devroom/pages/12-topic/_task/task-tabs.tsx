@@ -16,6 +16,10 @@ export type TopicTaskTabsProps = {
   onOpenIssue: () => void;
   /** 未关闭的 Issue 数；0 或 undefined 不显示（不显示空药丸） */
   issueCount?: number;
+  /** 这个页面做不做「问题反馈」（默认做）。false = 连页签都不画：
+   *  讨论帖没有可下载内容，也就没有「问题单」这回事（用户 2026-10-16 拍板）。
+   *  显式开关而不是靠「宿主没传回调」来猜 —— 宿主传不传回调是另一件事（D5 的兜底）。 */
+  issuesEnabled?: boolean;
 };
 
 // 文案不出现「Issue」：面向的是普通玩家，看不懂这个词（用户 2026-10-12 明确提过）。
@@ -25,7 +29,7 @@ const TABS: Array<{ key: TopicTaskTab; label: string; icon: LucideIcon }> = [
   { key: 'issue', label: '问题反馈', icon: CircleDot },
 ];
 
-export function TopicTaskTabs({ value, onChange, onOpenIssue, issueCount }: TopicTaskTabsProps) {
+export function TopicTaskTabs({ value, onChange, onOpenIssue, issueCount, issuesEnabled = true }: TopicTaskTabsProps) {
   function pick(key: TopicTaskTab) {
     if (key !== value) onChange(key);
     // 重复点 Issue 也再喊一次：页面可以把它当「回到 Issue 列表」用
@@ -41,7 +45,7 @@ export function TopicTaskTabs({ value, onChange, onOpenIssue, issueCount }: Topi
       aria-label='帖子页视图'
       className='flex flex-wrap items-center gap-2 border-b border-border pb-2'
     >
-      {TABS.map(({ key, label, icon }) => {
+      {TABS.filter(({ key }) => key !== 'issue' || issuesEnabled).map(({ key, label, icon }) => {
         const selected = key === value;
         const count = key === 'issue' && issueCount ? issueCount : 0;
         return (

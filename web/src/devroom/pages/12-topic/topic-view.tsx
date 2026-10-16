@@ -138,7 +138,8 @@ export type TopicViewProps = {
   donateDone?: string | null;
   donateLoginHref?: string;
   donateLoggedIn?: boolean;
-  issueCount: number;
+  /** 未关闭的反馈数。讨论帖整块反馈区都不画，那时没有这个数可说（组件内按 0 处理） */
+  issueCount?: number;
   /** 反馈页的地址；还没有那一页时改给 onOpenFeedback（点一下有回执，不留 404 死链） */
   feedbackHref?: string;
   /** 四个类型入口各自的地址（带上 kind）。给了它就优先于 feedbackHref —— 那样每个入口才预设得上自己的类型 */
@@ -148,6 +149,12 @@ export type TopicViewProps = {
    *  D5（2026-10-14 用户实测）：原先它默认 noop —— 点页签什么都没发生，人还以为页签坏了。
    *  这里不自己导航（组件不认识路由），但宿主不接时也不静默：见下面 TopicTaskTabs 的兜底。 */
   onOpenIssue?: () => void;
+
+  // —— 问题反馈做不做 ——
+  /** 这个帖子做不做「问题反馈」（默认做）。false = 页签与正文末尾 / 右栏两处反馈区**整块**不画。
+   *  讨论帖没有可下载内容，也就没有「问题单」这回事（用户 2026-10-16 拍板）——
+   *  真站 routes/topic.tsx 按 kind === 'discussion' 关掉它。 */
+  issuesEnabled?: boolean;
 
   // —— 下载来源能不能点（房间没有转链端点）——
   sourcesLinked?: boolean;
@@ -214,11 +221,12 @@ export function TopicView({
   donateDone,
   donateLoginHref,
   donateLoggedIn = false,
-  issueCount,
+  issueCount = 0,
   feedbackHref,
   issueHrefFor,
   onOpenFeedback,
   onOpenIssue,
+  issuesEnabled = true,
   sourcesLinked = false,
   receipt,
   initialLayer = null,
@@ -248,6 +256,7 @@ export function TopicView({
         // D5：页签是**受控**的，切过去靠宿主导航（房间指房间里的反馈页，真站指 /issues?topic=）。
         // 宿主没接时退回「选中它」——至少页签会动，而不是点下去一片死寂（那正是用户报的现象）。
         onOpenIssue={onOpenIssue ?? (() => setTab('issue'))}
+        issuesEnabled={issuesEnabled}
       />
 
       <div className='grid grid-cols-1 gap-x-5 gap-y-4 md:grid-cols-[minmax(0,1fr)_248px] xl:flex xl:items-start'>
@@ -274,12 +283,15 @@ export function TopicView({
             candidates={candidates}
             me={me}
             issues={
+              // 讨论帖不给这一块（同上）
+              !issuesEnabled ? undefined : (
               <IssueNudge
                 issueCount={issueCount}
                 href={feedbackHref}
                 kindHref={issueHrefFor}
                 onOpen={feedbackHref ? undefined : onOpenFeedback}
               />
+              )
             }
             reviewState={review.state}
             reviewPendingHuman={review.pendingHuman ?? false}
@@ -388,13 +400,15 @@ export function TopicView({
             loginHref={donateLoginHref}
             loggedIn={donateLoggedIn}
           />
-          <IssueNudge
-            variant='rail'
-            issueCount={issueCount}
-            href={feedbackHref}
-            kindHref={issueHrefFor}
-            onOpen={feedbackHref ? undefined : onOpenFeedback}
-          />
+          {issuesEnabled ? (
+            <IssueNudge
+              variant='rail'
+              issueCount={issueCount}
+              href={feedbackHref}
+              kindHref={issueHrefFor}
+              onOpen={feedbackHref ? undefined : onOpenFeedback}
+            />
+          ) : null}
         </aside>
       </div>
 

@@ -319,6 +319,24 @@ it('四个反馈入口各是一条带了各自类型的链接（B2）', async ()
   expect(screen.getAllByRole('link', { name: '看全部反馈' })[0]!.getAttribute('href')).toBe('/issues?topic=t_1042');
 });
 
+// 讨论帖不做问题反馈（用户原话：那是给可下载内容 / 地图的问题单）：
+// 宿主把 issuesEnabled 关掉，页签与两处反馈入口**整块**都不画 —— 不是「计数为 0 恰好没药丸」，
+// 所以这里给了一个非 0 的 issueCount，且断言的是 testid 不在，而不是文案不出现。
+// 默认（不传）= true，房间产物照旧（房间那一屏是设计样板间，不许因此变样）。
+it('讨论帖：issuesEnabled=false 时页签与两处反馈入口都不渲染；不传仍是两件都在', () => {
+  const off = render(<TopicView {...viewProps({ issuesEnabled: false })} />);
+  expect(off.container.querySelectorAll('[data-testid=topic-tabs] button').length).toBe(1);
+  expect(off.container.querySelector('[data-testid=topic-tab-issue]')).toBeNull();
+  expect(screen.queryByTestId('issue-nudge-inline')).toBeNull();
+  expect(screen.queryByTestId('issue-nudge-rail')).toBeNull();
+  off.unmount();
+
+  const on = render(<TopicView {...viewProps()} />);
+  expect(on.container.querySelectorAll('[data-testid=topic-tabs] button').length).toBe(2);
+  expect(screen.getByTestId('issue-nudge-rail')).toBeTruthy();
+  expect(screen.getByTestId('issue-nudge-inline')).toBeTruthy();
+});
+
 it('编辑与删帖：不给宿主的跳转地址与回调就不渲染入口；给了就**去发帖页**（帖内小弹层已撤除）', () => {
   const editHref = vi.fn((id: string) => '/new?edit=' + encodeURIComponent(id));
   render(<TopicView {...viewProps({ editHref })} />);
