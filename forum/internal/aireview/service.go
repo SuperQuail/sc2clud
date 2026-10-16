@@ -16,6 +16,7 @@ import (
 	"forum/internal/platform/apperr"
 	"forum/internal/platform/clock"
 	"forum/internal/platform/queue"
+	"forum/internal/platform/search"
 	"forum/internal/report"
 )
 
@@ -189,6 +190,20 @@ func (s *Service) ReviewTopic(ctx context.Context, topicID int64, trigger string
 		imgs.sent(), imgs.skipped()); err != nil {
 		return err
 	}
+	// edit 触发判的是**一份改动**，不是整篇帖子（见 promoteEdit）：
+	//   · approve → 放行：状态回 approved + 把待审改动换成线上正文；
+	//   · reject / review → **只留痕**：绝不动 topics.review_state / visibility / review_note，
+	//     也不清待审槽 —— 一篇已经发布过的帖子不能因为 AI 对「改动」的意见而被读者 404
+	//     （产品原则「宁可放过，不可错杀」），而人工队列继续能看到这份草稿去判。
+	// 这一段之后的 create / report 语义一个字都没改。
+	if trigger == "edit" {
+		if res.Verdict == ai.Approve {
+			if err := s.promoteEdit(ctx, tx, topicID, deref(note), s.clk.Now().UTC()); err != nil {
+				return err
+			}
+		}
+		return tx.Commit(ctx)
+	}
 	hidden := trigger == "report" && res.Verdict == ai.Reject
 	if _, err := tx.Exec(ctx, sqlUpdateTopic, topicID, state, note, hidden); err != nil {
 		return err
@@ -205,6 +220,52 @@ func (s *Service) ReviewTopic(ctx context.Context, topicID int64, trigger string
 		}
 	}
 	return tx.Commit(ctx)
+}
+
+// promoteEdit 是「AI 对一份改动判了通过」的放行动作。两件事在**同一个事务**里做：
+//
+//  1. topics 回 approved / review_source='ai' / reviewed_at（这次判定生效）；
+//  2. 有待审槽时把改动换成线上正文 —— 与人工放行（pgsql.PromotePendingRevision）的后置条件
+//     逐条相同：posts 正文、摘要、快照 content_*、待审三列全空。少了第 2 步，
+//     作者的改动只想「置个 approved」是永远上不了台的。
+//
+// 没有待审槽 = 这条帖**从没过审**（作者改的是自己的新帖，UpdateTopic 的 n==0 那一支直接写了
+// posts）：那时只有第 1 件事要做 —— AI 说通过，它就上线，没有「改动要替换」。
+//
+// shortcut: 判定与作者改稿并发时不重锁待审槽（与 pgsql/review_queue.go 那条路同一个取舍），
+// 真需要时在 sqlPendingContent 上加 FOR UPDATE。
+func (s *Service) promoteEdit(ctx context.Context, tx pgx.Tx, topicID int64, note string, now time.Time) error {
+	var md, html string
+	err := tx.QueryRow(ctx, sqlPendingContent, topicID).Scan(&md, &html)
+	switch {
+	case errors.Is(err, pgx.ErrNoRows):
+		// 没有待审槽：只有状态那一半（见上文）。
+	case err != nil:
+		return err
+	default:
+		if err := promotePendingTx(ctx, tx, topicID, md, html, now); err != nil {
+			return err
+		}
+	}
+	_, err = tx.Exec(ctx, sqlMarkEditApproved, topicID, note, now)
+	return err
+}
+
+// promotePendingTx 是 promoteEdit 的第 2 步。语句在 sql.go，那边写明了它与
+// pgsql.PromotePendingRevision 为什么共用不了、以及「改一处必须改另一处」。
+func promotePendingTx(ctx context.Context, tx pgx.Tx, topicID int64, md, html string, now time.Time) error {
+	// 摘要与正文同源：从**同一份 html** 提纯文本（forum 装配渲染器时用的就是这个函数 ——
+	// app/adapters.go 的 mdRenderer 也是 plain = search.PlainText(html)），再按 varchar(200) 截
+	// （clipExcerpt 的那条口径）。
+	excerpt := trimRunes(search.PlainText(html), 200)
+	if _, err := tx.Exec(ctx, sqlPromotePosts, topicID, md, html, now); err != nil {
+		return err
+	}
+	if _, err := tx.Exec(ctx, sqlPromoteExcerpt, topicID, excerpt, now); err != nil {
+		return err
+	}
+	_, err := tx.Exec(ctx, sqlPromoteRevision, topicID, md, html, now)
+	return err
 }
 
 // Test 是 d7 §8 的「测试连通」：真发一次请求，用固定短文本（**不消耗任何用户内容**）。

@@ -42,13 +42,19 @@ const sqlMarkError = `UPDATE ai_config SET last_error = $1, last_error_at = now(
 // + **图集里挂着的配图数**（topic_images 的引用行，与正文里的 ![] 是两件事）。
 // **不含作者**：d7 §11 明确 prompt 里不放昵称/邮箱/IP。
 // 真判定与审核屏的预览（preview.go）读同一条 —— 预览要是另起一条 SELECT，两边就会各自漂。
+//
+// 正文是 COALESCE(rv.pending_md, p.content_md, '')：**待审的改动优先**，与审核队列预览
+// （pgsql/review_queue.go 的 reviewQueueColumns）逐字同源 —— 编辑过的帖改的正是待审槽里
+// 那一份，拿 posts 里的线上旧版去判等于审错对象（还可能把旧文写成 approved）。
+// 一帖一行的 uq_topic_revisions_topic 保证这个 JOIN 不会放大行数。
 const sqlSubject = `
-	SELECT t.id, t.public_id, t.title, p.content_md, t.visibility, t.review_source,
+	SELECT t.id, t.public_id, t.title, COALESCE(rv.pending_md, p.content_md, ''), t.visibility, t.review_source,
 	       (SELECT count(*) FROM reports r
 	         WHERE r.target_type = 'topic' AND r.target_id = t.id AND r.state = 'open'),
 	       (SELECT count(*) FROM topic_images ti WHERE ti.topic_id = t.id)
 	  FROM topics t
 	  LEFT JOIN posts p ON p.topic_id = t.id AND p.floor = 1
+	  LEFT JOIN topic_revisions rv ON rv.topic_id = t.id
 	 WHERE t.id = $1`
 
 // sqlTopicIDByPublicID 是对外 id → 内部 id 的换算：管理端手里只有 uuid（审核队列 DTO 的 id 就是它），
@@ -92,6 +98,46 @@ const sqlUpdateTopic = `
 	  visibility    = CASE WHEN $4 THEN 'hidden' ELSE visibility END,
 	  updated_at    = now()
 	 WHERE id = $1`
+
+// ---- 编辑触发（trigger='edit'）的放行 ----
+//
+// **与 forum/pgsql/review_queue.go 的 PromotePendingRevision 是同一动作的两个实现**：
+// 那边走 pgsql.Querier（database/sql 口味），这边是 pgx 原生的 pgx.Tx —— 两者接不到同一个
+// 事务上（pgsql/store.go 的文件头写了为什么本域不用 pgxpool），跨包也共用不了这几条语句。
+// **改一处必须改另一处**：后置条件逐条相同（posts 正文、topics.excerpt、快照 content_*、待审三列全空）。
+// edit_trigger_test.go 的 TestEditPromoteMatchesManualPromote 把两边写出来的行逐列比成同形。
+
+// sqlPendingContent 读待审槽的两份内容：md 给 posts 与快照，html 给摘要。
+// 那边 pgsql 的实现由调用方把 md/html/excerpt 一起传进来；这边没人给渲染器，
+// 摘要从**已有的 html** 提（用的就是 forum 装配渲染器时用的那个函数，见 platform/search 的 PlainText）。
+const sqlPendingContent = `
+	SELECT pending_md, pending_html FROM topic_revisions
+	 WHERE topic_id = $1 AND pending_md IS NOT NULL`
+
+// sqlMarkEditApproved 是「AI 对这份改动判了通过」的 topics 那一半。
+// **不动 visibility**：它不是这次判定的对象 —— 因举报被 AI 隐藏过的帖子不该因为一次编辑
+// 放行而被悄悄解开（那是另一次判定的事）。
+const sqlMarkEditApproved = `
+	UPDATE topics SET review_state = 'approved', review_note = $2, review_source = 'ai',
+	                  reviewed_at = $3, updated_at = $3
+	 WHERE id = $1`
+
+// 下面三条 = PromotePendingRevision 去掉末尾那条 NOT EXISTS 的快照补插。
+// 少了它不是偷懒：待审内容本身就住在 topic_revisions 那一行里，所以走这条路时行**必然已存在**，
+// 那条补插永远不触发（人工那条路也一样，见 pgsql/review_queue.go 的 PromotePendingRevision）。
+const sqlPromotePosts = `
+	UPDATE posts SET content_md = $2, content_html = $3, updated_at = $4
+	 WHERE topic_id = $1 AND floor = 1`
+
+const sqlPromoteExcerpt = `UPDATE topics SET excerpt = $2, updated_at = $3 WHERE id = $1`
+
+// approved_by = NULL：这次过审的是 AI，不是某个人 —— 那一列是「哪一次判定让它成为过审版本」
+// 的指针，而 AI 判定没有 user id（人工那条路写的是 actor.UserID）。
+const sqlPromoteRevision = `
+	UPDATE topic_revisions
+	   SET content_md = $2, content_html = $3, approved_by = NULL, approved_at = $4,
+	       pending_md = NULL, pending_html = NULL, pending_at = NULL, updated_at = $4
+	 WHERE topic_id = $1 AND pending_md IS NOT NULL`
 
 const sqlInsertAudit = `
 	INSERT INTO audit_logs (actor_id, action, target_type, target_id, detail, created_at)

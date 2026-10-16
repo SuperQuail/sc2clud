@@ -554,9 +554,24 @@ func (s *Service) UpdateTopic(ctx context.Context, actor *authz.Actor, publicID 
 				return err
 			}
 		}
-		return s.enqueue(ctx, tx, queue.Task{
+		if err := s.enqueue(ctx, tx, queue.Task{
 			Type: queue.TypeSearchIndex, Payload: map[string]int64{"id": ref.ID}, UniqueKey: "topic:" + itoa64(ref.ID),
-		})
+		}); err != nil {
+			return err
+		}
+		// **改过正文就重新过一遍审核（AI 也重新看一次）**——这行以前只在发帖那条路上
+		//（insertTopic）：编辑把新正文存进待审槽之后，队列里一条 AI 任务都没有，改动只能等人工。
+		// 与 search:index 同一个事务（回滚则任务不存在）。
+		// trigger='edit' 的落库语义见 aireview/service.go 的 promoteEdit：通过就替换上线，
+		// 不通过只留痕、绝不让一篇已发布的帖从读者眼前消失。
+		if in.ContentMD != nil {
+			return s.enqueue(ctx, tx, queue.Task{
+				Type:      queue.TypeAIReview,
+				Payload:   map[string]any{"topic_id": ref.ID, "trigger": "edit"},
+				UniqueKey: "review:edit:" + itoa64(ref.ID), Priority: 20, MaxRetry: 2,
+			})
+		}
+		return nil
 	})
 }
 
