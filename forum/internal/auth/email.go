@@ -301,7 +301,9 @@ func (s *Service) ResendVerify(ctx context.Context, actor *authz.Actor, ip strin
 // ForgotPassword **恒返回 nil**（设计 §10.6 第 3 步）：不暴露邮箱是否存在，
 // handler 的响应体除 request_id 外逐字节相同。
 func (s *Service) ForgotPassword(ctx context.Context, email, ip string) error {
-	if err := s.allow(ctx, keyMailIP(ip), 3, time.Hour); err != nil {
+	// 5 次 / 10 分钟（原 3 次/小时）：与注册同一条「固定窗口惩罚太久」的理由，
+	// 但这条是**发信**面，保持比注册严一档（同一个 keyMailIP 命名空间，重置密码那条是 10/小时）。
+	if err := s.allow(ctx, keyMailIP(ip), 5, 10*time.Minute); err != nil {
 		return err
 	}
 	login := normalizeEmail(email)

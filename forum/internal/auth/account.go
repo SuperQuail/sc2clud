@@ -91,7 +91,14 @@ func validateNickname(v string) error {
 
 // ── 限流 key（设计 §9.5 的表，一处定义） ────────────────────────────────
 
-func keyRegisterIP(ip string) string   { return "auth:register:ip:" + ip }
+// 注册的**两个独立计数器**（2026-10-16 用户定口径：失败与成功分开算）：
+//   · 尝试池 60 次/小时 —— 每一次「想注册」都算，进端点第一件事就计数（排在校验之前，
+//     让 argon2 与发信不被无成本地刷）；失败的手误、我们自己的 5xx 重试都吃这个池子；
+//   · 成功池 3 次/小时 —— 只在「校验都过了、handle 与邮箱都没被占」那一刻计数，
+//     挡的是「一个 IP 批量造号」，不是「一个用户重试」。
+// 两个 key 互不消耗：把注册额度烧光不再意味着锁死正常用户。
+func keyRegisterAttemptIP(ip string) string { return "auth:register:attempt:ip:" + ip }
+func keyRegisterSuccessIP(ip string) string { return "auth:register:success:ip:" + ip }
 func keyLoginIP(ip string) string      { return "auth:login:ip:" + ip }
 func keyLoginUser(login string) string { return "auth:login:user:" + strings.ToLower(login) }
 func keyMailIP(ip string) string       { return "auth:mail:ip:" + ip }
@@ -177,7 +184,10 @@ func (s *Service) resetLoginFailures(ctx context.Context, ip string) {
 // ── 注册 ────────────────────────────────────────────────────────────
 
 func (s *Service) Register(ctx context.Context, in RegisterInput) (*RegisterResult, error) {
-	if err := s.allow(ctx, keyRegisterIP(in.IP), 3, time.Hour); err != nil {
+	// 尝试池：失败与成功**分开算**（见 keyRegisterAttemptIP 的注释）。
+	// 原先是「3 次/小时」一把梭：固定窗口下被拒要等满整窗，于是 3 次重试就锁一小时
+	// （用户报 request_id 42c1eee284e6504a：那 3 次还是被昵称校验的 500 烧掉的）。
+	if err := s.allow(ctx, keyRegisterAttemptIP(in.IP), 60, time.Hour); err != nil {
 		return nil, err
 	}
 	// 从这里开始的每一种「没能注册」都算一次失败（on_failure 模式据此开始要求验证码）。
@@ -289,6 +299,16 @@ func (s *Service) Register(ctx context.Context, in RegisterInput) (*RegisterResu
 			return err
 		}
 		userID = u.ID
+		// 成功池：**只在行真的插进去了之后**才计数（3 次/小时/IP，挡「一个 IP 批量造号」）。
+		// 位置是刻意的，两条都要满足：
+		//   · 放在事务内、插入之后 —— 预检之后的任何失败（ent 校验、唯一索引并发、角色/发码/审计出错）
+		//     都在它之前返回，**不吃成功额度**（用户报的昵称 500 ×3 正是这一类；
+		//     用户定口径：失败与成功分开算）；
+		//   · 超额时返回错误 → 整个事务回滚，不会留下「号建好了却回 429」的幽灵账号。
+		// 而上面的尝试池（60 次/小时）在进端点时先扣，手误与 5xx 重试都吃它。
+		if err := s.allow(ctx, keyRegisterSuccessIP(in.IP), 3, time.Hour); err != nil {
+			return err
+		}
 		if auto {
 			if err := s.upsertCode(ctx, tx, userID, purposeVerify, codeHash(code), now); err != nil {
 				return err

@@ -642,7 +642,7 @@ UPDATE sessions s
 
 **流程（顺序有理由）**：
 
-    1. 限流 auth:register:ip:<ip> → 3 次/小时
+    1. 限流**两道，失败与成功分开算**（2026-10-16 用户定口径）：尝试池 `auth:register:attempt:ip:<ip>` **60 次/小时**（进端点第一件事、排在校验之前，手误与 5xx 重试都吃它，也挡住无成本刷 argon2/发信）；成功池 `auth:register:success:ip:<ip>` **3 次/小时**（校验都过、handle 与邮箱都没被占时计数，挡的是「一个 IP 批量造号」）。原先是「3 次/小时」一把梭 —— 固定窗口下 3 次重试就锁一小时（用户报 request_id 42c1eee284e6504a：那 3 次还是被昵称校验的 500 烧掉的）
     2. 校验 + 归一化
     3. **事务外**算 argon2id 哈希        ← 32MB + 几十毫秒，绝不放事务里
     4. 取信号量（§7.4）：等不到 3 秒 → 503
@@ -1335,7 +1335,7 @@ func (h *Handler) changePassword(c *gin.Context) {
 | 方法 | 路径 | 登录 | 验证 | 权限点 | 限流 key | 幂等 |
 |---|---|:--:|:--:|---|---|---|
 | GET | /api/v1/captcha | — | — | — | auth:captcha:ip:<ip> 10/h | — |
-| POST | /api/v1/auth/register | — | — | — | auth:register:ip:<ip> 3/h | 唯一索引 |
+| POST | /api/v1/auth/register | — | — | — | auth:register:attempt:ip:<ip> 60/h + auth:register:success:ip:<ip> 3/h（失败与成功分开算） | 唯一索引 |
 | POST | /api/v1/auth/login | — | — | — | auth:login:ip:<ip> 10/m、auth:login:user:<n> 5/m | **不幂等**（重复提交多开会话，见 U11） |
 | POST | /api/v1/auth/logout | ✔ | 不必 | — | — | 删不到行也 200 |
 | GET | /api/v1/me | — | — | — | — | — |
@@ -1345,7 +1345,7 @@ func (h *Handler) changePassword(c *gin.Context) {
 | DELETE | /api/v1/me/sessions/{id} | ✔ | 不必 | — | — | `{id}` 是 **public_id**（U13）；删不到 404 |
 | POST | /api/v1/auth/email/verify | — | — | — | auth:mail:verify:user:<id> 10 次失败/15 分钟 | 码一次性；正确后该码作废，第二次 400 auth.token_invalid |
 | POST | /api/v1/auth/email/resend | ✔ | 不必 | — | auth:mail:user:<id> 1/m、5/d | `auto_activate=false` → **403 auth.activation_is_manual**（策略决定，不是故障）；已验证 → 409 auth.email_already_verified；`true` 但没有发信账号 → 503 auth.mail_unavailable |
-| POST | /api/v1/auth/password/forgot | — | — | — | auth:mail:ip:<ip> 3/h | 恒 200 |
+| POST | /api/v1/auth/password/forgot | — | — | — | auth:mail:ip:<ip> 5/10min | 恒 200 |
 | POST | /api/v1/auth/password/verify-code | — | — | — | 同 email/verify 的按账号窗口 | 返回 reset_ticket（10 分钟、一次性），**不消费码** |
 | POST | /api/v1/auth/password/reset | — | — | — | auth:mail:ip:<ip> 10/h | 消费 reset_ticket（GETDEL）；第二次 → 400 auth.token_invalid |
 | GET | /api/v1/users/{handle} | — | — | — | — | — |
@@ -1525,7 +1525,7 @@ RETURNING attempt_count;
 
 `POST /api/v1/auth/password/forgot`：
 
-    1. 限流 auth:mail:ip:<ip> 3/小时
+    1. 限流 auth:mail:ip:<ip> 5 次/10 分钟（2026-10-16 与注册同批放宽）
     2. 查账号行（复用 findUserByLoginSQL，参数是 body.email）
     3. **无论查到与否都 200**（方案 §21.2：不暴露邮箱是否存在），且响应体除 request_id 外逐字节相同
     4. 查到但 status='banned' → 不发码，照样 200
