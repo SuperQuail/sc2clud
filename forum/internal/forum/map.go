@@ -148,6 +148,36 @@ func (s *Service) issueDTO(r pgsql.IssueRow) IssueDTO {
 	return d
 }
 
+// userBriefDTOPtr 把可空用户（LEFT JOIN 出来的）翻成可空画像：NULL 就是 nil，**不是零值对象**。
+// archived_by 正是这种列（AI 归档时它是 NULL），给一个空 UserBriefDTO 会让界面上出现一个没有名字的人。
+func userBriefDTOPtr(u *pgsql.UserRow) *UserBriefDTO {
+	if u == nil {
+		return nil
+	}
+	d := userBriefDTO(*u)
+	return &d
+}
+
+// issueAdminDTO 是管理端列表项的组装处（与 issueDTO 是两套契约，字段名各自照各自的真源）。
+func (s *Service) issueAdminDTO(r pgsql.IssueAdminRow) IssueAdminDTO {
+	d := IssueAdminDTO{
+		ID: r.PublicID, Number: r.Number, Kind: r.Kind, Title: r.Title,
+		BodyHTML: r.BodyHTML, Status: r.Status, Tags: r.Tags,
+		CreatedAt: r.CreatedAt.UTC(), UpdatedAt: r.UpdatedAt.UTC(),
+		ArchivedBy: userBriefDTOPtr(r.ArchivedBy), ArchiveReason: r.ArchiveReason,
+		Author: userBriefDTO(r.Author),
+		Topic:  TopicRefDTO{ID: r.TopicPublicID, Title: r.TopicTitle},
+	}
+	if d.Tags == nil {
+		d.Tags = []string{}
+	}
+	if r.ArchivedAt != nil {
+		t := r.ArchivedAt.UTC()
+		d.ArchivedAt = &t
+	}
+	return d
+}
+
 // issueStatusAPI 是 status 的换算（§7.7）：数据库 keep_open|closed → API open|closed。
 // **只此一处**，别的任何地方都不许再写一遍这个 switch。
 func issueStatusAPI(db string) string {

@@ -121,6 +121,13 @@ func (h *Handler) Register(rg *gin.RouterGroup, requireLogin gin.HandlerFunc, pe
 	rg.GET("/admin/topics", requireLogin, perm(authz.PermPostReview), h.listReviewQueue)
 	rg.POST("/admin/topics/:id/review", w("/admin/topics/:id/review", requireLogin, perm(authz.PermPostReview), httpx.ValidPathIDs("id", "sid"), h.reviewTopic)...)
 
+	// ---- Issue 归档（0062_issue_archive）----
+	// 权限点沿用 post.review（与人工审核队列同一档：能看到队列的人本来就该看得到被归档的内容）。
+	// 三条都挂在 /admin 下：公共读口**只排除已归档**，管理端要能看、能归档、能恢复。
+	rg.GET("/admin/issues", requireLogin, perm(authz.PermPostReview), h.adminListIssues)
+	rg.POST("/admin/issues/:id/archive", w("/admin/issues/:id/archive", requireLogin, perm(authz.PermPostReview), httpx.ValidPathIDs("id", "sid"), httpx.BodyLimit(maxWriteBody), h.adminArchiveIssue)...)
+	rg.POST("/admin/issues/:id/restore", w("/admin/issues/:id/restore", requireLogin, perm(authz.PermPostReview), httpx.ValidPathIDs("id", "sid"), h.adminRestoreIssue)...)
+
 	// ---- 分区管理（C2；界面需求 §5.3 + §5.10）。权限点一律 board.manage ----
 	//
 	// 路径参数 {id} 是分区的**对外 ID（uuid）**：boards 只有自增主键，0025 才补的 public_id。
@@ -668,6 +675,63 @@ func (h *Handler) getIssue(c *gin.Context) {
 		return
 	}
 	httpx.OK(c, out)
+}
+
+// ---- 管理端：Issue 归档（0062）----
+
+type adminListIssuesQuery struct {
+	Archived string `form:"archived"`
+	Status   string `form:"status"`
+	Kind     string `form:"kind"`
+	Q        string `form:"q"`
+	Limit    int    `form:"limit"`
+	Cursor   string `form:"cursor"`
+}
+
+// adminListIssues 是 GET /admin/issues：能拿到已归档的（?archived=1|all），
+// 筛选、排序、游标全在 SQL 里做（不在前端过滤）。
+func (h *Handler) adminListIssues(c *gin.Context) {
+	var q adminListIssuesQuery
+	if err := httpx.BindQuery(c, &q); err != nil {
+		httpx.Fail(c, err)
+		return
+	}
+	page, err := h.svc.ListAdminIssues(c.Request.Context(), h.actor(c), AdminIssueInput{
+		Archived: q.Archived, Status: q.Status, Kind: q.Kind, Q: q.Q, Cursor: q.Cursor, Limit: q.Limit,
+	})
+	if err != nil {
+		httpx.Fail(c, err)
+		return
+	}
+	// counts 与列表同一次请求给出（见 httpx.OKListCounts 的注释）。
+	httpx.OKListCounts(c, page.Items, page.NextCursor, page.Counts)
+}
+
+type archiveIssueBody struct {
+	Reason string `json:"reason"`
+}
+
+func (h *Handler) adminArchiveIssue(c *gin.Context) {
+	var b archiveIssueBody
+	if err := httpx.Bind(c, &b); err != nil {
+		httpx.Fail(c, err)
+		return
+	}
+	// IP 由 handler 填（service 不碰 gin，与 report.HandleInput 同例）。
+	if err := h.svc.ArchiveIssue(c.Request.Context(), h.actor(c), c.Param("id"),
+		ArchiveIssueInput{Reason: b.Reason, IP: c.ClientIP()}); err != nil {
+		httpx.Fail(c, err)
+		return
+	}
+	httpx.OK(c, gin.H{"ok": true})
+}
+
+func (h *Handler) adminRestoreIssue(c *gin.Context) {
+	if err := h.svc.RestoreIssue(c.Request.Context(), h.actor(c), c.Param("id")); err != nil {
+		httpx.Fail(c, err)
+		return
+	}
+	httpx.OK(c, gin.H{"ok": true})
 }
 
 type createIssueBody struct {

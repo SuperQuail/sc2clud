@@ -3,6 +3,7 @@ package pgsql
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"strings"
 	"time"
 )
@@ -197,6 +198,9 @@ func (s *Store) ListIssues(ctx context.Context, f IssueFilter) ([]IssueRow, erro
 		" AND ($4::bigint IS NULL OR i.assignee_id = $4)" +
 		" AND ($9::text IS NULL OR i.title ILIKE '%' || $9::text || '%'" +
 		"                       OR i.body_text ILIKE '%' || $9::text || '%')" +
+		// 归档的 Issue 在**两个公共列表口**（全站聚合 / 帖内列表）都不出现。
+		// 管理端列表是另一条查询（IssueAdminList）—— 那里要看得到归档的，所以不能共用这一条。
+		" AND i.archived_at IS NULL" +
 		" AND " + cursor +
 		" ORDER BY " + order + " LIMIT $8"
 
@@ -231,23 +235,49 @@ type IssueRef struct {
 	Kind          string
 	Status        string
 	TopicLive     bool
+	// Title 与 ArchivedAt 是**判定与举报链路的输入**（举报一条 Issue 要给它一个有意义的画像；
+	// 已归档的那条不该再被 AI 判），不是公开读口的过滤条件 ——
+	// 「已归档 = 404」由 service 在拿到 Ref 之后判，理由是那要按 post.review 分岔
+	// （能看的人看得见、看不见的人与「不存在」同形），把它压进 WHERE 就分不出来了。
+	Title      string
+	ArchivedAt *time.Time
+}
+
+// issueRefColumns 是两条 IssueRef 逐字同源的那一段（改一处必须改另一处）。
+const issueRefColumns = `
+SELECT i.id, i.public_id, i.topic_id, t.board_id, i.author_id, t.author_id, i.assignee_id, i.kind, i.status,
+       i.title, i.archived_at,
+       (t.visibility = 'normal' AND t.review_state = 'approved')`
+
+func scanIssueRef(rows *sql.Rows, r *IssueRef) error {
+	return rows.Scan(&r.ID, &r.PublicID, &r.TopicID, &r.BoardID, &r.AuthorID, &r.TopicAuthorID,
+		&r.AssigneeID, &r.Kind, &r.Status, &r.Title, &r.ArchivedAt, &r.TopicLive)
 }
 
 // IssueRef 取一条 Issue。$2 = 当前用户，$3 = 持 post.review（审核队列用，公开详情恒 false）。
 func (s *Store) IssueRef(ctx context.Context, publicID string, viewerID int64, canReview bool) (*IssueRef, error) {
 	var r IssueRef
-	err := s.queryOne(ctx, `
-SELECT i.id, i.public_id, i.topic_id, t.board_id, i.author_id, t.author_id, i.assignee_id, i.kind, i.status,
-       (t.visibility = 'normal' AND t.review_state = 'approved')
+	err := s.queryOne(ctx, issueRefColumns+`
   FROM post_issues i JOIN topics t ON t.id = i.topic_id
  WHERE i.public_id = $1
    AND ( (t.visibility = 'normal' AND t.review_state = 'approved')
          OR t.author_id = $2
          OR $3::boolean )`,
-		[]any{publicID, viewerID, canReview}, func(rows *sql.Rows) error {
-			return rows.Scan(&r.ID, &r.PublicID, &r.TopicID, &r.BoardID, &r.AuthorID, &r.TopicAuthorID,
-				&r.AssigneeID, &r.Kind, &r.Status, &r.TopicLive)
-		})
+		[]any{publicID, viewerID, canReview}, func(rows *sql.Rows) error { return scanIssueRef(rows, &r) })
+	if err != nil {
+		return nil, err
+	}
+	return &r, nil
+}
+
+// IssueRefByID 按内部 id 取同一条 Ref（举报目标的画像要它：管理队列手里只有自增 id）。
+// **不判可见性**：调用方是「按内部 id 还画像」，目标后来被删/藏起来时返回 ErrNoRows 由调用方兜。
+func (s *Store) IssueRefByID(ctx context.Context, issueID int64) (*IssueRef, error) {
+	var r IssueRef
+	err := s.queryOne(ctx, issueRefColumns+`
+  FROM post_issues i JOIN topics t ON t.id = i.topic_id
+ WHERE i.id = $1`,
+		[]any{issueID}, func(rows *sql.Rows) error { return scanIssueRef(rows, &r) })
 	if err != nil {
 		return nil, err
 	}
@@ -310,9 +340,12 @@ func IssueIDByClientToken(ctx context.Context, q Querier, authorID int64, token 
 
 // CountIssuesByTopic 是详情里的 issue_open_count（拍板 §6 最后一行：不加冗余列）。
 // 走 idx_post_issues_topic_status 的 (topic_id, status) 前缀。
+// 归档的 Issue 不算进「问题反馈 N」：那个徽标点进去是公共列表，列表里没有它 ——
+// 徽标比列表多一条会让前端看起来坏了（数字点不出一条对应的行）。
 func (s *Store) CountIssuesByTopic(ctx context.Context, topicID int64) (int, error) {
 	var n int
-	err := s.queryOne(ctx, "SELECT count(*) FROM post_issues WHERE topic_id = $1 AND status = 'keep_open'",
+	err := s.queryOne(ctx,
+		"SELECT count(*) FROM post_issues WHERE topic_id = $1 AND status = 'keep_open' AND archived_at IS NULL",
 		[]any{topicID}, func(rows *sql.Rows) error { return rows.Scan(&n) })
 	return n, err
 }
@@ -468,6 +501,7 @@ SELECT c.id, c.public_id, c.issue_id, i.topic_id, c.author_id, c.parent_id, c.vi
   JOIN topics t ON t.id = i.topic_id
  WHERE c.public_id = $1
    AND (c.visibility = 'normal' OR c.author_id = $2)
+   AND i.archived_at IS NULL
    AND t.visibility = 'normal' AND t.review_state = 'approved'`,
 		[]any{publicID, viewerID}, func(rows *sql.Rows) error {
 			return rows.Scan(&r.ID, &r.PublicID, &r.IssueID, &r.TopicID, &r.AuthorID, &r.ParentID, &r.Visibility)
@@ -547,4 +581,221 @@ SELECT c.id, c.public_id, c.issue_id, c.parent_id, par.public_id, c.body_html, c
 		return nil, ErrNoRows
 	}
 	return out, nil
+}
+
+
+// ============================================================
+// 归档（0062_issue_archive）：管理端的列表 / 归档 / 恢复
+// ============================================================
+
+// IssueAdminRow 是管理端列表的一行。**不复用 IssueRow**：往它里面加列会让每一条公共查询
+// 都得跟着扫新列，而归档那几列只有管理端要。
+type IssueAdminRow struct {
+	ID            int64
+	PublicID      string
+	Number        int
+	Kind          string
+	Title         string
+	BodyHTML      string
+	Status        string
+	Tags          []string
+	CreatedAt     time.Time
+	UpdatedAt     time.Time
+	ArchivedAt    *time.Time
+	ArchiveReason string
+	TopicID       int64
+	TopicPublicID string
+	TopicTitle    string
+	BoardSlug     string
+	BoardName     string
+	Author        UserRow
+	ArchivedBy    *UserRow
+}
+
+// IssueAdminCounts 是三个计数：未归档 / 已归档 / 全部（整个筛选结果集，不是本页条数）。
+type IssueAdminCounts struct {
+	Active   int `json:"active"`
+	Archived int `json:"archived"`
+	All      int `json:"all"`
+}
+
+// issueAdminColumns 是管理端列表 / 单条共用的列（改一处必须改另一处）。
+// 作者那几列的 COALESCE 逐字照 issueColumns —— 少了头像回落，管理端那一行会退回首字母占位。
+const issueAdminColumns = `i.id, i.public_id, i.number, i.kind, i.status, i.body_html, i.tags, i.title,` +
+	`i.created_at, i.updated_at, i.archived_at, i.archive_reason,` +
+	`i.topic_id, t.public_id, t.title, b.slug, b.name,` +
+	`a.id, a.public_id, a.username, COALESCE(NULLIF(a.nickname, ''), a.username),` +
+	`COALESCE(NULLIF(a.avatar_hash, ''), a.default_avatar_hash, ''), COALESCE(NULLIF(a.avatar_small_hash, ''), NULLIF(a.avatar_hash, ''), a.default_avatar_hash, ''),` +
+	`a.status,` +
+	`ab.id, ab.public_id, ab.username, COALESCE(NULLIF(ab.nickname, ''), ab.username),` +
+	`COALESCE(NULLIF(ab.avatar_hash, ''), ab.default_avatar_hash, '')`
+
+// issueAdminFrom 是管理端列表 / 单条共用的 FROM 段（archived_by 是可空外键：LEFT JOIN）。
+const issueAdminFrom = `
+  FROM post_issues i
+  JOIN topics t ON t.id = i.topic_id
+  JOIN boards b ON b.id = t.board_id
+  JOIN users  a ON a.id = i.author_id
+  LEFT JOIN users ab ON ab.id = i.archived_by`
+
+func scanIssueAdmin(rows *sql.Rows, r *IssueAdminRow) error {
+	var (
+		tags, archiveReason        string
+		authorStatus               string
+		topicTitle, boardSlug      string
+		boardName                  string
+		archivedAt                 sql.NullTime
+		avatar, avatarSmall        sql.NullString
+		abID                       sql.NullInt64
+		abPublic, abHandle, abNick sql.NullString
+		abAvatar                   sql.NullString
+	)
+	dest := []any{
+		&r.ID, &r.PublicID, &r.Number, &r.Kind, &r.Status, &r.BodyHTML, &tags, &r.Title,
+		&r.CreatedAt, &r.UpdatedAt, &archivedAt, &archiveReason,
+		&r.TopicID, &r.TopicPublicID, &topicTitle, &boardSlug, &boardName,
+		&r.Author.ID, &r.Author.PublicID, &r.Author.Handle, &r.Author.Nickname, &avatar, &avatarSmall, &authorStatus,
+		&abID, &abPublic, &abHandle, &abNick, &abAvatar,
+	}
+	if err := rows.Scan(dest...); err != nil {
+		return err
+	}
+	r.Tags = tagsArray(tags)
+	r.TopicTitle, r.BoardSlug, r.BoardName = topicTitle, boardSlug, boardName
+	r.ArchiveReason = archiveReason
+	r.ArchivedAt = scanNullTime(archivedAt)
+	r.Author.AvatarHash = scanNullString(avatar)
+	r.Author.AvatarSmall = scanNullString(avatarSmall)
+	r.Author.Status = authorStatus
+	if abID.Valid {
+		r.ArchivedBy = &UserRow{
+			ID: abID.Int64, PublicID: abPublic.String, Handle: abHandle.String, Nickname: abNick.String,
+			AvatarHash: scanNullString(abAvatar),
+		}
+	}
+	return nil
+}
+
+// IssueAdminFilter 是管理端列表的筛选形状。Archived 是三态：
+//
+//	""    = 缺省，只看未归档（与公共读口一致）
+//	"0"   = 只看未归档
+//	"1"   = 只看已归档
+//	"all" = 两者都看
+//
+// 服务层已经把非法值挡成 400，这里只认这三种。
+type IssueAdminFilter struct {
+	Status   string // keep_open | closed | 空
+	Kind     string
+	Q        string
+	Archived string
+	CursorT  time.Time
+	CursorID int64
+	Limit    int
+}
+
+// issueAdminWhere 是列表 / 计数共用的 WHERE 段：筛选在 SQL 里做，**不在前端过滤**。
+// $1=status $2=kind $3=q $4=archived。
+const issueAdminWhere = `
+ WHERE ($1::text IS NULL OR i.status = $1)
+   AND ($2::text IS NULL OR i.kind = $2)
+   AND ($3::text IS NULL OR i.title ILIKE '%' || $3 || '%' OR i.body_text ILIKE '%' || $3 || '%')
+   AND ($4::text IS NULL
+        OR ($4 = '0' AND i.archived_at IS NULL)
+        OR ($4 = '1' AND i.archived_at IS NOT NULL))`
+
+func issueAdminArgs(f IssueAdminFilter) []any {
+	return []any{nullIfEmpty(f.Status), nullIfEmpty(f.Kind), nullIfEmpty(f.Q), nullIfEmpty(f.Archived)}
+}
+
+// IssueAdminList 是 GET /admin/issues 的一页。
+//
+// 排序键与游标键都是 (updated_at, id)，与索引同序；archived=all 时归档的也在里面 ——
+// 它们恢复之后 updated_at 会变，所以不需要为「刚恢复的那条」另开一条排序路径。
+func (s *Store) IssueAdminList(ctx context.Context, f IssueAdminFilter) ([]IssueAdminRow, error) {
+	// 与 ListIssues 同一条纪律：$5/$6 恒被引用，否则 pgx 的 DescribeExec 定不出它们的类型（42P18）。
+	sqlText := "SELECT " + issueAdminColumns + issueAdminFrom + issueAdminWhere +
+		" AND ($5::timestamptz IS NULL OR (i.updated_at, i.id) < ($5, $6))" +
+		" ORDER BY i.updated_at DESC, i.id DESC LIMIT $7"
+	args := append(issueAdminArgs(f), nullTimeOrNil(f.CursorT), f.CursorID, f.Limit)
+	var out []IssueAdminRow
+	err := s.query(ctx, sqlText, args, func(rows *sql.Rows) error {
+		var r IssueAdminRow
+		if err := scanIssueAdmin(rows, &r); err != nil {
+			return err
+		}
+		out = append(out, r)
+		return nil
+	})
+	return out, err
+}
+
+// IssueAdminCounts 是整个筛选结果集的三档计数（不受游标 / limit 影响）。
+//
+// **刻意不套 archived 条件**（f.Archived 在这里被清掉）：它回答的是「库里各有多少」——
+// 界面上的 tab 数字要一直看得见。跟着当前 tab 走的话，切到「已归档」那一档时
+// 「未归档 N」会变成 0，而屏幕上明明列着那些条目。status / kind / q 照常参与筛选。
+func (s *Store) IssueAdminCounts(ctx context.Context, f IssueAdminFilter) (IssueAdminCounts, error) {
+	f.Archived = ""
+	var c IssueAdminCounts
+	err := s.queryOne(ctx,
+		"SELECT count(*) FILTER (WHERE i.archived_at IS NULL), "+
+			"count(*) FILTER (WHERE i.archived_at IS NOT NULL), count(*)"+
+			issueAdminFrom+issueAdminWhere,
+		issueAdminArgs(f), func(rows *sql.Rows) error {
+			return rows.Scan(&c.Active, &c.Archived, &c.All)
+		})
+	return c, err
+}
+
+// ArchiveIssue 归档一条 Issue。
+//
+// **与 aireview/sql.go 的 sqlArchiveIssue 是同一个动作的两个实现**：那边走 pgx 原生（AI 判定的事务里），
+// 这边走 pgsql.Querier（管理端的事务里）—— 两种 Tx 接不到同一个事务上，跨包也共用不了语句。
+// **改一处必须改另一处**：后置条件逐条相同（archived_at=now()、archived_by、archive_reason、updated_at）。
+// 返回 0 行 = 它已经是归档状态（幂等：不再写第二条审计）。
+func ArchiveIssue(ctx context.Context, tx Querier, issueID int64, archivedBy *int64, reason string, now time.Time) (int64, error) {
+	return rowsAffected(ctx, tx, sqlJoin(
+		"UPDATE post_issues",
+		"   SET archived_at    = $4::timestamptz,",
+		"       archived_by    = $2::bigint,",
+		"       archive_reason = $3::text,",
+		"       updated_at     = $4::timestamptz",
+		" WHERE id = $1::bigint AND archived_at IS NULL",
+	), issueID, archivedBy, reason, now.UTC())
+}
+
+// RestoreIssue 恢复一条 Issue（未归档的那条返回 0 行）。
+func RestoreIssue(ctx context.Context, tx Querier, issueID int64, now time.Time) (int64, error) {
+	return rowsAffected(ctx, tx, sqlJoin(
+		"UPDATE post_issues",
+		"   SET archived_at = NULL, archived_by = NULL, archive_reason = '',",
+		"       updated_at  = $2::timestamptz",
+		" WHERE id = $1::bigint AND archived_at IS NOT NULL",
+	), issueID, now.UTC())
+}
+
+// InsertIssueAudit 写一条 Issue 的审计行。
+//
+// **不复用 InsertReviewAudit**：那条把 target_type 写死成 'topic'。detail 在这里 marshal：
+// 调用方给 map，落库是 jsonb。target_id 存**对外 id**（audit_logs.target_id 是 varchar，
+// 0003_authz 的约定：绝不写自增 id）。
+func InsertIssueAudit(ctx context.Context, tx Querier, actorID int64, action, publicID string,
+	detail map[string]any, now time.Time) error {
+	raw, err := json.Marshal(detail)
+	if err != nil {
+		return err
+	}
+	return exec(ctx, tx,
+		"INSERT INTO audit_logs (actor_id, action, target_type, target_id, detail, created_at) "+
+			"VALUES ($1, $2, 'issue', $3, $4::jsonb, $5)",
+		actorID, action, publicID, string(raw), now.UTC())
+}
+
+// nullTimeOrNil 把零值时间表达成 SQL NULL（不带游标时首页条件恒真）。
+func nullTimeOrNil(t time.Time) any {
+	if t.IsZero() {
+		return nil
+	}
+	return t.UTC()
 }

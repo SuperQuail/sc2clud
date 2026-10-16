@@ -1,6 +1,10 @@
 package forum
 
-import "time"
+import (
+	"time"
+
+	"forum/internal/forum/pgsql"
+)
 
 // 对外响应形状。字段名即 JSON 名（交接单 §1.2）。
 // 自增 bigint 一律不出现在响应里——外面看到的 id 都是 public_id。
@@ -239,6 +243,61 @@ type IssueDetailDTO struct {
 type IssuePage struct {
 	Items      []IssueDTO
 	NextCursor string
+}
+
+// IssueAdminDTO 是管理端列表项（GET /admin/issues，0062）。
+//
+// **不复用 IssueDTO**：字段名与形状是另一套契约 —— 前端管理屏照它写，
+// 而公共 IssueDTO 的 assignee / comment_count / board 在这里一个都不需要。
+// 归档三列只有管理端有（公共读口一律看不到归档的，给了也永远是 null）。
+type IssueAdminDTO struct {
+	ID        string  `json:"id"`
+	Number    int     `json:"number"`
+	Kind      string  `json:"kind"`
+	Title     string  `json:"title"`
+	BodyHTML  string  `json:"body_html"`
+	Status    string  `json:"status"` // keep_open | closed（与公共 IssueDTO 的 open|closed 不同：这是库里的值）
+	Tags      []string `json:"tags"`
+	CreatedAt time.Time `json:"created_at"`
+	UpdatedAt time.Time `json:"updated_at"`
+	// ArchivedAt 非空 = 已归档（公共读口看不到它）。archived_by 为 null 且 archived_at 非空
+	// 只有一种可能：**AI 判的**（AI 没有 user id）。
+	ArchivedAt    *time.Time    `json:"archived_at"`
+	ArchivedBy    *UserBriefDTO `json:"archived_by"`
+	ArchiveReason string        `json:"archive_reason"`
+	Author        UserBriefDTO  `json:"author"`
+	Topic         TopicRefDTO   `json:"topic"`
+}
+
+// TopicRefDTO 只是「这条 Issue 属于哪篇主题」的两列。
+type TopicRefDTO struct {
+	ID    string `json:"id"`
+	Title string `json:"title"`
+}
+
+// IssueAdminPage 是管理端列表的一页（包络 {data, next_cursor, counts}）。
+// Counts 三档：未归档 / 已归档 / 全部 —— 与列表同一次请求给出（分两次会自相矛盾）。
+type IssueAdminPage struct {
+	Items      []IssueAdminDTO
+	NextCursor string
+	Counts     pgsql.IssueAdminCounts
+}
+
+// AdminIssueInput 是管理端列表的筛选（archived 缺省 = 只看未归档）。
+type AdminIssueInput struct {
+	Archived string // "" | "0" | "1" | "all"
+	Status   string // open | closed | 空
+	Kind     string
+	Q        string
+	Cursor   string
+	Limit    int
+}
+
+// ArchiveIssueInput 是 POST /admin/issues/{id}/archive 的请求体。
+// reason 可空（AI 归档总是有理由，人按的可以只留一个动作），上限照 reports.handle_note 的 500。
+type ArchiveIssueInput struct {
+	Reason string `json:"reason" binding:"max=500"`
+	IP     string `json:"-"`
 }
 
 // IssueKindDTO 是「Issue 类型」的一个取值（GET /issues/kinds，拍板 08 · J6）。

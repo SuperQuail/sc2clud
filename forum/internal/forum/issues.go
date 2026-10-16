@@ -144,7 +144,7 @@ func issueCursorRef(sort pgsql.IssueSort) func(pgsql.IssueRow) (time.Time, int64
 
 // IssueDetail 是 Issue 详情：卡片 + 正文 HTML。
 func (s *Service) IssueDetail(ctx context.Context, actor *authz.Actor, publicID string) (*IssueDetailDTO, error) {
-	ref, err := s.repo.IssueRef(ctx, publicID, viewerID(actor), canReview(actor))
+	ref, err := s.LoadIssueRef(ctx, actor, publicID)
 	if err != nil {
 		if err == pgsql.ErrNoRows {
 			return nil, ErrIssueNotFound
@@ -160,7 +160,7 @@ func (s *Service) IssueDetail(ctx context.Context, actor *authz.Actor, publicID 
 
 // ListIssueComments 是 Issue 的顶层评论（§7.8 Q12，游标按 id）。
 func (s *Service) ListIssueComments(ctx context.Context, actor *authz.Actor, issuePublicID string, in PageInput) (*IssueCommentPage, error) {
-	ref, err := s.repo.IssueRef(ctx, issuePublicID, viewerID(actor), canReview(actor))
+	ref, err := s.LoadIssueRef(ctx, actor, issuePublicID)
 	if err != nil {
 		if err == pgsql.ErrNoRows {
 			return nil, ErrIssueNotFound
@@ -314,7 +314,7 @@ func (s *Service) UpdateIssue(ctx context.Context, actor *authz.Actor, publicID 
 	//   · 指派         → canCloseIssue 的同一档。
 	// 原来第一行就 requirePerm(topic.edit.own)，后果是**持 topic.lock 的管理员关不掉 Issue**
 	// （403），而 J8 明确要求他能关 —— 一条路由级中间件把 service 的四档判定压成了一档。
-	ref, err := s.repo.IssueRef(ctx, publicID, actor.UserID, canReview(actor))
+	ref, err := s.LoadIssueRef(ctx, actor, publicID)
 	if err != nil {
 		if err == pgsql.ErrNoRows {
 			return ErrIssueNotFound
@@ -401,7 +401,7 @@ func (s *Service) CreateIssueComment(ctx context.Context, actor *authz.Actor, is
 	if strings.TrimSpace(in.BodyMD) == "" {
 		return nil, invalid("body_md", "评论不能为空")
 	}
-	ref, err := s.repo.IssueRef(ctx, issuePublicID, actor.UserID, canReview(actor))
+	ref, err := s.LoadIssueRef(ctx, actor, issuePublicID)
 	if err != nil {
 		if err == pgsql.ErrNoRows {
 			return nil, ErrIssueNotFound

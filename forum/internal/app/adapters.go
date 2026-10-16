@@ -180,6 +180,19 @@ func (a reportTargets) ResolveTarget(ctx context.Context, targetType, publicID s
 		}
 		info, err := a.postInfo(ctx, ref.ID, ref.TopicID, ref.AuthorID, ref.PublicID)
 		return info, err == nil, err
+	case report.TargetIssue:
+		// Issue 与 topic / post 同一套寻址：target_id 是对外 uuid。
+		// 已归档的 Issue **照样能被举报** —— 归档是「从公共读口隐身」，不是删除；
+		// 管理员在后台看得见它，谁想再报一次也该落进队列（不许因为被藏了就变得不可举报）。
+		ref, err := a.m.fstore.IssueRef(ctx, publicID, 0, false)
+		if errors.Is(err, forumpgsql.ErrNoRows) {
+			return report.TargetInfo{}, false, nil
+		}
+		if err != nil {
+			return report.TargetInfo{}, false, err
+		}
+		info, err := a.issueInfo(ctx, ref)
+		return info, err == nil, err
 	case reportUserTarget:
 		b, err := a.m.User.BriefByPublicID(ctx, publicID)
 		if errors.Is(err, apperr.ErrNotFound) {
@@ -219,6 +232,17 @@ func (a reportTargets) TargetInfo(ctx context.Context, targetType string, intern
 			return report.TargetInfo{}, err
 		}
 		return a.postInfo(ctx, ref.ID, ref.TopicID, ref.AuthorID, ref.PublicID)
+	case report.TargetIssue:
+		// 管理队列里 Issue 目标的一行：作者是 **Issue 的发布者**（不是主题作者），
+		// 与 canCloseIssue 的口径一致 —— 举报的是这条反馈，队列里该给它自己那一行。
+		ref, err := a.m.fstore.IssueRefByID(ctx, internalID)
+		if errors.Is(err, forumpgsql.ErrNoRows) {
+			return report.TargetInfo{}, nil
+		}
+		if err != nil {
+			return report.TargetInfo{}, err
+		}
+		return a.issueInfo(ctx, ref)
 	case reportUserTarget:
 		b, err := a.m.User.BriefByID(ctx, internalID)
 		if errors.Is(err, apperr.ErrNotFound) {
@@ -247,6 +271,23 @@ func (a reportTargets) topicInfo(ctx context.Context, topicID, authorID int64) (
 		InternalID: topicID, PublicID: card.PublicID, AuthorID: authorID, Label: card.Title,
 		Board: &report.BoardRef{Slug: card.BoardSlug, Name: card.BoardName},
 	}, nil
+}
+
+// issueInfo 是 Issue 目标的画像：标签是 Issue 自己的标题，分区走它所属主题。
+// 与 postInfo 的差别只有「标签是它自己的标题」—— 一条反馈在队列里必须看得见它在说什么，
+// 而不是像楼层那样只显示所属主题（「某主题下的一条回复」）。
+func (a reportTargets) issueInfo(ctx context.Context, ref *forumpgsql.IssueRef) (report.TargetInfo, error) {
+	info := report.TargetInfo{InternalID: ref.ID, PublicID: ref.PublicID, AuthorID: ref.AuthorID}
+	card, err := a.m.fstore.TopicCard(ctx, ref.TopicID)
+	if err != nil {
+		if errors.Is(err, forumpgsql.ErrNoRows) {
+			return info, nil
+		}
+		return report.TargetInfo{}, err
+	}
+	info.Label = ref.Title
+	info.Board = &report.BoardRef{Slug: card.BoardSlug, Name: card.BoardName}
+	return info, nil
 }
 
 func (a reportTargets) postInfo(ctx context.Context, postID, topicID, authorID int64, publicID string) (report.TargetInfo, error) {

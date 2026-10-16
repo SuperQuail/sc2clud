@@ -320,8 +320,9 @@ func (s *Store) TopicDetail(ctx context.Context, publicID string, viewerID int64
        -- 作者角色三列（拍板 08 §第三轮 3）：徽标要在**详情**上显示，列表项上没有那个位置。
        -- NULLIF 空串：roles.badge_color 允许 ''，而空串与 NULL 在界面上是同一件事（回落主题色）。
        r.key, r.name, NULLIF(r.badge_color, ''),
+       -- 已归档的 Issue 不算进「问题反馈 N」（0062）：那个徽标点进去是公共列表，列表里没有它。
        (SELECT count(*) FROM post_issues i
-         WHERE i.topic_id = t.id AND i.status = 'keep_open'),
+         WHERE i.topic_id = t.id AND i.status = 'keep_open' AND i.archived_at IS NULL),
        COALESCE((SELECT l.value FROM likes l
          WHERE l.user_id = $2 AND l.target_type = 'topic' AND l.target_id = t.id), 0),
        EXISTS (SELECT 1 FROM bookmarks bk WHERE bk.user_id = $2 AND bk.topic_id = t.id),
