@@ -86,6 +86,13 @@ export function ReviewScreenContainer() {
     onSuccess: (updated, v) => {
       setReceipt('已' + ACTION_DONE[v.action] + '「' + updated.title + '」');
       void qc.invalidateQueries({ queryKey: ['admin', 'review'] });
+      // 判定改的是**被审那条帖**：详情正文、回复列表、列表卡片上的摘要与状态全都变了。
+      // 少了这三条，审核员（或同一浏览器里的任何人）点完「通过」再去帖子页，
+      // staleTime=60s 会拿到旧正文 —— 看起来就是「已经通过的帖子，页面不更新」。
+      // 队列项的 id 就是主题的 public_id（ReviewQueueItemDTO.ID ← topics.public_id）。
+      void qc.invalidateQueries({ queryKey: qk.topic(v.item.id) });
+      void qc.invalidateQueries({ queryKey: qk.posts(v.item.id) });
+      void qc.invalidateQueries({ queryKey: ['topics'] });
     },
     // 版本冲突（作者改了正文 / 别人判过）是**预期内的 400**，不是崩溃：如实说出来让人刷新。
     onError: (e) => setReceipt('判定失败：' + (errorLine(e) ?? '')),
