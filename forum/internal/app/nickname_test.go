@@ -8,6 +8,7 @@ import (
 	"net/http/cookiejar"
 	"net/http/httptest"
 	"strconv"
+	"strings"
 	"testing"
 	"time"
 
@@ -185,6 +186,35 @@ func TestNicknameIsIndependentFromUsername(t *testing.T) {
 	}
 	if me["nickname"] != "显示名丙" {
 		t.Fatalf("改用户名的请求动了昵称：nickname = %v", me["nickname"])
+	}
+}
+
+// 2026-10-16 用户报 request_id c3961890d12c3a1a：昵称 7 个汉字（7 字符 / 21 字节）注册 500。
+// 根因是 ent 的 field.String().MaxLen 按**字节**校验，而 users.nickname 是 varchar(20)、
+// 服务层也按 **rune** —— 中文一到 7 个字就被 ent 挡下。
+//
+// 这条在 **HTTP 层**把三个点钉住（service 层那条同款在 auth/nickname_runes_test.go）：
+// 7 个汉字能注册并原样落库；21 个汉字是**字段级 400**（不是 500）。
+func TestNicknameLengthCountsRunesOverHTTP(t *testing.T) {
+	h := newHarness(t)
+	seven := strings.Repeat("好", 7)
+	user := "nick-rune-7"
+	h.register(user, user+"@example.com", "nickname-password-1", seven)
+
+	var stored string
+	if err := h.in.Pool.QueryRow(h.ctx, "SELECT nickname FROM users WHERE username = $1", user).Scan(&stored); err != nil {
+		t.Fatal(err)
+	}
+	if stored != seven {
+		t.Fatalf("落库昵称 = %q，想要 %q（7 个汉字 = 7 字符，远在 20 之内）", stored, seven)
+	}
+
+	code, raw := h.api.do(http.MethodPost, "/api/v1/auth/register", toJSON(map[string]string{
+		"username": "nick-rune-21", "email": "nick-rune-21@example.com",
+		"password": "nickname-password-1", "nickname": strings.Repeat("好", 21),
+	}))
+	if code != http.StatusBadRequest {
+		t.Fatalf("21 个汉字应当 400（字段级），实际 %d：%s", code, raw)
 	}
 }
 
