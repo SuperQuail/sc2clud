@@ -1,5 +1,5 @@
 import { BASE } from '@/lib/base';
-import { ApiError } from './errors';
+import { ApiError, fallbackReason } from './errors';
 
 // 全站唯一的 fetch 出口（前端方案 §4.1 / §5）。其它任何文件出现 fetch( 都由 ESLint 拦住。
 // 前缀来自 <base href>，所以同一份产物在 / 与 /dev/ 下都指向自己那个实例的后端
@@ -87,10 +87,12 @@ async function request(path: string, req: Req = {}): Promise<unknown> {
   if (!res.ok) {
     const body = (payload ?? {}) as ErrorBody;
     const retryAfter = res.headers.get('retry-after');
+    const code = body.error?.code ?? 'common.internal';
     throw new ApiError(
       res.status,
-      body.error?.code ?? 'common.internal',
-      body.error?.message ?? '请求失败（' + res.status + '）',
+      code,
+      // 空串与缺字段一样要兜底：?? 接不住 ''，界面就只剩「（错误编号 xxx）」了（D70）
+      body.error?.message?.trim() || fallbackReason(res.status, code),
       body.error?.request_id,
       body.error?.fields,
       retryAfter ? Number(retryAfter) * 1000 : undefined,

@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { api } from './client';
-import { ApiError, uiActionFor } from './errors';
+import { ApiError, apiErrorLine, uiActionFor } from './errors';
 import { mockFetch } from '@/test/fetch-mock';
 
 afterEach(() => {
@@ -63,6 +63,22 @@ describe('api client', () => {
     const err = (await api('/me').catch((e: unknown) => e)) as ApiError;
     expect(err.status).toBe(0);
     expect(err.code).toBe('network');
+  });
+
+  it('后端 message 是空串时给兜底原因，界面不会只剩编号（D70）', async () => {
+    mockFetch([{ status: 500, body: { error: { code: 'common.internal', message: '', request_id: 'r9' } } }]);
+    const err = (await api('/topics').catch((e: unknown) => e)) as ApiError;
+    expect(err.message.trim()).not.toBe('');
+    const line = apiErrorLine(err);
+    expect(line).toContain('服务器错误');
+    expect(line.endsWith('（错误编号 r9）')).toBe(true);
+  });
+
+  it('后端连 message 都没给时按状态兜底（code 也陌生）', async () => {
+    mockFetch([{ status: 502, body: { error: { code: 'weird.code' } } }]);
+    const err = (await api('/topics').catch((e: unknown) => e)) as ApiError;
+    expect(err.message.trim()).not.toBe('');
+    expect(apiErrorLine(err)).toContain('服务器错误');
   });
 
   it('204 返回 undefined', async () => {
