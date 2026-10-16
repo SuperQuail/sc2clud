@@ -6,19 +6,19 @@
     },
     {
       "route": "POST /admin/launcher/assets",
-      "reason": "真孤儿：同上"
+      "reason": "之后再做（用户 2026-10-16 拍板）：启动器分发整体**未启用** —— dev/prod 的 releases 与 release_assets 均 0 行，prod 公开读实测 /launcher/latest=404、/launcher/releases 空数组，15-admin 从无此屏。要做时先做管理端一屏（账本 D88）；在这之前它不是「UI 漏做」"
     },
     {
       "route": "DELETE /admin/launcher/assets/:id",
-      "reason": "真孤儿：同上"
+      "reason": "之后再做（用户 2026-10-16 拍板）：启动器分发整体**未启用** —— dev/prod 的 releases 与 release_assets 均 0 行，prod 公开读实测 /launcher/latest=404、/launcher/releases 空数组，15-admin 从无此屏。要做时先做管理端一屏（账本 D88）；在这之前它不是「UI 漏做」"
     },
     {
       "route": "POST /admin/launcher/releases",
-      "reason": "真孤儿：下载源的运营端（releases/assets 增删改）整族没有界面，需要落在 web/src/routes/admin.tsx"
+      "reason": "之后再做（用户 2026-10-16 拍板）：启动器分发整体**未启用** —— dev/prod 的 releases 与 release_assets 均 0 行，prod 公开读实测 /launcher/latest=404、/launcher/releases 空数组，15-admin 从无此屏。要做时先做管理端一屏（账本 D88）；在这之前它不是「UI 漏做」"
     },
     {
       "route": "PATCH /admin/launcher/releases/:id",
-      "reason": "真孤儿：同上"
+      "reason": "之后再做（用户 2026-10-16 拍板）：启动器分发整体**未启用** —— dev/prod 的 releases 与 release_assets 均 0 行，prod 公开读实测 /launcher/latest=404、/launcher/releases 空数组，15-admin 从无此屏。要做时先做管理端一屏（账本 D88）；在这之前它不是「UI 漏做」"
     },
     {
       "route": "GET /launcher/assets/:id/go",
