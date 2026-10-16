@@ -1,7 +1,7 @@
 import type { ReactNode } from 'react';
 import Button from '@jetbrains/ring-ui-built/components/button/button';
 import { ControlsHeight } from '@jetbrains/ring-ui-built/components/global/controls-height';
-import { Bookmark, Eye, Flag, Heart, Link2, MessageSquare, Pencil, Trash2 } from 'lucide-react';
+import { Bookmark, Eye, Flag, Heart, Link2, MessageSquare, Pencil, Pin, Sparkles, Trash2 } from 'lucide-react';
 import { icon16 } from '@/ui/icons';
 
 // 正文下的动作条。**每个动作都必须有可观察的结果**（缺陷处理总纲 §7）：
@@ -28,6 +28,12 @@ export function TopicActions({
   editHref,
   /** 删帖：设计稿里没有这一颗，但「发错了删不掉」是盲测报过的缺陷——所以留着，由宿主决定给不给 */
   onDelete,
+  /** 版主的两颗开关（D73）：宿主给整组就画，不给（房间不传）就整组不渲染 */
+  pinOn,
+  featureOn,
+  pinPending,
+  onTogglePin,
+  onToggleFeature,
   /** 设计稿反馈那一行：由页面插在动作条下面 */
   designNote,
   /** 删除确认（受控）：贴着删除按钮出现，别让人滚到页尾去找 */
@@ -50,6 +56,15 @@ export function TopicActions({
   editHref?: string;
   /** 不给就不渲染「删除」 */
   onDelete?: () => void;
+  /** 版主的两颗开关（D73，端点族 POST /topics/{id}/pin|feature，权限点 topic.pin）：
+   *  pinOn / featureOn 是详情里的当前值（开关亮不亮）；回调是宿主给的端口，不给就不渲染那一颗 */
+  pinOn?: boolean;
+  featureOn?: boolean;
+  /** 置顶请求在途：只禁置顶那一颗，别为它多造一层等待态 */
+  pinPending?: boolean;
+  /** 点击上行的是 !current */
+  onTogglePin?: (next: boolean) => void;
+  onToggleFeature?: (next: boolean) => void;
   designNote?: ReactNode;
   deleteConfirm?: ReactNode;
 }) {
@@ -119,6 +134,35 @@ export function TopicActions({
             onClick={onDelete}
           >
             删除
+          </Button>
+        ) : null}
+        {onTogglePin ? (
+          <Button
+            ghost
+            inline={false}
+            height={ControlsHeight.S}
+            active={pinOn}
+            disabled={pinPending}
+            icon={icon16(Pin)}
+            aria-label={pinOn ? '取消置顶' : '置顶这篇帖子'}
+            data-testid='topic-pin-toggle'
+            onClick={() => onTogglePin(!pinOn)}
+          >
+            置顶
+          </Button>
+        ) : null}
+        {onToggleFeature ? (
+          <Button
+            ghost
+            inline={false}
+            height={ControlsHeight.S}
+            active={featureOn}
+            icon={icon16(Sparkles)}
+            aria-label={featureOn ? '取消精华' : '设为精华'}
+            data-testid='topic-feature-toggle'
+            onClick={() => onToggleFeature(!featureOn)}
+          >
+            精华
           </Button>
         ) : null}
         <span className='ml-auto flex items-center gap-4 text-[12px] text-muted-foreground'>

@@ -52,6 +52,12 @@ export function MainColumn({
   onReport,
   editHref,
   onDelete,
+  /** 版主的两颗开关（D73）：原样传给动作条（渲染与否在那层按「回调给了没有」判） */
+  pinOn,
+  featureOn,
+  pinPending,
+  onTogglePin,
+  onToggleFeature,
   onVote,
   onDeleteComment,
   onSubmitComment,
@@ -107,6 +113,12 @@ export function MainColumn({
   editHref?: string;
   /** 删帖（与删回复是两个动作）：不传就不渲染这颗按钮 */
   onDelete?: () => void;
+  /** 版主的两颗开关（D73）：含义与渲染规则见 TopicActions */
+  pinOn?: boolean;
+  featureOn?: boolean;
+  pinPending?: boolean;
+  onTogglePin?: (next: boolean) => void;
+  onToggleFeature?: (next: boolean) => void;
   onVote: (id: string, value: 1 | -1) => void;
   /** 删回复（不是删帖）：parentId 非空表示它长在哪个主楼下 */
   onDeleteComment: (parentId: string | null, id: string) => void;
@@ -193,6 +205,11 @@ export function MainColumn({
         onReport={onReport}
         editHref={canEdit ? editHref : undefined}
         onDelete={onDelete}
+        pinOn={pinOn}
+        featureOn={featureOn}
+        pinPending={pinPending}
+        onTogglePin={onTogglePin}
+        onToggleFeature={onToggleFeature}
         designNote={receipt}
         deleteConfirm={deleteConfirm}
       />

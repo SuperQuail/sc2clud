@@ -17,7 +17,9 @@ import {
   fetchTopic,
   setPostVote,
   setTopicBookmark,
+  setTopicFeatured,
   setTopicLike,
+  setTopicPinned,
   type ReportReason,
   type TopicDetail as ApiTopicDetail,
 } from '@/lib/api/forum';
@@ -165,6 +167,17 @@ export function TopicPage() {
     mutationFn: (on: boolean) => setTopicBookmark(topicId, on),
     onSettled: () => queryClient.invalidateQueries({ queryKey: qk.topic(topicId) }),
   });
+  // D73：版主的两颗开关（用户实测「无法设置帖子置顶/精华」）——端点早挂在 topic.pin 一族，这回前端接上；
+  // 失效对象与 like / bookmark 相同：置顶状态也是详情的一部分
+  const pin = useMutation({
+    mutationFn: (on: boolean) => setTopicPinned(topicId, on),
+    onSettled: () => queryClient.invalidateQueries({ queryKey: qk.topic(topicId) }),
+  });
+  const feature = useMutation({
+    mutationFn: (on: boolean) => setTopicFeatured(topicId, on),
+    onSettled: () => queryClient.invalidateQueries({ queryKey: qk.topic(topicId) }),
+  });
+
   const vote = useMutation({
     // value=0 是「取消」，后端是 DELETE —— 同向再点一次就取消（幂等）
     mutationFn: (v: { id: string; value: 1 | -1; on: boolean }) => setPostVote(v.id, v.on ? 0 : v.value),
@@ -275,6 +288,8 @@ export function TopicPage() {
   const loggedIn = session.isLoggedIn;
   const me = { handle: session.session?.handle ?? '', nickname: session.session?.nickname ?? '', avatar: session.session?.avatar ?? null };
   // 能不能回复 / 编辑以后端算的 can_reply / can_edit 为准（它认 activation、分区 ACL、锁定），前端权限只兜底
+  // D73：两颗开关只看 topic.pin（与后端同一个权限点；前端权限只决定显不显示 §5.4）
+  const canMod = can(session.session, 'topic.pin');
   const canReply = wire.can_reply ?? (loggedIn && can(session.session, 'topic.create'));
   const canEdit = wire.can_edit ?? (loggedIn && t.author.handle === me.handle && can(session.session, 'topic.edit.own'));
   const designTopic = toDesignTopic(t, designAuthor);
@@ -288,6 +303,8 @@ export function TopicPage() {
     { what: '投票', m: vote },
     { what: '点赞', m: like },
     { what: '收藏', m: bookmark },
+    { what: '置顶', m: pin },
+    { what: '精华', m: feature },
   ];
   const failed = steps.find((s) => s.m.isError) ?? null;
 
@@ -339,6 +356,12 @@ export function TopicPage() {
       reportedIds={reportedIds}
       onDelete={() => remove.mutate()}
       deleting={remove.isPending}
+      // D73：没有 topic.pin 的人连回调都不给 —— 开关那层按「回调给了没有」决定画不画
+      pinOn={canMod ? t.pinned : undefined}
+      featureOn={canMod ? t.featured : undefined}
+      pinPending={canMod ? pin.isPending : undefined}
+      onTogglePin={canMod ? (next) => pin.mutate(next) : undefined}
+      onToggleFeature={canMod ? (next) => feature.mutate(next) : undefined}
       // B6：重新提交 = 进发帖页编辑（带上原帖标题与正文）→ 保存时 PATCH 打回 pending —— 与编辑同一个落点。
       // 「申请人工复核」后端没有端点（照旧给诚实回执）。
       onAppeal={() => setReceipt('「申请人工复核」的端点后端还没有，所以这一次没有真的提交。')}

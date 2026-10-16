@@ -97,6 +97,12 @@ export type TopicViewProps = {
   reportedIds: string[];
   onDelete?: () => void;
   deleting?: boolean;
+  /** 版主的两颗开关（D73）：含义与渲染规则见 TopicActions；房间不传就整组不渲染 */
+  pinOn?: boolean;
+  featureOn?: boolean;
+  pinPending?: boolean;
+  onTogglePin?: (next: boolean) => void;
+  onToggleFeature?: (next: boolean) => void;
   /** 未通过审核时的两个出口：宿主不给就不渲染那颗按钮（后端还没有端点时，给了也只是回执） */
   onAppeal?: () => void;
   onResubmit?: () => void;
@@ -180,6 +186,11 @@ export function TopicView({
   reportedIds,
   onDelete,
   deleting = false,
+  pinOn,
+  featureOn,
+  pinPending,
+  onTogglePin,
+  onToggleFeature,
   onAppeal,
   onResubmit,
   comments,
@@ -289,6 +300,11 @@ export function TopicView({
             onReport={() => openReport(null)}
             editHref={canEdit && editHref ? editHref(topic.id) : undefined}
             onDelete={onDelete ? () => setLayer('delete') : undefined}
+            pinOn={pinOn}
+            featureOn={featureOn}
+            pinPending={pinPending}
+            onTogglePin={onTogglePin}
+            onToggleFeature={onToggleFeature}
             deleteConfirm={
               layer === 'delete' ? (
                 <section className='flex flex-col gap-2 rounded-lg border border-destructive/40 bg-destructive/8 px-3 py-3'>

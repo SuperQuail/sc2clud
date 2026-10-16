@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { createSource, deleteSource, updateSource, verifySource } from './forum';
+import { createSource, deleteSource, setTopicFeatured, setTopicPinned, updateSource, verifySource } from './forum';
 import { mockFetch } from '@/test/fetch-mock';
 
 afterEach(() => {
@@ -61,5 +61,25 @@ describe('下载来源端点', () => {
     const { calls } = mockFetch([{ body: { data: { id: 's1' } } }]);
     await updateSource('tp 1', 's/1', { provider: 'other', url: 'https://a.b' });
     expect(calls[0]?.url).toContain('/api/v1/topics/tp%201/sources/s%2F1');
+  });
+});
+
+// D73：置顶 / 精华是版主的两个动作，路由早挂在 forum/handler.go:90-91（同一个权限点 topic.pin），
+// 请求体在 pinBody / featureBody。前端此前零调用（用户原话「无法设置帖子置顶/精华」），照例按字面钉住字段名。
+describe('置顶与精华端点', () => {
+  it('置顶：POST /topics/{id}/pin，体的字段名是 pinned', async () => {
+    const { calls } = mockFetch([{ body: { data: { ok: true } } }]);
+    await setTopicPinned('tp-1', true);
+    expect(calls[0]?.url).toContain('/api/v1/topics/tp-1/pin');
+    expect(calls[0]?.init?.method).toBe('POST');
+    expect(JSON.parse(String(calls[0]?.init?.body))).toEqual({ pinned: true });
+  });
+
+  it('精华：POST /topics/{id}/feature，体的字段名是 featured', async () => {
+    const { calls } = mockFetch([{ body: { data: { ok: true } } }]);
+    await setTopicFeatured('tp-1', false);
+    expect(calls[0]?.url).toContain('/api/v1/topics/tp-1/feature');
+    expect(calls[0]?.init?.method).toBe('POST');
+    expect(JSON.parse(String(calls[0]?.init?.body))).toEqual({ featured: false });
   });
 });

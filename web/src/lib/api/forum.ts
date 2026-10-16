@@ -207,6 +207,15 @@ export function setTopicBookmark(id: string, on: boolean) {
   return api<void>('topics/' + encodeURIComponent(id) + '/bookmark', { method: on ? 'PUT' : 'DELETE' });
 }
 
+/** 置顶 / 精华是版主动作（同一个权限点 topic.pin，路由在 forum/handler.go:90-91）；体字段照 pinBody / featureBody */
+export function setTopicPinned(id: string, on: boolean) {
+  return api<void>('topics/' + encodeURIComponent(id) + '/pin', { method: 'POST', body: { pinned: on } });
+}
+
+export function setTopicFeatured(id: string, on: boolean) {
+  return api<void>('topics/' + encodeURIComponent(id) + '/feature', { method: 'POST', body: { featured: on } });
+}
+
 /** 回复的赞/踩：value 只可能是 1 或 -1 */
 export function setPostVote(id: string, value: 1 | -1 | 0) {
   return api<void>('posts/' + encodeURIComponent(id) + '/vote', {
