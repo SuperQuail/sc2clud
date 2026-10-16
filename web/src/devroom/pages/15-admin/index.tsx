@@ -1,17 +1,18 @@
 import { useState } from 'react';
 import type { MailTemplatePreview } from '@/lib/api/admin';
 import { CURRENT_ADMIN } from './mock/perms';
+import { DEMO_ISSUES } from './mock/issues';
 import { DEMO_AI_CONFIG, DEMO_AI_PAYLOAD, DEMO_AI_TEST, DEMO_PERMISSIONS, DEMO_ANNOUNCEMENTS, DEMO_AUDIT, DEMO_BANNERS, DEMO_DOMAINS, DEMO_DONATIONS, DEMO_DONATION_STATS, DEMO_MAIL, DEMO_MAIL_TPL, DEMO_MAILTPL_BUILTIN, DEMO_MAILTPL_PREVIEW, DEMO_NOTICE_DEFAULTS, DEMO_REPORTS, DEMO_REVIEW, DEMO_ROLES, DEMO_SETTINGS, DEMO_TITLES, DEMO_USER_DETAIL, DEMO_USERS } from './mock/fixtures';
 import { AdminShell, type AdminSelf } from './shell';
 import { SCREEN_KEYS, type ScreenKey } from './nav';
-import { ADMIN_ACLS, ADMIN_BOARDS, ADMIN_GROUP_ACLS, DEMO_GROUPS, DIAGNOSTICS_ROOM } from './room-data';
+import { DEMO_GROUPS } from './room-data';
+import { BoardsRoom, DiagnosticsRoom } from './rooms';
 import { AiReviewScreen } from './screens/ai-review';
 import { AuditScreen, type AuditFilter } from './screens/audit';
-import { BoardsScreen, type BoardPatch } from './screens/boards';
 import { GroupsScreen, type GroupsScreenProps } from './screens/groups';
-import { DiagnosticsScreen } from './screens/diagnostics';
 import { MailScreen } from './screens/mail';
 import { MailTemplateScreen } from './screens/mail-tpl';
+import { IssuesAdminScreen, type IssuesAdminFilter } from './screens/issues';
 import { ReportsScreen, type ReportFilter } from './screens/reports';
 import { ReviewScreen, type ReviewFilter } from './screens/review';
 import { RewardsScreen, type RewardsFilter } from './screens/rewards';
@@ -35,6 +36,7 @@ const SCREENS: Record<ScreenKey, () => React.ReactNode> = {
   boards: () => <BoardsRoom />,
   review: () => <ReviewRoom />,
   reports: () => <ReportsRoom />,
+  issues: () => <IssuesRoom />,
   rewards: () => <RewardsRoom />,
   titles: () => <TitlesRoom />,
   mail: () => <MailRoom />,
@@ -44,46 +46,6 @@ const SCREENS: Record<ScreenKey, () => React.ReactNode> = {
   audit: () => <AuditRoom />,
   diagnostics: () => <DiagnosticsRoom />,
 };
-
-/** 分区管理屏的房间版（数据在 ./room-data）。 */
-function BoardsRoom() {
-  const [boards, setBoards] = useState(ADMIN_BOARDS);
-  const [boardId, setBoardId] = useState<string | null>(ADMIN_BOARDS[0]?.id ?? null);
-  const [savedAt, setSavedAt] = useState(0);
-  const [receipt, setReceipt] = useState<string | null>(null);
-  const say = (msg: string) => setReceipt('（房间演示：这里不发请求）' + msg);
-  const board = boards.find((b) => b.id === boardId) ?? boards[0] ?? null;
-  const id = board?.id ?? '';
-  return (
-    <BoardsScreen
-      key={id}
-      boards={boards}
-      boardId={board?.id ?? null}
-      onSelect={(next) => { setBoardId(next); setReceipt(null); }}
-      savedAt={savedAt}
-      onSave={(patch: Partial<BoardPatch>) => {
-        setBoards((prev) => prev.map((b) => (b.id === id ? { ...b, ...patch } as typeof b : b)));
-        setSavedAt((n) => n + 1);
-        say('已保存 ' + Object.keys(patch).join('、'));
-      }}
-      onMove={(next) => { setBoards((prev) => next.map((x) => prev.find((b) => b.id === x)!)); say('顺序已保存（' + next.length + ' 个分区，全量顺序）'); }}
-      roles={DEMO_ROLES}
-      acl={ADMIN_ACLS[id] ?? []}
-      onAclSave={(acls) => say('名单已保存（全量替换：' + acls.length + ' 行）')}
-      groups={DEMO_GROUPS}
-      groupAcl={ADMIN_GROUP_ACLS[id] ?? []}
-      onGroupAclSave={(acls) => say('按组名单已保存（全量替换：' + acls.length + ' 行）')}
-      moderators={board ? board.moderators.map((m, i) => ({ ...m, grown_at: i === board.moderators.length - 1 && board.moderators.length > 1 ? '2026-08-01T00:00:00Z' : null })) : []}
-      candidates={DEMO_USERS.slice(0, 6).map((u) => ({ id: u.id, username: u.username, nickname: u.nickname }))}
-      onGrantModerator={(userId) => say('任命 ' + userId + ' 为版主')}
-      onRevokeModerator={(userId) => say('免掉 ' + userId)}
-      onCreate={(b) => { say('新建分区 /' + b.slug + '（slug 建后不可改）'); setBoards((prev) => [...prev, { ...ADMIN_BOARDS[0]!, id: 'b-new', slug: b.slug, name: b.name, description: b.description, topic_count: 0, post_count: 0, today_count: 0, moderators: [] }]); }}
-      onSetStatus={(status, reason) => { setBoards((prev) => prev.map((b) => (b.id === id ? { ...b, status } : b))); say('状态改成 ' + status + (reason ? '（说明：' + reason + '）' : '')); }}
-      canManage
-      receipt={receipt ? <p className='text-[12px] text-muted-foreground'>{receipt}</p> : null}
-    />
-  );
-}
 
 /** 用户组屏的房间版（D38）：目录来自 ./room-data 的演示组，动作只留一条回执（房间不发请求）。 */
 function GroupsRoom() {
@@ -131,11 +93,6 @@ function GroupsRoom() {
       receipt={receipt ? <p className='text-[12px] text-muted-foreground'>{receipt}</p> : null}
     />
   );
-}
-
-/** 自检面板的房间版（只读屏，给一份本地结果）。 */
-function DiagnosticsRoom() {
-  return <DiagnosticsScreen data={DIAGNOSTICS_ROOM} canSetting />;
 }
 
 /** AI 审核屏的房间版。
@@ -353,6 +310,29 @@ function ReportsRoom() {
       onFilterChange={setFilter}
       canHandle
       onHandle={(ids, state, note) => setReceipt('（房间演示：这里不发请求）' + ids.length + ' 条 → ' + state + '：' + note)}
+      receipt={receipt ? <p className='text-[12px] text-muted-foreground'>{receipt}</p> : null}
+    />
+  );
+}
+
+/** Issue 管理屏的房间版（契约 2026-10-16）：归档档位由**本地**筛（房间没有后端），动作只回回执。 */
+function IssuesRoom() {
+  const [filter, setFilter] = useState<IssuesAdminFilter>({ archived: '0', status: 'all', kind: 'all', q: '' });
+  const [receipt, setReceipt] = useState<string | null>(null);
+  const items = DEMO_ISSUES
+    .filter((i) => filter.archived === 'all' || (filter.archived === '1' ? i.archived_at !== null : i.archived_at === null))
+    .filter((i) => filter.status === 'all' || (filter.status === 'open' ? i.status === 'keep_open' : i.status === 'closed'))
+    .filter((i) => filter.kind === 'all' || i.kind === filter.kind)
+    .filter((i) => !filter.q.trim() || i.title.includes(filter.q.trim()) || i.author.handle.includes(filter.q.trim()));
+  return (
+    <IssuesAdminScreen
+      items={items}
+      hasMore={false}
+      filter={filter}
+      onFilterChange={setFilter}
+      canManage
+      onArchive={(id, reason) => setReceipt('（房间演示：这里不发请求）已归档 ' + id + (reason ? '（原因：' + reason + '）' : '') + '：公开读从此看不到它')}
+      onRestore={(id) => setReceipt('（房间演示：这里不发请求）已恢复 ' + id + '：它重新出现在公开列表里')}
       receipt={receipt ? <p className='text-[12px] text-muted-foreground'>{receipt}</p> : null}
     />
   );
