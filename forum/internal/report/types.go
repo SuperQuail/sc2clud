@@ -2,15 +2,19 @@ package report
 
 import "time"
 
-// 举报目标类型：值域 topic / post / user，**与迁移里的 ck_reports_target_type 逐字一致**（0006_social.up.sql）。
+// 举报目标类型：值域 topic / post / user / issue，**与迁移里的 ck_reports_target_type 逐字一致**
+//（0006_social.up.sql 的三值 → 0062_issue_archive 放宽到含 issue）。
 //
 // 注意：多态目标本可以是「topic / post / issue_comment / user」（issue 评论也能举报），
-// 但已落地的 CHECK 只允许这三个值 —— 加 issue_comment 要动迁移（见回报的「需要迁移改动」）。
+// 但已落地的 CHECK 仍不允许 issue_comment —— 加它要再动一次迁移。
 // 在这里放一个 CHECK 不允许的值，只会让插入在 PG 层炸成 500。
-// 请求体里的完整值域写在 dto.go 的 binding tag（`oneof=topic post user`），校验只有那一处。
+// 请求体里的完整值域写在 dto.go 的 binding tag（`oneof=topic post user issue`），校验只有那一处。
 const (
 	TargetTopic = "topic"
 	TargetPost  = "post"
+	// TargetIssue 的 target_id 是 Issue 的 **public_id（uuid）**，与 topic / post 同一套寻址
+	//（issue_comment 那种「内部 id 直给」不存在）。
+	TargetIssue = "issue"
 )
 
 // reports.state：open → handled | dismissed，终态不可逆（d6 §2.2）。

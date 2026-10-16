@@ -35,12 +35,12 @@ type CursorInput struct {
 
 type QueueInput struct {
 	State      string `form:"state" binding:"omitempty,oneof=open handled dismissed"`
-	TargetType string `form:"target_type" binding:"omitempty,oneof=topic post user"`
+	TargetType string `form:"target_type" binding:"omitempty,oneof=topic post user issue"`
 	CursorInput
 }
 
 type CreateReportInput struct {
-	TargetType string `json:"target_type" binding:"required,oneof=topic post user"`
+	TargetType string `json:"target_type" binding:"required,oneof=topic post user issue"`
 	TargetID   string `json:"target_id" binding:"required"`
 	Reason     string `json:"reason" binding:"required,oneof=spam abuse illegal offtopic other"`
 	Detail     string `json:"detail" binding:"max=1000"`

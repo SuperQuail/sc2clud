@@ -66,7 +66,8 @@ func (s *Service) Create(ctx context.Context, actor *authz.Actor, in CreateRepor
 		out = built
 
 		// 重复举报（复用既有那条）不再触发复核：那是上一轮的事
-		if !created || in.TargetType != TargetTopic || s.review == nil {
+		// 触发复核的目标只有主题与 Issue（见 ReportReviewInput 的注释）
+		if !created || s.review == nil || (in.TargetType != TargetTopic && in.TargetType != TargetIssue) {
 			return nil
 		}
 		th1, th2 := s.thresholds(ctx)
@@ -74,18 +75,28 @@ func (s *Service) Create(ctx context.Context, actor *authz.Actor, in CreateRepor
 		// 用「越过」而不是「n >= 阈值」，是为了不在第 4、6、7… 条上重复触发同一轮复核
 		//（d7 用 review:report:<topic>:<轮次> 的 unique_key 去重，那需要 review_events，本域没有）。
 		prev := n - 1
-		var human bool
-		switch {
-		case prev < th2 && n >= th2:
-			human = true // 到第二阈值：直接进人工，不再调 AI（拍板 §10.4，防举报风暴打爆额度）
-		case prev < th1 && n >= th1:
-			human = false
-		default:
+		// 到第二阈值：直接进人工，不再调 AI（拍板 §10.4，防举报风暴打爆额度）
+		if prev < th2 && n >= th2 {
+			// Issue 没有 review_source 那一列可落（post_issues 的状态机只有 status），
+			// 所以「转人工」对它就是**不入队** —— 举报本身已经在人工队列里了（§10.4 的落点）。
+			// 主题那一侧照旧落 review_source='manual'，AI 之后不再碰它。
+			if in.TargetType == TargetTopic {
+				return s.review.TriggerReportReview(ctx, tx, ReportReviewInput{
+					TopicID: info.InternalID, OpenReports: n, Human: true,
+				})
+			}
 			return nil
 		}
-		return s.review.TriggerReportReview(ctx, tx, ReportReviewInput{
-			TopicID: info.InternalID, OpenReports: n, Human: human,
-		})
+		if prev >= th1 || n < th1 {
+			return nil
+		}
+		in2 := ReportReviewInput{OpenReports: n}
+		if in.TargetType == TargetIssue {
+			in2.IssueID = info.InternalID
+		} else {
+			in2.TopicID = info.InternalID
+		}
+		return s.review.TriggerReportReview(ctx, tx, in2)
 	})
 	if err != nil {
 		return nil, err

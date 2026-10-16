@@ -50,8 +50,13 @@ type Settings interface {
 }
 
 // ReportReviewInput 是「达到阈值」这件事的形状。
+//
+// **被复核的内容只有两种：主题与 Issue**（回复 / 用户没有 AI 复核这一档 —— 一条回复的语境
+// 在它所属主题里，判回复等于判主题，而举报一条回复的人要的是「处理这条回复」）。
+// 两个 id 恰好一个非空，由 reports.go 的触发点保证。
 type ReportReviewInput struct {
-	TopicID     int64 // 被举报的主题（只有主题会被复核）
+	TopicID     int64 // 被举报的主题（topic 被举报时非 0）
+	IssueID     int64 // 被举报的 Issue（issue 被举报时非 0）
 	OpenReports int   // 该目标当前的未处理举报数
 	Human       bool  // true = 已到第二阈值：直接进人工，不再调 AI
 }
