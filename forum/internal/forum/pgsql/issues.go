@@ -781,15 +781,20 @@ func RestoreIssue(ctx context.Context, tx Querier, issueID int64, now time.Time)
 // 调用方给 map，落库是 jsonb。target_id 存**对外 id**（audit_logs.target_id 是 varchar，
 // 0003_authz 的约定：绝不写自增 id）。
 func InsertIssueAudit(ctx context.Context, tx Querier, actorID int64, action, publicID string,
-	detail map[string]any, now time.Time) error {
+	detail map[string]any, ip string, now time.Time) error {
 	raw, err := json.Marshal(detail)
 	if err != nil {
 		return err
 	}
+	// ip 空 → NULL：inet 列不接受空串（' 会报 invalid input syntax for type inet）。
+	var ipArg any
+	if ip != "" {
+		ipArg = ip
+	}
 	return exec(ctx, tx,
-		"INSERT INTO audit_logs (actor_id, action, target_type, target_id, detail, created_at) "+
-			"VALUES ($1, $2, 'issue', $3, $4::jsonb, $5)",
-		actorID, action, publicID, string(raw), now.UTC())
+		"INSERT INTO audit_logs (actor_id, action, target_type, target_id, detail, ip, created_at) "+
+			"VALUES ($1, $2, 'issue', $3, $4::jsonb, $5::inet, $6)",
+		actorID, action, publicID, string(raw), ipArg, now.UTC())
 }
 
 // nullTimeOrNil 把零值时间表达成 SQL NULL（不带游标时首页条件恒真）。

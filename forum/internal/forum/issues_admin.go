@@ -163,7 +163,7 @@ func (s *Service) setIssueArchived(ctx context.Context, actor *authz.Actor, publ
 			action, detail = actionIssueArchive, map[string]any{"reason": reason}
 		}
 		// target_id 存对外 id（audit_logs.target_id 是 varchar，0003_authz 的约定）。
-		return pgsql.InsertIssueAudit(ctx, tx, actor.UserID, action, ref.PublicID, detail, now)
+		return pgsql.InsertIssueAudit(ctx, tx, actor.UserID, action, ref.PublicID, detail, ip, now)
 	})
 }
 

@@ -60,7 +60,7 @@ func TestIssueArchiveHidesFromPublicReadsAndAdminCanRestore(t *testing.T) {
 	}
 
 	// ② 归档（带理由）
-	if err := h.svc.ArchiveIssue(h.ctx, adminActor, iss.ID, ArchiveIssueInput{Reason: "广告引流"}); err != nil {
+	if err := h.svc.ArchiveIssue(h.ctx, adminActor, iss.ID, ArchiveIssueInput{Reason: "广告引流", IP: "203.0.113.7"}); err != nil {
 		t.Fatalf("归档: %v", err)
 	}
 	var archivedAt *string
@@ -76,6 +76,16 @@ func TestIssueArchiveHidesFromPublicReadsAndAdminCanRestore(t *testing.T) {
 	}
 	if n := h.countRows(t, "SELECT count(*) FROM audit_logs WHERE action = 'issue.archive' AND target_id = $1", iss.ID); n != 1 {
 		t.Fatalf("归档该写一条审计，实际 %d 条", n)
+	}
+	// 审计带上操作者 IP（与 report.handle 同口径）：audit_logs.ip 是 inet，
+	// 空串会被 PG 拒成 22P02 —— 空的时候必须发 NULL（见 InsertIssueAudit）。
+	var auditIP string
+	if err := h.pool.QueryRow(h.ctx,
+		"SELECT host(ip) FROM audit_logs WHERE action = 'issue.archive' AND target_id = $1", iss.ID).Scan(&auditIP); err != nil {
+		t.Fatal(err)
+	}
+	if auditIP != "203.0.113.7" {
+		t.Fatalf("审计该记下操作者 IP，实际 %q", auditIP)
 	}
 
 	// ③ 三个公共读口都不出现它
