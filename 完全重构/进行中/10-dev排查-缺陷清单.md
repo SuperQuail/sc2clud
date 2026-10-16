@@ -403,6 +403,12 @@ D34 补的是**管理端当场自助**这一缺环。
 **环境事实（本轮踩到、写下来免得重踩）**：本会话 `spawnSync("node", …)` 起的是 **Harness 的 Electron**（`process.execPath` = `DeepSeek Harness.exe`）——它会**静默吃掉 vitest**（status 0、零输出），于是「vitest 全绿」可以是假绿；而 tsc/门禁脚本因为纯 Node 仍能跑出真输出。web 门禁必须用**真 node**：`C:\Program Files\nodejs\node.exe`（或 dsh 运行时 `…dependencies\node\bin\node.exe`）。子代理 B 提的 `ELECTRON_RUN_AS_NODE=1` 变体在 vitest 5 上仍失败，别用它。
 
 **收敛门禁（Lead 用真 node / go.exe 复跑最终 HEAD）**：web `tsc` 0；vitest **346/346**（69 文件）；`vite build` 过；budget 首屏 JS **178.1/180 KB**；size（362 文件 / 3 条已登记超限）、tokens、urls、controls、security、ui-usage、conventions 全过。Go：`./internal/platform/... ./internal/site/...` 全 ok、`./internal/forum/...` 85.1s + pgsql 11.3s 全绿。
+### 1r-production. 第十四轮同样直接上生产（2026-10-16 08:4x–08:5x）
+
+- dev：`48dff12`（迁移 58→**59**），health 200、bin/web 版本一致；备份 `/srv/sc2clud-dev/backups/pre-deploy-48dff12-20261016-004459.dump`。
+- prod：`70ff692 → 48dff12`，165.8s，迁移 58→**59**；备份 `/srv/sc2clud-prod/backups/pre-deploy-48dff12-20261016-004900.dump`（259724 B）；health 200、bin/web 版本一致、公网 / 200 即本构建、部署以来 journalctl **ERROR=0**，/topics 200、/admin/ai/events 未登 401。
+- 双端黑盒（只读）：① `permissions.description`（topic.pin）=「置顶 / 精华（两个端点共用这一个权限点）」——**0059 在库里生效**；② **产物 JS 里「拍板」与「§」出现次数均为 0**（D76 真的进了线上包，不只是源码改了）；③ 错误信封带原因与字段：`/topics/not-a-uuid` → `参数错误` + `fields.id=格式不正确`（不再是空 message + 编号）。
+- 回滚：`pg_restore --clean --if-exists -d <dsn> …/pre-deploy-48dff12-*.dump` + `current → 70ff692`。
 
 ---
 ## 2. 派发分组（互不重叠的文件作用域）
