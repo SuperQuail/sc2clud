@@ -1,3 +1,4 @@
+import type { ReactNode } from 'react';
 import Button from '@jetbrains/ring-ui-built/components/button/button';
 import Tag, { TagType } from '@jetbrains/ring-ui-built/components/tag/tag';
 import Toggle from '@jetbrains/ring-ui-built/components/toggle/toggle';
@@ -25,6 +26,7 @@ export function IssueDetail({
   onSetStatus,
   onComment,
   onVote,
+  report,
   onClose,
 }: {
   issue: IssueDetail;
@@ -37,6 +39,10 @@ export function IssueDetail({
   onComment: (parentId: string | null, body: { json: string; html: string }) => void;
   /** 评论的赞 / 踩：不传就是只显示两个数字（后端 PUT /issue-comments/{id}/vote 一直在） */
   onVote?: (id: string, value: 1 | -1) => void;
+  /** 举报入口（product 页给真按钮、房间页给本地回执件）。不给就不画 —— 同一条规矩：
+   *  「没有接线的那一档不亮一个点了必失败的按钮」。
+   *  做成「传进来的一件」而不是 onReport 回调：只有宿主手上有 issue 的 public_id（详情件的 id 是 #编号）。 */
+  report?: ReactNode;
   onClose: () => void;
 }) {
   const open = issue.status === 'open';
@@ -48,6 +54,8 @@ export function IssueDetail({
             {ISSUE_STATUS_LABEL[issue.status]}
           </span>
           <h2 className='min-w-0 flex-1 text-xl leading-snug font-semibold text-foreground'>{issue.title}</h2>
+          {/* 举报与收起并列：详情里的举报入口（列表行上另有一颗）。target_type=issue 由宿主决定。 */}
+          {report}
           <Button ghost onClick={onClose}>
             收起详情
           </Button>

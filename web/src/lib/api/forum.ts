@@ -253,7 +253,9 @@ export function deletePost(id: string): Promise<null> {
 /** 举报事由的值域**只**声明在后端 DTO 的 binding tag 里（`oneof=spam abuse illegal offtopic other`），
  *  改一边就要改另一边 —— report 域有契约测试盯着它。 */
 export type ReportReason = 'spam' | 'abuse' | 'illegal' | 'offtopic' | 'other';
-export type ReportTargetType = 'topic' | 'post' | 'user';
+/** 值域照后端 report 域的 binding：topic | post | user | **issue**（issue 是 2026-10-16 加的那一档，
+ *  target_id 是 issue 的 public_id）。多一档就多一处与本表的对照，别在别处另写联合类型。 */
+export type ReportTargetType = 'topic' | 'post' | 'user' | 'issue';
 
 export function createReport(body: {
   target_type: ReportTargetType;
