@@ -383,6 +383,13 @@ D34 补的是**管理端当场自助**这一缺环。
 | **D75** | 退出登录应移到设置页最底部并标红 | 退出按钮长在 AccountPanel（页面中部）；Ring `Button danger` 全站唯一危险色口径已有 | **已修**（b095282）：AccountPanel `onLogout` 改可选（不给且非 loggedOut **整格不画**，房间 11-profile 照传、其测试零改动）；settings.tsx 页尾新增居中 danger 按钮（`data-testid=settings-logout`）；settings.test 钉三件事：settings-logout 存在且承载块是页面根**最后一个直接子元素**、AccountPanel 区不再有原退出钮、点击打 POST /auth/logout |
 
 **收敛门禁（Lead 在最终 HEAD 9 提交合并态复跑）**：Go `forum` 88.7s + `pgsql` 11.6s 全绿（-count=1）；web `tsc` 0、vitest 全量 **339/339**、`vite build` 过、budget（首屏 JS 177.8/180 KB、CSS 37.9/40、最大 chunk 98.7/120）、size/tokens/urls/controls/security/ui-usage/conventions 全过（size 超限仍是登记在册的 3 个：boards 565 / topic.test 655 / screens fixtures 537）。全仓 lint 有 23 条**既有**警告（only-export-components 等，不在本轮文件）——常态处理项，不入本轮门禁。
+### 1q-production. 本轮按用户既定口径直接上生产（2026-10-16 08:2x）
+
+- dev：`dep loy.ps1 dev` 一次完成（外层超时被杀，**嵌套流水线自己跑完了全部 9 步**；重跑只撞同版本防呆「pick another version」——不是失败）。health 200、bin/web 版本一致、**迁移 57→58**。
+- dev 黑盒：GET /topics/{id}/posts → 列表仅有 `floor:2`（reply_count=1 同口径），`floor:1` 正文不出现在评论列表。
+- prod：`de609af → 70ff692`，164.6s，迁移 57→**58**（含 0058 历史挂楼回填），备份 `/srv/sc2clud-prod/backups/pre-deploy-70ff692-20261016-001715.dump`；health 200、bin/web 版本一致、公网 / 200 即本构建、部署以来 journalctl **ERROR=0**；/topics 200、/admin/ai/events 未登录 401（既有路由+守卫健康）。
+- prod 黑盒：GET /topics/{id}/posts → `floor:2 / floor:5`（无 1 楼），首条内容为用户回复。
+- 权限审查（用户指派，只读）：续写 `完全重构/RBAC权限树设计.md` §9 源码实测（角色×24 权限点矩阵 / 叠加次序 / superadmin 专属 / 九条发现含 schema_check admin 期望 16→17 自检常鸣、user.mute 与 resource.publish 两个「已授不判」点）；角色定位声明按用户要求置顶：**管理员=网站辅助管理者；超级管理员=网站开发/维护/所有者**。
 
 ---
 ## 2. 派发分组（互不重叠的文件作用域）
