@@ -418,6 +418,17 @@ D34 补的是**管理端当场自助**这一缺环。
 - 注：权限点显示名「发头衔」（nav.ts / audit / mock fixtures）**未改**——那是 `title.grant` 的点名，不是按钮文案。
 
 ---
+
+### 1s. 第十五轮（用户 2026-10-16 10:3x–10:5x 连报三条；三子代理 + Lead 直修）
+
+| # | 事项 | 事实/根因（实测） | 处理 |
+|---|---|---|---|
+| **D78** | 讨论帖不该开问题反馈（Issue）区 | 反馈入口与「问题反馈」页签在共用 View 里由 props 驱动，**所有 kind 一视同仁** | **已修**（c1698ec，W1）：宿主按 `kind !== 'discussion'` 决定是否传 `issueCount/issueHrefFor/feedbackHref/onOpenIssue`；`topic-view` 与 `topic-tabs` 新增**显式**开关 `issuesEnabled`（默认 true），false 时页签 + 正文末尾 nudge + 右栏 nudge 整块不画；房间一字未改（不传=现状）。红→绿：新建 `topic.issue-scope.test.tsx`（讨论帖那条给的是 `issue_open_count=7` 的非 0 值，不是「计数 0 恰好没药丸」）；全量 353 绿 |
+| **D79** | **「已经手动通过的帖子编辑，帖子页面不更新」**——强制刷新也不行 | **不是缓存**（用户实测 + nginx 无 `proxy_cache`/`expires`、API 无缓存头）。库诊断抓到实据：prod 的 topics **11 / 14 / 18**、dev 的 topic **53** 的 `posts.floor=1` 是 `visibility=deleted`（内容还在：549/26/5 字）。根因链：D71 之前「正文被当评论渲染」，作者在评论区点删除 → `DeletePostRow` 把**正文行**软删（这是既有的有意行为：「1 楼只软删自己，标题还在」）；此后**两条写正文的路径都只写 `content_*`**，visibility 永远停在 deleted —— ① `UpdatePostContent`（没过审的帖直接写 posts）② `PromotePendingRevision`（已过审帖「通过再替换」）—— 所以人工/AI 明明批了，读者看到的仍是「正文已被作者删除」，作者再怎么改也救不回来 | **已修**（6fcee69，Lead 直修）：① `UpdatePostContent` 对 `floor = 1` 一并置回 `visibility='normal'`（回复不在此列，避免改稿把删掉的回复冒出来）；② `PromotePendingRevision` 放行时一并置回可见（放行改动=上台可见）；③ **迁移 0061** 修历史残留：只修「帖子本身还在、只有正文行被软删」（`t.visibility='normal'`），整帖被删的不动；down=有注释 no-op（照 0019/0058 先例）。红→绿：`body_visibility_revive_test.go` 两条（临时回退两处 SQL → red status=1；恢复 → `ok 12.296s`） |
+| **D80** | **待替换改动（编辑帖子触发）不触发 AI 自动审核** | 三层：① `UpdateTopic` 编辑路径**只入队 `search.index`**，正文进了待审槽后就再没有 AI 任务（发帖那条路有 `ai.review`，注释还写着「AI 也重新看一次」）；② `aireview/sql.go` 的 `sqlSubject` 读 `posts.content_md`（**线上旧正文**），待审稿在 `pending_md` —— 与管理端预览的 `COALESCE(pending_md, content_md)` 不同源；③ `ReviewTopic` 落库不是 revision-aware：只改 `topics.review_state`，**没有**「放行草稿要替换线上正文」那一步（人工放行走 `PromotePendingRevision`）→ AI 置了 approved 改动也永不上台；④ 另需迁移把 `ck_review_events_trigger` 的 `edit` 放进来 | **修复中**（G1）：编辑入队 `ai.review`（trigger=`edit`）+ 取材改 `COALESCE(pending_md, content_md)` + `edit` 触发下**approve 真放行**（换正文/摘要/快照/清待审槽，并恢复可见）而 **reject/拿不准只写 `review_events`**，不动已发布帖的 `review_state/visibility`（原则：宁可放过不可错杀，人工队列继续接） |
+| **D81** | 审核动作后帖子页不更新（前端新鲜度） | 审核动作成功后只失效了 `['admin','review']`，**没失效被审主题的详情/回复/列表**；帖子页详情 `staleTime=60_000` → 同浏览器里点完「放行」再打开帖子页拿到的是旧缓存 | **修复中**（G2）：补 `qk.topic/publicId`、`qk.posts/publicId`、`['topics']` 前缀失效 + 断言失效集合的 vitest；并先写一条 Go 回归用例把「作者编辑→待审槽→人工 approve→详情返回新版正文 + 快照/摘要同源 + 待审槽清空」钉住 |
+
+---
 ## 2. 派发分组（互不重叠的文件作用域）
 
 | 包 | 覆盖 | 主要文件 |
