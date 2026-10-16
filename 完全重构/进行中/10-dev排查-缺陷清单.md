@@ -431,6 +431,19 @@ D34 补的是**管理端当场自助**这一缺环。
 | **D84** | 遗毒清理 · **「正文出现在评论区」**（前端与房间） | 逐个 mock 核过：**并不存在**「把正文建模成第一条评论」的数据（正文一直由 `topicBody()`/`content_html` 单独渲染）；真残留是两处——删帖确认文案「正文会被标记为作者删除」把 D79 的半死状态写成正常行为，以及房间 13-issue 里「楼主」徽标点错人（任意新回复都盖 `op:true`、两条数据作者与发起人对不上） | **已修**（2e33b83，B；2b04902，Lead）：删帖文案改成「标题与正文一起不再可读」；13-issue 去掉错误的 `op`（只留发起人本人那条）；新增 `topic.body-not-comment.test.tsx`（混入 `floor:1` 的响应里正文一个字都不进评论区、2 楼回复照旧、表头计数=回复数，红→绿钉住 `mappers.ts` 的 `floor !== 1` 兜底）；管理端 AI 配图上下文改标「正文配图 / 未挂楼层」，不再把正文的图标成「N 楼」。刻意保留：`mappers.ts` 兜底、`ui/comment/**` 的「楼主」徽标（主题作者发言仍正当）、后端契约与 admin DTO 里的 `floor` 字段说法 |
 | **D81** | 审核动作后帖子页不更新（前端新鲜度） | 审核动作成功后只失效了 `['admin','review']`，**没失效被审主题的详情/回复/列表**；帖子页详情 `staleTime=60_000` → 同浏览器里点完「放行」再打开帖子页拿到的是旧缓存 | **已修**（d4ecc16，G2）：先按真浏览器路径造复现（**第二个**审核员身份 + 时钟前进 + 原样回传 `expected_updated_at`）——服务端那条路**首跑即绿**，证明无缺陷；真根因在前端（审核成功只失效 `['admin','review']`），现补 `qk.topic(id)`、`qk.posts(id)`、`['topics']` 前缀 + 断言失效集合的 vitest（红起：`expected [["admin","review"]] to include ["topic","1111…"]`）。边界：失效只作用于审核员**自己的**浏览器，别人在自己的 60s staleTime 窗口内仍可能看到旧版（缓存新鲜度固有边界，非缺陷） |
 
+
+### 1s-production. 第十五轮上生产（2026-10-16 11:2x–11:3x；dev 与 prod 同为 b2f9de1）
+
+- **dev**：`deploy.ps1 dev` → `b2f9de1`，迁移 59→**61**（0060 `ck_review_events_trigger` 加 `edit`；0061 恢复被软删的正文行），health 200、bin/web 版本一致；备份 `/srv/sc2clud-dev/backups/pre-deploy-b2f9de1-20261016-032855.dump`。
+- **prod**：`8b0b332 → b2f9de1`（158s），迁移 59→**61**；备份 `/srv/sc2clud-prod/backups/pre-deploy-b2f9de1-20261016-033157.dump`（262823 B）；health 200、bin/web 版本一致、公网 / 200 即本构建、部署以来 journalctl **ERROR=0**。
+- **后验（只读，双端）**：
+  · `ck_review_events_trigger` = `CHECK (trigger IN (create,report,manual,edit))` → 迁移 0060 在库里生效；
+  · **prod `floor=1 AND visibility='deleted'` 从 3 → 0**：迁移 0061 把 topics 11/14/18 的正文行恢复成 `normal`（用户报的「正文已被作者删除 + 任何编辑都改不动」当场闭环）；prod 现在所有 `floor=1` 都是 normal；dev 那 1 条属「整帖已删」（`t.visibility <> normal`），按设计跳过；
+  · 新文案进了产物：`标题与正文一起不再可读`（删帖确认，D84）与 `正文配图`（管理端 AI 配图上下文）各命中 1 次 → 前端这批确实上线；
+  · prod `review_events` 10 行（迁移 0062 的 `issue_id` 尚未上线——那是 D82 的活，两个 agent 已在做）。
+- 本轮上线：D78 讨论帖无反馈区、D79 正文恢复（+0061）、D80 编辑稿触发 AI 审核（+0060）、D81 审核后前端失效、D83/D84 两类错误设计的遗毒清理、G3 两条真缺陷（AI 放行补排 `search:index`、举报复核改判线上正文）。
+- 回滚：`pg_restore --clean --if-exists -d <dsn> …/pre-deploy-b2f9de1-*.dump` + `current → 8b0b332`。
+
 ---
 ## 2. 派发分组（互不重叠的文件作用域）
 
