@@ -149,7 +149,7 @@ function renderCompose(path: string) {
   );
 }
 
-it('新建页：提交区说清缺什么（设计稿的 SubmitBar）+ 预览与编辑器同一份状态 + 来源什么时候能加', async () => {
+it('新建页：提交区说清缺什么 + 预览与编辑器同一份状态 + 来源什么时候能加', async () => {
   mockApi((url) => (url.includes('/me') ? { body: ME } : { body: BOARDS }));
   renderCompose('/new');
 

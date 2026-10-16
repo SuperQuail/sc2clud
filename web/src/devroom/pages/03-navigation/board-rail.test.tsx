@@ -44,7 +44,7 @@ it('没有封面的分区落**默认封面图**：美术资产那张弥音（不
   expect(withCover.container.querySelector('img')?.getAttribute('src')).toBe('/img/abc');
 });
 
-it('今日 N（用户 2026-10-15 拍板「可以加」）：有新增才画，0 不画', () => {
+it('今日 N：有新增才画，0 不画', () => {
   renderRail();
   // 有新增的那一行画「今日 3」；0 的那一行一个字都不出现
   expect(screen.getByText('今日 3')).toBeTruthy();

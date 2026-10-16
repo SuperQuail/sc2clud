@@ -20,7 +20,7 @@ export function SuccessView({ cfg, no, guest, onAgain }: SuccessViewProps) {
     <AuthShell
       title='已收到，这是你的回执'
       subtitle={'事由：' + cfg.label}
-      footer='这页只是设计稿：单号与答复时间都是编的，真实现由后端发号。'
+      footer='这页是演示：单号与答复时间都是编的，真实现由后端发号。'
     >
       <FormAlert tone='success' title={cfg.done.promise} description={'单号 ' + no + '。把它抄下来，它就是查询这条申诉的凭据。'} />
 

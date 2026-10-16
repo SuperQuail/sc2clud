@@ -285,7 +285,7 @@ function EvidenceSlot({ label, hint, on, onToggle, disabled }: {
         title={protoTitle('申诉附件上传（类型 / 大小 / 存哪未定）')}
       >
         <CircleHelp size={10} aria-hidden />
-        附件上传：未定（见合并结论 §6-2），本轮只留位置
+        附件上传：未定，本轮只留位置
       </span>
     </div>
   );

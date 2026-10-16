@@ -18,7 +18,7 @@ import { disabledReason, type Draft } from '@/devroom/pages/18-compose/draft';
 import { appPath, routePath } from '@/lib/url';
 import { qk } from '@/lib/query/keys';
 import { can, useSession } from '@/lib/perms';
-import { isApiError } from '@/lib/api/errors';
+import { apiErrorLine, apiErrorLineWith, isApiError } from '@/lib/api/errors';
 import {
   createSource,
   createTopic,
@@ -288,7 +288,7 @@ export function ComposePage() {
               </div>
               <span className='text-[11px] text-muted-foreground'>
                 类型决定列表里的徽标（讨论 / 资源 / 转载）；标签目录还没有端点，所以没有标签可挑 ——
-                设计稿画的那五个标签在库里没有对应的表。
+                库里也没有标签表。
               </span>
             </div>
 
@@ -393,13 +393,12 @@ export function ComposePage() {
 
 function errorText(e: unknown): string {
   if (!isApiError(e)) return String(e);
-  const rid = e.requestId ? '（错误编号 ' + e.requestId + '）' : '';
   // 参数类的错，后端把原因放在 fields 里，error.message 只有「参数错误」——把真正那句话抬出来
-  const fields = e.fields ? Object.values(e.fields).join('；') : '';
-  if (fields !== '') return fields + rid;
-  if (e.code === 'auth.email_unverified' || e.code === 'auth.not_activated') return '需要先激活邮箱。' + rid;
-  if (e.code === 'forum.board_denied') return '这个分区不允许你发帖（BoardACL）。' + rid;
-  if (e.code === 'forum.sanctioned') return '账号正在禁言中，暂时不能发帖。' + rid;
-  if (e.code === 'forum.not_resource') return '只有资源帖可以挂下载来源。' + rid;
-  return e.message + rid;
+  // （正文留空 = 让 apiErrorLine 用字段理由当正文）
+  if (Object.keys(e.fields ?? {}).length > 0) return apiErrorLineWith(e, '');
+  if (e.code === 'auth.email_unverified' || e.code === 'auth.not_activated') return apiErrorLineWith(e, '需要先激活邮箱。');
+  if (e.code === 'forum.board_denied') return apiErrorLineWith(e, '这个分区不允许你发帖（BoardACL）。');
+  if (e.code === 'forum.sanctioned') return apiErrorLineWith(e, '账号正在禁言中，暂时不能发帖。');
+  if (e.code === 'forum.not_resource') return apiErrorLineWith(e, '只有资源帖可以挂下载来源。');
+  return apiErrorLine(e);
 }

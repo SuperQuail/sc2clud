@@ -168,7 +168,7 @@ export default function ComposePage() {
               {NOT_ACTIVATED.action}
             </Button>
             <Button data-testid='demo-activate' inline={false} height={ControlsHeight.S} onClick={() => setActivated(true)}>
-              模拟激活（设计稿开关）
+              模拟激活（演示开关）
             </Button>
           </span>
         </FormAlert>
@@ -435,7 +435,7 @@ function DraftFields({
         <h2 className='m-0 text-[13px] font-semibold text-foreground'>附件（只做位置与提示，本轮不接上传）</h2>
         <AttachmentSlot files={attachments} onChange={onAttachments} accept={ATTACH_ACCEPT} hint={ATTACH_HINT} disabled={disabled} />
         <p className='m-0 text-[11px] leading-relaxed text-muted-foreground'>
-          附件类型/大小/存放位置还没拍板（盲审合并结论 §6.2：反馈帖写着「存档见附件」而全站只有图片上传控件），
+          附件类型/大小/存放位置还没定（全站现在只有图片上传控件），
           所以这一格只把「选了哪些、会不会被拒」摆出来，不做假的上传进度。
         </p>
       </div>

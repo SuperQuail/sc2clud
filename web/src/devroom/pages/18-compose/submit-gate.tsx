@@ -58,7 +58,7 @@ export function SubmitBar({
     <div className='flex flex-col gap-2 border-t border-border pt-3'>
       <div className='flex flex-wrap items-center gap-3'>
         <SubmitButton disabled={blocked} busy={busy} onClick={onSubmit} label={label} />
-        <span className='text-[11px] text-muted-foreground'>草稿与自动保存还没定案（盲审合并结论 §7），这一版没有「存草稿」按钮。</span>
+        <span className='text-[11px] text-muted-foreground'>草稿与自动保存还没定案，这一版没有「存草稿」按钮。</span>
       </div>
       {blocked ? (
         <p data-testid='compose-missing' role='status' className='m-0 text-[12px] text-destructive'>
@@ -118,7 +118,7 @@ export function SubmitResult({
         <li className='flex items-start gap-1.5'>
           <CircleAlert aria-hidden className='mt-0.5 size-3.5 shrink-0' />
           被驳回时理由会显示在帖子页顶部（12-topic 的 rejected 态），改完可以重新提交 ——
-          但「编辑帖子」本身的入口还没做（盲审合并结论 §3 第 13 条）。
+          但「编辑帖子」本身的入口还没做。
         </li>
       </ul>
 

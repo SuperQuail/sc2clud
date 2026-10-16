@@ -95,7 +95,7 @@ export function AccountPanel({
       return;
     }
     if (next.length < 8) {
-      setErrors({ next: '新密码至少 8 位（设计稿里的本地即时校验）' });
+      setErrors({ next: '新密码至少 8 位' });
       setDone(false);
       return;
     }
@@ -186,7 +186,7 @@ export function AccountPanel({
               保存新密码
             </Button>
             {onSubmitPassword ? null : (
-              <span className='text-[11px] text-muted-foreground'>设计稿口令是 {DEMO_PASSWORD}（真实校验在服务端）</span>
+              <span className='text-[11px] text-muted-foreground'>演示口令是 {DEMO_PASSWORD}（真实校验在服务端）</span>
             )}
           </span>
         </form>

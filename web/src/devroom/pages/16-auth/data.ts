@@ -35,7 +35,7 @@ export const LOGIN_SCENES: Array<Scene<LoginScene>> = [
   { key: 'pendingEmail', no: 4, label: '未激活·已发验证码', hint: '④ 未激活且验证码已入队：登录照常成功（能读），页面直接给「输入验证码」入口 + 60 秒冷却的重新发送。' },
   { key: 'pendingManual', no: 5, label: '未激活·等管理员', hint: '⑤ 未激活且发不出去（无发信账号 / 额度满）：提示已通知管理员，用户随时可再点重新发送（成功即回到 ④）。' },
   { key: 'rateLimited', no: 6, label: '尝试过于频繁', hint: '⑥ 429：读 Retry-After，按钮禁用并显示剩余秒数；限流分「按 IP 10/分」与「按账号 5/分」两道。' },
-  { key: 'captcha', no: 7, label: '需要图形验证码', hint: '⑦ 需要图形验证码（与邮箱验证码是两套机制，§11.6）：图块 + 输入框，可换一张；错误码 auth.captcha_required / auth.captcha_wrong。' },
+  { key: 'captcha', no: 7, label: '需要图形验证码', hint: '⑦ 需要图形验证码（与邮箱验证码是两套机制）：图块 + 输入框，可换一张；错误码 auth.captcha_required / auth.captcha_wrong。' },
 ];
 
 export type RegisterScene = 'form' | 'fieldErrors';
@@ -48,7 +48,7 @@ export const REGISTER_SCENES: Array<Scene<RegisterScene>> = [
 export type VerifyScene = 'input' | 'wrong' | 'rateLimited' | 'activated';
 export const VERIFY_SCENES: Array<Scene<VerifyScene>> = [
   { key: 'input', no: 1, label: '输入验证码', hint: '① 正常：POST /auth/email/verify { username, code }；码 6 位数字、10 分钟有效。' },
-  { key: 'wrong', no: 2, label: '验证码不正确', hint: '② 统一失败文案「验证码不正确或已过期」——不区分输错与过期，也不显示「还剩几次」（§11.4）。' },
+  { key: 'wrong', no: 2, label: '验证码不正确', hint: '② 统一失败文案「验证码不正确或已过期」——不区分输错与过期，也不显示「还剩几次」。' },
   { key: 'rateLimited', no: 3, label: '尝试过于频繁', hint: '③ 15 分钟内累计 10 次失败 → 429 + Retry-After。' },
   { key: 'activated', no: 4, label: '已激活', hint: '④ 成功：email_verified_at 与 activated_at 同时落、activation_pending 置 NULL，就地显示「已激活，去登录」。' },
 ];

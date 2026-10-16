@@ -319,7 +319,7 @@ it('四个反馈入口各是一条带了各自类型的链接（B2）', async ()
   expect(screen.getAllByRole('link', { name: '看全部反馈' })[0]!.getAttribute('href')).toBe('/issues?topic=t_1042');
 });
 
-it('编辑与删帖：不给宿主的跳转地址与回调就不渲染入口；给了就**去发帖页**（2026-10-15 拍板，帖内小弹层撤除）', () => {
+it('编辑与删帖：不给宿主的跳转地址与回调就不渲染入口；给了就**去发帖页**（帖内小弹层已撤除）', () => {
   const editHref = vi.fn((id: string) => '/new?edit=' + encodeURIComponent(id));
   render(<TopicView {...viewProps({ editHref })} />);
   const btn = screen.getByTestId('topic-edit');

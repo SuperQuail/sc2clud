@@ -295,7 +295,7 @@ export function ReviewStateDemoBar({
           onDesignAction?.();
         }}
       >
-        一个还没接线的按钮（设计稿）
+        一个还没接线的按钮
       </Button>
       {revealed ? <DesignActionNote /> : null}
       <span className='ml-auto text-[11px] text-muted-foreground'>

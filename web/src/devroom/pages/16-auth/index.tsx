@@ -43,8 +43,8 @@ export default function AuthPage() {
       <p className='text-[13px] leading-relaxed text-muted-foreground'>
         登录类页面：四个视图共用同一张 420 宽卡片。邮箱激活走
         <strong className='font-medium text-foreground'>6 位验证码</strong>
-        （拍板 §11：不发链接，换设备也能激活），所以「注册成功」直接落到「输入验证码」页、找回密码是「验证码 + 新密码」两步一页。
-        登录页另外把七种情形都做出来（拍板 §9.6）。下面这块虚线框是 DevRoom 的演示控制台，真实页面里没有它。
+        （不发链接，换设备也能激活），所以「注册成功」直接落到「输入验证码」页、找回密码是「验证码 + 新密码」两步一页。
+        登录页另外把七种情形都做出来。下面这块虚线框是 DevRoom 的演示控制台，真实页面里没有它。
       </p>
 
       <section

@@ -186,7 +186,7 @@ export default function SearchPage() {
         <KV k='结果行' v='帖子行右侧的回复/赞/浏览在窄屏收起' hint='@/ui/topic/topic-row 自己的 sm:flex 行为，本页不重复实现' />
       </Panel>
 
-      <Panel title='契约（照后端抄，不照设计稿猜）' note='forum/internal/app/search_endpoint.go + forum/internal/user/service.go:76'>
+      <Panel title='契约（照后端抄，不照界面猜）' note='forum/internal/app/search_endpoint.go + forum/internal/user/service.go:76'>
         <KV k='端点' v='GET /api/v1/search' hint='q 必填（空 → 400 common.invalid_input「搜索词不能为空」）' />
         <KV k='type' v='topics | users' hint='其它值**直接 400**，不静默当成 topics（否则用户以为在搜人、其实在看帖子）' />
         <KV k='limit' v='默认 10，上限 20' hint='maxSearchLimit = 20' />
@@ -196,7 +196,7 @@ export default function SearchPage() {
         <KV k='用户档的 q' v='1–32 个字' hint='超长返回 400（user.Search 的校验）；昵称重名时后端给 ambiguous=true，前端必须用 @handle 区分' />
       </Panel>
 
-      <Panel title='这一版明确没做' note='设计稿别装作做完了；下面每条都是下一次接后端时要补的'>
+      <Panel title='这一版明确没做' note='下面每条都是下一次接后端时要补的'>
         <ul className='m-0 flex flex-col gap-1 pl-4 text-[12px] leading-relaxed text-muted-foreground'>
           <li>没接后端：结果来自 14-home 的假数据，过滤是前端子串匹配（真检索是 bigram + tsvector 两档）。</li>
           <li>没做命中词高亮：后端 <b>不返回命中片段</b>（TopicCardDTO 里没有 highlight 字段），要做就得先加契约。</li>

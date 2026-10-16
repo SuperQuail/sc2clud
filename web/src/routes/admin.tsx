@@ -96,7 +96,7 @@ export function AdminLayout() {
       <Empty
         icon={Lock}
         title='管理后台需要登录'
-        hint='后台的每一项都要权限点，未登录时连列表都不请求（前端方案 §6）。'
+        hint='后台的每一项都要权限点，未登录时连列表都不请求。'
         action={<Button primary href={appPath('login?next=' + encodeURIComponent(routePath('admin/users')))}>去登录</Button>}
       />
     );
@@ -111,7 +111,7 @@ export function AdminLayout() {
         icon={Lock}
         title='没有这一屏的权限'
         hint={
-          '当前账号缺少 ' + PERM_BY_SCREEN[screen] + '（前端方案 §6：缺权限直接渲染 403，不发无谓请求）。' +
+          '当前账号缺少 ' + PERM_BY_SCREEN[screen] + '（缺权限直接渲染 403，不发无谓请求）。' +
           '真正的拦截在后端 authz，这里只是不让你白跑一趟。'
         }
         action={<Button href={appPath('')}>回首页</Button>}

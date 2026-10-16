@@ -117,7 +117,7 @@ export const APPEAL_TYPES: AppealTypeConfig[] = [
     type: 'review_reject',
     label: '帖子审核被驳回',
     intro:
-      '帖子被判定未通过时的申诉。登录后提交（拍板 §10.10：端点只认作者本人），被驳回的帖子只会被申诉一次。',
+      '帖子被判定未通过时的申诉。登录后提交（只认作者本人），被驳回的帖子只会被申诉一次。',
     ref: {
       label: '被驳回的帖子链接或标题',
       guestRequired: true,
