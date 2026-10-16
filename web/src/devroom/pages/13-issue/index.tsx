@@ -174,7 +174,7 @@ export default function IssuePage() {
         ...prev,
         [id]: list.map((c) =>
           c.id === parentId
-            ? { ...c, replies: { total: (c.replies?.total ?? 0) + 1, items: [...(c.replies?.items ?? []), { ...comment, op: true }] } }
+            ? { ...c, replies: { total: (c.replies?.total ?? 0) + 1, items: [...(c.replies?.items ?? []), comment] } }
             : c,
         ),
       };

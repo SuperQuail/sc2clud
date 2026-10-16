@@ -182,7 +182,6 @@ export const COMMENTS: Record<string, IssueComment[]> = {
       createdAt: '10 月 11 日',
       likes: 12,
       dislikes: 0,
-      op: true,
       replies: {
         total: 2,
         previewCount: 2,
@@ -216,7 +215,7 @@ export const COMMENTS: Record<string, IssueComment[]> = {
   ],
   '125': [{ id: 'c8', author: TANG, body: '界面问题，我把它挪到这一批修。', createdAt: '10 月 8 日', likes: 0, dislikes: 0 }],
   '124': [
-    { id: 'c9', author: TANG, body: '已修复，v1.1.3 起读档保留等级。', createdAt: '10 月 6 日', likes: 15, dislikes: 0, op: true },
+    { id: 'c9', author: TANG, body: '已修复，v1.1.3 起读档保留等级。', createdAt: '10 月 6 日', likes: 15, dislikes: 0 },
     { id: 'c10', author: YUN, body: '验证过了，好了。', createdAt: '10 月 7 日', likes: 3, dislikes: 0 },
   ],
   '123': [{ id: 'c11', author: LIN, body: '表格已上，见编辑器工具栏。', createdAt: '10 月 5 日', likes: 6, dislikes: 0 }],

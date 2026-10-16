@@ -322,7 +322,7 @@ export function TopicView({
                 <section className='flex flex-col gap-2 rounded-lg border border-destructive/40 bg-destructive/8 px-3 py-3'>
                   <span className='text-[13px] font-medium text-foreground'>删除这篇帖子？</span>
                   <span className='text-[12px] text-muted-foreground'>
-                    删除后帖子从列表里消失，正文会被标记为作者删除（平台侧仍留审计痕迹，不是物理删除）。
+                    删除后帖子从列表与分区里消失，标题与正文一起不再可读（平台侧仍留审计痕迹，不是物理删除）。
                   </span>
                   <span className='flex flex-wrap items-center gap-2'>
                     <Button
