@@ -174,6 +174,12 @@ for (const action of actions) {
     const value = rest.join(':').slice(name.length + 1);
     await cdp.send('Network.setCookie', { name, value, url: 'http://191.40.41.97/dev/' , path: '/dev' });
     await sleep(150);
+  } else if (kind === 'diag2') {
+    // 全量 dialog 清点：open 属性 / DOM 顺序 / rect —— 层叠证据件。
+    const info2 = await cdp.eval<Record<string, unknown>>(
+      "(async () => { const all = [...document.querySelectorAll('dialog')].map((d, i) => { const r = d.getBoundingClientRect(); return { i, open: d.open, cls: String(d.className).slice(0, 40), x: Math.round(r.x), y: Math.round(r.y), w: Math.round(r.width), h: Math.round(r.height) } }); return { all, active: String(document.activeElement?.className ?? '').slice(0, 40) }; })()",
+    );
+    console.log('DIAG2 ' + JSON.stringify(info2));
   } else if (kind === 'diag') {
     // 弹层诊断：两颗 dialog 的位置/命中点。修 stacking 的证据件。
     const info = await cdp.eval<Record<string, unknown>>(
