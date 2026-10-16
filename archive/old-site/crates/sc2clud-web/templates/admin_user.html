@@ -1,0 +1,102 @@
+{% extends "base.html" %}
+{% block body_class %}site-page page-admin_user{% endblock %}
+{% block page_label %}用户管理{% endblock %}
+
+{% block title %}编辑用户 · {{ user.display_name }}{% endblock %}
+
+{% block content %}
+<div class="settings">
+  <aside class="settings-nav">
+    <div class="settings-user">
+      {% if let Some(avatar) = user.avatar %}
+      <img class="avatar avatar-lg" src="/avatar/{{ avatar }}" alt="" width="56" height="56">
+      {% else %}
+      <img class="avatar avatar-lg" src="/static/art/miyin-chibi-160.webp" alt="" width="56" height="56">
+      {% endif %}
+      <div>
+        <strong>{{ user.display_name }}</strong>
+        <div class="meta">@{{ user.handle }}</div>
+        <div class="meta">{{ user.role_label }}</div>
+      </div>
+    </div>
+    <nav>
+      <a href="#profile">基本资料</a>
+      <a href="#quota">磁盘预算</a>
+      <a href="#access">权限与状态</a>
+      <a href="/admin/users/overview">← 返回用户列表</a>
+    </nav>
+  </aside>
+
+  <div class="settings-body">
+    <section class="card" id="users">
+      <h2>账号概览</h2>
+      <ul class="admin-facts">
+        <li><span>登录名</span><code>{{ user.handle }}</code></li>
+        <li><span>显示名</span><b>{{ user.display_name }}</b></li>
+        <li><span>权限等级</span><b>{{ user.role_label }}</b></li>
+        <li><span>电子邮箱</span><b>{{ user.email }}</b></li>
+        <li><span>磁盘预算</span><b>{{ user.quota_human }}</b><span class="meta">已用 {{ user.used_human }}</span></li>
+        <li><span>最后在线</span><b>{{ user.last_seen }}</b></li>
+        <li><span>注册于</span><b>{{ user.created_at }}（{{ user.created_from_now }}）</b></li>
+        <li><span>状态</span>{% if user.activated %}<span class="tag ok" title="可以登录、发帖与上传">已激活</span>{% else %}<span class="tag warn" title="不能发帖与上传，需要管理员激活">未激活</span>{% endif %}{% if user.trusted %}<span class="tag ok">信任</span>{% endif %}{% if user.is_self %}<span class="tag">这是你自己</span>{% endif %}</li>
+      </ul>
+    </section>
+
+    {% if is_super %}
+    <section class="card" id="profile">
+      <h2>基本资料 <span class="spacer">超级管理员可改</span></h2>
+      <form class="stack" method="post" data-async data-after="refresh" action="/admin/users/{{ user.id }}/rename">
+        <input type="hidden" name="csrf" value="{{ csrf }}">
+        <label>显示名<input type="text" name="display_name" value="{{ user.display_name }}" maxlength="20" required></label>
+        <p class="hint">登录名 @{{ user.handle }} 是账号标识，不可修改。</p>
+        <button class="btn sm" type="submit">保存显示名</button>
+      </form>
+
+      <form class="stack" style="margin-top:16px" method="post" data-async data-after="refresh" action="/admin/users/{{ user.id }}/role">
+        <input type="hidden" name="csrf" value="{{ csrf }}">
+        <label>权限等级
+          <select name="role"{% if user.is_self %} disabled{% endif %}>
+            {% for role in roles %}
+            <option value="{{ role.0 }}"{% if role.0 == user.role %} selected{% endif %}>{{ role.1 }}</option>
+            {% endfor %}
+          </select>
+        </label>
+        <p class="hint">{% if user.is_self %}不能修改自己的权限等级。{% else %}普通用户 / 认证开发者 / 网站管理员 / 超级管理员。{% endif %}</p>
+        <button class="btn sm" type="submit"{% if user.is_self %} disabled{% endif %}>保存等级</button>
+      </form>
+    </section>
+    {% endif %}
+
+    <section class="card" id="quota">
+      <h2>磁盘预算</h2>
+      <form class="stack" method="post" data-async data-after="refresh" action="/admin/users/{{ user.id }}/quota">
+        <input type="hidden" name="csrf" value="{{ csrf }}">
+        <label>预算（GB）<input type="number" name="quota_gb" value="{{ user.quota_gb }}" min="0" max="10240" step="0.5" required></label>
+        <p class="hint">当前 {{ user.quota_human }}，已用 {{ user.used_human }}；填 0 表示不分配。</p>
+        <button class="btn sm" type="submit">保存预算</button>
+      </form>
+    </section>
+
+    <section class="card" id="access">
+      <h2>权限与状态</h2>
+      <div class="actions-inline">
+        <form method="post" data-async data-after="refresh" action="/admin/users/{{ user.id }}/trusted">
+          <input type="hidden" name="csrf" value="{{ csrf }}">
+          <input type="hidden" name="trusted" value="{% if user.trusted %}0{% else %}1{% endif %}">
+          <button class="btn ghost {% if user.trusted %}danger{% else %}ok{% endif %} sm" type="submit">{% if user.trusted %}取消信任{% else %}设为信任{% endif %}</button>
+        </form>
+        {% if !user.is_self %}
+        <form method="post" data-async data-after="refresh" action="/admin/users/{{ user.id }}/{% if user.activated %}deactivate{% else %}activate{% endif %}">
+          <input type="hidden" name="csrf" value="{{ csrf }}">
+          <button class="btn {% if user.activated %}danger{% else %}ghost{% endif %} sm" type="submit">{% if user.activated %}停用账号{% else %}激活账号{% endif %}</button>
+        </form>
+        {% endif %}
+        <a class="btn ghost sm" href="/u/{{ user.handle }}">查看主页</a>
+      </div>
+      <p class="hint">被信任的账号发帖只走自动审核（审核机拿不准的直接放行，硬规则仍然拦得住）。</p>
+    </section>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}<script type="module" src="/static/islands/admin.js"></script>{% endblock %}

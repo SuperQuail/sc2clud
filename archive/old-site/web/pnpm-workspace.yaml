@@ -1,0 +1,4 @@
+# pnpm 11 的配置入口（package.json 里的 pnpm 字段已不再被读取）。
+# 只放行 esbuild 的安装脚本（Vite 依赖它），其余依赖的脚本一律不执行。
+allowBuilds:
+  esbuild: true

@@ -1,0 +1,6 @@
+# 与 HSCL（既有项目）保持一致，避免跨仓库复制代码时格式来回抖。
+edition = "2024"
+max_width = 100
+newline_style = "Unix"
+use_field_init_shorthand = true
+use_try_shorthand = true

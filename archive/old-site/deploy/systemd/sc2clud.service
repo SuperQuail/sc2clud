@@ -1,0 +1,57 @@
+# ============================================================
+# SC2clud systemd unit
+# 安装到 /etc/systemd/system/sc2clud.service
+# ============================================================
+
+[Unit]
+Description=SC2clud 社区站（Rust + axum + SQLite）
+Documentation=file:///srv/sc2clud/docs/DEPLOY.md
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=sc2clud
+Group=sc2clud
+WorkingDirectory=/srv/sc2clud
+ExecStart=/srv/sc2clud/sc2clud serve
+# 密钥等敏感变量只放在这个文件里（chmod 600），不进仓库
+EnvironmentFile=-/srv/sc2clud/sc2clud.env
+
+Restart=on-failure
+RestartSec=2
+
+# ---------- 2 vCPU / 2 GB 的资源边界 ----------
+# 应用常驻内存预算 ≤ 150 MB：MemoryHigh 先限速，MemoryMax 是硬墙。
+MemoryHigh=128M
+MemoryMax=192M
+# OOM 时优先牺牲应用，保住 nginx 与数据库（数值越大越先被杀）。
+OOMScoreAdjust=200
+TasksMax=256
+LimitNOFILE=16384
+# 单进程 + 少量任务线程：给足调度权重但不抢 CPU
+CPUWeight=100
+IOWeight=100
+
+# ---------- 加固 ----------
+NoNewPrivileges=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectSystem=strict
+ProtectHome=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+RestrictNamespaces=true
+RestrictRealtime=true
+LockPersonality=true
+MemoryDenyWriteExecute=true
+SystemCallFilter=@system-service
+SystemCallErrorNumber=EPERM
+CapabilityBoundingSet=
+# 应用只写自己的数据目录（数据库、blob、日志）
+ReadWritePaths=/srv/sc2clud/data
+
+[Install]
+WantedBy=multi-user.target

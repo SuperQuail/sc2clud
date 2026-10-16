@@ -1,0 +1,367 @@
+# AGENTS.md — SC2clud
+
+> 本文件是本仓库的**项目约定**，面向 AI 编码代理与人类协作者。
+> 动手改代码前请先完整阅读；文档与代码冲突时，以代码为准并顺手修正文档。
+
+---
+
+## 1. 项目标识
+
+| 项 | 值 |
+| --- | --- |
+| 项目名 | **SC2clud** |
+| 定位 | 社区站（帖 / 评论 / 用户 / 通知）+ 轻量网盘 |
+| 部署形态 | 单机 Linux，2 vCPU / 2 GB RAM / 10 Mbps 对称带宽 |
+| 语言 | Rust（edition 2024，工具链固定在 `rust-toolchain.toml`） |
+| 本地仓库 | `D:\Code\Rust\SC2clud\site`（外层 `SC2clud\` 放密钥，永不入库） |
+| 当前版本 | `0.1.0-alpha.1`（`Cargo.toml` 的 `[workspace.package] version`） |
+| 状态 | 🚧 基础工作区：核心链路已跑通并有端到端冒烟测试 |
+
+## 2. 硬约束（技术栈由它们推导，不是偏好）
+
+| 约束 | 数值 | 对技术栈的强制影响 |
+| --- | --- | --- |
+| 内存 | 2 GB 全机 | 应用常驻 ≤ 150 MB；排除 JVM 级重运行时 |
+| 带宽 | 10 Mbps ≈ 1.25 MB/s 全站共享 | **网络是唯一瓶颈**；文件字节不得经过应用进程 |
+| 磁盘 | 单机块存储 | 吞吐比带宽富余两个数量级，可放心做多副本、多档缩略图 |
+| CPU | 2 核、长期空闲 | 定位为「用 CPU 换带宽」的资源池（预压缩、异步转码） |
+
+**选型依据的顺序**（不是语言性能）：① 常驻内存；② 部署与运维复杂度；③ 文件路径安全性；④ 开发效率。
+
+## 3. 技术栈
+
+| 层 | 选型 |
+| --- | --- |
+| 语言 / 运行时 | Rust 2024 + tokio（文件 IO 走流式异步，不阻塞 reactor） |
+| Web | axum 0.8 + tower / tower-http（限流、超时、panic 兜底用中间件组合） |
+| 模板 | askama（编译期模板，服务端渲染） |
+| 元数据库 | SQLite（WAL）+ sqlx（运行时查询，见 §9 的迁移路径） |
+| 文件存储 | 内容寻址本地盘（`StorageBackend` trait，预留 S3 实现） |
+| 边缘 | nginx：sendfile 直出、secure_link 签名校验、limit_rate / limit_conn / limit_req、brotli_static |
+| 前端 | 服务端渲染为默认；交互密集处挂 Vue 3 + TypeScript + Vite 前端岛 |
+| 观测 | tracing + 异步批量落盘；`/healthz`、`/readyz` |
+| 错误 | thiserror（领域）+ anyhow（应用边界） |
+
+## 4. 仓库结构
+
+```text
+site/
+├── crates/
+│   ├── sc2clud-core/     领域核心：配置、路径安全、签名、限速、计数聚合（不依赖 Web/DB）
+│   ├── sc2clud-storage/  StorageBackend trait + LocalFs（内容寻址）；s3 feature 预留实现位
+│   ├── sc2clud-db/       SQLite 连接与 PRAGMA、编译期内嵌迁移、仓储函数
+│   ├── sc2clud-web/      axum 路由、askama 模板、流式上传、签名下载
+│   └── sc2clud-app/      可执行入口（serve / check / version）
+├── migrations/           编译期嵌入二进制的 SQL 迁移
+├── deploy/               nginx / systemd / sysctl / install.sh
+├── docs/                 TECH_STACK、ARCHITECTURE、DEPLOY、BUDGETS
+├── scripts/smoke.ps1     端到端冒烟测试（自拉起服务，29 项检查）
+└── web/                  Vue 3 + TS + Vite 前端岛（产物进 sc2clud-web/static/islands）
+```
+
+**依赖方向（不可违反）**：`core` ← `storage` / `db` ← `web` ← `app`。
+`core` 不得依赖 Web 框架、数据库驱动、具体存储实现，也不得启动异步运行时。
+
+## 5. 常用命令
+
+```bash
+cargo fmt --all                                   # 格式化
+cargo fmt --all -- --check                        # CI 校验
+cargo clippy --workspace --all-targets --all-features -- -D warnings
+cargo test --workspace                            # 单元测试
+pnpm -C web build                                 # 前端岛（先前端，后后端）
+node scripts/check-size.mjs        # 文件体量（> 500 行必须登记豁免并给出重构目标）
+node scripts/check-budgets.mjs     # 前端体积与死产物
+pwsh -File scripts/smoke.ps1                      # 端到端冒烟（自动起停服务）
+cargo run -p sc2clud -- check                     # 配置与依赖自检
+```
+
+## 6. 不可随手改动的设计决策
+
+1. **文件字节不进应用进程**。上传是固定缓冲的流式转发；下载只签发 URL，由 nginx `sendfile` 直出。
+   任何「先把文件读进 `Vec<u8>`」的写法都违反 §2 的硬约束。
+2. **下载有两种下发方式，都满足「字节不进应用进程」**（`download.mode`）：
+   - `secure_link`：应用 302 到签名 URL，nginx 自校验。表达式 `"{expires}{uri}{remote_addr} {secret}"`
+     必须与 `sc2clud-core/src/sign.rs` 逐字节一致；`bind_client_ip=false` 时 nginx 侧要同时删掉 `$remote_addr`。
+     需要 nginx 带 `--with-http_secure_link_module`（官方包有，**宝塔自编译的常常没有**）。
+   - `x_accel`：应用回 `X-Accel-Redirect`，nginx 从 `internal` location 直出（任何 nginx 都行，
+     授权在请求时由应用判定）。`deploy/install.sh` 会探测能力并自动选择。
+   stock nginx 只有 MD5（无 SHA-256 变体），「HMAC」是靠把密钥拼进被哈希表达式实现的带密钥 MAC。
+3. **内容寻址 + 引用计数**：同一份内容只落一份盘；`files` 软删除、`blobs.refcount` 归零才真删盘。
+4. **写热点禁止每请求 UPDATE**：浏览数、下载数先进 `Counters` 内存聚合，由后台任务批量落库。
+5. **所有落盘路径必须过 `safety.rs`**：拼接后 `ensure_within` 白名单校验，用户文件名先过 `safe_file_name`。
+6. **页面体积是硬预算**（见 `docs/BUDGETS.md`）：列表页 HTML ≤ 30 KB、首屏 JS ≤ 60 KB（brotli 后）。
+   不要为了「方便」引入整站 SPA、CSS-in-JS 或整套 UI 组件库。
+6.5 **权限树以 `docs/PERMISSIONS.md` 为准**（角色 × 权限位 × 分区门槛 × 用户组规则 × 资源级规则）。
+   改权限必须同时改三处：`core::auth::min_role()`、`permission_tests`、那份文档。
+
+7. **发帖权限与可见性**（`core::review`，改动请同步 `AGENTS.md` 与测试）：
+   - 讨论 / 资源 / 转载三类帖子对**所有已激活用户**开放，不设发布门槛；
+   - **管理员及以上发帖跳过审核机**，直接发布（`review_for_author`，`automatic: false`）；
+   - 审核中（`pending`）**只有作者本人与管理员及以上可见**，被拒（`rejected`）只有管理员可见；
+   - 回复（`comments`）**没有图片列**——这是「回复不能带图」的数据层保证，不要在回复里加图。
+8. **本站不承载启动器产物的字节**。`releases` / `release_assets` 只存版本与**外部直链**，
+   下载走 `/api/v1/launcher/assets/{id}/go` 做 302 转链（便于统计与换镜像）。
+   10 Mbps 的单机小站拉安装包会把出口带宽吃光——这条是产品约束，不是实现细节。
+## 6.6 前端开发规范（2026-10 起强制）
+
+**不要再往 askama 模板里写业务 JS、内联 `<style>`、或者用 `fetch` 拼散装逻辑。**
+模板只负责「首屏结构 + 数据」；**交互属于前端岛**（`web/` 里的 Vue 3 + TS + Vite）。
+
+| 场景 | 做法 |
+| --- | --- |
+| 纯展示（列表、详情、表单初值） | askama 服务端渲染，SEO 与首屏不依赖 JS |
+| 有交互（筛选、切换、提交、实时反馈） | 写成 `web/src/*.vue` 岛，挂在 `[data-island="xxx"]` 上 |
+| 数据读写 | 用 **JSON API**（`/api/v1/**`）或表单端点；岛内 `fetch` 只出现在一个 `api.ts` 里 |
+| 样式 | 岛自己的样式写在 `.vue` 的 `<style scoped>`；页面级样式放 `static/*.css`，**禁止内联 `<style>`** |
+| 类型 | 岛的 API 出入参必须有 TS 类型，禁止 `any` |
+
+流程：`pnpm -C web build` → 产物进 `crates/sc2clud-web/static/islands/` → 模板里 `<script type="module" src="/static/islands/<name>.js">`。
+预算：首屏 JS（brotli 后）≤ 60 KB / 岛（见 `docs/BUDGETS.md`），Vue 运行时约 15 KB。
+
+反例（都发生过，别再犯）：模板里塞 `<style>` 又被 `{% if %}` 夹住导致样式失效；
+把 `<select>` 写进 `<style>` 块导致浏览器忽略；用行号范围猜模板块边界导致删错内容。
+改模板一律「整块读出来 → 整块替换 → 立刻编译」；改前端一律走岛。
+### 文件体量门禁（强制，告警制）
+
+**超过 500 行的源码文件一律视为「有过耦合风险」**，必须检查并重构。
+**没有豁免**：清单只记录「还没重构」与重构目标，不代表可以不重构。
+
+1. 清单在 `scripts/check-size.mjs` 的 `PENDING` 表里，每条都要写**重构目标**；
+2. 门禁**每次运行都打印完整告警清单**（永不静默）——即使暂时没时间重构，也要一直看得见；
+3. 行数只能减不能增（涨了即失败）；新出现的 > 500 行文件未登记即失败；
+4. 缩到 500 行以内或文件删除后，对应清单条目必须删掉（否则失败）；
+5. `node scripts/check-size.mjs`，随其它门禁一起跑。
+### 不要防御性兜底
+兜底会掩盖真实故障、拖慢定位、并让后续开发以为环境是好的 —— 这是负收益。
+
+| 不要写 | 为什么 |
+| --- | --- |
+| 为了「没有 JS 也能用」而让服务端再渲染一份同样的结构 | 本站前端岛就是预期运行环境；两份结构只会长期不同步（实测已经踩过：模板 textarea 与编辑器内容不一致） |
+| 读不到元素就静默 return / 静默降级 | 元素缺失是**bug**，应该报错或直接让它可见地失败 |
+| 捕获异常后仅打日志/吞掉，让页面看起来正常 | 用户与开发者都会以为功能可用；应当把错误显示出来（例如 `error` 状态 + 明确文案） |
+| 为「理论上可能」的分支写兼容代码（未验证、无需求） | 属于猜测性代码，删掉；真出问题时再按实际报错修 |
+
+**仍然必须保留**：信任边界的校验（上传魔数、路径白名单、权限、CSRF）、会造成数据丢失的检查、
+安全相关逻辑、可访问性。这些不是兜底，是正确性。
+
+### 渐进重构义务（强制，2026-10 起）
+**规则**：每次开发，凡是你**触及到的范围**（打开并修改过的模板/脚本/样式/组件），其中的糟糕写法必须
+**当场按当前规范重构掉** —— 不是「以后再说」，也不是「这次只加不改」。
+
+| 判断 | 做法 |
+| --- | --- |
+| 我改了这段模板，它旁边还有内联 `<script>` / `<style>` / 手写业务逻辑 | **一起搬走**：逻辑进 `web/src`（控件或数据层），样式进 `static/*.css` |
+| 我加了一个功能，发现同一件事在别处已有一份实现 | 合并成一份（控件优先），旧的删掉 |
+| 范围太大，一轮做不完 | 在提交信息与回复里**明确记录**剩余部分与拆分步骤，下一轮继续，不允许留成「以后」 |
+| 只是路过的文件（没改它） | 不强制；但一旦为了当前需求打开并改动它，就落入上面的规则 |
+
+边界就是「当前需求的边界」：不要顺手重写无关模块，也不要因为「反正要重构」就把不相干的文件卷进来。
+
+### 控件库：先查现成的，别自己造
+**控件：自建 `web/src/ui/`，行为一律交给 Radix Primitives** —— 我们只写外观与用法，不手写键盘/焦点/ARIA。
+
+| 层 | 放哪 | 规则 |
+| --- | --- | --- |
+| 基础件 | `web/src/ui/` | `Button` / `Field` / `Input` / `Textarea` / `Select`；样式统一在 `ui.css`；**新控件先看这里有没有** |
+| 业务组件 | `web/src/islands/<岛名>/` | 只组合基础件，不重复实现交互 |
+| 数据层 | `web/src/lib/` | 类型 + fetch；**全站只有这里允许出现 fetch** |
+| 岛入口 | `web/src/islands/<岛名>/main.tsx` | 读 `[data-island]` 上的 data-* 初值并挂载 |
+
+| 需求 | 用什么 |
+| --- | --- |
+| 下拉 / 弹窗 / 气泡 / 标签页 / 开关 / 日期 | Radix Primitives（`@radix-ui/react-select` 等，已装） |
+| 图标 | Heroicons（内联 SVG，MIT） |
+| 表单校验 / 状态管理 | 暂不引入；原生 + hooks 足够 |
+| 整套 UI 组件库（Ant Design / MUI …） | **不要**：第二套视觉 + 数百 KB |
+| CSS-in-JS、整站 SPA | **不要**（§6 预算与部署形态不允许） |
+
+体积台账（引入新控件后更新）：
+
+| 岛 | 原始 | gzip | 说明 |
+| --- | --- | --- | --- |
+| `issues.js` | 228 kB | 77.7 kB | React 18 + ReactDOM + Radix Select + 自建 ui/ |
+
+**前端改完必须**：`pnpm -C web build` → 上传产物（`deploy/islands-push.ps1`）→ 才跑 `deploy/dev.sh`；
+否则 dev 上是旧 bundle（`static/islands/` 不入库，服务器没有 Node）。
+- 新增配置项：改 `sc2clud-core/src/config.rs`（含默认值与 `validate`），并同步 `.env.example` 与 `docs/`。
+- 新增迁移：加 `migrations/000N_xxx.sql`，不要改动已发布的迁移文件。
+- 有外部副作用的函数必须有测试：流式哈希、限速、路径校验、引用计数、签名都是。
+
+## 8. 质量门禁（提交前必过）
+
+```bash
+cargo fmt --all -- --check
+cargo clippy --workspace --all-targets --all-features -- -D warnings
+cargo test --workspace
+pwsh -File scripts/smoke.ps1     # 改动触及上传/下载/存储/计数时必跑
+```
+
+## 9. 已知的脚手架边界（下一步要补的）
+
+| 项 | 现状 | 下一步 |
+| --- | --- | --- |
+| **自定义分区（新建分区）** | **根因比缺界面更深**：分区 key 写死在 `core::resource::PostSection` **枚举**里，而 `routes::ordered_sections` 用 `PostSection::parse(&key)` 过滤 → **不认识的 key 会被静默丢弃**（2026-10-12 实测：手写 SQL 插入 `emperor`/皇帝区，DB 有行、首页左栏不显示）。管理面板也因此只能改已有分区（排序/封面/权限），没有新建入口 | 把分区从枚举改成「表驱动」：`PostSection` 退化为字符串包装 + 默认展示名/图标查表；`ordered_sections` 不再 parse 过滤；再在管理面板加「分区管理」（新建/改名/归档/删除确认）。**改表驱动时必须注意两点**：① 现有 5 个 key 与帖子 `section` 列强绑定，语义不能变，否则历史帖找不到分区；② 左栏图标按 `nav-{key}.webp` 取图，自定义 key 会缺图，需要兜底图。另：生产库已插了一行 `emperor`/皇帝区（2026-10-12，position=5）——它在**管理面板的「分区发言权限」矩阵里已经能看见**（那一栏直接读 sections 表），但**首页左栏/标签页看不到**（ordered_sections 的枚举过滤），这进一步印证问题只在「枚举过滤」这一层 |
+| **管理页「自检面板」链接 404** | `crates/sc2clud-web/templates/admin.html:22` **无条件**渲染 `<a href="/debug">自检面板</a>`，但 `lib.rs:118` 只在 `server.debug_pages = true` 时才注册该路由（注释：关闭时路由根本不存在）→ 生产（`debug_pages=false`）点它必然 404（2026-10-12 用户实测 `https://www.xn--xpra07ba.fun/debug`） | 用同一个开关门控这个链接（AdminTemplate 加一个 `debug_pages` 字段 + `{% if %}`），或把自检面板改成常驻的只读页；顺手检查其它模板里有没有同类「链接不跟开关走」 |
+| **用户组的「允许/禁止」只能整组设置，且 ACL 的 chips UI 有问题** | 后端 group_section_rules **已有 4 个布尔**（can_post / can_reply / deny_post / deny_reply，见 models.rs 的 GroupSectionRuleRow 注释），但管理面板的「允许的用户组」只有**一个 chips 列表**，save_section_acl 的语义写死为「允许发帖**且**允许评论」→ **无法分别设置「能发帖」与「能回复」**（2026-10-12 用户提出）。UI 现状：未选中的 chip 是灰暗药丸，看起来像禁用/坏掉（与选中的绿色 ✔皇帝 对比强烈），分组也只有一个维度 | ① 把 chips 拆成两组，或改成「每行多个态」（允许发帖 / 允许回复 / 禁止）—— 数据层不用动；② save_section_acl 的 groups 字段扩成带动作的结构（如 groups_post / groups_reply），注意兼容旧的单值语义；③ UI 用控件库的状态样式区分「未选 / 已允许发帖 / 已允许回复 / 已禁止」，别再用灰药丸表达「未选」 |
+| **编辑用户（含用户组勾选）保存报 422** | 2026-10-12 用户实测：管理页编辑用户保存时提示「资料已保存，但请求失败（422）」。422 = axum 的表单/JSON 提取器**拒绝了请求体**（不是权限、也不是 404）。已排除：`/admin/groups/update` 路由存在、用户组编辑表单字段与 `GroupUpdateForm`（csrf/id/name/description）完全一致 | 查两条线索：① 前端**控件发的内容类型与后端提取器不匹配**（`AdminUsers.tsx` 里编辑弹窗走的是 JSON 还是 URLSearchParams？后端 `update_user` 收的是 `Form` 还是 `Json`？）——同类 bug 本月已出现两次（社区开关缺 enabled 字段 → 422；inbox 内联脚本语法错）；② `EditUserForm` 的字段与弹窗实际提交的字段逐个对（尤其用户组：后端若期望 `groups: Vec<i64>` 而前端发了逗号串或 JSON 数组，就会 422）|
+| **管理员改他人简介**的界面 | 后端 `repo::set_bio` 已支持（同一函数，带审核意见） | 在 `/admin/user/{id}` 上加一个表单 |
+| 缩略图 / 转码 | 表与队列就绪（`post_images` / `image_jobs`），**工作线程未实现** | 接 `image` crate 的异步压缩线程 + 原图保留 API |
+| 分片续传 | 建表与仓储就绪（`upload_sessions`），HTTP 分片接口未接 | 提供 `POST/PATCH` 分片接口 + 合并 |
+| S3 后端 | `StorageBackend` 抽象已定，`S3Backend` 是返回 `Unsupported` 的占位 | 补 SigV4 预签名与分片上传 |
+| sqlx 编译期校验 | 用运行时查询（避免构建依赖数据库） | schema 稳定后切 `query!` + `cargo sqlx prepare` 离线缓存 |
+| 启动器下载页 | `releases` 索引与转链就绪，页面与 API 未接 | 补 `/download` 与 `/api/v1/launcher/latest` |
+| 消息中心「已静音内容」列表 | 静音写入 `notification_mutes`，但**没有取消静音的入口** | 加一个「不再通知的内容」列表 + 恢复 |
+| SSE 广播范围 | 进程内 `tokio::broadcast`：单进程够用 | 多实例部署时换跨进程通知（或依赖 30 秒轮询兜底） |
+| **收款码图片读不出来（404）** | `add_payment_channel` 只写 `payment_channels`，而 `serve_image`（`/img/{hash}`）只认 `post_images` 里登记过的 hash —— 两处对不上，**上传成功但图片一律 404**（设置页与打赏弹窗都显示裂图） | 给收款码单独一条读取路径，或让 `serve_image` 也认 `payment_channels`。收款码本就是给人扫的公开图，可放心直出 |
+
+### 头像实现（已完成，留档）
+
+| 项 | 决定 |
+| --- | --- |
+| 压缩位置 | **在用户浏览器里压**（canvas），服务器只收结果——2 vCPU 的机器不花算力在转码上 |
+| 体积上限 | 成品 **≤ 64 KB**（前端循环降质量/尺寸直到达标，服务端再校验一次） |
+| 选区 | 用户自己框选裁剪区域（方形），前端预览 |
+| 尺寸 | 建议输出 256×256 WebP/JPEG，够 40px 顶栏与 48px 列表用 |
+| 存储 | 复用内容寻址存储（同一张头像多人用只落一份），`users.avatar_hash` 指向它 |
+| 读取 | `/avatar/{hash}`，同帖子图片走 nginx `/_img/` 直出（字节不进应用进程） |
+| 权限 | 只有本人能换头像；管理员可在面板里清掉违规头像 |
+| 展示位 | 顶栏、帖子卡片作者、回复作者、管理员面板用户表 |
+| 上传接口 | `POST /api/v1/me/avatar`（登录 + 已激活 + 磁盘闸门 + 魔数校验 + ≤64KB） |
+
+## 10. 敏感数据
+
+仓库**外层**目录（`D:\Code\Rust\SC2clud\`）放 SSH 私钥与生产环境变量，不属于任何 git 仓库：
+`secrets/ssh/`、`secrets/env/production.env`。仓库内只保留 `.env.example` 模板。
+不要在外层执行 `git init`，也不要把 `secrets/` 拷进 `site/` 或对它建软链接。
+
+## 11. 开发与测试流程：先 dev，后生产
+
+站点有**两个实例**，**各自的二进制与数据**（`dev.sh` 只写测试端，`promote.sh` 才发布到生产）：
+
+| 实例 | 端点 | 数据目录 | 用途 |
+| --- | --- | --- | --- |
+| 生产 | `/`（对外） | `/srv/sc2clud/data`（二进制 `/srv/sc2clud/sc2clud`） | 只放已验证的版本 |
+| 测试 | `/dev/`（对外，nginx `sub_filter` 补前缀） | `/srv/sc2clud-dev/data`（二进制 `/srv/sc2clud-dev/sc2clud`） | **所有开发与测试都在这里** |
+
+流程：
+
+```bash
+# 1. 在 /dev 上发布新版本（只重启测试实例，生产继续跑旧进程）
+bash deploy/dev.sh
+
+# 2. 在 http://<域名>/dev/ 上验证（登录、点按钮、看页面）
+#    /dev 与生产同域，所以 Cookie 名必须不同（SC2CLUD_COOKIE_NAME），
+#    否则两边会话互相顶掉——见 deploy/systemd/sc2clud-debug.service
+
+# 3.（可选）让 /dev 用生产数据来测：只读快照，不碰生产
+bash deploy/dev-sync.sh
+
+# 4. 验证通过后，才推给生产
+bash deploy/promote.sh
+```
+
+要点：
+
+- **两个容易踩的部署坑**：① `sqlx::migrate!` 编译期展开，增量编译下新增迁移可能不重编 →
+  `dev.sh` 会先 `touch crates/sc2clud-db/src/lib.rs`；② `/etc/systemd/system/<unit>.service.d/` 里的
+  drop-in 会覆盖 `ExecStart`，改完 unit 必须 `systemctl daemon-reload` 再重启，否则跑的还是旧二进制。
+- **不要在生产的 `/` 上做任何交互式测试或写入**（包括自动化点击、造数据）。
+- `/dev/` 上的路径前缀由 nginx 的 `sub_filter` 处理，应用代码里**不要**写 `/dev`。
+- 生产数据快照进测试库是**只读**操作；反向绝不允许。
+- 出问题的回滚：生产 unit 重启即可回到旧版本（二进制换成上一个 release 的即可）。
+
+### 前端预览规矩（强制）
+
+**涉及前端设计/改动时，禁止直接做完就交。** 必须先渲染**真实场景下的预览图**，让用户看图再决定。
+
+```bash
+# 本地起实例（dev 库只读快照 + 登录态 + 整页截图 + 空壳断言）
+SC2CLUD_SSH_KEY=<私钥路径> node scripts/preview.mjs --server root@<dev 机> --handle tangtian \
+  --out ../shots/preview            # 输出：home/p_12/p_12_edit/new/admin/me × light/dark
+```
+
+硬性要求：
+
+1. **必须是真实渲染**：真跑应用、真数据（dev 库快照）、**登录态**（脚本会本地改一份副本的密码，dev/生产不受影响）、
+   真浏览器整页截图（`captureBeyondViewport`）。
+2. **不许渲染空壳**：页面必须带**同页面的其它内容**（顶栏、导航、列表、侧栏、页脚都在）；
+   脚本会断言「有真实数据」，判为空壳就退出码 1 —— 空壳图不算预览。
+3. **预览与上线不能有差别**：同一份代码（脚本强制重建，模板/迁移是编译期内嵌的）、同一份数据快照；
+   上线路径只有 `/dev → promote → 生产`，没有「预览专用样式」这种第二套实现。
+4. **至少给三种样式方案**：除非改动**非常明确且单一**（例如「把这个按钮改红」「补一个字段」），
+   都必须提供 **≥3 种**设计方案（各自的预览图 + 一句话取舍），让用户挑，不许自己拍板。
+5. 预览图落在仓库外层 `shots/preview/`（不进版本库）；交付时直接贴图或给出路径。
+
+### 预览开关与已定版（改前端前先看这张表）
+
+这些 `?xx=` 只在**开发实例**生效（`debug_pages` 门控），生产恒用「已定版」那一列：
+
+| 开关 | 作用 | 已定版 |
+| --- | --- | --- |
+| `?sv=1\|2\|3` | 搜索页版式（1 一行标签栏 / 2 两行筛选+右侧相关用户 / 3 左侧筛选栏） | **1** |
+| `?ui=1\|2\|3` | 帖子右上角「⋯」菜单（1 紧凑 / 2 分组 / 3 说明卡） | **2** |
+| `?dv=1\|2\|3` | 删除通知确认（1 就地气泡 / 2 居中弹窗 / 3 系统 confirm） | **2** |
+| `?av=1\|2\|3` | 默认头像池界面（1 网格卡 / 2 列表行 / 3 侧栏上传） | **2** |
+| `?tui=1\|2\|3` | 头衔徽章（1 半透明胶囊 / 2 实心 / 3 下划线） | **1** |
+| `?dui=1\|2\|3` + `?nui=1\|2\|3` | 赞助弹窗 / 赞助前提示样式 | **1 / 3** |
+| `?ivi=1\|2\|3` | 资源帖「问题与建议」列表版式（1 列表式 GitHub 风 / 2 卡片式 B 站动态风 / 3 双栏式左列表右详情） | 待定（见 docs/ISSUES_DESIGN.md） |
+| `?dvc=1`、`?donate=1`、`?ack=1`、`?menu=1`、`?titles=1`、`?avatar=1` | 预览时把交互态直接展开（弹窗/菜单/确认），便于出图 | — |
+
+出图命令：`node scripts/preview.mjs --server <dev 机> --handle <账号> --pages '<路径>'`；
+`--qr-test` 会造三张不同分辨率的纯蓝测试收款码，`--dm <handle>` 会先发一条私信，`--send-test` 会验证无感发送与 SSE。
+
+### 多人协作约定（都会往 dev 发）
+
+**唯一入口是仓库里的脚本**，不要手工 `systemctl` / 不要给 unit 加覆盖 `ExecStart` 的 drop-in：
+
+| 脚本 | 作用 |
+| --- | --- |
+| `bash deploy/dev.sh` | 拉 `main` → 构建 → 装二进制 → **只重启 /dev** |
+| `bash deploy/dev-restart.sh` | 不重新构建，只重启 /dev（改了 env、排查用） |
+| `bash deploy/dev-sync.sh` | 生产库**只读快照** → /dev 数据目录 |
+| `bash deploy/promote.sh` | 把已在 /dev 验过的版本推给生产 |
+
+规则：
+
+1. **代码改动走 git**：本地/自己的分支改 → 推 `main` → `deploy/dev.sh`。
+   直接在服务器 `/opt/sc2clud` 里改文件会被下一次 `dev.sh` 的 `reset --hard` 覆盖
+   （脚本会先 `git stash` 备份，但别指望它）。
+2. **两个实例各自独立**：测试端前缀 `/srv/sc2clud-dev`（二进制/静态/env 都在这里），
+   生产端 `/srv/sc2clud`。`dev.sh` 只写测试前缀，碰不到生产；`promote.sh` 才把测试端那份二进制
+   复制成生产二进制并重启生产 —— 所以「验证过再发布」是真的两道关。
+3. 排查「代码改了没效果」先看两条：`systemctl cat sc2clud-debug`（有没有 drop-in 覆盖 ExecStart）
+   与 `git -C /opt/sc2clud log --oneline -1`（服务器上到底是哪个提交）。
+4. 改 unit / vhost 后必须 `systemctl daemon-reload` / `nginx -s reload`。
+5. 数据与 Cookie 都是隔离的：prod `/srv/sc2clud/data` + `sc2clud_session`，
+   dev `/srv/sc2clud-dev/data` + `sc2clud_dev_session`；**反向同步绝不允许**。
+6. **issue 一律发公开库**：`gh issue create -R SuperQuail/sc2clud`（不带 `-R` 会落到 `origin`）。
+
+## 12. 后续计划：后端从 Rust 全面迁移到 Go（2026-10-12 记）
+
+用户已确定方向：**后端整体迁移到 Go**。迁移前先把「必须保住什么」写死在这里，避免迁移时丢东西。
+
+### 不能变的（迁移的验收线）
+
+| 项 | 说明 |
+| --- | --- |
+| **数据** | SQLite 库与 `migrations/*.sql` 原样继续用（Go 侧按同样顺序执行迁移）；**迁移不是重建库**，现有数据必须原地可用 |
+| **HTTP 契约** | 前端岛只认 URL 与 JSON 字段名（`/admin/**`、`/api/v1/**`、`data-*` 初值），改契约等于改前端；以现有代码为准 |
+| **前端** | `web/`（React 岛与控件库）**零改动复用**：产物进 `static/islands/`、模板挂载点、`data-json` 传初值的约定都不变 |
+| **§2 硬约束** | 文件字节不进应用进程（上传流式、下载由 nginx 直出）、2 vCPU / 2 GB 的内存与带宽预算、页面体积预算 |
+| **权限** | `docs/PERMISSIONS.md` 的角色 × 权限位 × 分区门槛 × 用户组规则必须逐条对齐（最容易迁错的层） |
+| **门禁** | cargo 三条换成 Go 工具链等价物（gofmt / go vet / go test）；**前端三条门禁（体积 / 体量 / 路径前缀）不变**，继续在提交前与 CI 跑 |
+| **部署形态** | 仍是 dev → promote 两道关、仍是单机 nginx 边缘；`deploy/*.sh` 只换构建命令与二进制路径 |
+
+### 现成的教训（迁移时别重犯）
+
+- **静态产物与二进制的嵌入关系**：现在 `static/` 是**编译期嵌入**二进制的，`dev.sh` 必须在上传岛产物**之后**再构建（2026-10-12 踩过：新岛全 404）。Go 侧用 `embed.FS` 同理——要么同样处理构建顺序，要么改成运行期读目录并显式接受这个取舍。
+- **模板**：askama 是编译期模板，Go 的 `html/template` 是运行期；原「模板与结构体字段顺序」约束消失，但**转义行为不同**（尤其把 JSON 塞进 `data-json` 属性这种写法），要逐个核对。
+- **测试是安全网**：现有 Rust 测试（core / db / web 各一组）是迁移期唯一的对照物，**按模块逐个搬**，不要一次性丢掉。
+- **别顺手改行为**：迁移期的提交应当是「等价重写」，任何行为变化单独一轮，否则回归时分不清是迁移还是功能改动。
+
+### 建议的迁移方式（待确认）
+
+1. **绞杀者模式**：Go 版新服务与 Rust 版并行，nginx 按路径逐步切（先只读页面 / API，再写路径，最后上传下载）——每一小步都能回滚；
+2. 或**按域大块迁移**（core 领域与权限 → web 路由 → 存储/下载），每块都要有端到端对照测试；
+3. **不建议**一次性重写后整体替换——本仓库的历史教训是「一次改太多、边界记错」的代价很高。

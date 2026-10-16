@@ -1,0 +1,75 @@
+{# 帖子页右栏：作者卡 / 打赏 / 资源下载 / 数据（镜像测速归前端岛 postaside） #}
+  {# 右栏：作者 + 资源 + 数据 #}
+  <aside class="post-aside">
+    <div class="side-card author-card">
+      {% if let Some(avatar) = post.avatar %}
+      <img class="avatar avatar-lg" src="/avatar/{{ avatar }}" alt="" width="64" height="64">
+      {% else %}
+      <img class="avatar avatar-lg" src="/static/art/miyin-chibi-160.webp" alt="" width="64" height="64">
+      {% endif %}
+      <strong>{{ post.author }}</strong>
+      <span class="meta">{{ post.author_role_label }}</span>
+      <div class="actions-inline">
+        <a class="btn ghost sm" href="/u/{{ post.author_handle }}">主页</a>
+        {% if can_interact %}<a class="btn ghost sm" href="/messages/{{ post.author_handle }}">私信</a>{% endif %}
+      </div>
+    </div>
+
+    {# 打赏：作者开了展示才出现。大按钮 → 弹窗（左渠道 / 右二维码），提示不点「确定」不消失 #}
+    {% if donation_visible %}
+    <button type="button" class="donate-cta" id="donate-open">
+      <span class="donate-cta-title">赞助作者</span>
+      <span class="donate-cta-sub">支持 {{ post.author }} 继续开发</span>
+    </button>
+    {% endif %}
+
+    {# 打赏记录：这笔打赏**归属到本篇帖子**，所以带上 post id。
+       与上面的「赞助作者」是两件事：那个是去付钱，这个是付完回来登记。 #}
+    {% if post_donation_count > 0 %}
+    <p class="post-donation-total">这篇帖子收到 <strong>{{ post_donation_total }}</strong> 打赏（{{ post_donation_count }} 笔）</p>
+    {% endif %}
+    {% if can_register_donation %}
+    <a class="btn ghost sm post-donation-register" href="/donations/new?to={{ post.author_handle }}&amp;post={{ post.id }}">我已打赏，去登记</a>
+    {% endif %}
+
+    {% if show_sources %}
+    <div class="side-card">
+      <h3>资源下载</h3>
+      {% for source in sources %}
+      <div class="source-item">
+        <div class="source-head">
+          <span class="provider provider-{{ source.provider }}">{{ source.provider_label }}</span>
+          {% if let Some(label) = source.label %}<span class="meta">{{ label }}</span>{% endif %}
+        </div>
+        <a class="btn sm" href="{{ source.url }}" target="_blank" rel="noopener nofollow">打开下载</a>
+        {% if let Some(code) = source.extract_code %}<span class="meta">提取码 <code>{{ code }}</code></span>{% endif %}
+        {% if !source.mirrors.is_empty() %}
+        <div class="mirror-box" data-mirror-box>
+          <select class="mirror-select" data-mirror-select aria-label="选择镜像">
+            {% for mirror in source.mirrors %}
+            <option value="{{ mirror.url }}" data-mirror-original="{{ mirror.is_original }}">{{ mirror.label }}{% if mirror.is_original %}（原链）{% endif %}</option>
+            {% endfor %}
+          </select>
+          <button class="btn ghost sm" type="button" data-mirror-open>打开镜像</button>
+          <button class="btn ghost sm" type="button" data-copy-github="{{ source.url }}">复制 GitHub 原链</button>
+          <p class="hint" data-mirror-note>正在实测各镜像延迟…</p>
+        </div>
+        {% endif %}
+      </div>
+      {% endfor %}
+    </div>
+    {% endif %}
+
+    <div class="side-card">
+      <h3>数据</h3>
+      <ul class="side-stats">
+        <li><span>点赞</span><b>{{ post.like_count }}</b></li>
+        <li><span>收藏</span><b>{{ post.bookmark_count }}</b></li>
+        <li><span>回复</span><b>{{ post.comment_count }}</b></li>
+        <li><span>配图</span><b>{{ post.image_count }}</b></li>
+      </ul>
+    </div>
+  </aside>
+  {# 上面「赞助作者」按钮对应的弹窗与样式都在 donate.html 里（与作者主页共用一份实现）。
+     少了这一句：按钮是浏览器默认样式、点了也没反应——本来就是这个坑。 #}
+  {% if donation_visible %}{% include "donate.html" %}{% endif %}

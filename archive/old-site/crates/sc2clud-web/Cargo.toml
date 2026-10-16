@@ -1,0 +1,44 @@
+[package]
+name = "sc2clud-web"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+description = "HTTP 层：axum 路由、askama 服务端渲染、流式上传与签名下载"
+
+[dependencies]
+sc2clud-core.workspace = true
+sc2clud-storage.workspace = true
+sc2clud-db.workspace = true
+# AI 调用：Rust 生态标准 HTTP 客户端（rustls，不拖 openssl）
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
+# 与 db crate 同版本（cargo 会统一），只为在签名里写 SqlitePool
+sqlx = { version = "0.8.6", default-features = false, features = ["runtime-tokio", "sqlite", "migrate", "macros"] }
+axum = "0.8.9"
+# SMTP：Rust 生态标准发信库（rustls，不拖 openssl）
+lettre = { version = "0.11", default-features = false, features = ["smtp-transport", "rustls-tls", "builder"] }
+# Resend 官方 SDK。默认特性是 native-tls（会拖 openssl），关掉后必须显式打开它的 rustls-tls：
+# SDK 依赖的是 reqwest 0.13，和上面那行 reqwest 0.12 是**两个不同的 crate 版本**，
+# 特性不会跨版本合并 —— 漏了这一句，0.13 那份就一个 TLS 后端都没有，HTTPS 直接发不出去
+# （报错长这样：网络错误：error sending request for url (https://api.resend.com/emails)）。
+resend-rs = { version = "0.34", default-features = false, features = ["rustls-tls"] }
+# dyn Provider 需要它（async fn in trait 还不是 dyn-safe）
+async-trait = "0.1"
+# 时间解析：业界标准时间库（要同时处理「日期」与「时长」两种输入，不自己造轮子）
+chrono = { version = "0.4", default-features = false, features = ["std", "clock"] }
+askama = "0.14.0"
+tokio = { version = "1.53.2", features = ["rt", "net", "macros", "time", "fs", "io-util"] }
+tower-http = { version = "0.7.1", features = ["trace", "timeout", "limit", "catch-panic", "request-id", "fs"] }
+tower = "0.5.3"
+futures-util = "0.3.34"
+bytes = "1.12.1"
+serde = "1.0.229"
+serde_json = "1.0.151"
+tracing = "0.1.44"
+thiserror = "2.0.21"
+tokio-stream = "0.1.19"
+tokio-util = { version = "0.7.19", features = ["io"] }
+form_urlencoded = "1.2.2"
+
+[dev-dependencies]
+tokio = { version = "1.53.2", features = ["rt-multi-thread", "macros"] }

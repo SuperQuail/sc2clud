@@ -1,0 +1,241 @@
+# ============================================================
+# SC2clud —— nginx 站点配置（**模板**，由 deploy/install.sh 渲染）
+#
+# 安装脚本按本机 nginx 的实际能力裁剪标记区块（标记名不在本注释里复述，避免误伤）：
+#   REDIRECT_BEGIN/END     无 TLS 时删除（80 → 443 跳转）
+#   TLS_LISTEN_BEGIN/END   无 TLS 时删除（listen 443 + http2）
+#   PLAIN_LISTEN_BEGIN/END 有 TLS 时删除（listen 80）
+#   TLS_ONLY_BEGIN/END     无 TLS 时删除（证书指令）
+#   SECURELINK_BEGIN/END   nginx 无 secure_link 模块时删除（/dl 签名直出）
+# 并把 __DOWNLOAD_SECRET__ / __DOMAIN_NAMES__ / __DEFAULT_SERVER__ 替换成真实值。
+# __DOMAIN_NAMES__ 是空格分隔的完整列表（含 IP 与各域名，nginx 只认 punycode）。
+#
+# 依赖模块：http_limit_conn_module / http_limit_req_module（官方包与宝塔均有）
+# 可选模块：http_secure_link_module（缺失则改用 X-Accel-Redirect）、http_brotli_static_module
+# 版本要求：nginx ≥ 1.25.1 用 `http2 on;`；更老的版本脚本会退回 `listen ... http2`
+# ============================================================
+
+# ---------- 限流与限连：2 核经不起爬虫 ----------
+limit_req_zone  $binary_remote_addr zone=sc2clud_req:10m rate=8r/s;
+limit_conn_zone $binary_remote_addr zone=sc2clud_per_ip:10m;
+limit_conn_zone $server_name        zone=sc2clud_total:1m;
+
+# 10 Mbps 全站 ≈ 1.25 MB/s：5 条 256 KB/s 的下载就能打满，
+# 所以 limit_conn 与 limit_rate 必须一起用，否则单个 IP 能把全站带宽吃干。
+upstream sc2clud_app {
+    server 127.0.0.1:8080;
+    keepalive 16;
+}
+
+# 测试实例（/dev/ 端点）：独立端口 + 独立数据目录，重启它不影响生产
+upstream sc2clud_dev {
+    server 127.0.0.1:8081;
+    keepalive 4;
+}
+
+# @@REDIRECT_BEGIN@@
+# TLS 终止在 nginx：80 只留跳转
+server {
+    listen 80;
+    server_name __DOMAIN_NAMES__;
+    return 301 https://$host$request_uri;
+}
+# @@REDIRECT_END@@
+
+server {
+# @@TLS_LISTEN_BEGIN@@
+    listen 443 ssl;
+    http2 on;
+# @@TLS_LISTEN_END@@
+# @@PLAIN_LISTEN_BEGIN@@
+    listen 80__DEFAULT_SERVER__;
+# @@PLAIN_LISTEN_END@@
+    server_name __DOMAIN_NAMES__;
+
+# @@TLS_ONLY_BEGIN@@
+    ssl_certificate     /etc/letsencrypt/live/__DOMAIN__/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/__DOMAIN__/privkey.pem;
+    ssl_protocols TLSv1.2 TLSv1.3;
+    ssl_session_cache shared:sc2clud_tls:10m;
+    ssl_session_timeout 1d;
+# @@TLS_ONLY_END@@
+
+    # ---------- 零拷贝与预压缩直发 ----------
+    sendfile on;
+    sendfile_max_chunk 512k;
+    tcp_nopush on;
+    tcp_nodelay on;
+    brotli_static on;   # 直接发预生成的 .br，运行时零 CPU（缺模块时安装脚本会注释掉）
+    gzip_static on;     # 兜底：发预生成的 .gz
+
+    # ---------- 请求体与超时 ----------
+    client_max_body_size 52m;       # 与 limits.max_request_body_bytes 对齐
+    client_body_timeout 60s;
+    client_body_buffer_size 128k;   # 超出部分落磁盘临时文件，不占应用内存
+    keepalive_timeout 65;
+
+    # ---------- 限流与限连 ----------
+    limit_req  zone=sc2clud_req burst=16 nodelay;
+    limit_conn sc2clud_per_ip 12;
+    limit_conn sc2clud_total 40;
+    limit_req_status 429;
+    limit_conn_status 429;
+
+    # root 指向安装根目录：URI /static/app.css → /srv/sc2clud/static/app.css
+    root /srv/sc2clud;
+
+    # ---------- 静态资源直出 ----------
+    # app.css 改动频繁：单独给短缓存，否则「改了样式但用户看不到」
+    # （30 天 immutable 的静态缓存会把新样式挡在门外）。
+    location = /static/app.css {
+        expires 5m;
+        add_header Cache-Control "public, max-age=300";
+        access_log off;
+        try_files $uri =404;
+    }
+
+    location /static/ {
+        expires 30d;
+        add_header Cache-Control "public, immutable";
+        access_log off;
+        try_files $uri =404;
+    }
+
+    # ---------- 受保护内容：应用授权后由 nginx 直出（默认通道）----------
+    # 应用返回 X-Accel-Redirect: /_blob/<ab>/<cd>/<hash>；
+    # internal 表示客户端无法直接请求，只能由应用内部跳转触达。
+    location /_blob/ {
+        internal;
+        alias /srv/sc2clud/data/blobs/;
+        limit_rate_after 256k;
+        limit_rate 256k;
+        add_header Cache-Control "private, max-age=0";
+        access_log off;
+    }
+
+    # ---------- 帖子图片：按类型分目录，给出正确的 Content-Type ----------
+    # 路由形如 /_img/<kind>/<ab>/<cd>/<hash>；alias 替换掉 location 前缀，
+    # 因此实际读的仍是 blobs/<ab>/<cd>/<hash>。blob 文件名是哈希、没有扩展名，
+    # 靠 mime.types 判不出类型，所以按目录给 default_type。
+    location /_img/webp/ {
+        internal;
+        alias /srv/sc2clud/data/blobs/;
+        default_type image/webp;
+        add_header Cache-Control "public, immutable";
+        access_log off;
+    }
+    location /_img/png/ {
+        internal;
+        alias /srv/sc2clud/data/blobs/;
+        default_type image/png;
+        add_header Cache-Control "public, immutable";
+        access_log off;
+    }
+    location /_img/jpeg/ {
+        internal;
+        alias /srv/sc2clud/data/blobs/;
+        default_type image/jpeg;
+        add_header Cache-Control "public, immutable";
+        access_log off;
+    }
+    location /_img/gif/ {
+        internal;
+        alias /srv/sc2clud/data/blobs/;
+        default_type image/gif;
+        add_header Cache-Control "public, immutable";
+        access_log off;
+    }
+# @@SECURELINK_BEGIN@@
+    # ---------- 文件下载（需要 --with-http_secure_link_module）----------
+    # 表达式必须与 sc2clud-core::sign 逐字节一致：
+    #     "{expires}{uri}{remote_addr} {secret}"
+    # 若把 download.bind_client_ip 设为 false，这里必须同时删掉 $remote_addr。
+    location /dl/ {
+        secure_link $arg_e,$arg_s;
+        secure_link_md5 "$secure_link_expires$uri$remote_addr __DOWNLOAD_SECRET__";
+
+        if ($secure_link = "") { return 403; }
+        if ($secure_link = "0") { return 410; }
+
+        alias /srv/sc2clud/data/blobs/;
+        limit_rate_after 256k;
+        limit_rate 256k;
+        add_header Cache-Control "private, max-age=0";
+        access_log off;
+    }
+# @@SECURELINK_END@@
+
+    # ---------- 探针 ----------
+    location = /healthz { proxy_pass http://sc2clud_app; access_log off; }
+    location = /readyz  { proxy_pass http://sc2clud_app; access_log off; allow 127.0.0.1; deny all; }
+
+    # ---------- 测试端点：/dev/ → 本机测试实例（独立数据目录）----------
+    # 开发与测试都在这里做，确认无误再重启生产实例（见 deploy/dev.sh 与 promote.sh）。
+    # 应用的链接都是绝对路径（/p/1、/static/...），所以用 sub_filter 在响应里补 /dev 前缀——
+    # 这样同一份代码不用为「路径前缀」做任何改动。
+    location = /dev { return 301 /dev/; }
+    location /dev/static/ {
+        # 测试实例用自己那份静态资源：改了 CSS/JS 只影响 /dev，不影响生产
+        alias /srv/sc2clud-dev/static/;
+        expires 2m;
+        add_header Cache-Control "public, max-age=120";
+        access_log off;
+    }
+    location /dev/ {
+        # 尾斜杠必须有：否则 nginx 会把完整的 /dev/... 原样转发给测试实例，
+        # 应用看到的就是「/dev/ 这个路径」→ 自己回 JSON 404（踩过一次）。
+        proxy_pass http://sc2clud_dev/;
+        proxy_http_version 1.1;
+        proxy_set_header Connection "";
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_request_buffering off;
+        proxy_buffering off;
+        proxy_read_timeout 300s;
+        proxy_send_timeout 300s;
+        # 服务端重定向（登录/登出/发帖后）返回的是绝对路径 Location: /xxx，
+        # sub_filter 只改 HTML 正文，改不了响应头 —— 必须用 proxy_redirect，
+        # 否则在 /dev 上一点跳转就跑到生产去了。
+        proxy_redirect ~^/(.*)$ /dev/$1;
+        sub_filter_once off;
+        sub_filter_types text/html text/css application/javascript;
+        sub_filter 'href="/'   'href="/dev/';
+        sub_filter 'src="/'    'src="/dev/';
+        sub_filter 'action="/' 'action="/dev/';
+        sub_filter "fetch('/"   "fetch('/dev/";
+        sub_filter "'/static/"  "'/dev/static/";
+        sub_filter "'/avatar/"  "'/dev/avatar/";
+        sub_filter "'/img/"     "'/dev/img/";
+        sub_filter "'/p/"       "'/dev/p/";
+    }
+
+    # ---------- 其余请求交给应用 ----------
+    location / {
+        proxy_pass http://sc2clud_app;
+        proxy_http_version 1.1;
+        proxy_set_header Connection "";
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+
+        # 上传边收边转：不落 nginx 临时文件，也不在 nginx 侧聚合成内存
+        proxy_request_buffering off;
+        proxy_buffering off;
+        proxy_read_timeout 300s;
+        proxy_send_timeout 300s;
+    }
+
+    # ACME HTTP-01：certbot --webroot 把质询文件写在这里（/srv/sc2clud 是上面 server 级 root）
+    # 没有这段，/.well-known/... 会落到 location / 被反代给应用，CA 拿到 404 → 续期失败
+    location ^~ /.well-known/acme-challenge/ {
+        root /srv/sc2clud;
+        default_type text/plain;
+        access_log off;
+    }
+
+    # 点文件一律拒绝（ACME 校验除外）
+    location ~ /\.(?!well-known) { deny all; }
+}

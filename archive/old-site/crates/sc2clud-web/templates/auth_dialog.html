@@ -1,0 +1,33 @@
+<dialog class="auth-dialog" id="auth-dialog" aria-labelledby="auth-dialog-title" data-mode="login">
+  <div class="auth-modal-layout">
+    <aside class="auth-modal-story" aria-label="星际创作社区">
+      <img class="auth-modal-scene" src="/static/art/starcraft/sc2-battle.webp" width="1200" height="953" alt="" loading="lazy">
+      <div class="auth-modal-story-copy"><img class="auth-modal-logo" src="/static/art/starcraft/sc2-logo.webp" width="240" height="101" alt="StarCraft II" loading="lazy"><span class="auth-modal-eyebrow">SC2 COMMUNITY</span><h2>热爱星际，<br>也热爱创造<span>。</span></h2><p>战役、Mod、工具与新的故事。<br>下一场创作，和你一起开始。</p></div>
+      <img class="auth-modal-mascot auth-mascot-login" src="/static/art/miyin/wink-520.webp" width="190" height="190" alt="社区看板娘弥音" loading="lazy">
+      <img class="auth-modal-mascot auth-mascot-register" src="/static/art/miyin/welcome-400.webp" width="190" height="190" alt="弥音欢迎你加入社区" loading="lazy">
+      <div class="auth-modal-races" aria-label="人族、星灵、异虫"><img src="/static/art/starcraft/terran.webp" width="28" height="28" alt="人族" loading="lazy"><img src="/static/art/starcraft/protoss.webp" width="28" height="28" alt="星灵" loading="lazy"><img src="/static/art/starcraft/zerg.webp" width="28" height="28" alt="异虫" loading="lazy"><span>由热爱连接 · 自由创作</span></div>
+    </aside>
+    <section class="auth-modal-body">
+      <button class="auth-modal-close" type="button" aria-label="关闭登录注册弹窗"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6 6 12 12M18 6 6 18"/></svg></button>
+      <div class="auth-modal-tabs" role="tablist" aria-label="登录或注册"><button id="auth-tab-login" type="button" role="tab" aria-selected="true" aria-controls="auth-panel-login" data-auth-mode="login">登录</button><button id="auth-tab-register" type="button" role="tab" aria-selected="false" aria-controls="auth-panel-register" tabindex="-1" data-auth-mode="register">注册</button></div>
+      <div class="auth-modal-stage">
+        <h2 id="auth-dialog-title">欢迎回到星际社区</h2><p class="auth-modal-subtitle" id="auth-dialog-subtitle">与同样热爱星际的人，再次相遇。</p>
+        <p class="auth-modal-status" id="auth-status" role="status" aria-live="polite" hidden></p>
+        <form id="auth-panel-login" class="auth-modal-form" role="tabpanel" aria-labelledby="auth-tab-login" method="post" action="/login">
+          <label>用户名或邮箱<input name="account" type="text" required autocomplete="username" placeholder="你的社区账号"></label>
+          <label>密码<span class="auth-password-field"><input name="password" type="password" required autocomplete="current-password" placeholder="输入登录密码"><button type="button" data-auth-password aria-label="显示密码" aria-pressed="false"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2 12s3.5-6 10-6 10 6 10 6-3.5 6-10 6S2 12 2 12Z"/><circle cx="12" cy="12" r="3"/></svg></button></span></label>
+          <button class="auth-modal-submit" type="submit"><span>登录社区</span></button>
+          <p class="auth-modal-note">还没有账号？<button type="button" data-auth-mode="register">创建你的社区账号 ↗</button></p>
+        </form>
+        <form id="auth-panel-register" class="auth-modal-form" role="tabpanel" aria-labelledby="auth-tab-register" method="post" action="/register" hidden>
+          <label>登录名<input name="handle" type="text" required minlength="3" maxlength="24" pattern="[A-Za-z0-9_-]+" autocomplete="username" placeholder="3–24 位字母、数字、下划线或连字符"></label>
+          <label>显示名<input name="display_name" type="text" required maxlength="20" autocomplete="nickname" placeholder="社区里的称呼，最多 20 字"></label>
+          <label>邮箱<input name="email" type="email" required autocomplete="email" placeholder="用于账号找回的邮箱"></label>
+          <label>密码<span class="auth-password-field"><input name="password" type="password" required minlength="8" autocomplete="new-password" placeholder="至少 8 位"><button type="button" data-auth-password aria-label="显示密码" aria-pressed="false"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2 12s3.5-6 10-6 10 6 10 6-3.5 6-10 6S2 12 2 12Z"/><circle cx="12" cy="12" r="3"/></svg></button></span></label>
+          <button class="auth-modal-submit" type="submit"><span>加入星际社区</span></button>
+          <p class="auth-modal-note">注册后可能需要管理员激活，才能发帖与上传。</p>
+        </form>
+      </div>
+    </section>
+  </div>
+</dialog>

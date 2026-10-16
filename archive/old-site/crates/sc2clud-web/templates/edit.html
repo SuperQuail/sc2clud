@@ -1,0 +1,29 @@
+{% extends "base.html" %}
+{% block body_class %}site-page page-edit{% endblock %}
+{% block page_label %}编辑帖子{% endblock %}
+
+{% block title %}编辑帖子 · {{ site_name }}{% endblock %}
+
+{% block content %}
+<section class="card page-form-card">
+  <h2>编辑帖子 <span class="count">{{ state_label }}</span></h2>
+  {% if let Some(note) = review_note %}
+  <p class="alert">审核意见：{{ note }}</p>
+  {% endif %}
+  {% if let Some(message) = error %}
+  <p class="alert">{{ message }}</p>
+  {% endif %}
+  <p class="hint">保存后会**重新过一遍审核机**（内容变了，审核结论要重算）；管理员编辑则直接发布。</p>
+  {# 发帖/编辑表单：整张由控件库的 React 控件渲染（AGENTS §6.6） #}
+  <div data-island="post-form"
+       data-action="/p/{{ id }}/edit"
+       data-upload="/api/v1/images"
+       data-csrf="{{ csrf }}"
+       data-back="/p/{{ id }}"
+       data-json="{{ edit_data_json }}"></div>
+  <script type="module" src="/static/islands/postform.js"></script>
+</section>
+{% endblock %}
+
+{% block scripts %}
+{% endblock %}

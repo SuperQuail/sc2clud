@@ -1,0 +1,171 @@
+{% extends "base.html" %}
+{% block body_class %}site-page page-post{% endblock %}
+{% block page_label %}帖子与讨论{% endblock %}
+
+{% block title %}{{ post.title }} · {{ site_name }}{% endblock %}
+
+{% block content %}
+<div class="post-layout">
+  {# 左栏：分区快捷入口 + 我的 #}
+  <aside class="post-side">
+    <div class="side-card">
+      <h3>分区</h3>
+      <nav class="side-nav">
+        <a href="/">全部</a>
+        {% for section in sections %}
+        <a href="/?section={{ section.value }}" class="{% if section.checked %}active{% endif %}">{{ section.label }}</a>
+        {% endfor %}
+      </nav>
+    </div>
+    <div class="side-card">
+      <h3>我的</h3>
+      <nav class="side-nav">
+        <a href="/new">发新帖</a>
+        <a href="/bookmarks">我的收藏</a>
+        <a href="/inbox?tab=dm">私信</a>
+      </nav>
+    </div>
+  </aside>
+
+  {# 中栏：正文主体 #}
+  <div class="post-main">
+{# 与 GitHub 一样：顶部（横幅 + 标题 + 侧栏）不变，只切换中间那块 #}
+<nav class="post-tabs">
+  {% for t in tabs %}<a class="ptab{% if t.active %} active{% endif %}" href="{{ t.href }}">{{ t.label }}{% if let Some(n) = t.badge %} <b>{{ n }}</b>{% endif %}</a>{% endfor %}
+  <span class="ptab-spacer"></span>
+  <a class="ptab-cta bug" href="/p/{{ post.id }}/issues/new?kind=bug">报告 Bug</a>
+  <a class="ptab-cta idea" href="/p/{{ post.id }}/issues/new?kind=feature">改进意见</a>
+  <a class="ptab-cta difficulty" href="/p/{{ post.id }}/issues/new?kind=difficulty">难度建议</a>
+  <a class="btn sm" style="margin-left:10px" href="/p/{{ post.id }}/issues/new">发布反馈</a>
+</nav>
+
+{% if tab == "issues" %}
+<section class="issue-banner">
+    <div class="ib-text">
+      <b>这个 Mod 有问题，或者你有想法？</b>
+      <p>反馈直接送到作者那里：报 Bug 请写清版本与复现步骤，改进意见说说你希望它变成什么样。</p>
+    </div>
+    <div class="ib-actions">
+      <a class="ib-btn bug" href="/p/{{ post.id }}/issues/new?kind=bug"><b>报告 Bug</b><span>打不开、崩溃、闪退、卡关</span></a>
+      <a class="ib-btn idea" href="/p/{{ post.id }}/issues/new?kind=feature"><b>改进意见</b><span>希望新增或调整的功能</span></a>
+      <a class="ib-btn difficulty" href="/p/{{ post.id }}/issues/new?kind=difficulty"><b>难度建议</b><span>太简单 / 太难 / 想要难度选项</span></a>
+    </div>
+    <span class="ib-count">{% if issue_open > 0 %}{{ issue_open }} 条待处理{% else %}暂无待处理{% endif %}{% if issue_total > issue_open %} · 共 {{ issue_total }} 条{% endif %}</span>
+
+
+  </section>
+{% endif %}
+
+
+  <h1 class="site-post-title">{{ post.title }}</h1>
+
+{% if tab == "new" %}
+
+  {# 交互归前端岛（AGENTS.md §6.6）：模板只给挂载点与初始数据 #}
+  <div data-island="issues"
+       data-post-id="{{ post.id }}"
+       data-csrf="{{ csrf }}"
+       data-kind="{{ issue_kind }}"></div>
+  <script type="module" src="/static/islands/issues.js"></script>
+{% else if tab == "issues" %}
+{% include "post_issues_list.html" %}
+{% else if tab == "issue" %}
+<section class="issue-view">
+  {% if let Some(issue) = issue_detail %}
+  <div class="issue-detail">
+    <div class="issue-detail-head">
+      <span class="kind kind-{{ issue.kind }}">{{ issue.kind_label }}</span>
+      <h2>{{ issue.title }} <span class="num">#{{ issue.id }}</span></h2>
+      <p class="meta">{{ issue.author }} · {{ issue.created }}{% if !issue.open %} · <span class="tag">已关闭</span>{% endif %}</p>
+    </div>
+    <div class="issue-detail-body">{{ issue.body }}</div>
+    <div class="issue-detail-actions">
+      <a class="btn ghost sm" href="/p/{{ post.id }}/issues">← 返回问题与建议</a>
+      {% if issue.can_edit %}
+      <form method="post" action="/p/{{ post.id }}/issues/{{ issue.id }}/state">
+        <input type="hidden" name="csrf" value="{{ csrf }}">
+        <input type="hidden" name="state" value="{% if issue.open %}closed{% else %}open{% endif %}">
+        <button class="btn sm" type="submit">{% if issue.open %}关闭这条反馈{% else %}重新打开{% endif %}</button>
+      </form>
+      {% endif %}
+    </div>
+  {# 同一个评论控件，只是列表来自 issue 详情 JSON、且暂无点赞端点 #}
+  <div data-island="comments"
+       data-list="/api/v1/posts/{{ post.id }}/issues/{{ issue.id }}"
+       data-action="{{ comment_action }}"
+       data-csrf="{{ csrf }}"
+       data-can-reply="{{ can_reply }}"
+       data-show-actions="true"
+       data-vote-base="/api/v1/issue-comments"
+       data-logged-in="{{ user_label.is_some() }}"></div>
+  <script type="module" src="/static/islands/comments.js"></script>
+  {% else %}
+  <div class="issue-empty"><b>这条反馈不存在</b><p>可能已被删除，或者链接有误。</p></div>
+  {% endif %}
+</section>
+{% else %}
+  <div class="meta byline">
+    {% if let Some(avatar) = post.avatar %}
+    <img class="avatar" src="/avatar/{{ avatar }}" alt="" width="24" height="24">
+    {% else %}
+    <img class="avatar" src="/static/art/miyin-chibi-80.webp" alt="" width="24" height="24">
+    {% endif %}
+    <span class="ellipsis" title="{{ post.author }}">{{ post.author }}</span> · {{ post.author_role_label }} · {{ post.created_at }}
+    {% if post.image_count > 0 %} · {{ post.image_count }} 张图{% endif %}</div>
+  {% if post.archived %}
+  <p class="alert" style="margin-top:12px">此帖已归档：列表里不再展示，只有作者与管理员能通过直链打开。</p>
+  {% endif %}
+
+  {% if let Some(note) = post.review_note %}
+  {% if post.state != "approved" %}
+  <p class="alert" style="margin-top:12px">审核意见：{{ note }}</p>
+  {% endif %}
+  {% endif %}
+  <p class="post-body">{{ post.body }}</p>
+
+  {% if !images.is_empty() %}
+  <div class="gallery">
+    {% for image in images %}
+    <a href="{{ image.href }}" target="_blank" rel="noopener"><img data-post-image src="{{ image.href }}" loading="lazy" alt="配图"></a>
+    {% endfor %}
+  </div>
+  {% endif %}
+  {# 配图上传改到编辑页（帖子页只展示） #}
+  {# 点赞 / 收藏 / ⋯ 菜单归动作岛（web/src/ui/PostActions.tsx），这里只给挂载点与初值 #}
+  <div class="post-actions" data-island="postactions"
+       data-post-id="{{ post.id }}"
+       data-like-action="/p/{{ post.id }}/like"
+       data-bookmark-action="/p/{{ post.id }}/bookmark"
+       data-csrf="{{ csrf }}"
+       data-like-count="{{ post.like_count }}"
+       data-liked="{{ post.liked }}"
+       data-bookmarked="{{ post.bookmarked }}"
+       data-can-edit="{{ post.can_edit }}"
+       data-is-staff="{{ is_staff }}"
+       data-state="{{ post.state }}"
+       data-state-label="{{ post.state_label }}"
+       data-archived="{{ post.archived }}"
+       data-ui-variant="{{ ui_variant }}"></div>
+  <script type="module" src="/static/islands/postactions.js"></script>
+
+  <div class="actions-inline" style="margin-top:18px">
+    <a class="btn ghost sm" href="/">返回首页</a>
+  </div>
+
+{# 评论控件：控件库里的 React 组件（web/src/ui/Comments.tsx），模板只给挂载点与初值 #}
+<div data-island="comments"
+     data-list="/api/v1/posts/{{ post.id }}/comments"
+     data-action="{{ comment_action }}"
+     data-csrf="{{ csrf }}"
+     data-can-reply="{{ can_reply }}"
+     data-show-actions="{{ show_comment_actions }}"
+     data-logged-in="{{ user_label.is_some() }}"></div>
+<script type="module" src="/static/islands/comments.js"></script>
+  </div>{# /post-main #}
+{% include "post_aside.html" %}
+{# 点赞 / 收藏 / ⋯ 菜单 / 右栏镜像测速都在前端岛里，模板不再有内联 <script> #}
+<script type="module" src="/static/islands/postaside.js"></script>
+{% endif %}
+
+{% if is_staff %}<script type="module" src="/static/islands/admin.js"></script>{% endif %}
+{% endblock %}

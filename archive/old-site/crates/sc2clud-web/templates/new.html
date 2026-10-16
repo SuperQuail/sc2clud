@@ -1,0 +1,54 @@
+{% extends "base.html" %}
+{% block body_class %}site-page page-new{% endblock %}
+{% block page_label %}发布创作{% endblock %}
+
+{% block title %}发新帖 · {{ site_name }}{% endblock %}
+
+{% block content %}
+<section class="card page-form-card">
+  <h2>发新帖</h2>
+  <aside class="creation-note"><img src="/static/art/miyin/genius-160.webp" width="72" height="72" alt="弥音为你的灵感加油" loading="lazy"><div><strong>把灵感，变成下一段冒险。</strong><p>写清作品的玩法与亮点，让同样热爱星际的人更快发现你。</p></div></aside>
+  {% if let Some(message) = error %}
+  {# 被禁言这类提示要够醒目：红底红边 #}
+  <p class="alert alert-danger">{{ message }}</p>
+  <style>.alert-danger{border:1px solid #dc2626;background:#fee2e2;color:#991b1b;border-radius:10px;padding:10px 12px}</style>
+  {% endif %}
+{# 发帖表单：与编辑页同一个控件（ui/PostForm），服务端只给初值 #}
+<div data-island="post-form"
+     data-action="/new"
+     data-upload="/api/v1/images"
+     data-csrf="{{ csrf }}"
+     data-back="/"
+     data-json="{{ edit_data_json }}"></div>
+<script type="module" src="/static/islands/postform.js"></script>
+</section>
+{% endblock %}
+
+{% block scripts %}
+<script>
+  // 下载来源：数量不限，自己加行、自己删行（服务端按重复字段解析）。
+  // 用 <template> 复制行：没有已有行时（帖子本来就没填来源）也能加出来。
+  (function () {
+    var rows = document.getElementById('source-rows');
+    var add = document.getElementById('source-add');
+    var tpl = document.getElementById('source-row-template');
+    if (!rows || !add || !tpl) return;
+    function bind(row) {
+      var remove = row.querySelector('[data-source-remove]');
+      if (remove) {
+        remove.addEventListener('click', function () {
+          if (rows.querySelectorAll('.source-row').length > 1) row.remove();
+        });
+      }
+    }
+    function makeRow() {
+      var row = tpl.content.firstElementChild.cloneNode(true);
+      bind(row);
+      return row;
+    }
+    if (!rows.querySelector('.source-row')) rows.appendChild(makeRow());
+    Array.prototype.forEach.call(rows.querySelectorAll('.source-row'), bind);
+    add.addEventListener('click', function () { rows.appendChild(makeRow()); });
+  })();
+</script>
+{% endblock %}

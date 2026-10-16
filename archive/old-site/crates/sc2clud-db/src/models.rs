@@ -1,0 +1,682 @@
+//! 行结构：与 `migrations/` 中的表一一对应。
+//!
+//! 时间字段一律是 Unix 秒（`INTEGER`），不引入日期库。
+
+use sqlx::FromRow;
+
+#[derive(Debug, Clone, FromRow)]
+pub struct UserRow {
+    pub id: i64,
+    /// 登录名：账号标识，唯一，用于登录。
+    pub handle: String,
+    /// 显示名：对外展示，非空、≤ 20 字符，可改。
+    pub display_name: String,
+    /// 头像摘要（NULL = 未设置）。
+    pub avatar_hash: Option<String>,
+    /// 头像 MIME。
+    pub avatar_mime: Option<String>,
+    /// 是否被信任（1 = 发帖只走自动审核）。
+    pub trusted: i64,
+    pub email: Option<String>,
+    pub password_hash: String,
+    pub role: String,
+    pub quota_bytes: i64,
+    pub used_bytes: i64,
+    pub created_at: i64,
+    pub disabled_at: Option<i64>,
+    /// `None` = 未激活（能登录，但不能发帖/回复/上传）。
+    pub activated_at: Option<i64>,
+    pub activated_by: Option<i64>,
+    /// 限期禁言：到这个时间之前不能发帖（NULL = 没被禁）。评论不受影响。
+    pub post_ban_until: Option<i64>,
+}
+
+/// 会话行（库里只存令牌摘要）。
+#[derive(Debug, Clone, FromRow)]
+pub struct SessionRow {
+    pub id: String,
+    pub user_id: i64,
+    pub csrf_token: String,
+    pub created_at: i64,
+    pub expires_at: i64,
+    pub last_seen_at: i64,
+    pub user_agent: Option<String>,
+}
+
+/// 帖子 + 作者（feed 用一次 join 拿全，避免 N+1）。
+#[derive(Debug, Clone, FromRow)]
+pub struct PostWithAuthorRow {
+    pub id: i64,
+    pub title: String,
+    pub body: String,
+    pub kind: String,
+    pub section: String,
+    pub review_state: String,
+    pub review_note: Option<String>,
+    pub image_count: i64,
+    pub created_at: i64,
+    pub author_id: i64,
+    pub author_handle: String,
+    /// 对外展示用：帖子卡片与详情页显示它。
+    pub author_display_name: String,
+    /// 作者头像的内容摘要（NULL = 没设置，页面回退到首字母）。
+    pub author_avatar: Option<String>,
+    pub author_role: String,
+    /// 封面图：该帖第一张图（压缩图优先，未处理时用原图）；没有图则为 NULL。
+    pub cover_hash: Option<String>,
+    /// 回复数（列表视图的统计条用）。
+    pub comment_count: i64,
+    /// 归档时间（NULL = 未归档）。
+    pub archived_at: Option<i64>,
+    /// 点赞数。
+    pub like_count: i64,
+    /// 收藏数。
+    pub bookmark_count: i64,
+}
+
+/// 分区（管理员可增删 / 归档 / 排序，所以不写死在枚举里）。
+#[derive(Debug, Clone, FromRow)]
+pub struct SectionRow {
+    /// 是否启用用户组检查（迁移 0026）。
+    pub group_check: i64,
+    pub key: String,
+    pub label: String,
+    pub description: String,
+    pub position: i64,
+    pub archived_at: Option<i64>,
+    pub post_min_role: String,
+    pub reply_min_role: String,
+}
+
+/// 分区管理员（当前不给额外权限，先把人记下来）。
+#[derive(Debug, Clone, FromRow)]
+pub struct SectionModeratorRow {
+    pub user_id: i64,
+    pub handle: String,
+    pub display_name: String,
+    pub created_at: i64,
+}
+
+/// 用户组。
+#[derive(Debug, Clone, FromRow)]
+pub struct UserGroupRow {
+    pub id: i64,
+    pub key: String,
+    pub name: String,
+    pub description: String,
+    pub archived_at: Option<i64>,
+}
+
+/// 组 × 分区的发言规则。
+#[derive(Debug, Clone, FromRow)]
+pub struct GroupSectionRuleRow {
+    pub group_id: i64,
+    pub section: String,
+    pub can_post: i64,
+    pub can_reply: i64,
+    /// 明确禁止（优先于允许与角色门槛）。
+    pub deny_post: i64,
+    pub deny_reply: i64,
+}
+
+/// 一个发信账号：provider + 凭据（密文）+ 发件人 + 额度账 + 健康。
+///
+/// 多账号按 `priority` 排序做主备故障转移；provider 专属参数在 `options_json`
+/// （明文 JSON，db 层不解析，由发信模块自己反序列化）。
+#[derive(Debug, Clone, FromRow)]
+pub struct MailAccountRow {
+    pub id: i64,
+    /// 'resend' / 'smtp' / ...
+    pub provider: String,
+    pub label: String,
+    pub priority: i64,
+    pub from_address: String,
+    pub from_name: String,
+    pub reply_to: String,
+    pub options_json: String,
+    /// 0 = 不限。
+    pub daily_quota: i64,
+    pub sent_today: i64,
+    /// 计数所属的 UTC 日起点；≠ 今天即视为新的一天。
+    pub quota_day: i64,
+    pub enabled: i64,
+    pub cooldown_until: Option<i64>,
+    pub last_ok_at: Option<i64>,
+    pub last_error: String,
+    pub last_error_at: Option<i64>,
+    pub archived_at: Option<i64>,
+    pub created_at: i64,
+    pub updated_at: i64,
+    pub updated_by: Option<i64>,
+}
+
+/// 新建 / 修改发信账号时要写的字段（不含凭据；凭据由 `repo::set_mail_secret` 单独加密存）。
+#[derive(Debug, Clone)]
+pub struct MailAccountDraft {
+    pub provider: String,
+    pub label: String,
+    pub priority: i64,
+    pub from_address: String,
+    pub from_name: String,
+    pub reply_to: String,
+    /// provider 专属的非敏感参数（JSON 字面量）。
+    pub options_json: String,
+    pub daily_quota: i64,
+    pub enabled: bool,
+    pub actor_id: Option<i64>,
+}
+
+/// 一条处罚（禁止发帖 / 禁止评论，可限定分区）。
+#[derive(Debug, Clone, FromRow)]
+pub struct UserSanctionRow {
+    pub id: i64,
+    pub user_id: i64,
+    /// post = 禁止发帖；reply = 禁止评论。
+    pub kind: String,
+    /// 空串 = 全局；否则是分区 key。
+    pub section: String,
+    pub until: i64,
+    pub note: String,
+    pub created_at: i64,
+    pub revoked_at: Option<i64>,
+}
+
+/// 头衔。
+#[derive(Debug, Clone, FromRow)]
+pub struct TitleRow {
+    pub id: i64,
+    pub key: String,
+    pub name: String,
+    pub color: String,
+    pub description: String,
+    pub archived_at: Option<i64>,
+}
+
+/// 用户持有的头衔（`equipped` = 当前佩戴的那个）。
+#[derive(Debug, Clone, FromRow)]
+pub struct UserTitleRow {
+    pub title_id: i64,
+    pub key: String,
+    pub name: String,
+    pub color: String,
+    pub granted_at: i64,
+    pub equipped: i64,
+}
+
+/// 经验事件（等级增长的流水，当前只记账）。
+#[derive(Debug, Clone, FromRow)]
+pub struct ExpEventRow {
+    pub id: i64,
+    pub delta: i64,
+    pub reason: String,
+    pub created_at: i64,
+}
+
+/// 一份待审的帖子修改（通过前原帖内容保持不变）。
+#[derive(Debug, Clone, FromRow)]
+pub struct PostRevisionRow {
+    pub post_id: i64,
+    pub title: String,
+    pub body: String,
+    pub kind: String,
+    pub section: String,
+    pub submitted_by: Option<i64>,
+    pub submitted_at: i64,
+    pub note: Option<String>,
+}
+
+/// 搜索命中的用户。
+#[derive(Debug, Clone, FromRow)]
+pub struct UserHitRow {
+    pub id: i64,
+    pub handle: String,
+    pub display_name: String,
+    pub avatar_hash: Option<String>,
+    pub role: String,
+    pub bio: String,
+    pub post_count: i64,
+}
+
+/// 默认头像池里的一张。
+#[derive(Debug, Clone, FromRow)]
+pub struct DefaultAvatarRow {
+    pub id: i64,
+    pub hash: String,
+    pub mime: String,
+    pub note: String,
+    pub created_at: i64,
+}
+
+/// 站点域名（统一管理「哪些域名是我们的」）。
+#[derive(Debug, Clone, FromRow)]
+pub struct SiteDomainRow {
+    pub domain: String,
+    pub note: String,
+    pub created_at: i64,
+}
+
+/// 资源帖 issue（列表带作者与回复数）。
+#[derive(Debug, Clone, FromRow)]
+pub struct PostIssueRow {
+    pub id: i64,
+    pub post_id: i64,
+    pub author_id: i64,
+    pub kind: String,
+    pub title: String,
+    pub body: String,
+    pub state: String,
+    pub created_at: i64,
+    pub updated_at: i64,
+    pub author_handle: String,
+    pub author_display_name: String,
+    pub comment_count: i64,
+}
+
+/// issue 下的回复。
+#[derive(Debug, Clone, FromRow)]
+pub struct IssueCommentRow {
+    pub id: i64,
+    pub issue_id: i64,
+    pub author_id: i64,
+    pub body: String,
+    pub created_at: i64,
+    pub author_handle: String,
+    pub author_display_name: String,
+    /// 评论者头像（与帖子评论同一套展示需要的字段）
+    pub author_avatar: Option<String>,
+    /// 楼中楼：挂在哪个楼层下（NULL 为主楼层）
+    pub parent_id: Option<i64>,
+    pub likes: i64,
+    pub dislikes: i64,
+    /// 当前查看者投的票：1 赞 / -1 踩 / 0 没投
+    pub my_vote: i64,
+}
+/// 横幅。
+#[derive(Debug, Clone, FromRow)]
+pub struct BannerRow {
+    pub id: i64,
+    pub title: String,
+    pub body: String,
+    pub kind: String,
+    pub url: Option<String>,
+    pub active: i64,
+    pub starts_at: Option<i64>,
+    pub ends_at: Option<i64>,
+    pub created_at: i64,
+}
+
+/// 收款码。
+#[derive(Debug, Clone, FromRow)]
+pub struct PaymentChannelRow {
+    pub id: i64,
+    pub user_id: i64,
+    pub channel: String,
+    pub label: String,
+    pub image_hash: String,
+    pub mime: String,
+    pub created_at: i64,
+}
+/// 搜索结果用的一行（**故意比 [`PostWithAuthorRow`] 瘦**：不动既有查询）。
+#[derive(Debug, Clone, FromRow)]
+pub struct PostSearchRow {
+    pub id: i64,
+    pub title: String,
+    pub section: String,
+    pub created_at: i64,
+    pub pinned_rank: i64,
+    pub featured_at: Option<i64>,
+    pub author_id: i64,
+    pub author_handle: String,
+    pub author_display_name: String,
+    pub comment_count: i64,
+    /// 封面（该帖第一张配图；搜索结果带封面卡用）。
+    pub cover_hash: Option<String>,
+}
+
+/// 回复 + 作者。
+#[derive(Debug, Clone, FromRow)]
+pub struct CommentWithAuthorRow {
+    pub id: i64,
+    pub post_id: i64,
+    pub author_id: i64,
+    pub author_handle: String,
+    pub author_display_name: String,
+    pub author_avatar: Option<String>,
+    /// 小图头像（48px），列表页用它省带宽；没上传过就是 NULL。
+    pub author_avatar_small: Option<String>,
+    pub body: String,
+    pub created_at: i64,
+    /// 楼中楼：挂在哪个楼层下面（None = 主楼层）。一级到底，回复的回复挂到根楼层。
+    pub parent_id: Option<i64>,
+    /// 佩戴的头衔（评论区显示它，不显示权限）。
+    pub author_title: Option<String>,
+    pub author_title_color: Option<String>,
+    /// 点赞数。
+    pub likes: i64,
+    /// 点踩数（前端暂未接，接口留着）。
+    pub dislikes: i64,
+    /// 当前查看者投的票：1 赞 / -1 踩 / 0 没投。
+    pub my_vote: i64,
+}
+
+/// 启动器发布版本。
+#[derive(Debug, Clone, FromRow)]
+pub struct ReleaseRow {
+    pub id: i64,
+    pub version: String,
+    pub channel: String,
+    pub title: Option<String>,
+    pub notes: Option<String>,
+    pub is_published: i64,
+    pub created_by: Option<i64>,
+    pub created_at: i64,
+    pub published_at: Option<i64>,
+}
+
+/// 发布产物条目：**只有外部直链，没有本地副本**（本站不承载字节）。
+#[derive(Debug, Clone, FromRow)]
+pub struct ReleaseAssetRow {
+    pub id: i64,
+    pub release_id: i64,
+    pub platform: String,
+    pub arch: String,
+    pub filename: String,
+    /// 真正的分发地址（GitHub Releases / 对象存储 / 镜像）。
+    pub url: String,
+    pub size: i64,
+    pub sha256: Option<String>,
+    pub download_count: i64,
+    pub created_at: i64,
+}
+
+/// 一条站内通知。
+#[derive(Debug, Clone, FromRow)]
+pub struct NotificationRow {
+    pub id: i64,
+    pub kind: String,
+    pub title: String,
+    pub body: Option<String>,
+    pub link: Option<String>,
+    pub read_at: Option<i64>,
+    pub created_at: i64,
+    /// 触发者（点赞的人、审核的管理员…）；老数据为 NULL。
+    pub actor_handle: Option<String>,
+    pub actor_display_name: Option<String>,
+    pub actor_avatar: Option<String>,
+}
+
+/// 一条系统公告。
+#[derive(Debug, Clone, FromRow)]
+pub struct AnnouncementRow {
+    pub id: i64,
+    pub title: String,
+    pub body: String,
+    pub created_at: i64,
+}
+
+/// 我收藏的一篇帖子（列表用）。
+#[derive(Debug, Clone, FromRow)]
+pub struct BookmarkRow {
+    pub post_id: i64,
+    pub title: String,
+    pub section: String,
+    pub created_at: i64,
+    pub saved_at: i64,
+}
+
+/// 一条私信。
+#[derive(Debug, Clone, FromRow)]
+pub struct MessageRow {
+    pub id: i64,
+    pub sender_id: i64,
+    pub recipient_id: i64,
+    pub body: String,
+    pub created_at: i64,
+    pub read_at: Option<i64>,
+}
+
+/// 会话列表里的一行：对方 + 最后一条 + 未读数。
+#[derive(Debug, Clone, FromRow)]
+pub struct ConversationRow {
+    pub other_id: i64,
+    pub other_handle: String,
+    pub other_display_name: String,
+    pub other_avatar: Option<String>,
+    pub last_body: String,
+    pub last_at: i64,
+    pub last_from_me: i64,
+    pub unread: i64,
+}
+
+/// 黑名单里的一行。
+#[derive(Debug, Clone, FromRow)]
+pub struct BlockRow {
+    pub handle: String,
+    pub display_name: String,
+    pub avatar_hash: Option<String>,
+    pub created_at: i64,
+}
+
+/// 管理页的用户行：比 `UserRow` 多带「最后在线」（取该用户最近一次会话）。
+#[derive(Debug, Clone, FromRow)]
+pub struct AdminUserRow {
+    /// 限期禁言到期时间（NULL = 没被禁）。
+    pub post_ban_until: Option<i64>,
+    pub id: i64,
+    pub handle: String,
+    pub display_name: String,
+    pub email: Option<String>,
+    pub role: String,
+    pub created_at: i64,
+    pub activated_at: Option<i64>,
+    pub avatar_hash: Option<String>,
+    pub last_seen_at: Option<i64>,
+    /// 分配给该账号的磁盘预算（字节）。默认 0 = 不分配。
+    pub quota_bytes: i64,
+    /// 已占用（消费逻辑之后再做，现在恒为 0）。
+    pub used_bytes: i64,
+    /// 是否被信任（1 = 发帖只走自动审核）。
+    pub trusted: i64,
+}
+
+/// 资源帖的下载来源（网盘 / GitHub / 直链）。
+#[derive(Debug, Clone, FromRow)]
+pub struct PostSourceRow {
+    pub id: i64,
+    pub post_id: i64,
+    pub position: i64,
+    /// baidu | quark | aliyun | lanzou | 123pan | weiyun | github | direct
+    pub provider: String,
+    pub label: Option<String>,
+    pub url: String,
+    pub extract_code: Option<String>,
+    pub created_at: i64,
+}
+
+/// 审核流水 / 管理动作审计行。
+#[derive(Debug, Clone, FromRow)]
+pub struct AuditRow {
+    pub id: i64,
+    pub actor_id: Option<i64>,
+    pub action: String,
+    pub target: Option<String>,
+    pub detail: Option<String>,
+    pub created_at: i64,
+}
+
+#[derive(Debug, Clone, FromRow)]
+pub struct BlobRow {
+    pub hash: String,
+    pub size: i64,
+    pub refcount: i64,
+    pub created_at: i64,
+}
+
+#[derive(Debug, Clone, FromRow)]
+pub struct FileRow {
+    pub id: i64,
+    pub owner_id: i64,
+    pub blob_hash: String,
+    pub name: String,
+    pub mime: String,
+    pub size: i64,
+    pub created_at: i64,
+    pub deleted_at: Option<i64>,
+    pub download_count: i64,
+}
+
+/// 下载页需要的联合视图（文件 + 上传者）。
+#[derive(Debug, Clone, FromRow)]
+pub struct FileWithOwnerRow {
+    pub id: i64,
+    pub name: String,
+    pub mime: String,
+    pub size: i64,
+    pub blob_hash: String,
+    pub download_count: i64,
+    pub created_at: i64,
+    pub owner_id: i64,
+    pub owner_handle: String,
+}
+
+#[derive(Debug, Clone, FromRow)]
+pub struct PostRow {
+    /// 归档时间（NULL = 未归档）。`SELECT *` 会带上这一列。
+    pub archived_at: Option<i64>,
+    pub id: i64,
+    pub author_id: i64,
+    pub title: String,
+    pub body: String,
+    pub created_at: i64,
+    pub updated_at: i64,
+    pub deleted_at: Option<i64>,
+    /// discussion | resource | repost
+    pub kind: String,
+    /// 分区（vanilla_mod | custom_campaign | tool_player | tool_dev）
+    pub section: String,
+    /// pending | approved | rejected（只有 rejected 不可见）
+    pub review_state: String,
+    pub review_note: Option<String>,
+    pub reviewed_at: Option<i64>,
+    pub reviewed_by: Option<i64>,
+    pub auto_reviewed: i64,
+    pub image_count: i64,
+}
+
+/// 帖子图片：原图永久保留，压缩图/缩略图由后台任务补齐。
+#[derive(Debug, Clone, FromRow)]
+pub struct PostImageRow {
+    pub id: i64,
+    pub post_id: i64,
+    pub position: i64,
+    pub original_hash: String,
+    pub display_hash: Option<String>,
+    pub thumb_hash: Option<String>,
+    pub width: Option<i64>,
+    pub height: Option<i64>,
+    pub original_bytes: i64,
+    pub display_bytes: Option<i64>,
+    pub mime: String,
+    /// processing | ready | failed
+    pub state: String,
+    pub created_at: i64,
+}
+
+/// 图片处理队列项（请求路径内绝不转码）。
+#[derive(Debug, Clone, FromRow)]
+pub struct ImageJobRow {
+    pub id: i64,
+    pub image_id: i64,
+    pub original_hash: String,
+    pub state: String,
+    pub attempts: i64,
+    pub last_error: Option<String>,
+    pub created_at: i64,
+    pub updated_at: i64,
+}
+
+#[derive(Debug, Clone, FromRow)]
+pub struct CommentRow {
+    pub id: i64,
+    pub post_id: i64,
+    pub author_id: i64,
+    pub body: String,
+    pub created_at: i64,
+    pub deleted_at: Option<i64>,
+}
+
+#[derive(Debug, Clone, FromRow)]
+pub struct UploadSessionRow {
+    pub id: String,
+    pub owner_id: i64,
+    pub name: String,
+    pub expected_hash: Option<String>,
+    pub declared_size: i64,
+    pub received_bytes: i64,
+    pub chunk_size: i64,
+    pub received_chunks: String,
+    pub created_at: i64,
+    pub expires_at: i64,
+}
+// ---------------------------------------------------------------- 打赏记录（0031）
+
+/// 打赏记录原始行。
+#[derive(Debug, Clone, FromRow)]
+pub struct DonationRecordRow {
+    pub id: i64,
+    pub donor_id: i64,
+    pub recipient_id: i64,
+    /// 金额（**整数分**，绝不用浮点）。
+    pub amount_cents: i64,
+    /// 订单号（空串 = 未填）。
+    pub txn_id: String,
+    pub paid_at: i64,
+    /// pending | approved | rejected
+    pub state: String,
+    pub review_note: Option<String>,
+    pub reviewed_by: Option<i64>,
+    pub reviewed_at: Option<i64>,
+    /// NULL = 尚未结算（只对 approved 有意义）。
+    pub settled_at: Option<i64>,
+    pub settlement_ref: String,
+    pub created_at: i64,
+    pub updated_at: i64,
+    pub deleted_at: Option<i64>,
+}
+
+/// 打赏记录 + 双方账号信息（列表一次 join 拿全，避免 N+1）。
+#[derive(Debug, Clone, FromRow)]
+pub struct DonationWithUsersRow {
+    pub id: i64,
+    pub donor_id: i64,
+    pub donor_handle: String,
+    pub donor_name: String,
+    pub donor_avatar: Option<String>,
+    pub recipient_id: i64,
+    pub recipient_handle: String,
+    pub recipient_name: String,
+    pub recipient_avatar: Option<String>,
+    pub amount_cents: i64,
+    pub txn_id: String,
+    pub paid_at: i64,
+    pub state: String,
+    pub review_note: Option<String>,
+    pub settled_at: Option<i64>,
+    pub created_at: i64,
+    /// 打赏发生在哪篇帖子下（作者主页打赏为 None）。
+    pub post_id: Option<i64>,
+    /// 那篇帖子的标题（帖子被删则回落到 None，记录仍在）。
+    pub post_title: Option<String>,
+}
+
+/// 聚合行：某人给某作者的打赏合计（支出侧列表与排行榜共用）。
+#[derive(Debug, Clone, FromRow)]
+pub struct DonationSummaryRow {
+    /// 对方（支出侧是收款作者；排行榜里是被打赏人）。
+    pub user_id: i64,
+    pub handle: String,
+    pub display_name: String,
+    pub avatar_hash: Option<String>,
+    pub total_cents: i64,
+    pub count: i64,
+}

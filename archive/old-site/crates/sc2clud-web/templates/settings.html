@@ -1,0 +1,212 @@
+{% extends "base.html" %}
+{% block body_class %}site-page page-settings{% endblock %}
+{% block page_label %}账户设置{% endblock %}
+
+{% block title %}账户设置 · {{ site_name }}{% endblock %}
+
+{% block content %}
+<div class="settings">
+  <aside class="settings-nav">
+    <div class="settings-user">
+      {% if let Some(hash) = avatar %}
+      <img class="avatar avatar-lg" src="/avatar/{{ hash }}" alt="" width="56" height="56">
+      {% else %}
+      <img class="avatar avatar-lg" src="/static/art/miyin-chibi-160.webp" alt="" width="56" height="56">
+      {% endif %}
+      <div>
+        <strong>{{ display_name }}</strong>
+        <div class="meta">@{{ handle }}</div>
+        <div class="meta">{{ role_label }} · 加入于 {{ joined_at }}</div>
+      </div>
+    </div>
+    <nav>
+      <a href="#profile" class="active">基本资料</a>
+      <a href="#security">账号安全</a>
+      <a href="#blocklist">黑名单</a>
+      <a href="#audit">变动日志</a>
+      <a href="/u/{{ handle }}">我的主页</a>
+    </nav>
+  </aside>
+
+  <div class="settings-body">
+    {% if let Some(text) = notice %}<p class="alert ok">{{ text }}</p>{% endif %}
+    {% if let Some(text) = error %}<p class="alert">{{ text }}</p>{% endif %}
+
+    <section class="card" id="profile">
+      <h2>基本资料</h2>
+      <div class="avatar-row">
+        {% if let Some(hash) = avatar %}
+        <img class="avatar avatar-lg" id="avatar-preview" src="/avatar/{{ hash }}" alt="" width="84" height="84">
+        {% else %}
+        <img class="avatar avatar-lg" id="avatar-preview" src="/static/art/miyin-chibi-160.webp" alt="" width="84" height="84">
+        {% endif %}
+        <div class="actions-inline">
+          <button class="btn" type="button" id="avatar-pick">更换头像</button>
+          <span class="hint">PNG / JPEG / WebP；浏览器里裁好并压到 64 KB 以内再上传</span>
+        </div>
+      </div>
+      <div class="avatar-editor" data-island="avatar" data-csrf="{{ csrf }}" hidden id="avatar-editor">
+        <input type="file" accept="image/*" id="avatar-input" class="visually-hidden">
+        <div class="avatar-crop" id="avatar-crop" hidden>
+          <canvas id="avatar-canvas" width="320" height="320"></canvas>
+          <p class="hint">拖动图片选择要保留的区域，滚轮或滑块缩放</p>
+          <input type="range" id="avatar-zoom" min="1" max="3" step="0.01" value="1">
+          <div class="actions-inline">
+            <button class="btn" type="button" id="avatar-save">上传头像</button>
+            <button class="btn ghost" type="button" id="avatar-cancel">取消</button>
+            <span class="hint" id="avatar-status"></span>
+          </div>
+        </div>
+      </div>
+
+      <form method="post" action="/settings/display-name" class="stack">
+        <input type="hidden" name="csrf" value="{{ csrf }}">
+        <label>显示名<input type="text" name="display_name" value="{{ display_name }}" required maxlength="20"></label>
+        <p class="hint">登录名 @{{ handle }} 是账号标识，不在这里修改</p>
+        <button class="btn" type="submit">保存显示名</button>
+      </form>
+    </section>
+
+    <section class="card" id="security">
+      <h2>账号安全</h2>
+      <form method="post" action="/settings/password" class="stack">
+        <input type="hidden" name="csrf" value="{{ csrf }}">
+        <label>当前密码<input type="password" name="current" required autocomplete="current-password"></label>
+        <label>新密码<input type="password" name="new_password" required minlength="8" autocomplete="new-password"></label>
+        <label>确认新密码<input type="password" name="confirm" required minlength="8" autocomplete="new-password"></label>
+        <p class="hint">至少 8 位；改完立即生效</p>
+        <button class="btn" type="submit">更新密码</button>
+      </form>
+    </section>
+
+    <section class="card" id="blocklist">
+      <h2>黑名单 <span class="count">{{ blocks.len() }}</span></h2>
+      {% if blocks.is_empty() %}
+      <p class="empty">没有拉黑任何人。</p>
+      {% else %}
+      <ul class="blocklist">
+        {% for b in blocks %}
+        <li>
+          <span class="byline">
+            {% if let Some(avatar) = b.avatar %}
+            <img class="avatar" src="/avatar/{{ avatar }}" alt="" width="26" height="26" loading="lazy">
+            {% else %}
+            <img class="avatar" src="/static/art/miyin-chibi-80.webp" alt="" width="26" height="26" loading="lazy">
+            {% endif %}
+            {{ b.display_name }} <span class="meta">@{{ b.handle }}</span>
+          </span>
+          <span class="meta">拉黑于 {{ b.when }}</span>
+          <form method="post" action="/u/{{ b.handle }}/unblock" class="inline-form" data-async data-after="refresh">
+            <input type="hidden" name="csrf" value="{{ csrf }}">
+            <button class="btn ghost ok" type="submit">解除</button>
+          </form>
+        </li>
+        {% endfor %}
+      </ul>
+      {% endif %}
+    </section>
+
+    <section class="card" id="audit">
+      <h2>变动日志 <span class="count">{{ audit.len() }}</span></h2>
+      {% if audit.is_empty() %}
+      <p class="empty">暂无记录。</p>
+      {% else %}
+      <div class="site-table-scroll"><table class="admin-table">
+        <thead><tr><th>时间</th><th>动作</th><th>备注</th></tr></thead>
+        <tbody>
+          {% for row in audit %}
+          <tr><td>{{ row.created_at }}</td><td>{{ row.action }}</td><td>{{ row.detail }}</td></tr>
+          {% endfor %}
+        </tbody>
+      </table></div>
+      {% endif %}
+    </section>
+    <section class="card">
+      <h2>个人简介</h2>
+      <form method="post" action="/settings/bio">
+        <input type="hidden" name="csrf" value="{{ csrf }}">
+        <textarea name="bio" rows="4" maxlength="200" placeholder="介绍一下自己（最多 200 字）">{{ bio }}</textarea>
+        <p class="hint">最多 200 字。修改会走审核流程（当前自动放行）。</p>
+        <button class="btn" type="submit">保存简介</button>
+      </form>
+    </section>
+    <section class="card">
+      <h2>打赏与支持作者</h2>
+      {# 公开开关独立成表单：任何用户都能改，不受「认证开发者才能挂收款码」限制 #}
+      <form method="post" action="/settings/donation-records" class="stack">
+        <input type="hidden" name="csrf" value="{{ csrf }}">
+        <label class="row"><input type="checkbox" name="records_public" value="1" {% if donation_records_public %}checked{% endif %}> 公开我的打赏记录（我在谁那里打赏了多少）</label>
+        <p class="hint">只影响「打赏去向」是否对他人可见。关闭后（默认），你打赏的记录也不会被计入对方的「收到打赏」统计 —— 一个开关对双方都生效。</p>
+        <button class="btn ghost sm" type="submit">保存公开设置</button>
+      </form>
+      <hr>
+      {% if !can_donate %}
+      <p class="hint">认证开发者及以上才能开启打赏展示。</p>
+      {% else %}
+      <form method="post" action="/settings/donation">
+        <input type="hidden" name="csrf" value="{{ csrf }}">
+        <label class="row"><input type="checkbox" name="visible" value="1" {% if donation_visible %}checked{% endif %}> 在帖子页与主页展示「支持作者」</label>
+        <label class="row"><input type="checkbox" name="notice_visible" value="1" {% if donation_notice_visible %}checked{% endif %}> 展示赞助前提示（不点「确定」看不到二维码）</label>
+        <label class="row">提示文案（留空 = 用该渠道的默认文案）
+          <textarea name="notice_text" rows="3" maxlength="500">{{ donation_notice_text }}</textarea>
+        </label>
+        <button class="btn" type="submit">保存</button>
+      </form>
+      <h3>我的收款码</h3>
+      {% if donation_channels.is_empty() %}<p class="hint">还没有上传收款码。</p>{% else %}
+      <div class="donate-profile-grid">
+        {% for channel in donation_channels %}
+        <div class="donate-profile-item">
+          <img src="/img/{{ channel.image_hash }}" alt="{{ channel.label }} 收款码" width="120" height="120">
+          <div>{{ channel.label }}</div>
+          <button class="btn ghost sm" type="button" data-channel-delete="{{ channel.id }}">删除</button>
+        </div>
+        {% endfor %}
+      </div>
+      {% endif %}
+      <div class="upload-row">
+        <input type="text" id="donate-channel-name" placeholder="渠道名（如 alipay / wechat / 爱发电）" maxlength="24">
+        <input type="text" id="donate-channel-label" placeholder="显示名（如 支付宝）" maxlength="24">
+        <input type="file" id="donate-file" accept="image/*" hidden>
+        <button class="btn ghost sm" type="button" id="donate-pick">选择收款码图片</button>
+        <span class="hint" data-donate-status>建议方形图片；任意分辨率都可以，页面统一按固定尺寸显示</span>
+      </div>
+      <style>
+      .donate-profile-grid{display:flex;flex-wrap:wrap;gap:16px;margin-top:12px}
+      .donate-profile-item{text-align:center;font-size:13px}
+      .donate-profile-item img{width:120px;height:120px;object-fit:contain;background:#fff;border:1px solid var(--line,#e5e7eb);border-radius:10px;padding:6px;box-sizing:content-box}
+      </style>
+      <script>
+      (() => {
+        const csrf = document.querySelector('input[name="csrf"]').value;
+        const status = document.querySelector('[data-donate-status]');
+        const file = document.getElementById('donate-file');
+        document.getElementById('donate-pick').addEventListener('click', () => file.click());
+        file.addEventListener('change', async () => {
+          const picked = file.files[0];
+          if (!picked) return;
+          const channel = document.getElementById('donate-channel-name').value.trim() || 'alipay';
+          const label = document.getElementById('donate-channel-label').value.trim() || channel;
+          status.textContent = '上传中…';
+          const res = await fetch(`/api/v1/me/payment-channels?channel=${encodeURIComponent(channel)}&label=${encodeURIComponent(label)}`, {
+            method: 'POST', headers: { 'x-csrf-token': csrf }, body: picked,
+          });
+          status.textContent = res.ok ? '上传成功，刷新页面即可看到' : '上传失败：' + res.status;
+        });
+        document.querySelectorAll('[data-channel-delete]').forEach((btn) => {
+          btn.addEventListener('click', async () => {
+            const res = await fetch('/api/v1/me/payment-channels/' + encodeURIComponent(btn.dataset.channelDelete), {
+              method: 'DELETE', headers: { 'x-csrf-token': csrf },
+            });
+            status.textContent = res.ok ? '已删除' : '删除失败：' + res.status;
+          });
+        });
+      })();
+      </script>
+      {% endif %}
+    </section>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}<script type="module" src="/static/islands/avatar.js"></script>{% endblock %}

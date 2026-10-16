@@ -1,0 +1,160 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <script>
+    // 主题三态：'system'（默认，跟随系统）/ 'light' / 'dark'。
+    // 老版本只存了 light|dark，这里一并兼容。
+    (function () {
+      var mode = 'system';
+      try {
+        var stored = localStorage.getItem('sc2clud-theme');
+        if (stored === 'light' || stored === 'dark' || stored === 'system') mode = stored;
+      } catch (e) {}
+      var dark = mode === 'dark' || (mode === 'system' && window.matchMedia('(prefers-color-scheme: dark)').matches);
+      document.documentElement.setAttribute('data-theme', dark ? 'dark' : 'light');
+      document.documentElement.setAttribute('data-theme-mode', mode);
+    })();
+  </script>
+  <title>{% block title %}{{ site_name }}{% endblock %}</title>
+  <link rel="stylesheet" href="/static/app.css?v=20261009-theme-v12">
+  {# 给个真图标：否则浏览器会去要 /favicon.ico，落到 nginx 的 404 #}
+  <link rel="icon" href="/static/art/miyin-chibi-80.webp" type="image/webp">
+  <link rel="apple-touch-icon" href="/static/art/miyin-chibi-160.webp">
+  {% block head %}<link rel="stylesheet" href="/static/site.css?v=20261009-covers-v14">{% endblock %}
+{# 文本框设计（B 版，已选为全站基础）：覆盖层，必须排在 site.css 之后 #}
+<link rel="stylesheet" href="/static/textbox.css?v=20261010-b">
+</head>
+<link rel="stylesheet" href="/static/post.css?v=20261010-a">
+{# 前端岛的样式：Vite 把各岛的 CSS 合成这一份（ui/ 控件库 + 各岛业务样式） #}
+<link rel="stylesheet" href="/static/islands/style.css?v=20261011-react">
+<body class="{% block body_class %}site-page{% endblock %}">
+  {% block header %}
+  <a class="site-skip" href="#site-main">跳到主要内容</a>
+  <header class="topbar">
+    <a class="brand" href="/">
+      <img class="mascot" src="/static/art/miyin-chibi-80.webp"
+           srcset="/static/art/miyin-chibi-80.webp 80w, /static/art/miyin-chibi-160.webp 160w"
+           sizes="40px" width="40" height="40" alt="弥音" fetchpriority="high">
+      <span>{{ site_name }}<small>星际争霸 II 社区</small></span>
+    </a>
+    <form class="site-search" role="search" method="get" action="/">
+      <input type="search" name="q" placeholder="搜索战役、Mod、工具与讨论" aria-label="搜索社区帖子">
+      <button type="submit" aria-label="搜索"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="10.8" cy="10.8" r="6.8"/><path d="m16 16 5 5"/></svg></button>
+    </form>
+    <div class="site-header-links"><a href="/">发现</a><a href="/announcements">公告</a><a href="/new">创作</a></div>
+    <button class="site-theme-button" id="theme-toggle" type="button" aria-label="切换日间与夜间主题"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20.5 14.2A9 9 0 0 1 9.8 3.5 9 9 0 1 0 20.5 14.2Z"/></svg></button>
+    <div class="bar-stats">{% block bar_stats %}{% endblock %}</div>
+    <div class="bar-user">
+      {% if let Some(name) = user_label %}
+      {% let account_avatar = "" %}
+      {% include "account_menu.html" %}
+      {% else %}
+      <a class="btn" href="/login">登录 / 注册</a>
+      {% endif %}
+    </div>
+  </header>
+
+  {# 右下角快捷按钮：发帖 / 回到顶部 / 主题三态 #}
+  <div class="fab" id="fab">
+    <div class="fab-menu" id="fab-menu">
+      {% if user_label.is_some() %}
+      <a class="fab-item" href="/new"><span>发帖</span></a>
+      {% else %}
+      <a class="fab-item" href="/login"><span>登录</span></a>
+      {% endif %}
+      <button class="fab-item" type="button" id="to-top"><span>回到最上面</span></button>
+      <div class="fab-item theme-picker" role="group" aria-label="主题">
+        <button type="button" data-theme-mode="light">日间</button>
+        <button type="button" data-theme-mode="dark">夜间</button>
+        <button type="button" data-theme-mode="system">跟随系统</button>
+      </div>
+    </div>
+    <button class="fab-btn" type="button" id="fab-btn" aria-expanded="false" aria-label="快捷操作">
+      <svg viewBox="0 0 24 24" width="26" height="26" aria-hidden="true">
+        <path d="M4 20h4l10-10-4-4L4 16v4z" fill="currentColor"/>
+        <path d="M14.5 5.5l4 4" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+      </svg>
+    </button>
+  </div>
+
+  {% endblock %}
+  <main id="site-main">
+  {% block page_intro %}<nav class="site-context" aria-label="当前位置"><div class="site-trail"><img src="/static/art/starcraft/terran.webp" width="64" height="64" alt=""><small>SC2 COMMUNITY</small><span>/</span><span>{% block page_label %}社区{% endblock %}</span></div><a href="/">返回社区首页 ↗</a></nav>{% endblock %}
+{% block content %}{% endblock %}
+  </main>
+  {% if user_label.is_none() %}<div id="auth-dialog-host"></div>{% endif %}
+  <footer class="site-footer"><span>{{ site_name }} · 星际争霸 II 玩家社区</span><span>由热爱连接 · 自由创作</span><a href="/">回到社区 ↗</a></footer>
+  <script>
+    (function () {
+      // 右下角按钮
+      var fab = document.getElementById('fab');
+      var fabBtn = document.getElementById('fab-btn');
+      if (fab && fabBtn) {
+        fabBtn.addEventListener('click', function (event) {
+          event.stopPropagation();
+          var open = fab.classList.toggle('open');
+          fabBtn.setAttribute('aria-expanded', open ? 'true' : 'false');
+        });
+        document.addEventListener('click', function (event) { if (!fab.contains(event.target)) fab.classList.remove('open'); });
+      }
+      // 回到最上面
+      var toTop = document.getElementById('to-top');
+      if (toTop) {
+        toTop.addEventListener('click', function () {
+          window.scrollTo({ top: 0, behavior: 'smooth' });
+        });
+      }
+      // 未读通知：登录后问一次（接口很轻，返回 {unread:N}）
+      var badge = document.getElementById('notify-badge');
+      if (badge) {
+        fetch('/api/v1/notifications/unread', { headers: { 'x-requested-with': 'fetch' } })
+          .then(function (r) { return r.ok ? r.json() : null; })
+          .then(function (data) {
+            if (data && data.unread > 0) {
+              badge.textContent = data.unread > 99 ? '99+' : String(data.unread);
+              badge.hidden = false;
+            }
+          })
+          .catch(function () {});
+      }
+
+      // 账户设置页：点了「更换头像」才出现控件
+      var pick = document.getElementById('avatar-pick');
+      var editor = document.getElementById('avatar-editor');
+      var input = document.getElementById('avatar-input');
+      if (pick && editor && input) {
+        pick.addEventListener('click', function () {
+          editor.hidden = false;
+          input.click();
+        });
+      }
+    })();
+  </script>
+<script type="module" src="/static/islands/theme.js?v=20261009-theme-v12"></script>
+{% block scripts %}{% endblock %}
+{% if user_label.is_some() %}<script type="module" src="/static/islands/account.js?v=20261009-theme-v12"></script>{% endif %}
+<script type="module" src="/static/islands/post-images.js?v=20261009-art-v7"></script>
+{% if user_label.is_none() %}<script type="module" src="/static/islands/auth.js?v=20261009-art-v7"></script>{% endif %}
+{# 图片失败自愈：429/网络抖动时退避重试，慢慢到而不是留一张破图 #}
+<script>
+(() => {
+  let ticket = 0;
+  // error 事件不冒泡，必须用捕获阶段监听
+  document.addEventListener('error', (event) => {
+    const img = event.target;
+    if (!(img instanceof HTMLImageElement)) return;
+    if (img.dataset.noRetry) return;
+    const tries = Number(img.dataset.retry || 0);
+    if (tries >= 3) { img.dataset.noRetry = '1'; return; }
+    img.dataset.retry = String(tries + 1);
+    const origin = img.dataset.origin || img.src.split('?')[0];
+    img.dataset.origin = origin;
+    // 带一个新的查询串绕开被缓存的失败响应；0.8s / 1.6s / 3.2s 退避
+    setTimeout(() => { img.src = origin + '?r=' + (++ticket); }, 800 * Math.pow(2, tries));
+  }, true);
+})();
+</script>
+</body>
+</html>

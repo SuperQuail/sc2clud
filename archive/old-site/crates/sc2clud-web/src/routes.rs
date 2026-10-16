@@ -1,0 +1,1437 @@
+//! 路由与处理器。
+//!
+//! 页面走服务端渲染（askama）；接口走 JSON；两者共用同一套领域错误映射（见 crate::error）。
+//!
+//! 代理信任说明：应用只监听回环地址，nginx 在同一台机器上，因此可以直接信任
+//! `X-Real-IP` / `X-Forwarded-For`。换部署拓扑（多机、容器）时必须同步调整。
+
+use std::net::SocketAddr;
+use std::sync::Arc;
+use std::time::Duration;
+
+use axum::body::Body;
+use axum::extract::{ConnectInfo, Path, Query, State};
+use axum::http::{HeaderMap, StatusCode, header};
+use axum::response::{IntoResponse, Response};
+use axum::{Json, Router, middleware};
+use bytes::Bytes;
+use futures_util::StreamExt;
+use sc2clud_core::auth::Permission;
+use sc2clud_core::capacity::ensure_free_space;
+use sc2clud_core::config::DownloadMode;
+use sc2clud_core::resource::PostSection;
+use sc2clud_core::review::{PostKind, ReviewState, review_for_author};
+use sc2clud_core::{BlobHash, Error as DomainError, now_unix, safety};
+use sc2clud_db::repo;
+use sc2clud_storage::BlobReader;
+use serde_json::json;
+use tokio::sync::mpsc;
+use tokio_stream::wrappers::ReceiverStream;
+use tokio_util::io::StreamReader;
+
+use crate::AppState;
+use crate::error::{AppError, AppResult};
+use crate::session::{self, CurrentUser};
+use crate::templates::{
+    ClaimRequest, FeedView, FileDto, FilePageTemplate, FileView, IndexTemplate, MyFileStats,
+    PostCreateRequest, PostDto, SectionOption, UploadQuery, format_date, format_relative,
+    human_bytes,
+};
+use crate::upload::{DEFAULT_QUEUE_DEPTH, pump_body};
+
+// ------------------------------------------------------------ 路由表
+
+/// 只读页面：给足超时的同时不至于让慢客户端占住 worker。
+pub fn pages() -> Router<AppState> {
+    Router::new()
+        .route("/", axum::routing::get(index))
+        .route(
+            "/auth/dialog",
+            axum::routing::get(crate::pages_auth::auth_dialog),
+        )
+        .route(
+            "/register",
+            axum::routing::get(crate::pages_auth::register_form)
+                .post(crate::pages_auth::register_submit),
+        )
+        .route(
+            "/search",
+            axum::routing::get(crate::pages_search::search_page),
+        )
+        .route(
+            "/notifications/{id}/delete",
+            axum::routing::post(crate::pages_messages::notification_delete),
+        )
+        .route(
+            "/notifications/mute",
+            axum::routing::post(crate::pages_messages::notification_mute),
+        )
+        .route("/inbox", axum::routing::get(crate::pages_messages::center))
+        .route(
+            "/login",
+            axum::routing::get(crate::pages_auth::login_form).post(crate::pages_auth::login_submit),
+        )
+        .route("/logout", axum::routing::post(crate::pages_auth::logout))
+        .route("/me", axum::routing::get(crate::pages_profile::me))
+        .route(
+            "/bookmarks",
+            axum::routing::get(crate::pages_social::bookmarks),
+        )
+        // 老通知页已并入消息中心：GET 重定向过去（保留书签可达）
+        .route(
+            "/notifications",
+            axum::routing::get(crate::pages_messages::notifications_landing),
+        )
+        .route(
+            "/announcements",
+            axum::routing::get(crate::pages_social::announcements),
+        )
+        .route(
+            "/api/v1/notifications/unread",
+            axum::routing::get(crate::pages_social::unread_badge),
+        )
+        // @ 提及的下拉候选（重名账号会带 dup 标记）
+        .route(
+            "/api/v1/users/search",
+            axum::routing::get(crate::pages_search::mention_candidates),
+        )
+        .route(
+            "/admin/announcements",
+            axum::routing::post(crate::pages_social::create_announcement),
+        )
+        .route(
+            "/admin/backup",
+            axum::routing::get(crate::pages_social::backup_page)
+                .post(crate::pages_social::create_backup),
+        )
+        .route(
+            "/admin/backup/{name}",
+            axum::routing::get(crate::pages_social::download_backup),
+        )
+        // 老私信页已并入消息中心：列表与对话页 GET 都重定向；发信仍走 POST /messages/{handle}
+        .route(
+            "/messages",
+            axum::routing::get(crate::pages_messages::messages_landing),
+        )
+        .route(
+            "/api/v1/messages/{handle}/stream",
+            axum::routing::get(crate::pages_messages::messages_stream),
+        )
+        .route(
+            "/api/v1/messages/{handle}",
+            axum::routing::post(crate::pages_messages::send_json)
+                .get(crate::pages_messages::thread_json),
+        )
+        .route(
+            "/messages/{handle}",
+            axum::routing::get(crate::pages_messages::thread_landing).post(crate::pages_messages::send),
+        )
+        .route(
+            "/u/{handle}/block",
+            axum::routing::post(crate::pages_messages::block),
+        )
+        .route(
+            "/u/{handle}/unblock",
+            axum::routing::post(crate::pages_messages::unblock),
+        )
+        .route(
+            "/admin/posts/{id}/approve",
+            axum::routing::post(crate::admin_posts::approve),
+        )
+        .route(
+            "/admin/posts/{id}/reject",
+            axum::routing::post(crate::admin_posts::reject),
+        )
+        .route("/settings", axum::routing::get(crate::pages_settings::page))
+        .route(
+            "/settings/display-name",
+            axum::routing::post(crate::pages_settings::update_display_name),
+        )
+        .route(
+            "/settings/password",
+            axum::routing::post(crate::pages_settings::update_password),
+        )
+        .route(
+            "/u/id/{id}",
+            axum::routing::get(crate::pages_profile::profile_by_id),
+        )
+        .route(
+            "/u/{handle}",
+            axum::routing::get(crate::pages_profile::profile),
+        )
+        .route(
+            "/avatar/{hash}",
+            axum::routing::get(crate::pages_profile::serve_avatar),
+        )
+        .route("/admin", axum::routing::get(crate::pages_admin::index))
+        .route(
+            "/admin/users/overview",
+            axum::routing::get(crate::pages_admin::panel),
+        )
+        .route(
+            "/admin/users/{id}/update",
+            axum::routing::post(crate::admin_users::update_user),
+        )
+        .route(
+            "/admin/users/{id}",
+            axum::routing::get(crate::admin_users::user_edit),
+        )
+        .route(
+            "/admin/users/{id}/quota",
+            axum::routing::post(crate::admin_users::set_quota),
+        )
+        .route(
+            "/admin/users",
+            axum::routing::post(crate::admin_users::create_user),
+        )
+        .route(
+            "/admin/users/{id}/trusted",
+            axum::routing::post(crate::admin_users::set_trusted),
+        )
+        .route(
+            "/admin/ai/settings",
+            axum::routing::post(crate::admin_ai::save_ai_settings),
+        )
+        .route("/admin/ai/test", axum::routing::post(crate::admin_ai::test_ai))
+        .route(
+            "/admin/ai/review",
+            axum::routing::post(crate::admin_ai::run_ai_review),
+        )
+        .route(
+            "/admin/ai/preview",
+            axum::routing::post(crate::admin_ai::preview_ai_text),
+        )
+        .route("/admin/mail", axum::routing::get(crate::admin_mail::page))
+        .route(
+            "/admin/mail/settings",
+            axum::routing::post(crate::admin_mail::save_settings),
+        )
+        .route(
+            "/admin/mail/accounts",
+            axum::routing::post(crate::admin_mail::create_account),
+        )
+        .route(
+            "/admin/mail/accounts/{id}",
+            axum::routing::post(crate::admin_mail::update_account),
+        )
+        .route(
+            "/admin/mail/accounts/{id}/enabled",
+            axum::routing::post(crate::admin_mail::set_enabled),
+        )
+        .route(
+            "/admin/mail/accounts/{id}/archive",
+            axum::routing::post(crate::admin_mail::archive_account),
+        )
+        .route(
+            "/admin/mail/accounts/{id}/test",
+            axum::routing::post(crate::admin_mail::test_send),
+        )
+        .route(
+            "/api/v1/reports",
+            axum::routing::post(crate::pages_posts::submit_report),
+        )
+        .route(
+            "/admin/sections/{section}/acl",
+            axum::routing::post(crate::pages_admin::save_section_acl),
+        )
+        .route(
+            "/admin/settings/block-reply",
+            axum::routing::post(crate::admin_sanctions::set_block_reply),
+        )
+        .route(
+            "/admin/groups",
+            axum::routing::post(crate::admin_groups::create_group),
+        )
+        .route(
+            "/admin/groups/update",
+            axum::routing::post(crate::admin_groups::update_group),
+        )
+        .route(
+            "/admin/groups/archive",
+            axum::routing::post(crate::admin_groups::archive_group),
+        )
+        .route(
+            "/admin/users/{id}/sanction",
+            axum::routing::post(crate::admin_sanctions::set_sanction),
+        )
+        .route(
+            "/admin/users/{id}/ban",
+            axum::routing::post(crate::admin_sanctions::ban_user),
+        )
+        .route(
+            "/admin/users/{id}/groups",
+            axum::routing::post(crate::admin_groups::set_user_groups),
+        )
+        .route(
+            "/admin/sections/{section}/move",
+            axum::routing::post(crate::admin_content::move_section),
+        )
+        .route(
+            "/admin/sections/{section}/cover",
+            axum::routing::post(crate::admin_content::set_section_cover),
+        )
+        .route(
+            "/admin/users/{id}/activate",
+            axum::routing::post(crate::admin_users::activate),
+        )
+        .route(
+            "/admin/users/{id}/deactivate",
+            axum::routing::post(crate::admin_users::deactivate),
+        )
+        .route(
+            "/admin/users/{id}/role",
+            axum::routing::post(crate::admin_users::set_role),
+        )
+        .route(
+            "/admin/users/{id}/rename",
+            axum::routing::post(crate::admin_users::rename),
+        )
+        .route(
+            "/admin/titles",
+            axum::routing::get(crate::admin_title_catalog::list_title_catalog)
+                .post(crate::admin_title_catalog::create_title),
+        )
+        .route(
+            "/admin/titles/{id}",
+            axum::routing::post(crate::admin_title_catalog::update_title),
+        )
+        .route(
+            "/admin/titles/{id}/archive",
+            axum::routing::post(crate::admin_title_catalog::archive_title),
+        )
+        .route(
+            "/admin/users/{id}/titles",
+            axum::routing::get(crate::admin_titles::user_titles)
+                .post(crate::admin_titles::set_user_title),
+        )
+        .route(
+            "/admin/settings/require-activation",
+            axum::routing::post(crate::admin_users::toggle_activation_policy),
+        )
+        .route("/p/{id}", axum::routing::get(crate::pages_posts::post_page))
+        .route(
+            "/p/{id}/images/{image_id}/delete",
+            axum::routing::post(crate::pages_posts::post_image_delete),
+        )
+        .route(
+            "/p/{id}/images/{image_id}/move",
+            axum::routing::post(crate::pages_posts::post_image_move),
+        )
+        .route(
+            "/p/{id}/edit",
+            axum::routing::get(crate::pages_posts::edit_form).post(crate::pages_posts::edit_submit),
+        )
+        .route(
+            "/admin/posts/{id}/archive",
+            axum::routing::post(crate::admin_posts::archive),
+        )
+        .route(
+            "/admin/posts/{id}/unarchive",
+            axum::routing::post(crate::admin_posts::unarchive),
+        )
+        .route(
+            "/admin/posts/{id}/revision",
+            axum::routing::post(crate::pages_admin::request_revision),
+        )
+        .route(
+            "/p/{id}/like",
+            axum::routing::post(crate::pages_social::toggle_like),
+        )
+        .route(
+            "/p/{id}/bookmark",
+            axum::routing::post(crate::pages_social::toggle_bookmark),
+        )
+        .route(
+            "/p/{id}/comments",
+            axum::routing::post(crate::pages_posts::comment_submit),
+        )
+        .route(
+            "/new",
+            axum::routing::get(crate::pages_posts::new_post_form)
+                .post(crate::pages_posts::new_post_submit),
+        )
+        .route("/f/{id}", axum::routing::get(file_page))
+        // ---- 打赏记录（0031）：用户登记 + 管理员验证 + 统计 ----
+        .route(
+            "/donations",
+            axum::routing::get(crate::pages_donations::mine)
+                .post(crate::pages_donations::submit),
+        )
+        .route(
+            "/donations/new",
+            axum::routing::get(crate::pages_donations::new_form),
+        )
+        .route(
+            "/donations/{id}/delete",
+            axum::routing::post(crate::pages_donations::withdraw),
+        )
+        .route(
+            "/admin/donations",
+            axum::routing::get(crate::pages_donations::admin_queue),
+        )
+        .route(
+            "/admin/donations/{id}/approve",
+            axum::routing::post(crate::pages_donations::admin_approve),
+        )
+        .route(
+            "/admin/donations/{id}/reject",
+            axum::routing::post(crate::pages_donations::admin_reject),
+        )
+        .route(
+            "/admin/donations/settle",
+            axum::routing::post(crate::pages_donations::admin_settle),
+        )
+        .route("/healthz", axum::routing::get(healthz))
+        .route("/readyz", axum::routing::get(readyz))
+}
+
+/// 读接口：GET / DELETE / 秒传声明。
+pub fn api_read() -> Router<AppState> {
+    Router::new()
+        .route(
+            "/api/v1/posts/{id}/comments",
+            axum::routing::get(crate::pages_posts::comments_json)
+                .post(crate::pages_posts::comment_json),
+        )
+        .route(
+            "/api/v1/issue-comments/{id}/vote",
+            axum::routing::post(crate::pages_posts::issue_comment_vote),
+        )
+        .route(
+            "/api/v1/comments/{id}/vote",
+            axum::routing::post(crate::pages_posts::comment_vote),
+        )
+        .route(
+            "/api/v1/posts",
+            axum::routing::get(list_posts).post(create_post),
+        )
+        .route("/api/v1/files", axum::routing::get(list_files))
+        .route(
+            "/img/{hash}",
+            axum::routing::get(crate::pages_media::serve_image),
+        )
+        .route("/api/v1/files/claim", axum::routing::post(claim_file))
+        .route("/api/v1/files/{id}", axum::routing::delete(delete_file))
+        .route(
+            "/api/v1/files/{id}/download",
+            axum::routing::get(download_file),
+        )
+}
+
+/// 上传接口：**不加超时层**——慢速上传是常态，超时交给 nginx 的 client_body_timeout。
+pub fn api_upload() -> Router<AppState> {
+    Router::new()
+        .route("/api/v1/files", axum::routing::put(upload_file))
+        .route(
+            "/api/v1/me/avatar/small",
+            axum::routing::post(upload_avatar_small),
+        )
+        .route(
+            "/api/v1/me/avatar",
+            axum::routing::post(upload_avatar)
+                .get(crate::pages_profile::avatar_info)
+                .delete(crate::pages_profile::avatar_clear),
+        )
+        // 通用插图：不依赖帖子（发帖前上传、将来其它用途）
+        .route(
+            "/api/v1/images",
+            axum::routing::post(crate::pages_media::upload_image),
+        )
+        .route(
+            "/api/v1/posts/{post_id}/images",
+            axum::routing::post(crate::pages_media::upload_post_image),
+        )
+        // ---- 横幅（只对登录用户；未登录返回空数组）----
+        .route("/api/v1/banners", axum::routing::get(crate::pages_social::banners))
+        .route(
+            "/api/v1/banners/{id}/dismiss",
+            axum::routing::post(crate::pages_social::banner_dismiss),
+        )
+        // ---- 帖子链接解析 / 资源帖状态 ----
+        .route(
+            "/api/v1/posts/resolve",
+            axum::routing::get(crate::pages_posts::resolve_post_link),
+        )
+        .route(
+            "/api/v1/posts/{id}/resource-status",
+            axum::routing::get(crate::pages_posts::resource_status_json),
+        )
+        .route(
+            "/p/{id}/resource-status",
+            axum::routing::post(crate::pages_posts::set_resource_status),
+        )
+        // ---- 收款码（认证开发者及以上；渠道名不限）----
+        .route(
+            "/settings/title",
+            axum::routing::post(crate::pages_settings::title_set),
+        )
+        .route(
+            "/settings/bio",
+            axum::routing::post(crate::pages_settings::bio_save),
+        )
+        .route(
+            "/settings/donation",
+            axum::routing::post(crate::pages_settings::donation_save),
+        )
+        // 打赏记录的公开开关：**任何已激活用户**都能改（与收款码权限分开）
+        .route(
+            "/settings/donation-records",
+            axum::routing::post(crate::pages_settings::donation_records_save),
+        )
+        .route(
+            "/api/v1/me/payment-channels",
+            axum::routing::post(crate::pages_profile::payment_channel_add),
+        )
+        .route(
+            "/api/v1/me/payment-channels/{id}",
+            axum::routing::delete(crate::pages_profile::payment_channel_delete),
+        )
+        .route(
+            "/api/v1/users/{handle}/payment-channels",
+            axum::routing::get(crate::pages_profile::payment_channels_json),
+        )
+        // ---- 横幅管理（管理员及以上）----
+        .route(
+            "/admin/banners",
+            axum::routing::post(crate::admin_content::create_banner),
+        )
+        .route(
+            "/admin/banners/{id}/active",
+            axum::routing::post(crate::admin_content::set_banner_active),
+        )
+        .route(
+            "/admin/site-texts",
+            axum::routing::post(crate::admin_content::site_texts_save),
+        )
+        .route(
+            "/admin/default-avatars",
+            axum::routing::post(crate::admin_content::default_avatar_add),
+        )
+        .route(
+            "/admin/default-avatars/remove",
+            axum::routing::post(crate::admin_content::default_avatar_remove),
+        )
+        // ---- 统一域名管理（管理员及以上）----
+        .route(
+            "/admin/domains",
+            axum::routing::get(crate::admin_content::list_domains)
+                .post(crate::admin_content::add_domain),
+        )
+        .route(
+            "/admin/domains/{domain}/delete",
+            axum::routing::post(crate::admin_content::remove_domain),
+        )
+        // ---- 资源帖 issue（读公开，写要登录）----
+        .route(
+            "/p/{id}/issues/new",
+            axum::routing::get(crate::pages_posts::issue_new_page),
+        )
+        .route(
+            "/p/{id}/issues",
+            axum::routing::get(crate::pages_posts::issues_page)
+                .post(crate::pages_posts::issue_create),
+        )
+        .route(
+            "/p/{id}/issues/{issue_id}",
+            axum::routing::get(crate::pages_posts::issue_detail_page),
+        )
+        .route(
+            "/p/{id}/issues/{issue_id}/state",
+            axum::routing::post(crate::pages_posts::issue_set_state),
+        )
+        .route(
+            "/p/{id}/issues/{issue_id}/comments",
+            axum::routing::post(crate::pages_posts::issue_comment),
+        )
+        .route(
+            "/api/v1/posts/{id}/issues",
+            axum::routing::get(crate::pages_posts::issues_json),
+        )
+        .route(
+            "/api/v1/posts/{id}/issues/{issue_id}",
+            axum::routing::get(crate::pages_posts::issue_json),
+        )
+}
+
+// ------------------------------------------------------------ 工具
+
+#[derive(Debug, serde::Deserialize)]
+pub struct IndexQuery {
+    #[serde(default)]
+    pub section: Option<String>,
+    #[serde(default)]
+    pub q: Option<String>,
+    #[serde(default)]
+    pub sort: Option<String>,
+    #[serde(default)]
+    pub page: Option<i64>,
+}
+
+pub(crate) fn wants_html(headers: &HeaderMap) -> bool {
+    headers
+        .get(header::ACCEPT)
+        .and_then(|v| v.to_str().ok())
+        .map(|v| v.contains("text/html"))
+        .unwrap_or(false)
+}
+
+fn content_length(headers: &HeaderMap) -> Option<u64> {
+    headers
+        .get(header::CONTENT_LENGTH)
+        .and_then(|v| v.to_str().ok())
+        .and_then(|v| v.parse().ok())
+}
+
+/// 客户端 IP：优先取 nginx 写入的转发头。
+pub fn client_ip(headers: &HeaderMap, peer: Option<SocketAddr>) -> Option<String> {
+    for name in ["x-real-ip", "x-forwarded-for"] {
+        if let Some(value) = headers.get(name).and_then(|v| v.to_str().ok()) {
+            if let Some(first) = value.split(',').map(str::trim).find(|s| !s.is_empty()) {
+                return Some(first.to_string());
+            }
+        }
+    }
+    peer.map(|addr| addr.ip().to_string())
+}
+
+/// 限速主体：当前脚手架用 IP；接入登录后换成 user id（改这一处即可）。
+pub(crate) fn client_subject(headers: &HeaderMap, peer: Option<SocketAddr>) -> String {
+    client_ip(headers, peer).unwrap_or_else(|| "unknown".to_string())
+}
+
+fn render_template<T: askama::Template>(template: T) -> Response {
+    match template.render() {
+        Ok(html) => ([(header::CONTENT_TYPE, "text/html; charset=utf-8")], html).into_response(),
+        Err(e) => {
+            tracing::error!(error = %e, "模板渲染失败");
+            AppError::internal(format!("模板渲染失败：{e}")).into_response()
+        }
+    }
+}
+
+/// 访问日志：跳过探针路径，避免把日志刷满。
+pub async fn access_log(request: axum::extract::Request, next: middleware::Next) -> Response {
+    let method = request.method().clone();
+    let path = request.uri().path().to_string();
+    let started = std::time::Instant::now();
+    let response = next.run(request).await;
+    if path != "/healthz" && path != "/readyz" {
+        tracing::info!(
+            method = %method,
+            path = %path,
+            status = response.status().as_u16(),
+            elapsed_ms = started.elapsed().as_millis() as u64,
+            "request"
+        );
+    }
+    response
+}
+
+// ------------------------------------------------------------ 探针
+
+pub async fn healthz() -> impl IntoResponse {
+    Json(json!({ "status": "ok", "version": env!("CARGO_PKG_VERSION") }))
+}
+
+/// 就绪探针：真的打一次数据库与存储根目录。
+pub async fn readyz(State(state): State<AppState>) -> Response {
+    let mut problems = Vec::new();
+    if let Err(e) = state.db.ping().await {
+        problems.push(format!("db: {e}"));
+    }
+    if let Err(e) = state.storage.health().await {
+        problems.push(format!("storage: {e}"));
+    }
+    if problems.is_empty() {
+        (StatusCode::OK, Json(json!({ "status": "ready" }))).into_response()
+    } else {
+        (
+            StatusCode::SERVICE_UNAVAILABLE,
+            Json(json!({ "status": "degraded", "problems": problems })),
+        )
+            .into_response()
+    }
+}
+
+// ------------------------------------------------------------ 页面
+
+/// 取当前登录者；文件与发帖相关操作都要求已登录。
+pub(crate) async fn require_user(state: &AppState, headers: &HeaderMap) -> AppResult<CurrentUser> {
+    session::current_user(state, headers)
+        .await?
+        .ok_or_else(|| AppError::Domain(DomainError::Unauthorized("请先登录".to_string())))
+}
+
+pub async fn index(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Query(query): Query<IndexQuery>,
+) -> Response {
+    let user = session::current_user(&state, &headers).await.ok().flatten();
+    let section = query
+        .section
+        .as_deref()
+        .and_then(|raw| PostSection::parse(raw).ok());
+    match build_index(&state, user.as_ref(), section, &query).await {
+        Ok(template) => render_template(template),
+        Err(e) => e.into_page_response(wants_html(&headers)),
+    }
+}
+
+/// 首页：**按查看者过滤**，不把别人的东西摊给普通用户。
+///
+/// - 帖子流走 `repo::list_feed`（审核中只有作者与管理员可见）；
+/// - 网盘区块只显示**自己的**文件与统计，游客与未登录者完全看不到；
+/// - 发帖/上传入口按「是否已激活」显示，未激活只给提示。
+async fn build_index<'a>(
+    state: &'a AppState,
+    user: Option<&CurrentUser>,
+    section: Option<PostSection>,
+    query: &IndexQuery,
+) -> AppResult<IndexTemplate<'a>> {
+    let viewer_id = user.map(|u| u.id);
+    let is_staff = user.is_some_and(CurrentUser::is_staff);
+    let search: String = query
+        .q
+        .as_deref()
+        .unwrap_or("")
+        .trim()
+        .chars()
+        .take(100)
+        .collect();
+    let popular = query.sort.as_deref() == Some("popular");
+    let filter = repo::FeedFilter {
+        section: section.map(PostSection::as_str),
+        search: &search,
+        popular,
+    };
+    let total = repo::count_feed_filtered(state.db.pool(), viewer_id, is_staff, &filter).await?;
+    const PAGE_SIZE: i64 = 12;
+    let last_page = ((total + PAGE_SIZE - 1) / PAGE_SIZE).max(1);
+    let page = query.page.unwrap_or(1).clamp(1, last_page);
+    let page_href = |target: i64| {
+        let mut params = form_urlencoded::Serializer::new(String::new());
+        if let Some(section) = section {
+            params.append_pair("section", section.as_str());
+        }
+        if !search.is_empty() {
+            params.append_pair("q", &search);
+        }
+        if popular {
+            params.append_pair("sort", "popular");
+        }
+        params.append_pair("page", &target.to_string());
+        format!("/?{}#home-feed", params.finish())
+    };
+    let feed = repo::list_feed_filtered(
+        state.db.pool(),
+        viewer_id,
+        is_staff,
+        &filter,
+        PAGE_SIZE,
+        (page - 1) * PAGE_SIZE,
+    )
+    .await?;
+
+    // 网盘是后续施工内容：**只对网站管理员及以上**开放，普通用户与游客都看不到这一块。
+    let netdisk_visible = user.is_some_and(CurrentUser::is_staff);
+    let my_files = match (viewer_id, netdisk_visible) {
+        (Some(id), true) => repo::list_files(state.db.pool(), id, 20).await?,
+        _ => Vec::new(),
+    };
+    let my_file_stats = match (viewer_id, netdisk_visible) {
+        (Some(id), true) => {
+            let stats = repo::file_stats(state.db.pool(), id).await?;
+            Some(MyFileStats {
+                files: stats.files,
+                bytes_human: human_bytes(stats.bytes.max(0) as u64),
+                downloads: stats.downloads,
+            })
+        }
+        _ => None,
+    };
+
+    Ok(IndexTemplate {
+        is_search: !search.is_empty(),
+        show_discovery: section.is_none() && search.is_empty() && page == 1 && !popular,
+        feed_title: section
+            .map(|s| s.label().to_string())
+            .unwrap_or_else(|| "发现社区新内容".to_string()),
+        active_section: section.map(|s| s.as_str().to_string()).unwrap_or_default(),
+        featured: feed
+            .iter()
+            .find(|p| p.review_state == "approved")
+            .map(|p| feed_view(p, viewer_id)),
+        popular,
+        page,
+        previous_page: (page > 1).then(|| page_href(page - 1)),
+        next_page: (page < last_page).then(|| page_href(page + 1)),
+        search_query: search,
+        site_name: &state.config.server.site_name,
+        user_label: user.map(|u| u.display_name.clone()),
+        user_role_label: user.map(|u| u.role.label().to_string()).unwrap_or_default(),
+        can_post: user.is_some_and(|u| u.activated),
+        needs_activation: user.is_some_and(|u| !u.activated),
+        sections_all_active: section.is_none(),
+        announcement: repo::latest_announcement(state.db.pool())
+            .await?
+            .map(|row| (row.title, row.body)),
+        sections: {
+            let covers: std::collections::HashMap<String, String> =
+                repo::list_section_covers(state.db.pool())
+                    .await?
+                    .into_iter()
+                    .map(|(section, hash, _mime)| (section, hash))
+                    .collect();
+            crate::routes::ordered_sections(state)
+                .await
+                .iter()
+                .map(|s| SectionOption {
+                    value: s.as_str().to_string(),
+                    label: s.label().to_string(),
+                    checked: section == Some(*s),
+                    cover: covers.get(s.as_str()).cloned(),
+                    mode: 0,
+                })
+                .collect()
+        },
+        visible_posts: total,
+        posts: feed.iter().map(|row| feed_view(row, viewer_id)).collect(),
+        is_staff,
+        csrf: user.map(|u| u.csrf_token.clone()).unwrap_or_default(),
+        my_avatar: user.and_then(|u| u.avatar_hash.clone()),
+        netdisk_visible,
+        my_files: my_files.iter().map(FileView::from_row).collect(),
+        my_file_stats,
+        max_upload_human: human_bytes(state.config.limits.max_upload_bytes),
+    })
+}
+
+/// 帖子卡片视图：状态解析失败时按「审核中」处理——宁可不显示，也不要误露。
+pub(crate) fn feed_view(row: &sc2clud_db::PostWithAuthorRow, viewer_id: Option<i64>) -> FeedView {
+    let state = ReviewState::parse(&row.review_state).unwrap_or(ReviewState::Pending);
+    let kind = PostKind::parse(&row.kind).unwrap_or(PostKind::Discussion);
+    let author_role = sc2clud_core::auth::Role::parse(&row.author_role)
+        .map(|role| role.label())
+        .unwrap_or("普通用户");
+    let section = PostSection::parse(&row.section).unwrap_or(PostSection::default_section());
+    FeedView {
+        id: row.id,
+        avatar: row.author_avatar.clone(),
+        title: row.title.clone(),
+        section: section.as_str().to_string(),
+        section_label: section.label().to_string(),
+        preview: row.body.replace('\n', " ").chars().take(120).collect(),
+        kind: kind.as_str().to_string(),
+        kind_label: kind.label().to_string(),
+        state: state.as_str().to_string(),
+        state_label: state.label().to_string(),
+        author: row.author_display_name.clone(),
+        author_handle: row.author_handle.clone(),
+        author_role_label: author_role.to_string(),
+        created_at: format_date(row.created_at),
+        image_count: row.image_count,
+        comment_count: row.comment_count,
+        archived: row.archived_at.is_some(),
+        like_count: row.like_count,
+        bookmark_count: row.bookmark_count,
+        time_ago: format_relative(row.created_at, sc2clud_core::now_unix()),
+        is_mine: viewer_id == Some(row.author_id),
+        cover_hash: row.cover_hash.clone(),
+    }
+}
+
+/// 文件详情页：**只有所有者与管理员及以上**能看；其他人一律 404（不泄露「存在但无权」）。
+pub async fn file_page(
+    State(state): State<AppState>,
+    Path(id): Path<i64>,
+    headers: HeaderMap,
+) -> Response {
+    let user = session::current_user(&state, &headers).await.ok().flatten();
+    match build_file_page(&state, id, user.as_ref()).await {
+        Ok(template) => render_template(template),
+        Err(e) => e.into_page_response(wants_html(&headers)),
+    }
+}
+
+async fn build_file_page<'a>(
+    state: &'a AppState,
+    id: i64,
+    user: Option<&CurrentUser>,
+) -> AppResult<FilePageTemplate<'a>> {
+    let user = user.ok_or_else(|| AppError::not_found("文件不存在或已删除"))?;
+    let row = repo::get_file_with_owner(state.db.pool(), id)
+        .await?
+        .ok_or_else(|| AppError::not_found("文件不存在或已删除"))?;
+    if row.owner_id != user.id && !user.is_staff() {
+        return Err(AppError::not_found("文件不存在或已删除"));
+    }
+    let download_href = format!("/api/v1/files/{}/download", row.id);
+    Ok(FilePageTemplate {
+        site_name: &state.config.server.site_name,
+        user_label: Some(user.display_name.clone()),
+        is_staff: user.is_staff(),
+        csrf: user.csrf_token.clone(),
+        file: FileView::from_owner_row(&row),
+        owner_handle: row.owner_handle.clone(),
+        download_href,
+    })
+}
+
+/// 兜底 404：HTML 请求给错误页，接口请求给 JSON。
+pub async fn not_found(headers: HeaderMap) -> Response {
+    AppError::not_found("页面或接口不存在").into_page_response(wants_html(&headers))
+}
+
+// ------------------------------------------------------------ 帖子图片
+
+/// 认图片格式只看魔数，不信客户端声明的 Content-Type。
+/// 分区顺序以库里的 position 为准（后台可调）。
+/// **不做权限过滤**：首页导航与帖子页左栏原本就对所有人显示全部分区；
+/// 按权限筛选只属于发帖下拉那条路（`section_options`）。库里缺的枚举值补在末尾，新分区不会消失。
+pub async fn ordered_sections(state: &AppState) -> Vec<PostSection> {
+    let stored: Vec<String> = repo::list_sections(state.db.pool(), false)
+        .await
+        .map(|rows| rows.into_iter().map(|row| row.key).collect())
+        .unwrap_or_default();
+    let mut ordered: Vec<PostSection> = Vec::new();
+    for key in stored {
+        if let Ok(section) = PostSection::parse(&key) {
+            if !ordered.contains(&section) {
+                ordered.push(section);
+            }
+        }
+    }
+    for section in PostSection::ALL {
+        if !ordered.contains(&section) {
+            ordered.push(section);
+        }
+    }
+    ordered
+}
+
+// ------------------------------------------------------------ 头像
+
+/// 上传头像。
+///
+/// 压缩与裁剪**已经在浏览器里做完**（canvas，压到 ≤64KB），服务端只做：
+/// 小图头像上限：48px 的 WebP 正常只有几 KB，32KB 足够且能给坏人兜底。
+const AVATAR_SMALL_LIMIT: usize = 32 * 1024;
+
+/// 列表页用的小图头像（48px）。页面在换头像后自动生成并上传，失败不影响换头像本身。
+/// 体积很小，直接读进内存 + 魔数校验，不走流式那条重路径。
+pub async fn upload_avatar_small(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    body: Body,
+) -> AppResult<Json<serde_json::Value>> {
+    let user = require_user(&state, &headers).await?;
+    session::guard(Some(&user), Permission::SetAvatar)?;
+    let token = headers
+        .get("x-csrf-token")
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or("");
+    session::check_csrf(&user, token)?;
+    let bytes = axum::body::to_bytes(body, AVATAR_SMALL_LIMIT)
+        .await
+        .map_err(|_| invalid("小图太大"))?;
+    let Some(mime) = crate::pages_media::sniff_image_mime(&bytes) else {
+        return Err(invalid("只接受 PNG / JPEG / GIF / WebP 图片"));
+    };
+    let size = bytes.len() as i64;
+    let reader: BlobReader = Box::pin(StreamReader::new(futures_util::stream::once(async move {
+        Ok::<_, std::io::Error>(bytes)
+    })));
+    let outcome = state
+        .storage
+        .put_stream(reader, None)
+        .await
+        .map_err(AppError::from)?;
+    let hash = outcome.stat.hash.to_string();
+    repo::ensure_blob(state.db.pool(), &hash, size, sc2clud_core::now_unix()).await?;
+    repo::set_avatar_small(state.db.pool(), user.id, Some(&hash)).await?;
+    Ok(axum::Json(
+        serde_json::json!({ "ok": true, "small_hash": hash, "mime": mime, "bytes": size }),
+    ))
+}
+
+/// 登录 + 已激活 + CSRF + 魔数认类型 + 体积上限（流式计数，超了直接断）+ 磁盘闸门。
+pub async fn upload_avatar(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    body: Body,
+) -> AppResult<Json<serde_json::Value>> {
+    let user = require_user(&state, &headers).await?;
+    session::guard(Some(&user), Permission::SetAvatar)?;
+    let token = headers
+        .get("x-csrf-token")
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or("");
+    session::check_csrf(&user, token)?;
+    ensure_free_space(
+        state.storage.available_bytes().await?,
+        state.config.limits.min_free_bytes,
+    )?;
+
+    let mut stream = body.into_data_stream();
+    let first = stream.next().await;
+    let head_bytes = match &first {
+        Some(Ok(chunk)) => chunk.clone(),
+        Some(Err(e)) => return Err(AppError::internal(format!("读取请求体失败：{e}"))),
+        None => Bytes::new(),
+    };
+    let Some(mime) = crate::pages_media::sniff_image_mime(&head_bytes) else {
+        return Err(invalid("只接受 PNG / JPEG / GIF / WebP 图片"));
+    };
+
+    let chained = futures_util::stream::iter(first).chain(stream);
+    let body_stream: std::pin::Pin<
+        Box<dyn futures_util::Stream<Item = Result<Bytes, axum::Error>> + Send>,
+    > = Box::pin(chained);
+    let (tx, rx) = mpsc::channel::<Result<Bytes, std::io::Error>>(DEFAULT_QUEUE_DEPTH);
+    let reader: BlobReader = Box::pin(StreamReader::new(ReceiverStream::new(rx)));
+    let subject = client_subject(&headers, None);
+    let limit = sc2clud_core::auth::MAX_AVATAR_BYTES.min(state.config.limits.max_upload_bytes);
+    let pump = tokio::spawn(pump_body(
+        body_stream,
+        tx,
+        Arc::clone(&state.upload_gate),
+        subject,
+        limit,
+    ));
+
+    let stored = state.storage.put_stream(reader, None).await;
+    let pumped = match pump.await {
+        Ok(result) => result,
+        Err(join) => Err(AppError::internal(format!("上传任务异常：{join}"))),
+    };
+    let outcome = match (stored, pumped) {
+        (Ok(outcome), Ok(_)) => outcome,
+        (Ok(_), Err(client_err)) => return Err(client_err),
+        (Err(storage_err), Err(client_err)) => {
+            let (status, _, _) = client_err.parts();
+            return if status.is_client_error() {
+                Err(client_err)
+            } else {
+                Err(storage_err.into())
+            };
+        }
+        (Err(storage_err), Ok(_)) => return Err(storage_err.into()),
+    };
+
+    let hash = outcome.stat.hash.clone();
+    let size = outcome.stat.size as i64;
+    if outcome.stat.size > sc2clud_core::auth::MAX_AVATAR_BYTES {
+        return Err(AppError::Domain(DomainError::QuotaExceeded(format!(
+            "头像不得超过 {} KB",
+            sc2clud_core::auth::MAX_AVATAR_BYTES / 1024
+        ))));
+    }
+    repo::ensure_blob(state.db.pool(), hash.as_str(), size, now_unix()).await?;
+    repo::set_user_avatar(state.db.pool(), user.id, Some(hash.as_str()), Some(mime)).await?;
+    state.counters.bump("avatar:set", 1);
+    tracing::info!(user.id = user.id, blob = %hash, size, %mime, "更新头像");
+    Ok(Json(json!({
+        "hash": hash.to_string(),
+        "url": format!("/avatar/{hash}"),
+        "size": size,
+        "mime": mime,
+    })))
+}
+
+// ------------------------------------------------------------ 社区接口
+
+pub async fn list_posts(State(state): State<AppState>) -> AppResult<Json<Vec<PostDto>>> {
+    let posts = repo::list_posts(state.db.pool(), 50, 0).await?;
+    Ok(Json(
+        posts
+            .into_iter()
+            .map(|p| PostDto {
+                id: p.id,
+                title: p.title,
+                body: p.body,
+                created_at: p.created_at,
+            })
+            .collect(),
+    ))
+}
+
+pub async fn create_post(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Json(req): Json<PostCreateRequest>,
+) -> AppResult<(StatusCode, Json<PostDto>)> {
+    let user = require_user(&state, &headers).await?;
+    session::guard(Some(&user), Permission::CreateDiscussion)?;
+    let title = req.title.trim();
+    let body = req.body.trim();
+    if title.is_empty() || title.chars().count() > 200 {
+        return Err(invalid("标题需为 1..200 字"));
+    }
+    if body.is_empty() || body.chars().count() > 20_000 {
+        return Err(invalid("正文需为 1..20000 字"));
+    }
+
+    // 三类帖子对所有已激活用户开放；管理员及以上跳过审核机直接发布。
+    let kind = PostKind::parse(req.kind.as_deref().unwrap_or("discussion"))?;
+    session::guard(Some(&user), kind.required_permission())?;
+    let outcome = review_for_author(Some(user.role), user.trusted, kind, title, body, 0);
+    if !outcome.state.visible_to(false, false) {
+        // 被拒的帖子不进 feed：这里先把结论记下来，由调用方看到 422 的说明。
+        tracing::info!(user.id = user.id, note = ?outcome.note, "帖子被审核机拒绝");
+    }
+
+    let now = now_unix();
+    let id = repo::create_post_reviewed(
+        state.db.pool(),
+        repo::NewPost {
+            author_id: user.id,
+            kind: kind.as_str(),
+            section: PostSection::default_section().as_str(),
+            title,
+            body,
+            image_count: 0,
+            review_state: outcome.state.as_str(),
+            review_note: outcome.note.as_deref(),
+            now,
+        },
+    )
+    .await?;
+    state.counters.bump("post:created", 1);
+    tracing::info!(
+        post.id = id,
+        kind = kind.as_str(),
+        state = outcome.state.as_str(),
+        "发帖"
+    );
+    Ok((
+        StatusCode::CREATED,
+        Json(PostDto {
+            id,
+            title: title.to_string(),
+            body: body.to_string(),
+            created_at: now,
+        }),
+    ))
+}
+
+/// 文件列表：**只返回调用者自己的文件**（原来会把别人的列表摊出去）。
+pub async fn list_files(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+) -> AppResult<Json<Vec<FileDto>>> {
+    let user = require_user(&state, &headers).await?;
+    session::guard(Some(&user), Permission::UseNetdisk)?;
+    let files = repo::list_files(state.db.pool(), user.id, 100).await?;
+    Ok(Json(files.iter().map(|row| file_dto(row, false)).collect()))
+}
+
+fn file_dto(row: &sc2clud_db::FileRow, deduplicated: bool) -> FileDto {
+    FileDto {
+        id: row.id,
+        name: row.name.clone(),
+        size: row.size,
+        hash: row.blob_hash.clone(),
+        mime: row.mime.clone(),
+        deduplicated,
+        download_url: format!("/api/v1/files/{}/download", row.id),
+    }
+}
+
+pub(crate) fn invalid(msg: impl Into<String>) -> AppError {
+    AppError::Domain(DomainError::InvalidInput(msg.into()))
+}
+
+// ------------------------------------------------------------ 秒传
+
+/// 秒传声明：客户端先报 blake3，命中则直接建引用，**0 字节传输**。
+///
+/// 关键点：只信服务端自己的记录（`storage.stat`），绝不信客户端声明的体积。
+pub async fn claim_file(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Json(req): Json<ClaimRequest>,
+) -> AppResult<(StatusCode, Json<FileDto>)> {
+    let user = require_user(&state, &headers).await?;
+    session::guard(Some(&user), Permission::UseNetdisk)?;
+    let hash = BlobHash::parse(&req.hash)?;
+    let name = safety::safe_file_name(&req.name)?;
+    if req.size <= 0 {
+        return Err(invalid("文件体积必须大于 0"));
+    }
+    if req.size as u64 > state.config.limits.max_upload_bytes {
+        return Err(AppError::Domain(DomainError::QuotaExceeded(format!(
+            "单文件上限 {} 字节",
+            state.config.limits.max_upload_bytes
+        ))));
+    }
+
+    let stat = state
+        .storage
+        .stat(&hash)
+        .await?
+        .ok_or_else(|| AppError::rejected("服务器上没有这份内容，请走正常上传"))?;
+    if stat.size != req.size as u64 {
+        return Err(AppError::rejected(format!(
+            "声明体积 {} 与服务器记录 {} 不一致",
+            req.size, stat.size
+        )));
+    }
+
+    let mime = req
+        .mime
+        .unwrap_or_else(|| "application/octet-stream".to_string());
+    let now = now_unix();
+    let created = repo::ensure_blob(state.db.pool(), hash.as_str(), req.size, now).await?;
+    let id = repo::create_file(
+        state.db.pool(),
+        repo::NewFile {
+            owner_id: user.id,
+            blob_hash: hash.as_str(),
+            name: &name,
+            mime: &mime,
+            size: req.size,
+            now,
+        },
+    )
+    .await?;
+    repo::add_used_bytes(state.db.pool(), user.id, req.size).await?;
+    state.counters.bump("upload:dedup_hits", 1);
+    tracing::info!(file.id = id, blob = %hash, newly_registered = created, "秒传命中");
+
+    Ok((
+        StatusCode::CREATED,
+        Json(FileDto {
+            id,
+            name,
+            size: req.size,
+            hash: hash.to_string(),
+            mime,
+            deduplicated: true,
+            download_url: format!("/api/v1/files/{id}/download"),
+        }),
+    ))
+}
+
+// ------------------------------------------------------------ 上传
+
+/// 流式上传：**字节不经过内存聚合**，边收边算 blake3，直写目标文件。
+pub async fn upload_file(
+    State(state): State<AppState>,
+    ConnectInfo(peer): ConnectInfo<SocketAddr>,
+    Query(params): Query<UploadQuery>,
+    headers: HeaderMap,
+    body: Body,
+) -> AppResult<Json<FileDto>> {
+    let user = require_user(&state, &headers).await?;
+    session::guard(Some(&user), Permission::UseNetdisk)?;
+    // 磁盘闸门：可用空间低于阈值就拒绝，避免把服务器写爆（507）。
+    ensure_free_space(
+        state.storage.available_bytes().await?,
+        state.config.limits.min_free_bytes,
+    )?;
+    let name = safety::safe_file_name(&params.name)?;
+    let declared = params.hash.as_deref().map(BlobHash::parse).transpose()?;
+    let mime = params
+        .mime
+        .unwrap_or_else(|| "application/octet-stream".to_string());
+    let subject = client_subject(&headers, Some(peer));
+    let max_upload = state.config.limits.max_upload_bytes;
+
+    // 有 Content-Length 就先挡掉明显超限的请求，不必读完整条请求体再拒。
+    if let Some(len) = content_length(&headers) {
+        if len > max_upload {
+            return Err(AppError::Domain(DomainError::QuotaExceeded(format!(
+                "单文件上限 {max_upload} 字节"
+            ))));
+        }
+        if let Some(user) = repo::find_user_by_id(state.db.pool(), user.id).await?
+            && user.used_bytes + len as i64 > user.quota_bytes
+        {
+            return Err(AppError::Domain(DomainError::QuotaExceeded(format!(
+                "配额不足：已用 {} 字节 / 上限 {} 字节",
+                user.used_bytes, user.quota_bytes
+            ))));
+        }
+    }
+
+    // 并发闸门：满了立刻 429，不排队。许可在函数返回时自动释放。
+    let _permit = state.upload_gate.try_acquire().ok_or_else(|| {
+        AppError::Domain(DomainError::RateLimited(
+            "当前上传数已达上限，请稍后重试".to_string(),
+        ))
+    })?;
+
+    let (tx, rx) = mpsc::channel::<Result<Bytes, std::io::Error>>(DEFAULT_QUEUE_DEPTH);
+    let reader: BlobReader = Box::pin(StreamReader::new(ReceiverStream::new(rx)));
+    let pump = tokio::spawn(pump_body(
+        body.into_data_stream(),
+        tx,
+        Arc::clone(&state.upload_gate),
+        subject,
+        max_upload,
+    ));
+
+    let stored = state.storage.put_stream(reader, declared.as_ref()).await;
+    let pumped = match pump.await {
+        Ok(result) => result,
+        Err(join) => Err(AppError::internal(format!("上传任务异常：{join}"))),
+    };
+
+    let outcome = match (stored, pumped) {
+        (Ok(outcome), Ok(_)) => outcome,
+        (Ok(_), Err(client_err)) => return Err(client_err),
+        (Err(storage_err), Err(client_err)) => {
+            // 客户端侧的原因（超限、请求体中断）比存储层的连锁失败更有信息量。
+            let (status, _, _) = client_err.parts();
+            return if status.is_client_error() {
+                Err(client_err)
+            } else {
+                Err(storage_err.into())
+            };
+        }
+        (Err(storage_err), Ok(_)) => return Err(storage_err.into()),
+    };
+
+    let hash = outcome.stat.hash.clone();
+    let size = outcome.stat.size as i64;
+    let now = now_unix();
+    repo::ensure_blob(state.db.pool(), hash.as_str(), size, now).await?;
+    let id = repo::create_file(
+        state.db.pool(),
+        repo::NewFile {
+            owner_id: user.id,
+            blob_hash: hash.as_str(),
+            name: &name,
+            mime: &mime,
+            size,
+            now,
+        },
+    )
+    .await?;
+    repo::add_used_bytes(state.db.pool(), user.id, size).await?;
+    if outcome.deduplicated {
+        state.counters.bump("upload:dedup_hits", 1);
+    }
+    state.counters.bump("upload:bytes", size);
+    tracing::info!(
+        file.id = id,
+        blob = %hash,
+        size,
+        deduplicated = outcome.deduplicated,
+        "上传完成"
+    );
+
+    Ok(Json(FileDto {
+        id,
+        name,
+        size,
+        hash: hash.to_string(),
+        mime,
+        deduplicated: outcome.deduplicated,
+        download_url: format!("/api/v1/files/{id}/download"),
+    }))
+}
+
+// ------------------------------------------------------------ 删除与下载
+
+pub async fn delete_file(
+    State(state): State<AppState>,
+    Path(id): Path<i64>,
+    headers: HeaderMap,
+) -> AppResult<StatusCode> {
+    let user = require_user(&state, &headers).await?;
+    session::guard(Some(&user), Permission::UseNetdisk)?;
+    let row = repo::get_file(state.db.pool(), id)
+        .await?
+        .ok_or_else(|| AppError::not_found("文件不存在或已删除"))?;
+
+    if !repo::soft_delete_file(state.db.pool(), id, user.id, now_unix()).await? {
+        return Err(AppError::not_found("文件不存在或无权删除"));
+    }
+
+    // 引用计数归零才真正删盘（同一份内容可能被多个文件记录共享）。
+    if let Some(blob) = repo::find_blob(state.db.pool(), &row.blob_hash).await?
+        && blob.refcount <= 0
+        && let Ok(hash) = BlobHash::parse(&row.blob_hash)
+    {
+        match state.storage.delete(&hash).await {
+            Ok(()) => tracing::info!(blob = %hash, "引用归零，已删除物理内容"),
+            Err(e) => tracing::warn!(blob = %hash, error = %e, "物理删除失败，留待清理任务"),
+        }
+    }
+
+    state.counters.bump("file:deleted", 1);
+    Ok(StatusCode::NO_CONTENT)
+}
+
+/// 下载：应用只做一次 DB 读 + 一次授权，**字节由 nginx 直出**。
+///
+/// 两种下发方式都满足硬约束「文件字节不经过应用进程」：
+/// - `secure_link`：应用 302 到带签名 URL，nginx 自行校验签名与过期时间；
+/// - `x_accel`：应用回 `X-Accel-Redirect`，nginx 从 `internal` location 直出
+///   （宝塔自编译的 nginx 通常没有 secure_link 模块，这是本机的默认通道）。
+pub async fn download_file(
+    State(state): State<AppState>,
+    Path(id): Path<i64>,
+    ConnectInfo(peer): ConnectInfo<SocketAddr>,
+    headers: HeaderMap,
+) -> AppResult<Response> {
+    let row = repo::get_file_with_owner(state.db.pool(), id)
+        .await?
+        .ok_or_else(|| AppError::not_found("文件不存在或已删除"))?;
+    let user = require_user(&state, &headers).await?;
+    session::guard(Some(&user), Permission::UseNetdisk)?;
+    if row.owner_id != user.id && !user.is_staff() {
+        return Err(AppError::not_found("文件不存在或已删除"));
+    }
+    let hash = BlobHash::parse(&row.blob_hash)?;
+
+    // 下载计数进内存聚合，后台批量落库（SQLite 单写者，禁止每请求 UPDATE）。
+    state.counters.bump(format!("file:{}:downloads", row.id), 1);
+
+    if state.config.download.mode == DownloadMode::XAccel {
+        // 授权已在上面完成；nginx 侧的 internal location 客户端无法直接访问。
+        let location = format!(
+            "{}/{}",
+            state.config.download.internal_prefix.trim_end_matches('/'),
+            hash.relative_path()
+        );
+        tracing::info!(file.id = row.id, blob = %hash, location = %location, "X-Accel-Redirect 下发");
+        return Ok((
+            StatusCode::OK,
+            [(
+                header::HeaderName::from_static("x-accel-redirect"),
+                location,
+            )],
+        )
+            .into_response());
+    }
+
+    let client = client_ip(&headers, Some(peer));
+    let signed = state
+        .storage
+        .presign_url(
+            &hash,
+            Duration::from_secs(state.config.download.url_ttl_secs),
+            client.as_deref(),
+        )
+        .await?;
+
+    let location = if signed.url.starts_with("http") {
+        signed.url
+    } else {
+        format!(
+            "{}{}",
+            state.config.server.base_url.trim_end_matches('/'),
+            signed.url
+        )
+    };
+    tracing::info!(
+        file.id = row.id,
+        blob = %hash,
+        expires_at = signed.expires_at,
+        "签发下载跳转"
+    );
+    Ok((StatusCode::FOUND, [(header::LOCATION, location)]).into_response())
+}

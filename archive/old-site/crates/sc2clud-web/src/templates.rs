@@ -1,0 +1,1268 @@
+//! askama 模板模型与对外 DTO。
+//!
+//! 服务端渲染是默认路径：1.25 MB/s 的链路上，前端 bundle 体积直接等于用户等待时间。
+//! 交互密集模块（上传进度等）才局部挂载前端岛，见 `web/`。
+
+use askama::Template;
+use serde::{Deserialize, Serialize};
+
+// ------------------------------------------------------------ 页面模板
+
+#[derive(Template)]
+#[template(path = "index.html")]
+pub struct IndexTemplate<'a> {
+    pub search_query: String,
+    pub active_section: String,
+    pub is_search: bool,
+    pub popular: bool,
+    pub show_discovery: bool,
+    pub feed_title: String,
+    pub featured: Option<FeedView>,
+    pub page: i64,
+    pub previous_page: Option<String>,
+    pub next_page: Option<String>,
+    pub site_name: &'a str,
+    /// 已登录用户名（游客为 None）。
+    pub user_label: Option<String>,
+    pub user_role_label: String,
+    /// 已激活：可以发帖。
+    pub can_post: bool,
+    /// 已登录但未激活。
+    pub needs_activation: bool,
+    /// 分区导航：当前选中项 + 各分区。
+    pub sections: Vec<SectionOption>,
+    /// 「全部」是否处于选中态（没有指定分区时）。
+    pub sections_all_active: bool,
+    /// 最新一条系统公告（首页顶部横幅）。
+    pub announcement: Option<(String, String)>,
+    /// 帖子流（已按查看者过滤：审核中的只有作者与管理员可见）。
+    pub posts: Vec<FeedView>,
+    pub visible_posts: i64,
+    /// 当前用户是否管理员及以上（决定导航里是否出现「管理」）。
+    pub is_staff: bool,
+    /// 顶栏下拉里的退出表单要带 CSRF（游客为空串）。
+    pub csrf: String,
+    /// 当前用户的头像摘要（顶栏用）。
+    pub my_avatar: Option<String>,
+    /// 网盘区块是否可见（当前仅网站管理员及以上）。
+    pub netdisk_visible: bool,
+    /// **只显示自己的文件**——别人的文件不进首页。
+    pub my_files: Vec<FileView>,
+    /// 登录后才给的文件统计。
+    pub my_file_stats: Option<MyFileStats>,
+    pub max_upload_human: String,
+}
+
+/// 首页帖子卡片。
+pub struct FeedView {
+    pub id: i64,
+    /// 作者头像摘要（NULL = 首字母兜底）。
+    pub avatar: Option<String>,
+    /// 回复数（列表视图统计条）。
+    pub comment_count: i64,
+    pub like_count: i64,
+    pub bookmark_count: i64,
+    /// 已归档（不再展示，但作者/管理员可直链打开）。
+    pub archived: bool,
+    /// 「多久以前」（列表视图统计条）。
+    pub time_ago: String,
+    /// 作者登录名（卡片作者栏跳主页用）。
+    pub author_handle: String,
+    pub title: String,
+    pub preview: String,
+    /// 封面图（该帖第一张图）；卡片用它铺底。
+    pub cover_hash: Option<String>,
+    pub kind: String,
+    pub kind_label: String,
+    pub section: String,
+    pub section_label: String,
+    /// 仅当不该公开时才有值（审核中/被拒，且查看者有资格看到）。
+    pub state: String,
+    pub state_label: String,
+    pub author: String,
+    pub author_role_label: String,
+    pub created_at: String,
+    pub image_count: i64,
+    pub is_mine: bool,
+}
+
+/// 自己的网盘统计（游客与未登录者看不到）。
+pub struct MyFileStats {
+    pub files: i64,
+    pub bytes_human: String,
+    pub downloads: i64,
+}
+
+#[derive(Template)]
+#[template(path = "file.html")]
+pub struct FilePageTemplate<'a> {
+    /// 管理入口是否可见。
+    pub is_staff: bool,
+    /// 顶栏下拉里的退出表单要带 CSRF。
+    pub csrf: String,
+    pub site_name: &'a str,
+    pub user_label: Option<String>,
+    pub file: FileView,
+    pub owner_handle: String,
+    pub download_href: String,
+}
+
+#[derive(Template)]
+#[template(path = "error.html")]
+pub struct ErrorTemplate<'a> {
+    pub status: u16,
+    pub code: &'a str,
+    pub message: &'a str,
+}
+
+pub struct PostView {
+    pub id: i64,
+    pub title: String,
+    pub preview: String,
+    pub created_at: String,
+}
+
+#[derive(Clone)]
+pub struct FileView {
+    pub id: i64,
+    pub name: String,
+    pub size_human: String,
+    pub mime: String,
+    pub download_count: i64,
+    pub created_at: String,
+}
+
+impl FileView {
+    pub fn from_row(row: &sc2clud_db::FileRow) -> Self {
+        Self {
+            id: row.id,
+            name: row.name.clone(),
+            size_human: human_bytes(row.size.max(0) as u64),
+            mime: row.mime.clone(),
+            download_count: row.download_count,
+            created_at: format_date(row.created_at),
+        }
+    }
+
+    /// 下载页/联合查询用（含上传者）。
+    pub fn from_owner_row(row: &sc2clud_db::FileWithOwnerRow) -> Self {
+        Self {
+            id: row.id,
+            name: row.name.clone(),
+            size_human: human_bytes(row.size.max(0) as u64),
+            mime: row.mime.clone(),
+            download_count: row.download_count,
+            created_at: format_date(row.created_at),
+        }
+    }
+}
+
+// ------------------------------------------------------------ API DTO
+
+#[derive(Debug, Serialize)]
+pub struct FileDto {
+    pub id: i64,
+    pub name: String,
+    pub size: i64,
+    pub hash: String,
+    pub mime: String,
+    /// true = 命中已有内容（秒传 / 去重），本次没有传输字节。
+    pub deduplicated: bool,
+    pub download_url: String,
+}
+
+/// 秒传声明：客户端先报哈希，命中则 0 字节传输。
+#[derive(Debug, Deserialize)]
+pub struct ClaimRequest {
+    pub name: String,
+    pub hash: String,
+    pub size: i64,
+    #[serde(default)]
+    pub mime: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct UploadQuery {
+    pub name: String,
+    /// 可选：声明哈希，服务端比对不符即拒绝。
+    #[serde(default)]
+    pub hash: Option<String>,
+    #[serde(default)]
+    pub mime: Option<String>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct PostDto {
+    pub id: i64,
+    pub title: String,
+    pub body: String,
+    pub created_at: i64,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct PostCreateRequest {
+    pub title: String,
+    pub body: String,
+    /// discussion | resource | repost，缺省为讨论。
+    #[serde(default)]
+    pub kind: Option<String>,
+}
+
+// ------------------------------------------------------------ 展示辅助
+
+/// 帖子详情页。
+#[derive(Template)]
+#[template(path = "post.html")]
+pub struct PostPageTemplate<'a> {
+    pub site_name: &'a str,
+    pub user_label: Option<String>,
+    /// CSRF 令牌（表单隐藏字段）；用 String 以免模板结构体借用调用方的局部变量。
+    pub csrf: String,
+    pub post: PostDetailView,
+    /// 左侧分区导航（快捷进入其它分区）。
+    pub sections: Vec<SectionOption>,
+    /// 当前查看者能否与作者互动（登录、已激活、且不是作者本人）。
+    pub can_interact: bool,
+    /// 配图（原图或压缩图，按 position 顺序）。
+    pub images: Vec<ImageView>,
+    /// 下载来源（资源帖；仅这些帖子有）。
+    pub sources: Vec<SourceView>,
+    /// 是否值得显示「资源来源」区块（有来源，或本来就是资源帖）。
+    pub show_sources: bool,
+    pub comments: Vec<CommentView>,
+    /// 已登录且已激活才能回复（回复不带图）。
+    pub can_reply: bool,
+    pub is_staff: bool,
+    /// 作者是否开了打赏展示（开了才出那个大按钮）。
+    pub donation_visible: bool,
+    /// 预览用的界面样式编号（1/2/3，生产恒为 2 —— 已评审通过的「分组下拉」）。
+    pub ui_variant: u8,
+    /// 回复区样式：1 B 站原味 / 2 卡片流 / 3 紧凑列表。
+    pub comments_variant: u8,
+    /// 问题与建议：待处理数 / 总数 / 最新几条（帖子页顶部入口与内联列表用）。
+    pub issue_open: i64,
+    pub issue_total: i64,
+    pub issues: Vec<IssueCardView>,
+    /// 帖子页「问题与建议」入口版式：1 标签页 / 2 大横幅卡 / 3 双按钮条（预览用，生产恒 1）。
+    pub ivi: u8,
+    /// 当前标签：content = 帖子内容（默认）/ issues = 问题与建议 / issue = 单条详情 / new = 发布。
+    pub tab: String,
+    /// 标签行由数据生成（每个标签自己声明归属，避免模板里写取反条件）。
+    pub tabs: Vec<PostTabView>,
+    /// 当前查看的 issue（tab=issue 时才有）。
+    pub issue_detail: Option<IssueDetailView>,
+    /// 评论提交地址（帖子与 issue 共用同一个评论控件，只是地址不同）。
+    pub comment_action: String,
+    /// 是否显示点赞/回复等动作（issue 评论暂时没有这些端点）。
+    pub show_comment_actions: bool,
+    /// issue 筛选（issues 标签用）：状态 open|closed|all 与类型。
+    pub issue_state: String,
+    pub issue_kind: String,
+    pub issue_shown: i64,
+    /// 搜索关键词（回填输入框）。
+    pub issue_q: String,
+    /// 已关闭条数（状态切换用）。
+    pub issue_closed: i64,
+    /// 回复区分页（每页 15 个主楼层）。
+    pub comments_total: i64,
+    pub comments_page: i64,
+    pub comments_pages: i64,
+    pub comments_prev: i64,
+    pub comments_next: i64,
+    /// 页码条：省略号用 gap 标记，免得模板里比类型。
+    pub comments_page_links: Vec<PageLink>,
+
+    /// 赞助弹窗样式（1 左右分栏 / 2 顶部标签 / 3 卡片网格）。
+    pub donate_variant: u8,
+    /// 赞助前提示样式（1 红顶卡 / 2 红标题横条 / 3 红圆图标卡）。
+    pub notice_variant: u8,
+    /// 打赏渠道（弹窗左栏用；没有渠道时为空，前端不显示入口）。
+    pub donation_channels: Vec<DonationChannelView>,
+    /// 打赏前必须点「确定」的那段醒目提示（作者/渠道默认都没配则为 None）。
+    pub donation_notice: Option<String>,
+    /// 这篇帖子下收到的打赏（只算已验证 + 捐赠方已公开）。
+    pub post_donation_total: String,
+    pub post_donation_count: i64,
+    /// 查看者能否给这位作者登记打赏（作者本人不显示入口）。
+    pub can_register_donation: bool,
+}
+
+/// 头衔切换列表里的一项。
+#[derive(Debug, Clone)]
+pub struct TitleChoice {
+    pub id: i64,
+    pub name: String,
+    pub color: String,
+    pub equipped: bool,
+}
+
+/// 消息中心（B 站式：左分类 / 中列表 / 右消息流）。
+#[derive(Template)]
+#[template(path = "inbox.html")]
+pub struct InboxTemplate<'a> {
+    pub site_name: &'a str,
+    pub user_label: Option<String>,
+    pub is_staff: bool,
+    pub csrf: String,
+    /// 分类：dm / replies / likes / system。
+    pub tab: String,
+    pub conversations: Vec<InboxConversationView>,
+    /// 当前选中会话对方 handle（私信用）。
+    pub selected: String,
+    pub other_display: String,
+    pub other_avatar: Option<String>,
+    /// 自己的头像（消息流里自己的气泡也要带头像）。
+    pub my_avatar: Option<String>,
+    pub thread: Vec<InboxMessageView>,
+    /// 删除确认版式：1 二次点击 / 2 弹窗确认 / 3 系统 confirm（预览用，生产恒 1）。
+    pub delete_variant: u8,
+    /// 未读数（左栏徽标）。
+    pub like_unread: i64,
+    /// 回复与 @（kind = reply / issue_reply）的未读数。
+    pub reply_unread: i64,
+    pub system_unread: i64,
+    pub dm_unread: i64,
+    /// 当前分类的通知列表（按 tab 取其一：回复与 @ / 收到的赞 / 系统通知）。
+    pub notices: Vec<InboxNoticeView>,
+    /// 当前选中的通知。
+    pub selected_notice: Option<InboxNoticeView>,
+}
+
+/// 消息中心的一条通知（回复与 @ / 收到的赞 / 系统通知）。
+#[derive(Debug, Clone)]
+pub struct InboxNoticeView {
+    pub id: i64,
+    /// 通知类别（点赞 like / 审核 review / issue / 推送 push…），「不再通知」按它静音。
+    pub kind: String,
+    pub title: String,
+    pub body: String,
+    pub link: String,
+    pub date: String,
+    pub unread: bool,
+    pub active: bool,
+    /// 触发者头像（点赞的人 / 审核人）；没有就用图标兜底。
+    pub avatar: Option<String>,
+    /// 聚合：前几个触发者显示名（最多 3 个）。
+    pub actor_names: Vec<String>,
+    /// 聚合：同一内容上的通知条数（点赞累计）。
+    pub count: i64,
+    /// 聚合：还有更多人没列出来（模板里不比类型，直接给布尔）。
+    pub more: bool,
+}
+
+/// 消息中心的会话项。
+#[derive(Debug, Clone)]
+pub struct InboxConversationView {
+    pub handle: String,
+    pub display_name: String,
+    pub avatar: Option<String>,
+    pub last_body: String,
+    pub date: String,
+    pub active: bool,
+}
+
+pub struct InboxMessageView {
+    /// 消息 id（前端轮询用它算「最新到哪儿了」）。
+    pub id: i64,
+    pub mine: bool,
+    pub body: String,
+    pub date: String,
+    /// 时间分隔条：与上一条不是同一天时显示（B 站那种居中日期行）。
+    pub show_date: bool,
+}
+
+/// 搜索页（B 站式：搜索框 + 分类标签 + 结果）。
+#[derive(Template)]
+#[template(path = "search.html")]
+pub struct SearchPageTemplate<'a> {
+    pub site_name: &'a str,
+    pub user_label: Option<String>,
+    pub is_staff: bool,
+    pub csrf: String,
+    pub q: String,
+    pub tab: String,
+    /// 版式编号：1 一行标签栏 / 2 两行筛选 + 右侧相关用户 / 3 左侧筛选栏（预览用，生产恒 1）。
+    pub search_variant: u8,
+    pub posts: Vec<PostHitView>,
+    pub users: Vec<UserHitView>,
+    pub post_count: i64,
+    pub user_count: i64,
+}
+
+/// 搜索命中的帖子（结果行）。
+#[derive(Debug, Clone)]
+pub struct PostHitView {
+    pub id: i64,
+    pub title: String,
+    pub cover_hash: Option<String>,
+    pub section_label: String,
+    pub author: String,
+    pub date: String,
+    pub comment_count: i64,
+}
+
+/// 搜索命中的用户卡片。
+#[derive(Debug, Clone)]
+pub struct UserHitView {
+    pub handle: String,
+    pub display_name: String,
+    pub avatar: Option<String>,
+    pub role_label: String,
+    pub bio: String,
+    pub post_count: i64,
+}
+
+/// 用户名后面的头衔徽章。
+#[derive(Debug, Clone)]
+pub struct TitleBadgeView {
+    pub name: String,
+    /// 头衔自带的颜色（`#rrggbb`），为空则用主题色。
+    pub color: String,
+}
+
+/// 打赏弹窗里的一个渠道。
+#[derive(Debug, Clone)]
+pub struct DonationChannelView {
+    pub id: i64,
+    pub channel: String,
+    pub label: String,
+    pub image_hash: String,
+}
+
+/// 帖子正文视图。
+pub struct PostDetailView {
+    pub id: i64,
+    pub avatar: Option<String>,
+    /// 作者的登录名（右栏「主页 / 私信」跳转用）。
+    pub author_handle: String,
+    /// 回复数（右栏数据卡）。
+    pub comment_count: i64,
+    pub title: String,
+    pub section: String,
+    pub section_label: String,
+    pub body: String,
+    pub kind: String,
+    pub kind_label: String,
+    pub state: String,
+    pub state_label: String,
+    pub review_note: Option<String>,
+    /// 当前查看者是否已点赞 / 收藏，以及计数。
+    pub archived: bool,
+    /// 当前查看者能否编辑（作者本人或管理员及以上）。
+    pub can_edit: bool,
+    pub liked: bool,
+    pub bookmarked: bool,
+    pub like_count: i64,
+    pub bookmark_count: i64,
+    pub author: String,
+    pub author_role_label: String,
+    pub created_at: String,
+    pub image_count: i64,
+    pub is_mine: bool,
+}
+
+/// 下载来源视图（资源帖专用）。
+pub struct SourceView {
+    pub provider: String,
+    pub provider_label: String,
+    pub label: Option<String>,
+    pub url: String,
+    pub extract_code: Option<String>,
+    /// GitHub 来源：给出镜像候选（原链排第一，最快的由前端实测后置顶）。
+    pub mirrors: Vec<MirrorView>,
+}
+
+/// GitHub 镜像候选。
+pub struct MirrorView {
+    pub label: String,
+    pub url: String,
+    pub is_original: bool,
+}
+
+/// 配图视图。
+pub struct ImageView {
+    pub href: String,
+}
+
+/// 页码条上的一项。
+#[derive(Debug, Clone)]
+pub struct PageLink {
+    pub number: i64,
+    pub gap: bool,
+}
+
+/// 回复视图。
+pub struct CommentView {
+    /// 楼层 id（回复按钮用它当 parent_id）。
+    pub id: i64,
+    pub author: String,
+    /// 小图头像（48px）；为空就回落到 avatar。
+    pub avatar_small: Option<String>,
+    /// 作者 user id：回复时拼成 `@昵称#id`，重名也指得准。
+    pub author_id: i64,
+    pub handle: String,
+    pub avatar: Option<String>,
+    /// 头衔（佩戴了才显示）；color 是头衔色。
+    pub title: Option<String>,
+    pub title_color: String,
+    /// 已渲染正文（含 @ 链接，模板里 `|safe`）。
+    pub body_html: String,
+    pub created_at: String,
+    /// 赞 / 踩；my_vote：1 赞 / -1 踩 / 0 没投。
+    pub likes: i64,
+    pub dislikes: i64,
+    pub my_vote: i64,
+    /// 这一层能不能「加入黑名单」（已登录激活、且不是自己的楼层）。
+    pub can_block: bool,
+    /// 楼中楼：挂在这一层下面的回复。
+    pub replies: Vec<CommentView>,
+}
+
+/// 发帖页。
+#[derive(Template)]
+#[template(path = "new.html")]
+pub struct NewPostTemplate<'a> {
+    pub is_staff: bool,
+    pub site_name: &'a str,
+    pub user_label: Option<String>,
+    pub csrf: String,
+    pub error: Option<String>,
+    pub kinds: Vec<KindOption>,
+    pub sections: Vec<SectionOption>,
+    pub providers: Vec<ProviderOption>,
+    pub title: &'a str,
+    pub body: &'a str,
+    /// 三个下载来源槽位（资源帖用；留空即忽略）。
+    pub source_slots: Vec<SourceSlot>,
+    /// 表单初值（JSON）：交给 React 表单岛，服务端不再渲染一份重复结构
+    pub edit_data_json: String,
+}
+
+/// 发帖页的分区选项。
+pub struct SectionOption {
+    pub value: String,
+    pub label: String,
+    pub checked: bool,
+    /// 用户组检查档位：0 不启用 / 1 白名单 / 2 黑名单（后台用，前台恒为 0）。
+    pub mode: i64,
+    /// 分区封面（管理员设置过才有）。
+    pub cover: Option<String>,
+}
+
+/// Issue 列表页（资源帖的「问题与建议」）。
+#[derive(Template)]
+#[template(path = "issues.html")]
+pub struct IssuesPageTemplate<'a> {
+    pub site_name: &'a str,
+    pub user_label: Option<String>,
+    pub is_staff: bool,
+    pub csrf: String,
+    pub post_id: i64,
+    pub post_title: &'a str,
+    pub open_count: i64,
+    pub closed_count: i64,
+    /// 当前筛选后显示了几条。
+    pub shown_count: i64,
+    /// 状态筛选：open / closed / all。
+    pub state_filter: String,
+    /// 类型筛选：空 = 全部。
+    pub kind_filter: String,
+    /// 布局版式：1 列表式 / 2 卡片式 / 3 双栏式（预览用，生产恒 1）。
+    pub ivi: u8,
+    pub issues: Vec<IssueCardView>,
+}
+
+/// 帖子页顶部的一个标签（由数据生成，模板只渲染）。
+#[derive(Debug, Clone)]
+pub struct PostTabView {
+    pub label: String,
+    pub href: String,
+    pub active: bool,
+    /// 右侧小红数字（例如待处理条数）。
+    pub badge: Option<i64>,
+}
+
+/// issue 详情（tab=issue）。
+#[derive(Debug, Clone)]
+pub struct IssueDetailView {
+    pub id: i64,
+    pub kind: String,
+    pub kind_label: String,
+    pub title: String,
+    pub body: String,
+    pub author: String,
+    pub created: String,
+    pub open: bool,
+    /// 能否关闭/重开：作者本人 / 帖子作者 / 管理员及以上（GitHub 式）。
+    pub can_edit: bool,
+}
+
+/// 列表里的一条 issue。
+#[derive(Debug, Clone)]
+pub struct IssueCardView {
+    pub id: i64,
+    pub kind: String,
+    pub kind_label: String,
+    pub title: String,
+    pub body: String,
+    pub author: String,
+    pub handle: String,
+    pub created: String,
+    pub comments: i64,
+    pub state: String,
+    pub open: bool,
+}
+
+/// 发帖页的来源下拉项。
+pub struct ProviderOption {
+    pub value: String,
+    pub label: String,
+}
+
+/// 发帖页的一个来源槽位。
+pub struct SourceSlot {
+    pub index: usize,
+    pub url: String,
+    pub code: String,
+    pub provider: String,
+    /// 自定义显示名（可留空）。
+    pub label: String,
+}
+
+/// 编辑帖子（作者本人或管理员）。
+#[derive(Template)]
+#[template(path = "edit.html")]
+pub struct EditPostTemplate<'a> {
+    pub site_name: &'a str,
+    pub user_label: Option<String>,
+    pub is_staff: bool,
+    pub csrf: String,
+    pub id: i64,
+    pub error: Option<String>,
+    pub state_label: String,
+    pub review_note: Option<String>,
+    pub kinds: Vec<KindOption>,
+    pub sections: Vec<SectionOption>,
+    pub providers: Vec<ProviderOption>,
+    /// 已有的配图（编辑页展示、可排序、可删除）。
+    pub images: Vec<EditImageView>,
+    /// 编辑表单的全部初值（JSON）：交给 React 表单岛，服务端不再渲染重复结构
+    pub edit_data_json: String,
+    pub image_count: i64,
+    /// 已有的下载来源（**必须回填**：编辑保存会整体重写来源，漏了就全丢了）。
+    pub sources: Vec<SourceSlot>,
+    // 用 String 而不是借用：模板结构体要能独立于调用方的局部变量返回
+    pub title: String,
+    pub body: String,
+}
+
+/// 编辑用户（管理面板里点铅笔进来）。
+#[derive(Template)]
+#[template(path = "admin_user.html")]
+pub struct AdminUserEditTemplate<'a> {
+    pub site_name: &'a str,
+    pub user_label: Option<String>,
+    pub is_staff: bool,
+    pub csrf: String,
+    pub user: AdminUserView,
+    pub roles: Vec<(String, String)>,
+    /// 只有超级管理员能改等级与显示名。
+    pub is_super: bool,
+}
+
+/// 编辑页里的一张配图：带 id 与顺序，可前移/后移/删除。
+pub struct EditImageView {
+    pub id: i64,
+    pub href: String,
+    /// 从 1 开始的展示序号。
+    pub number: usize,
+    pub is_first: bool,
+    pub is_last: bool,
+}
+
+/// 数据备份页（仅超级管理员）。
+#[derive(Template)]
+#[template(path = "backup.html")]
+pub struct BackupTemplate<'a> {
+    pub site_name: &'a str,
+    pub user_label: Option<String>,
+    pub is_staff: bool,
+    pub csrf: String,
+    pub files: Vec<BackupFileView>,
+    pub dir: String,
+}
+
+/// 一个备份文件。
+pub struct BackupFileView {
+    pub name: String,
+    pub size: String,
+    pub modified: String,
+}
+
+/// 我的收藏。
+#[derive(Template)]
+#[template(path = "bookmarks.html")]
+pub struct BookmarksTemplate<'a> {
+    pub site_name: &'a str,
+    pub user_label: Option<String>,
+    pub is_staff: bool,
+    pub csrf: String,
+    pub items: Vec<BookmarkView>,
+}
+
+/// 收藏条目。
+pub struct BookmarkView {
+    pub id: i64,
+    pub title: String,
+    pub section_label: String,
+    pub when: String,
+}
+
+/// 系统公告页。
+#[derive(Template)]
+#[template(path = "announcements.html")]
+pub struct AnnouncementsTemplate<'a> {
+    pub site_name: &'a str,
+    pub user_label: Option<String>,
+    pub is_staff: bool,
+    pub csrf: String,
+    pub items: Vec<AnnouncementView>,
+}
+
+/// 一条公告。
+pub struct AnnouncementView {
+    pub title: String,
+    pub body: String,
+    pub when: String,
+}
+
+/// 黑名单一行（账户设置里展示）。
+pub struct BlockView {
+    pub handle: String,
+    pub display_name: String,
+    pub avatar: Option<String>,
+    pub when: String,
+}
+
+/// 账户设置页（左侧分栏 + 右侧内容，形态参考雨云的账户设置）。
+#[derive(Template)]
+#[template(path = "settings.html")]
+pub struct SettingsTemplate<'a> {
+    pub site_name: &'a str,
+    pub user_label: Option<String>,
+    pub is_staff: bool,
+    pub csrf: String,
+    pub handle: String,
+    pub display_name: String,
+    pub role_label: String,
+    pub avatar: Option<String>,
+    pub joined_at: String,
+    pub audit: Vec<DebugAuditView>,
+    pub blocks: Vec<BlockView>,
+    pub notice: Option<String>,
+    pub error: Option<String>,
+    /// 认证开发者及以上才能开打赏（与上传收款码同一权限）。
+    /// 个人简介（200 字上限；改动走审核，当前自动放行）。
+    pub bio: String,
+    pub can_donate: bool,
+    pub donation_visible: bool,
+    pub donation_notice_visible: bool,
+    pub donation_notice_text: String,
+    pub donation_channels: Vec<DonationChannelView>,
+    /// 是否公开「我打赏了谁、多少钱」。**与 donation_visible 是两个独立开关**。
+    pub donation_records_public: bool,
+}
+
+/// 用户主页。
+#[derive(Template)]
+#[template(path = "profile.html")]
+pub struct ProfileTemplate<'a> {
+    pub is_staff: bool,
+    pub site_name: &'a str,
+    pub user_label: Option<String>,
+    pub csrf: String,
+    pub handle: String,
+    pub display_name: String,
+    pub role_label: String,
+    pub avatar: Option<String>,
+    pub joined_at: String,
+    pub is_self: bool,
+    /// 当前查看者是否已拉黑 TA。
+    pub blocked: bool,
+    /// 是否登录（决定能否私信 / 拉黑）。
+    pub can_interact: bool,
+    /// 本人或管理员才看得到「换头像」。
+    pub can_edit_avatar: bool,
+    pub posts: Vec<FeedView>,
+    pub accepted: i64,
+    /// 打赏弹窗/提示的样式编号（主页没有预览开关，生产值即已评审通过的那套）。
+    pub donate_variant: u8,
+    pub notice_variant: u8,
+    /// 佩戴的头衔（名字后面渲染）；没戴就是 None。
+    pub title: Option<TitleBadgeView>,
+    /// 头衔样式编号（1 胶囊 / 2 徽章 / 3 渐变下划线），生产用 1。
+    pub title_variant: u8,
+    /// 本人或管理员可以点简介就地编辑。
+    pub can_edit_bio: bool,
+    /// 本人持有的头衔（点头衔弹出切换列表）；别人的主页为空。
+    pub my_titles: Vec<TitleChoice>,
+    /// 个人简介（未通过审核时只有本人与管理员看得到）。
+    pub bio: Option<String>,
+    /// 简介的审核态：approved / pending / rejected。
+    pub bio_state: String,
+    /// 预览用的头部样式编号（1/2/3，生产恒为 1）。
+    pub header_variant: u8,
+    /// 「支持作者」区块：作者开了展示、且有渠道时才出现。
+    pub donation_visible: bool,
+    pub donation_channels: Vec<DonationChannelView>,
+    pub donation_notice: Option<String>,
+    /// 是否展示「打赏记录」区块（TA 收过打赏，或有公开的支出记录）。
+    pub show_donation_records: bool,
+    /// 支出侧：TA 给每位作者的打赏合计。
+    ///
+    /// 只有「TA 本人 / 管理员 / TA 已公开」才能看到实际内容，否则为空。
+    pub outgoing_donations: Vec<DonationSummaryView>,
+    /// 支出侧是否对当前查看者可见（决定是否渲染「未公开」提示）。
+    pub outgoing_visible: bool,
+    /// 收入侧：TA 收到的打赏合计（**只累计捐赠方已公开的部分**）。
+    pub incoming_donation_total: String,
+    /// 查看者能否给这位作者登记打赏（本人主页不显示入口）。
+    pub can_register_donation: bool,
+}
+
+/// 调试页（开发自检；生产实例不注册该路由）。
+#[derive(Template)]
+#[template(path = "debug.html")]
+pub struct DebugTemplate<'a> {
+    pub is_staff: bool,
+    pub csrf: String,
+    pub site_name: &'a str,
+    pub user_label: Option<String>,
+    pub version: &'a str,
+    pub bind: String,
+    pub data_dir: String,
+    pub download_mode: String,
+    pub free_human: String,
+    pub min_free_human: String,
+    pub storage_ok: bool,
+    pub users: i64,
+    pub posts: i64,
+    pub comments: i64,
+    pub pending_images: i64,
+    pub audit: Vec<DebugAuditView>,
+}
+
+/// 调试页里的审计行。
+pub struct DebugAuditView {
+    pub created_at: String,
+    pub action: String,
+    pub target: String,
+    pub detail: String,
+}
+
+/// 后台：一个用户组（含人数与它自己的分区规则）。
+#[derive(Debug, Clone)]
+pub struct AdminGroupView {
+    pub id: i64,
+    pub key: String,
+    pub name: String,
+    pub description: String,
+    pub member_count: i64,
+    pub archived: bool,
+    /// (分区 key, 允许发帖, 允许评论, 禁止发帖, 禁止评论)
+    pub rules: Vec<(String, bool, bool, bool, bool)>,
+}
+
+/// 默认头像池里的一张（后台展示用）。
+#[derive(Debug, Clone)]
+pub struct DefaultAvatarView {
+    pub id: i64,
+    pub hash: String,
+    pub note: String,
+    pub date: String,
+}
+
+/// 管理员面板。
+#[derive(Template)]
+#[template(path = "admin.html")]
+pub struct AdminTemplate<'a> {
+    pub is_staff: bool,
+    /// 默认头像池（管理员维护）。
+    pub default_avatars: Vec<DefaultAvatarView>,
+    /// 池子界面版式：1 网格卡 / 2 列表行 / 3 侧栏上传（预览用，生产恒 1）。
+    pub pool_variant: u8,
+    /// 权限/用户组界面版式：1 权限矩阵 / 2 每分区一卡 / 3 主从两栏（预览用，生产恒 1）。
+    pub acl_variant: u8,
+    /// 分区发言权限矩阵的初值（JSON）：交给 React 控件
+    pub acl_json: String,
+    /// 用户列表 + 编辑弹窗的初值（JSON）：交给 React 控件
+    pub users_json: String,
+    /// 头衔目录（含归档与持有者数）：交给「头衔管理」控件
+    pub titles_json: String,
+    /// 待审核列表的初值（JSON）：交给 React 控件
+    pub pending_json: String,
+    /// 社区开关的初值（JSON）：交给 React 控件
+    pub community_json: String,
+    /// 分区封面与顺序的初值（JSON）：每格 value/label/封面哈希 + 是否首末位
+    pub covers_json: String,
+    /// 用户组列表（含人数与规则）。
+    pub groups: Vec<AdminGroupView>,
+    /// 禁言时长选项（值, 显示名）。
+    pub ban_options: Vec<(String, String)>,
+    /// 全站开关：被拉黑后不能在对方帖子下回复（默认关）。
+    pub block_reply_enforced: bool,
+    /// AI 审核配置（超管可改；密钥只回「有没有设置」，不回明文）。
+    /// 帖子审核开关（评论的那个是 ai_review_comments）。
+    pub ai_review_posts: bool,
+    pub ai_endpoint: String,
+    pub ai_model: String,
+    pub ai_key_set: bool,
+    pub ai_prompt_new_post: String,
+    pub ai_prompt_report: String,
+    /// 推理强度（空 = 不传，用服务端默认）。
+    pub ai_reasoning_effort: String,
+    pub ai_review_comments: bool,
+    pub ai_review_on_report: bool,
+    /// 磁盘预算总览（仅超级管理员可见）。
+    pub server_free_human: String,
+    pub quota_allocated_human: String,
+    pub quota_used_human: String,
+    pub quota_unused_human: String,
+    /// 是否还有未分配的可用空间（分配总量超过服务器空闲时给出提示）。
+    pub quota_over_committed: bool,
+    /// 当前搜索词（回填到搜索框）。
+    pub query: String,
+    /// 用户总数（不受搜索影响）。
+    pub total_users: i64,
+    /// 页面上算「多久以前」用的时间基准。
+    pub now: i64,
+    pub site_name: &'a str,
+    pub user_label: Option<String>,
+    pub csrf: String,
+    /// 当前管理员是否超级管理员（决定能否改等级/显示名）。
+    pub is_super: bool,
+    pub require_activation: bool,
+    /// (值, 显示名)
+    pub roles: Vec<(String, String)>,
+    pub users: Vec<AdminUserView>,
+    /// 待审核的帖子（按提交时间正序，先来先审）。
+    pub pending: Vec<FeedView>,
+    /// 分区与它们的封面（封面卡片用）。
+    pub sections: Vec<SectionOption>,
+}
+
+/// 管理员面板里的用户行。
+pub struct AdminUserView {
+    pub id: i64,
+    /// 限期禁言的显示文案（空串 = 没被禁）。
+    pub ban_label: String,
+    /// 当前生效的处罚，编码成 kind:section:until 分号分隔（界面渲染与解除用）。
+    pub sanctions: String,
+    /// 所属用户组 id（可多个）。
+    pub groups: Vec<i64>,
+    /// 是否被信任（发帖只走自动审核）。
+    pub trusted: bool,
+    pub email: String,
+    /// 已分配预算（可读文本，如「1 GB」）。
+    pub quota_human: String,
+    /// 分配给该账号的 GB 数（表单回填用，保留一位小数）。
+    pub quota_gb: String,
+    /// 已占用（可读文本）。
+    pub used_human: String,
+    pub last_seen: String,
+    pub created_from_now: String,
+    pub avatar: Option<String>,
+    pub handle: String,
+    pub display_name: String,
+    /// 无头像时圆形底上显示的首字符。
+    pub initial: String,
+    /// 无头像时的配色序号（0..5），对应 CSS 里的 c0..c5。
+    pub color_index: i64,
+    /// 最近 5 分钟内有活动（列表上的绿点）。
+    pub online: bool,
+    pub role: String,
+    pub role_label: String,
+    pub activated: bool,
+    pub created_at: String,
+    pub is_self: bool,
+}
+
+/// 发帖类型选项。
+pub struct KindOption {
+    pub value: String,
+    pub label: String,
+    pub hint: String,
+    pub checked: bool,
+}
+
+/// 点击后按需加载的登录注册弹窗，不包含用户数据。
+#[derive(Template)]
+#[template(path = "auth_dialog.html")]
+pub struct AuthDialogTemplate {}
+
+/// 登录页。
+#[derive(Template)]
+#[template(path = "login.html")]
+pub struct LoginTemplate<'a> {
+    pub is_staff: bool,
+    pub csrf: String,
+    pub site_name: &'a str,
+    pub user_label: Option<String>,
+    pub error: Option<String>,
+    pub account: &'a str,
+}
+
+/// 注册页。
+#[derive(Template)]
+#[template(path = "register.html")]
+pub struct RegisterTemplate<'a> {
+    pub is_staff: bool,
+    pub csrf: String,
+    pub site_name: &'a str,
+    pub user_label: Option<String>,
+    /// 站点当前是否要求管理员手动激活（决定页面文案）。
+    pub needs_activation: bool,
+    pub error: Option<String>,
+    pub handle: &'a str,
+    pub display_name: &'a str,
+    pub email: &'a str,
+}
+
+// ---------------------------------------------------------------- 打赏记录（0031）
+
+/// 一笔打赏记录的展示行（"我的记录"用；对方 = 被打赏的作者）。
+pub struct MyDonationRow {
+    pub id: i64,
+    /// 对方（收款作者）显示名。
+    pub to_name: String,
+    pub to_handle: String,
+    pub to_avatar: Option<String>,
+    /// 已格式化金额（¥12.34）。
+    pub amount: String,
+    pub txn_id: String,
+    /// 打赏发生日期。
+    pub paid_at: String,
+    pub state: String,
+    pub state_label: String,
+    pub review_note: String,
+    pub settled: bool,
+    /// 打赏发生在哪篇帖子下（作者主页打赏为 None）。
+    pub post_id: Option<i64>,
+    pub post_title: Option<String>,
+    /// 只有待验证的记录能撤回。
+    pub can_withdraw: bool,
+}
+
+/// 打赏汇总行（支出侧列表 / 排行榜共用）。
+pub struct DonationSummaryView {
+    pub handle: String,
+    pub display_name: String,
+    pub avatar: Option<String>,
+    /// 已格式化合计。
+    pub total: String,
+    pub count: i64,
+}
+
+/// 管理端队列的一个状态页签。
+///
+/// active 与 href 都在 Rust 侧算好：模板里就不必拿两个 String 互相比较。
+pub struct DonationTab {
+    pub state: String,
+    pub label: String,
+    pub count: i64,
+    pub active: bool,
+    pub href: String,
+}
+
+/// 一笔打赏记录（管理端审核队列用；双方都要显示）。
+pub struct AdminDonationRow {
+    pub id: i64,
+    pub donor_handle: String,
+    pub donor_name: String,
+    pub donor_avatar: Option<String>,
+    pub recipient_handle: String,
+    pub recipient_name: String,
+    pub recipient_avatar: Option<String>,
+    pub amount: String,
+    pub txn_id: String,
+    pub paid_at: String,
+    pub created_at: String,
+    pub state: String,
+    pub state_label: String,
+    pub review_note: String,
+    pub settled: bool,
+    pub post_id: Option<i64>,
+    pub post_title: Option<String>,
+    /// 只有待验证的能改判。
+    pub can_review: bool,
+    /// 只有已验证且未结算的能标记结算。
+    pub can_settle: bool,
+}
+
+/// 「我的打赏记录」页：提交入口 + 记录列表 + 我的统计。
+#[derive(Template)]
+#[template(path = "donations.html")]
+pub struct DonationsTemplate<'a> {
+    pub site_name: &'a str,
+    pub user_label: Option<String>,
+    pub is_staff: bool,
+    pub csrf: String,
+    pub notice: Option<String>,
+    pub error: Option<String>,
+    /// 我的记录（含待验证与被拒）。
+    pub records: Vec<MyDonationRow>,
+    pub total_count: i64,
+    pub page: i64,
+    pub previous_page: Option<String>,
+    pub next_page: Option<String>,
+    /// 隐私开关当前值。
+    pub records_public: bool,
+    /// 支出侧：我给每位作者的合计（**只在开关打开时展示给他人**，本人始终可见）。
+    pub outgoing: Vec<DonationSummaryView>,
+    /// 收入侧：我收到的合计（已格式化）。
+    pub incoming_total: String,
+    /// 收入侧：我还未结算的金额（已格式化）。
+    pub unsettled_total: String,
+    /// 全站统计：按被打赏人排行。
+    pub leaderboard: Vec<DonationSummaryView>,
+}
+
+/// 提交打赏记录的表单页。
+#[derive(Template)]
+#[template(path = "donation_new.html")]
+pub struct DonationNewTemplate<'a> {
+    pub site_name: &'a str,
+    pub user_label: Option<String>,
+    pub is_staff: bool,
+    pub csrf: String,
+    /// 被打赏人的 handle（来自 ?to=）。
+    pub to_handle: String,
+    pub to_name: String,
+    pub to_avatar: Option<String>,
+    /// 被打赏人是否开了收款码展示（没开也允许登记，只是体验上给个提示）。
+    pub to_accepts_donation: bool,
+    /// 从帖子页进来时带上帖子上下文（打赏归属到具体帖子）。
+    pub post_id: Option<i64>,
+    pub post_title: Option<String>,
+    pub error: Option<String>,
+    /// 今天的日期（回填 date 输入框）。
+    pub today: String,
+    /// 单笔上限（元），用于提示文案。
+    pub max_yuan: i64,
+}
+
+/// 管理端：打赏记录审核队列。
+#[derive(Template)]
+#[template(path = "admin_donations.html")]
+pub struct AdminDonationsTemplate<'a> {
+    pub site_name: &'a str,
+    pub user_label: Option<String>,
+    pub is_staff: bool,
+    pub csrf: String,
+    /// 当前页签：pending / approved / rejected。
+    pub tab: String,
+    pub tabs: Vec<DonationTab>,
+    pub records: Vec<AdminDonationRow>,
+    pub total: i64,
+    pub page: i64,
+    pub previous_page: Option<String>,
+    pub next_page: Option<String>,
+}
+
+/// 管理端：发信配置（多账号 + 全局开关）。
+#[derive(Template)]
+#[template(path = "admin_mail.html")]
+pub struct AdminMailTemplate<'a> {
+    pub site_name: &'a str,
+    pub user_label: Option<String>,
+    pub is_staff: bool,
+    pub csrf: String,
+    /// 岛初值：账号列表 + 全局开关（JSON 字符串）。
+    pub mail_json: String,
+}
+
+/// 统一的模板渲染出口：渲染失败只记日志、回 500。
+pub fn render<T: Template>(template: T) -> axum::response::Response {
+    use axum::response::IntoResponse;
+    match template.render() {
+        Ok(html) => (
+            [(axum::http::header::CONTENT_TYPE, "text/html; charset=utf-8")],
+            html,
+        )
+            .into_response(),
+        Err(e) => {
+            tracing::error!(error = %e, "模板渲染失败");
+            crate::error::AppError::internal(format!("模板渲染失败：{e}")).into_response()
+        }
+    }
+}
+
+/// 人类可读体积（1024 进制，保留一位小数）。
+pub fn human_bytes(bytes: u64) -> String {
+    const UNITS: [&str; 5] = ["B", "KiB", "MiB", "GiB", "TiB"];
+    if bytes < 1024 {
+        return format!("{bytes} B");
+    }
+    let mut value = bytes as f64;
+    let mut unit = 0;
+    while value >= 1024.0 && unit < UNITS.len() - 1 {
+        value /= 1024.0;
+        unit += 1;
+    }
+    format!("{value:.1} {}", UNITS[unit])
+}
+
+/// Unix 秒 → `YYYY-MM-DD`（不引日期库：只需要一个稳定的展示格式）。
+/// 相对时间（「几秒前 / 3 小时前 / 2 年前」）。管理页用它，比绝对时间直观。
+pub fn format_relative(ts: i64, now: i64) -> String {
+    let delta = (now - ts).max(0);
+    match delta {
+        0..=59 => "几秒前".to_string(),
+        60..=3599 => format!("{} 分钟前", delta / 60),
+        3600..=86_399 => format!("{} 小时前", delta / 3600),
+        86_400..=2_591_999 => format!("{} 天前", delta / 86_400),
+        2_592_000..=31_535_999 => format!("{} 个月前", delta / 2_592_000),
+        _ => format!("{} 年前", delta / 31_536_000),
+    }
+}
+
+pub fn format_date(unix_seconds: i64) -> String {
+    let days = unix_seconds.div_euclid(86_400);
+    let (year, month, day) = civil_from_days(days);
+    format!("{year:04}-{month:02}-{day:02}")
+}
+
+/// Howard Hinnant 的 civil_from_days：把「1970-01-01 起的天数」换成公历年月日。
+fn civil_from_days(days_since_epoch: i64) -> (i64, u32, u32) {
+    let z = days_since_epoch + 719_468;
+    let era = if z >= 0 { z } else { z - 146_096 } / 146_097;
+    let doe = z - era * 146_097; // [0, 146096]
+    let yoe = (doe - doe / 1460 + doe / 36_524 - doe / 146_096) / 365; // [0, 399]
+    let y = yoe + era * 400;
+    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100); // [0, 365]
+    let mp = (5 * doy + 2) / 153; // [0, 11]
+    let d = (doy - (153 * mp + 2) / 5 + 1) as u32; // [1, 31]
+    let m = if mp < 10 { mp + 3 } else { mp - 9 } as u32; // [1, 12]
+    (if m <= 2 { y + 1 } else { y }, m, d)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn human_bytes_scales() {
+        assert_eq!(human_bytes(0), "0 B");
+        assert_eq!(human_bytes(1023), "1023 B");
+        assert_eq!(human_bytes(1024), "1.0 KiB");
+        assert_eq!(human_bytes(50 * 1024 * 1024), "50.0 MiB");
+    }
+
+    #[test]
+    fn format_date_known_days() {
+        assert_eq!(format_date(0), "1970-01-01");
+        assert_eq!(format_date(1_700_000_000), "2023-11-14");
+        assert_eq!(format_date(86_399), "1970-01-01");
+        assert_eq!(format_date(86_400), "1970-01-02");
+    }
+}

@@ -1,0 +1,13 @@
+{# 搜索页里的一个用户命中卡片（结果区与右侧栏共用） #}
+<a class="user-hit" href="/u/{{ hit.handle }}">
+  {% if let Some(hash) = hit.avatar %}
+  <img class="avatar" src="/avatar/{{ hash }}" alt="" width="48" height="48">
+  {% else %}
+  <img class="avatar" src="/static/art/miyin-chibi-80.webp" alt="" width="48" height="48">
+  {% endif %}
+  <div class="user-hit-main">
+    <div class="user-hit-name">{{ hit.display_name }} <span class="meta">@{{ hit.handle }}</span></div>
+    <div class="meta">{{ hit.role_label }} · 帖子 {{ hit.post_count }}</div>
+    <p class="user-hit-bio">{{ hit.bio }}</p>
+  </div>
+</a>

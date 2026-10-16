@@ -1,0 +1,476 @@
+/* b */
+/* 填充式输入控件（Material 3 风）：无描边 + 浅填充色块 + 大圆角 + 浮动标签。
+ *
+ * 本文件是覆盖层：必须排在 site.css / home.css / app.css 之后——同优先级时靠顺序取胜，
+ * 否则站点老规则（3px 圆角、1px 描边、.btn 的 12px 字）会赢。拼接就把本段贴到 site.css 末尾。
+ * 浮动标签的推荐标记（不写 span 就是「标签在上」的老写法，两条路都能用）：
+ *   <label><span class="fl">回复内容</span><textarea name="body" placeholder=" "></textarea></label>
+ * 浮动判定用 :not(:placeholder-shown)，所以要用浮动的控件必须有 placeholder（写个空格也行）。
+ * 文件域固定用静态标签；select 的标签恒定浮动（它总有值）。
+ */
+
+/* ---------- 令牌：明暗只换这一块 ---------- */
+:root {
+  --fld-accent: #2563eb;
+  --fld-accent-text: #2563eb;   /* 主色文字：暗色下换亮一档，保证对比度 */
+  --fld-danger: #d92d20;
+  --fld-ink: #1f2430;
+  --fld-card: #fff;
+  --fld-line: #e5e7eb;
+  --fld-r: 13px;                /* 控件圆角 12–14 */
+  --fld-r-sm: 11px;
+  --fld-h: 48px;                /* 输入框与按钮同一高度，整套对齐 */
+  --fld-pad: 16px;
+  --fld-fill: rgba(37, 99, 235, .06);
+  --fld-fill-hover: rgba(37, 99, 235, .1);
+  --fld-fill-focus: rgba(37, 99, 235, .13);
+  --fld-danger-fill: rgba(217, 45, 32, .07);
+  --fld-ring: rgba(37, 99, 235, .18);
+  --fld-danger-ring: rgba(217, 45, 32, .18);
+  --fld-muted: color-mix(in srgb, var(--fld-ink) 55%, transparent);
+  --fld-placeholder: color-mix(in srgb, var(--fld-ink) 42%, transparent);
+  --fld-shadow: 0 1px 2px color-mix(in srgb, var(--fld-ink) 6%, transparent);
+  --fld-shadow-focus: 0 8px 20px -8px color-mix(in srgb, var(--fld-accent) 55%, transparent);
+  --fld-pop-shadow: 0 18px 40px -14px color-mix(in srgb, var(--fld-ink) 45%, transparent);
+}
+
+html[data-theme="dark"] {
+  --fld-accent-text: #8fb0ff;
+  --fld-danger: #ff8078;
+  --fld-ink: #e6e8ef;
+  --fld-card: #161a26;
+  --fld-line: rgba(255, 255, 255, .12);
+  --fld-fill: color-mix(in srgb, var(--fld-accent) 22%, var(--fld-card));
+  --fld-fill-hover: color-mix(in srgb, var(--fld-accent) 30%, var(--fld-card));
+  --fld-fill-focus: color-mix(in srgb, var(--fld-accent) 36%, var(--fld-card));
+  --fld-danger-fill: color-mix(in srgb, var(--fld-danger) 16%, var(--fld-card));
+  --fld-ring: color-mix(in srgb, var(--fld-accent-text) 26%, transparent);
+  --fld-danger-ring: color-mix(in srgb, var(--fld-danger) 26%, transparent);
+  --fld-shadow: 0 1px 2px color-mix(in srgb, #000 35%, transparent);
+  --fld-pop-shadow: 0 18px 40px -14px color-mix(in srgb, #000 65%, transparent);
+}
+
+/* ---------- 常规字段：一块填充，零描边 ---------- */
+.stack :is(input, textarea, select):not([type='checkbox'], [type='radio'], [type='file'], [type='submit'], [type='button'], [type='reset'], [type='hidden']) {
+  font: inherit;
+  font-size: 15px;
+  font-weight: 400;
+  color: var(--fld-ink);
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
+  min-height: var(--fld-h);
+  padding: var(--fl-pad-top, 13px) var(--fld-pad) var(--fl-pad-bottom, 13px);
+  border: 0;
+  border-radius: var(--fld-r);
+  background-color: var(--fld-fill);
+  box-shadow: var(--fld-shadow);
+  text-overflow: ellipsis;
+  appearance: none;
+  transition: background-color .16s ease, box-shadow .16s ease, color .16s ease;
+}
+
+.stack :is(input, textarea, select):not([type='checkbox'], [type='radio'], [type='file'], [type='submit'], [type='button'], [type='reset'], [type='hidden']):hover:not(:disabled):not(:focus):not([readonly]) {
+  background-color: var(--fld-fill-hover);
+}
+
+/* 焦点：底色加深 + 主色下边线 2px + 外圈光环 + 浮起阴影（键盘鼠标同一个状态，必然可见） */
+.stack :is(input, textarea, select):not([type='checkbox'], [type='radio'], [type='file'], [type='submit'], [type='button'], [type='reset'], [type='hidden']):focus {
+  outline: 0;
+  background-color: var(--fld-fill-focus);
+  box-shadow: inset 0 -2px 0 0 var(--fld-accent), 0 0 0 3px var(--fld-ring), var(--fld-shadow-focus);
+}
+
+.stack :is(input, textarea, select):not([type='checkbox'], [type='radio'], [type='file'], [type='submit'], [type='button'], [type='reset'], [type='hidden']):disabled {
+  background-color: color-mix(in srgb, var(--fld-ink) 6%, transparent);
+  color: var(--fld-muted);
+  box-shadow: none;
+  opacity: .8;
+  cursor: not-allowed;
+}
+
+.stack :is(input, textarea):not([type='file'], [type='submit'], [type='button'], [type='reset'], [type='hidden'])[readonly] {
+  background-color: color-mix(in srgb, var(--fld-ink) 4%, transparent);
+  color: var(--fld-muted);
+}
+
+.stack :is(input, textarea)::placeholder { color: var(--fld-placeholder); }
+
+/* 长文本：不撑破容器，换行留白比挤压可读 */
+.stack textarea {
+  line-height: 1.8;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  resize: vertical;
+}
+
+/* ---------- 错误态 ---------- */
+.stack :is(input, textarea, select):is([aria-invalid='true'], :user-invalid) {
+  background-color: var(--fld-danger-fill);
+  box-shadow: inset 0 -2px 0 0 var(--fld-danger);
+}
+
+.stack :is(input, textarea, select):is([aria-invalid='true'], :user-invalid):focus {
+  box-shadow: inset 0 -2px 0 0 var(--fld-danger), 0 0 0 3px var(--fld-danger-ring);
+}
+
+.field-error-msg,
+.stack label > small.err {
+  display: block;
+  margin-top: 6px;
+  font-size: 12px;
+  color: var(--fld-danger);
+}
+
+/* ---------- 标签：静态（标签在上）/ 浮动（label 包着控件，span 落在控件里） ---------- */
+.stack label {
+  position: relative;
+  display: grid;
+  gap: 8px;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: .02em;
+  color: var(--fld-muted);
+}
+
+.stack label:has(> .fl) {
+  display: block;
+  font-size: inherit;
+  font-weight: 400;
+}
+
+.stack label > .fl {
+  position: absolute;
+  left: var(--fld-pad);
+  top: var(--fl-top, 13px);
+  font-size: 15px;
+  line-height: 18px;
+  color: var(--fld-placeholder);
+  pointer-events: none;
+  transform-origin: left top;
+  transition: transform .16s ease, color .16s ease;
+}
+
+/* 浮动：聚焦、已有内容（控件带 placeholder 才能判定）、或 select */
+.stack label:is(:focus-within, :has(> :is(input, textarea):not(:placeholder-shown)), :has(> select)) > .fl {
+  transform: translateY(var(--fl-lift, -11px)) scale(.8);
+  color: var(--fld-muted);
+}
+
+.stack label:focus-within > .fl { color: var(--fld-accent-text); }
+
+/* 控件里有字时标签已经在上面，placeholder 归输入提示用 */
+.stack label:has(> .fl) > :is(input, textarea)::placeholder { color: transparent; }
+.stack label:has(> .fl):focus-within > :is(input, textarea)::placeholder { color: var(--fld-placeholder); }
+
+/* 多行：标签落在首行，值从第二行开始；select 的标签恒定在上，值下移一档 */
+.stack label:has(> .fl):has(> textarea) { --fl-top: 26px; --fl-lift: -24px; --fl-pad-top: 26px; }
+.stack label:has(> .fl):has(> select) { --fl-pad-top: 24px; --fl-pad-bottom: 8px; }
+.stack label:has(> .fl):has(> select) > select { padding-right: 44px; }
+
+/* 字符计数：12px / 不透明度 .6，超限转红 */
+.field-count,
+.stack label > small {
+  display: block;
+  margin-top: 6px;
+  font-size: 12px;
+  font-weight: 400;
+  opacity: .6;
+  color: var(--fld-ink);
+  text-align: right;
+}
+
+.field-count.is-over,
+.stack label > small.is-over { color: var(--fld-danger); opacity: 1; }
+
+.field-meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 12px;
+  opacity: .6;
+}
+
+/* ---------- select：自绘箭头（不引图标库）。:not([multiple]) 顺带把特异性提到与站点老规则同级 ---------- */
+.stack select:not([multiple]) {
+  cursor: pointer;
+  background-image:
+    linear-gradient(45deg, transparent 50%, var(--fld-muted) 50%),
+    linear-gradient(135deg, var(--fld-muted) 50%, transparent 50%);
+  background-position: calc(100% - 22px) calc(50% + 2px), calc(100% - 16px) calc(50% + 2px);
+  background-size: 6px 6px, 6px 6px;
+  background-repeat: no-repeat;
+}
+
+/* ---------- 文件域：同高同圆角，按钮同族 ---------- */
+.stack input[type='file'] {
+  min-height: var(--fld-h);
+  padding: 8px 10px;
+  border: 0;
+  border-radius: var(--fld-r);
+  background-color: var(--fld-fill);
+  color: var(--fld-muted);
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+  transition: background-color .16s ease, box-shadow .16s ease;
+}
+
+.stack input[type='file']::file-selector-button {
+  height: 32px;
+  margin: 0 12px 0 0;
+  padding: 0 16px;
+  border: 0;
+  border-radius: var(--fld-r-sm);
+  background-color: var(--fld-card);
+  color: var(--fld-accent-text);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.stack input[type='file']:hover { background-color: var(--fld-fill-hover); }
+.stack input[type='file']:hover::file-selector-button { color: var(--fld-accent); }
+
+.stack input[type='file']:focus-visible {
+  outline: 0;
+  background-color: var(--fld-fill-focus);
+  box-shadow: inset 0 -2px 0 0 var(--fld-accent), 0 0 0 3px var(--fld-ring);
+}
+
+/* ---------- 按钮：与输入框同高同圆角（小号按钮保留自己的 32px，只统一圆角） ---------- */
+.stack .btn:not(.sm) {
+  height: var(--fld-h);
+  padding: 0 24px;
+  border-radius: var(--fld-r);
+  font-size: 15px;
+  box-shadow: 0 10px 20px -12px color-mix(in srgb, var(--fld-accent) 85%, transparent);
+}
+
+.stack .btn:not(.sm):disabled {
+  background-color: color-mix(in srgb, var(--fld-accent) 45%, var(--fld-card));
+  box-shadow: none;
+}
+
+.stack :is(.btn.sm, .btn-ghost.sm) { border-radius: var(--fld-r-sm); }
+
+/* ---------- @ 候选下拉 ---------- */
+.stack .mention-pop {
+  position: absolute;
+  z-index: 40;
+  min-width: 240px;
+  max-height: 248px;
+  padding: 6px;
+  overflow-y: auto;
+  background: var(--fld-card);
+  border: 0;
+  border-radius: var(--fld-r);
+  color: var(--fld-ink);
+  box-shadow: var(--fld-pop-shadow), 0 0 0 1px var(--fld-line);
+}
+
+.stack .mention-pop[hidden] { display: none; }
+
+.stack .mention-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 9px 12px;
+  border-radius: var(--fld-r-sm);
+  font-size: 14px;
+  cursor: pointer;
+}
+
+.stack .mention-item:hover,
+.stack .mention-item.active { background-color: var(--fld-fill-focus); }
+.stack .mention-item.active { color: var(--fld-accent-text); }
+.stack .mention-item b { font-weight: 600; }
+
+.stack .mention-item :is(.mi-id, .mi-handle) {
+  font-size: 12px;
+  opacity: .6;
+}
+
+.stack .mention-item .mi-handle { margin-left: auto; }
+
+/* ---------- 楼中楼就地小回复框：整块是一个填充容器 ---------- */
+.c-reply-box {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  align-items: end;
+  gap: 8px;
+  padding: 4px;
+  border-radius: var(--fld-r);
+  background-color: var(--fld-fill);
+  transition: background-color .16s ease, box-shadow .16s ease;
+}
+
+.c-reply-box:focus-within {
+  background-color: var(--fld-fill-focus);
+  box-shadow: inset 0 -2px 0 0 var(--fld-accent), 0 0 0 3px var(--fld-ring);
+}
+
+.c-reply-input {
+  min-height: 84px;
+  padding: 12px var(--fld-pad);
+  border: 0;
+  border-radius: var(--fld-r-sm);
+  background: transparent;
+  color: var(--fld-ink);
+  font: inherit;
+  font-size: 14px;
+  line-height: 1.7;
+  overflow-wrap: anywhere;
+  resize: vertical;
+}
+
+.c-reply-input:focus { outline: 0; }
+.c-reply-input::placeholder { color: var(--fld-placeholder); }
+
+.c-reply-box :is(.btn.sm, .c-act) {
+  height: 38px;
+  border-radius: var(--fld-r-sm);
+  font-size: 13px;
+}
+
+.c-reply-box .btn.sm { padding: 0 18px; }
+
+.c-reply-box .c-act {
+  padding: 0 12px;
+  border: 0;
+  border-radius: var(--fld-r-sm);
+  background: transparent;
+  color: var(--fld-muted);
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+  transition: background-color .16s ease, color .16s ease;
+}
+
+.c-reply-box .c-act:hover {
+  background-color: color-mix(in srgb, var(--fld-ink) 8%, transparent);
+  color: var(--fld-accent-text);
+}
+
+/* ---------- 顶栏搜索（首页 / 内页同一套） ---------- */
+:is(.home-search, .site-search) {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  width: min(520px, 42vw);
+  height: 44px;
+  margin: 0 auto;
+  padding: 0 6px 0 14px;
+  border: 0;
+  border-radius: 14px;
+  background-color: var(--fld-fill);
+  color: var(--fld-muted);
+  transition: background-color .16s ease, box-shadow .16s ease, color .16s ease;
+}
+
+:is(.home-search, .site-search):hover { background-color: var(--fld-fill-hover); }
+
+:is(.home-search, .site-search):focus-within {
+  background-color: var(--fld-fill-focus);
+  box-shadow: inset 0 -2px 0 0 var(--fld-accent), 0 0 0 3px var(--fld-ring);
+  color: var(--fld-accent-text);
+}
+
+:is(.home-search, .site-search) input {
+  min-width: 0;
+  width: 100%;
+  height: 100%;
+  padding: 0 10px;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: var(--fld-ink);
+  font: inherit;
+  font-size: 14px;
+}
+
+:is(.home-search, .site-search) input:focus { outline: 0; }
+:is(.home-search, .site-search) input::placeholder { color: var(--fld-placeholder); }
+:is(.home-search, .site-search) > svg { width: 18px; height: 18px; flex-shrink: 0; }
+
+:is(.home-search, .site-search) button {
+  display: grid;
+  place-items: center;
+  width: 40px;
+  height: 34px;
+  border: 0;
+  border-left: 0;
+  border-radius: 10px;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: background-color .16s ease, color .16s ease;
+}
+
+:is(.home-search, .site-search) button:hover {
+  background-color: color-mix(in srgb, var(--fld-ink) 8%, transparent);
+  color: var(--fld-accent-text);
+}
+
+/* ---------- <=900px：折叠成单栏 ---------- */
+@media (max-width: 900px) {
+  .stack { gap: 16px; }
+  .stack .btn { width: 100%; }
+  :is(.home-search, .site-search) { width: 100%; }
+
+  .c-reply-box {
+    grid-template-columns: minmax(0, 1fr);
+    align-items: stretch;
+  }
+
+  .c-reply-box :is(.btn.sm, .c-act) { height: 42px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .stack,
+  .stack *,
+  .c-reply-box,
+  .c-reply-box *,
+  .mention-pop,
+  .mention-pop * { transition-duration: .01ms; }
+}
+
+/* box-shadow 在强制对比模式下会被丢掉，这里补回真实轮廓 */
+@media (forced-colors: active) {
+  .stack :is(input, textarea, select):focus,
+  .c-reply-box:focus-within,
+  :is(.home-search, .site-search):focus-within {
+    outline: 2px solid Highlight;
+    outline-offset: 2px;
+  }
+}
+/* 自制下拉：去掉系统外观，用统一的内联箭头 + 与文本框一致的聚焦环（B 版风格） */
+select.ui-select, .stack select {
+  appearance: none;
+  -webkit-appearance: none;
+  padding: 10px 34px 10px 14px;
+  border-radius: 12px;
+  border: 1px solid color-mix(in srgb, currentColor 14%, transparent);
+  background-color: rgba(37, 99, 235, .06);
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'><path d='M1 1.5 6 6.5 11 1.5' fill='none' stroke='%232563eb' stroke-width='1.8' stroke-linecap='round'/></svg>");
+  background-repeat: no-repeat;
+  background-position: right 12px center;
+  color: inherit;
+  font: inherit;
+  line-height: 1.4;
+  cursor: pointer;
+  transition: background-color .15s, border-color .15s, box-shadow .15s;
+}
+select.ui-select:hover, .stack select:hover { background-color: rgba(37, 99, 235, .10); }
+select.ui-select:focus-visible, .stack select:focus-visible {
+  outline: 0;
+  border-color: #2563eb;
+  box-shadow: 0 0 0 3px color-mix(in srgb, #2563eb 22%, transparent);
+}
+html[data-theme="dark"] select.ui-select, html[data-theme="dark"] .stack select {
+  background-color: rgba(255, 255, 255, .06);
+}
+html[data-theme="dark"] select.ui-select option { background: #161a26; color: #e6e8ef; }

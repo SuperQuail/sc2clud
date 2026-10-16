@@ -1,0 +1,91 @@
+{% extends "base.html" %}
+{% block body_class %}site-page page-donations{% endblock %}
+{% block page_label %}打赏记录{% endblock %}
+
+{% block title %}打赏记录 · {{ site_name }}{% endblock %}
+
+{% block content %}
+{% if let Some(text) = notice %}<p class="alert ok">{{ text }}</p>{% endif %}
+{% if let Some(text) = error %}<p class="alert">{{ text }}</p>{% endif %}
+
+<section class="card">
+  <h2>我提交的记录 <span class="count">{{ total_count }}</span></h2>
+  {% if records.is_empty() %}
+  <div class="community-empty"><img src="/static/art/miyin/smile-160.webp" width="96" height="96" alt="" loading="lazy"><p class="empty">还没有登记过打赏。在作者主页点「赞助作者」完成后，回到这里登记。</p></div>
+  {% else %}
+  <div class="post-list">
+    {% for row in records %}
+    <article class="post-row">
+      <div class="row-main">
+        <div class="chips"><span class="chip">{{ row.state_label }}</span>{% if row.settled %}<span class="chip">已结算</span>{% endif %}</div>
+        <h3><a href="/u/{{ row.to_handle }}">{{ row.to_name }}</a> <span class="dn-amount">{{ row.amount }}</span></h3>
+        <div class="row-stats">
+          <span class="stat">打赏于 {{ row.paid_at }}</span>
+          {% if !row.txn_id.is_empty() %}<span class="stat">订单号 {{ row.txn_id }}</span>{% endif %}
+          {% if let Some(title) = row.post_title %}<span class="stat">帖子 {{ title }}</span>{% endif %}
+        </div>
+        {% if !row.review_note.is_empty() %}<p class="hint">审核意见：{{ row.review_note }}</p>{% endif %}
+        {% if row.can_withdraw %}
+        <form method="post" action="/donations/{{ row.id }}/delete" class="dn-inline"><input type="hidden" name="csrf" value="{{ csrf }}"><button class="btn ghost sm" type="submit">撤回</button></form>
+        {% endif %}
+      </div>
+    </article>
+    {% endfor %}
+  </div>
+  {% if previous_page.is_some() || next_page.is_some() %}
+  <nav class="home-pagination" aria-label="分页">
+    {% if let Some(href) = previous_page %}<a href="{{ href }}">← 上一页</a>{% endif %}
+    <span>第 {{ page }} 页</span>
+    {% if let Some(href) = next_page %}<a href="{{ href }}">下一页 →</a>{% endif %}
+  </nav>
+  {% endif %}
+  {% endif %}
+</section>
+
+<section class="card">
+  <h2>我的打赏去向</h2>
+  <p class="hint">只有 <strong>已验证</strong> 的记录会出现在这里。是否对他人公开由账户设置控制，当前：<strong>{% if records_public %}公开{% else %}不公开{% endif %}</strong> · <a href="/settings">去设置</a></p>
+  {% if outgoing.is_empty() %}
+  <p class="empty">还没有已验证的打赏。</p>
+  {% else %}
+  <div class="post-list">
+    {% for row in outgoing %}
+    <article class="post-row"><div class="row-main">
+      <h3><a href="/u/{{ row.handle }}">{{ row.display_name }}</a> <span class="dn-amount">{{ row.total }}</span></h3>
+      <div class="row-stats"><span class="stat">{{ row.count }} 笔</span></div>
+    </div></article>
+    {% endfor %}
+  </div>
+  {% endif %}
+</section>
+
+<section class="card">
+  <h2>我收到的打赏</h2>
+  <p class="dn-total">{{ incoming_total }}</p>
+  <p class="hint">只统计管理员已验证、且打赏人同意公开的记录（未结算：{{ unsettled_total }}）。</p>
+</section>
+
+<section class="card">
+  <h2>社区打赏统计 <span class="count">按被打赏人</span></h2>
+  {% if leaderboard.is_empty() %}
+  <p class="empty">还没有可公开统计的打赏。</p>
+  {% else %}
+  <div class="post-list">
+    {% for row in leaderboard %}
+    <article class="post-row"><div class="row-main">
+      <h3><a href="/u/{{ row.handle }}">{{ row.display_name }}</a> <span class="dn-amount">{{ row.total }}</span></h3>
+      <div class="row-stats"><span class="stat">{{ row.count }} 笔</span></div>
+    </div></article>
+    {% endfor %}
+  </div>
+  {% endif %}
+</section>
+
+<style>
+.page-donations .dn-amount{font-weight:700;color:#dc2626}
+.page-donations .dn-total{font-size:26px;font-weight:700;color:#dc2626;margin:4px 0 8px}
+.page-donations .dn-inline{display:inline;margin:0}
+.page-donations .count{font-size:13px;color:#6b7280;font-weight:400}
+.page-donations .alert.ok{border-left:3px solid #16a34a;background:rgba(22,163,74,.08)}
+</style>
+{% endblock %}

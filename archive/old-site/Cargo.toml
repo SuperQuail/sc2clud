@@ -1,0 +1,29 @@
+[workspace]
+resolver = "3"
+members = ["crates/*"]
+
+[workspace.package]
+version = "0.1.0-alpha.1"
+edition = "2024"
+rust-version = "1.85"
+authors = ["TangTian <3331347593@qq.com>"]
+description = "SC2clud —— 星际争霸 II 社区站与轻量网盘（Rust + axum + SQLite）"
+license = "MIT"
+repository = "https://github.com/SuperQuail/SC2clud"
+
+[workspace.dependencies]
+sc2clud-core = { path = "crates/sc2clud-core" }
+sc2clud-storage = { path = "crates/sc2clud-storage" }
+sc2clud-db = { path = "crates/sc2clud-db" }
+sc2clud-web = { path = "crates/sc2clud-web" }
+
+# 面向 2 vCPU / 2 GB 的单机部署：体积优先，CPU 长期空闲。
+[profile.release]
+lto = true
+codegen-units = 1
+opt-level = "s"
+strip = true
+
+# 本地调试也要能跑得动（release 的 lto 全量重链太慢）。
+[profile.dev]
+debug = 1

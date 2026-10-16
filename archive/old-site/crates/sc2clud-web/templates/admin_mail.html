@@ -1,0 +1,25 @@
+{% extends "base.html" %}
+{% block body_class %}site-page page-admin-mail{% endblock %}
+{% block page_label %}发信配置{% endblock %}
+
+{% block title %}发信配置 · {{ site_name }}{% endblock %}
+
+{% block content %}
+<section class="card">
+  <nav class="admin-tabs">
+    <a href="/admin/users/overview">用户</a>
+    <a href="/admin/donations">打赏审核</a>
+    <a href="/admin/mail" class="active">发信配置</a>
+  </nav>
+
+  <h2>发信账号</h2>
+  <p class="hint">
+    多个账号按「优先级」依次使用：前一个的当日额度用完、或被限速、或密钥失效，
+    就自动落到下一个。密钥加密存库（ChaCha20-Poly1305），页面上永不回显。
+  </p>
+
+  {# 账号卡片墙 + 全局开关：React 控件（web/src/ui/AdminMail.tsx） #}
+  <div data-island="admin-mail" data-csrf="{{ csrf }}" data-json="{{ mail_json }}"></div>
+  <script type="module" src="/static/islands/admin-mail.js"></script>
+</section>
+{% endblock %}

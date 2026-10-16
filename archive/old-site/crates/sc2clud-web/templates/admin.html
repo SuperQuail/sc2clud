@@ -1,0 +1,382 @@
+{% extends "base.html" %}
+{% block body_class %}site-page page-admin{% endblock %}
+{% block page_label %}社区管理{% endblock %}
+
+{% block title %}用户管理 · {{ site_name }}{% endblock %}
+
+{% block head %}<link rel="stylesheet" href="/static/admin.css?v=20261011-titles-v1">{% endblock %}
+
+{% block content %}
+<div class="admin">
+  <aside class="admin-side">
+    <nav>
+      <a href="/admin/users/overview" class="active">概述</a>
+      <a href="#pending">待审核{% if !pending.is_empty() %}（{{ pending.len() }}）{% endif %}</a>
+      <a href="#users">用户</a>
+      {% if is_super %}<a href="#create">添加用户</a>{% endif %}
+      <a href="#titles">头衔</a>
+      <a href="#covers">分区封面</a>
+      <a href="/admin/donations">打赏审核</a>
+      <a href="/admin/mail">发信配置</a>
+      <a href="#settings">站点设置</a>
+      <a href="/debug">自检面板</a>
+    </nav>
+  </aside>
+
+  <div class="admin-body">
+    <nav class="admin-tabs">
+      <a href="/admin/users/overview" class="active">用户</a>
+      <a href="/admin/donations">打赏审核</a>
+      <a href="/admin/mail">发信配置</a>
+      <a href="#settings">站点</a>
+      <a href="#audit-note">安全</a>
+    </nav>
+
+    <div class="admin-head">
+      <h1>用户 <span class="count">{{ total_users }}</span></h1>
+      <form class="search" method="get" action="/admin/users/overview" role="search">
+        <svg viewBox="0 0 16 16" width="15" height="15" aria-hidden="true"><circle cx="7" cy="7" r="5" fill="none" stroke="currentColor" stroke-width="1.6"/><path d="M11 11l4 4" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
+        <input type="search" name="q" value="{{ query }}" placeholder="搜索登录名 / 显示名 / 邮箱" aria-label="搜索用户">
+      </form>
+      {% if is_super %}<a class="btn" href="#create">添加用户</a>{% endif %}
+    </div>
+
+    {% if is_super %}
+    <section class="panel" id="create">
+      <h2>添加用户</h2>
+      <form method="post" action="/admin/users" class="stack" data-async data-after="refresh">
+        <input type="hidden" name="csrf" value="{{ csrf }}">
+        <label>登录名<input type="text" name="handle" required minlength="3" maxlength="24" pattern="[A-Za-z0-9_-]+" autocomplete="off">
+          <span class="hint">3–24 位字母、数字、下划线或连字符；账号标识，用于登录</span></label>
+        <label>显示名<input type="text" name="display_name" required maxlength="20" autocomplete="off"></label>
+
+        <label>初始密码<input type="text" name="password" required minlength="8" autocomplete="off">
+          <span class="hint">至少 8 位；交给对方后建议让他自己在账户设置里改</span></label>
+        <label>权限等级
+          <select name="role">
+            {% for role in roles %}
+            <option value="{{ role.0 }}"{% if role.0 == "member" %} selected{% endif %}>{{ role.1 }}</option>
+            {% endfor %}
+          </select>
+        </label>
+        <label class="kind-picker"><input type="checkbox" name="activated" value="1" checked> 创建后立即激活</label>
+        <button class="btn" type="submit">创建账号</button>
+      </form>
+    </section>
+    {% endif %}
+
+    {% if !pending.is_empty() %}
+    <section class="panel" id="pending">
+      {# 待审核：React 控件（web/src/ui/AdminPending.tsx） #}
+      <div data-island="admin-pending" data-csrf="{{ csrf }}" data-json="{{ pending_json }}"></div>
+      <script type="module" src="/static/islands/admin-pending.js"></script>
+    </section>
+    {% endif %}
+
+    <section class="panel" id="users">
+      {# 用户列表 + 角色菜单 + 编辑弹窗：React 控件（web/src/ui/AdminUsers.tsx） #}
+      <div data-island="admin-users" data-csrf="{{ csrf }}" data-json="{{ users_json }}"></div>
+      <script type="module" src="/static/islands/admin-users.js"></script>
+    </section>
+
+    {% if is_super %}
+    <section class="panel" id="quota">
+      <h2>磁盘预算总览 <span class="spacer">仅超级管理员可见</span></h2>
+      <div class="stats">
+        <div><div class="label">服务器可用</div><div class="value">{{ server_free_human }}</div></div>
+        <div><div class="label">已分配</div><div class="value">{{ quota_allocated_human }}</div></div>
+        <div><div class="label">其中已使用</div><div class="value">{{ quota_used_human }}</div></div>
+        <div><div class="label">已分配未使用</div><div class="value">{{ quota_unused_human }}</div></div>
+      </div>
+      {% if quota_over_committed %}
+      <p class="alert">已分配的总量超过了服务器可用空间，请下调部分账号的预算。</p>
+      {% endif %}
+      <p class="hint">每个账号的预算默认 0（不分配），在用户表里逐个填写。实际占用统计之后再做，因此「已使用」现在恒为 0。</p>
+    </section>
+    {% endif %}
+
+  <section class="panel" id="community-switch">
+    {# 社区开关：React 控件（web/src/ui/AdminCommunity.tsx） #}
+    <div data-island="admin-community" data-csrf="{{ csrf }}" data-json="{{ community_json }}"></div>
+    <script type="module" src="/static/islands/admin-community.js"></script>
+  </section>
+
+<section class="panel" id="acl">
+  <h2>分区发言权限 <span class="count">{{ sections.len() }}</span></h2>
+  {# 矩阵是控件库里的 React 控件（web/src/ui/SectionAcl.tsx）：角色门槛 + 组档位 + 允许的组 #}
+  <div data-island="admin-acl" data-csrf="{{ csrf }}" data-json="{{ acl_json }}"></div>
+  <script type="module" src="/static/islands/admin-acl.js"></script>
+</section>
+
+<section class="panel" id="groups">
+  <h2>用户组 <span class="count">{{ groups.len() }}</span></h2>
+  <p class="hint">组是「人群」：分区权限里按组给白名单，用户面板里把成员分到组里（一个用户可属多个组）。</p>
+  <div class="group-list">
+    {% for group in groups %}
+    <article class="group-card{% if group.archived %} archived{% endif %}">
+      <div class="group-head">
+        <b>{{ group.name }}</b> <span class="meta">{{ group.key }} · {{ group.member_count }} 人{% if group.archived %} · 已归档{% endif %}</span>
+        <span class="group-actions">
+          <button class="btn ghost sm" type="button" data-group-edit="{{ group.id }}">编辑</button>
+          <form method="post" action="/admin/groups/archive">
+            <input type="hidden" name="csrf" value="{{ csrf }}">
+            <input type="hidden" name="id" value="{{ group.id }}">
+            <input type="hidden" name="archived" value="{% if group.archived %}0{% else %}1{% endif %}">
+            <button class="btn ghost sm" type="submit">{% if group.archived %}恢复{% else %}归档{% endif %}</button>
+          </form>
+        </span>
+      </div>
+      <p class="hint">{{ group.description }}</p>
+      <form class="group-edit" method="post" action="/admin/groups/update" data-group-form="{{ group.id }}" hidden>
+        <input type="hidden" name="csrf" value="{{ csrf }}">
+        <input type="hidden" name="id" value="{{ group.id }}">
+        <input type="text" name="name" value="{{ group.name }}" maxlength="40" required placeholder="组名">
+        <input type="text" name="description" value="{{ group.description }}" maxlength="200" placeholder="说明">
+        <button class="btn sm" type="submit">保存</button>
+      </form>
+      <div class="group-rules">
+        {% for rule in group.rules %}<span class="group-rule">{{ rule.0 }}{% if rule.1 %} 可发{% endif %}{% if rule.2 %} 可评{% endif %}{% if rule.3 %} 禁发{% endif %}{% if rule.4 %} 禁评{% endif %}</span>{% endfor %}
+        {% if group.rules.is_empty() %}<span class="hint">没有分区规则</span>{% endif %}
+      </div>
+    </article>
+    {% endfor %}
+    {% if groups.is_empty() %}<p class="hint">还没有用户组。</p>{% endif %}
+  </div>
+  <form class="group-create" method="post" action="/admin/groups">
+    <input type="hidden" name="csrf" value="{{ csrf }}">
+    <input type="text" name="key" placeholder="标识（英文，如 localization）" maxlength="32" required pattern="[A-Za-z0-9_]+">
+    <input type="text" name="name" placeholder="组名（如：汉化组）" maxlength="40" required>
+    <input type="text" name="description" placeholder="说明（可选）" maxlength="200">
+    <button class="btn" type="submit">新建用户组</button>
+  </form>
+</section>
+
+    <section class="panel cover-manager" id="covers" aria-labelledby="covers-title">
+      <header class="covers-heading"><h2 id="covers-title">分区封面与顺序</h2>
+        <p class="hint">用每格的 ↑ ↓ 调整顺序：它决定社区左栏导航、首页标签页与发帖分区下拉的排列。</p></header>
+      {# 封面卡片是控件库里的 React 控件（web/src/ui/SectionCovers.tsx）：模板只留挂载点 #}
+      <div data-island="admin-covers" data-csrf="{{ csrf }}" data-json="{{ covers_json }}"></div>
+      <script type="module" src="/static/islands/admin-covers.js"></script>
+    </section>
+
+    <section class="panel" id="avatar-pool">
+      <h2>默认头像池 <span class="count">{{ default_avatars.len() }}</span></h2>
+      <p class="hint">没设头像的用户会从这里<b>随机分到一张并固定</b>；删除只影响还没分到的人。</p>
+      {% if pool_variant == 3 %}
+      <div class="pool-side">
+        <div class="pool-upload">
+          <h3>上传新的默认头像</h3>
+          <input type="file" id="pool-file" accept="image/*" hidden>
+          <button class="btn" type="button" id="pool-pick">选择图片</button>
+          <input type="text" id="pool-note" placeholder="备注（可选）" maxlength="40">
+          <p class="hint" data-pool-status>建议方形图，PNG / JPEG / WebP，≤512 KB</p>
+          <div class="pool-list">
+      {% else %}
+      <div class="pool-upload">
+        <input type="file" id="pool-file" accept="image/*" hidden>
+        <button class="btn" type="button" id="pool-pick">上传默认头像</button>
+        <input type="text" id="pool-note" placeholder="备注（可选）" maxlength="40">
+        <span class="hint" data-pool-status></span>
+      </div>
+      {% if pool_variant == 1 %}
+      <div class="pool-grid">
+      {% else %}
+      <div class="pool-rows">
+      {% endif %}
+      {% endif %}
+
+      {% for item in default_avatars %}
+      <div class="pool-item">
+        <img src="/avatar/{{ item.hash }}" alt="" onerror="this.src='/static/art/miyin/image-unavailable-480.webp'">
+        <div class="pool-meta"><b>{{ item.note }}</b><span class="meta">{{ item.date }}</span></div>
+        <form method="post" action="/admin/default-avatars/remove">
+          <input type="hidden" name="csrf" value="{{ csrf }}">
+          <input type="hidden" name="id" value="{{ item.id }}">
+          <button class="btn ghost danger sm" type="submit">移出</button>
+        </form>
+      </div>
+      {% endfor %}
+      {% if default_avatars.is_empty() %}<p class="empty">池子是空的：没设头像的用户会用内置兜底图。</p>{% endif %}
+      </div>
+      {% if pool_variant == 3 %}</div></div>{% endif %}
+      <script>
+  // 添加用户默认隐藏，点顶部「添加用户」才展开（用户要求：不要一屏表单）
+  const createBox = document.getElementById('create');
+  if (createBox) {
+    createBox.hidden = true;
+    document.querySelectorAll('a[href="#create"]').forEach((btn) => {
+      btn.addEventListener('click', (event) => {
+        event.preventDefault();
+        // 再点一次收起（原来只开不合）
+        createBox.hidden = !createBox.hidden;
+        if (!createBox.hidden) createBox.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      });
+    });
+  }
+
+  // 用户组：点「编辑」展开就地改名/说明
+  document.querySelectorAll('[data-group-edit]').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const form = document.querySelector('[data-group-form="' + btn.dataset.groupEdit + '"]');
+      if (form) form.hidden = !form.hidden;
+    });
+  });
+
+      (() => {
+        const file = document.getElementById('pool-file');
+        const pick = document.getElementById('pool-pick');
+        const note = document.getElementById('pool-note');
+        const status = document.querySelector('[data-pool-status]');
+        if (!file || !pick) return;
+        pick.addEventListener('click', () => file.click());
+        file.addEventListener('change', async () => {
+          const picked = file.files[0];
+          if (!picked) return;
+          status.textContent = '上传中…';
+          const res = await fetch('/admin/default-avatars?note=' + encodeURIComponent(note.value.trim()), {
+            method: 'POST', headers: { 'x-csrf-token': document.querySelector('input[name="csrf"]').value }, body: picked,
+          });
+          status.textContent = res.ok ? '已加入默认头像池，刷新可见' : '上传失败：' + res.status;
+        });
+      })();
+      </script>
+    </section>
+
+    <section class="panel" id="titles">
+  <h2>头衔管理</h2>
+  <p class="hint">这里管目录本身：新建 / 改名 / 配色 / 描述 / 归档。发给谁在用户列表的编辑弹窗里（头衔区）。</p>
+  {# 目录管理是控件库里的 React 控件（web/src/ui/TitleAdmin.tsx） #}
+  <div data-island="admin-titles" data-csrf="{{ csrf }}" data-json="{{ titles_json }}"></div>
+  <script type="module" src="/static/islands/admin-titles.js"></script>
+</section>
+<section class="panel" id="ai">
+      <h2>AI 审核</h2>
+      <p class="hint">按 OpenAI 兼容格式调用（chat/completions + 工具调用）：AI 只能从「通过 / 待定 / 不通过」三个工具里选一个；
+        待定＝交人工、不自动放行。三类审核各自独立开关，密钥单独加密存表（这里只显示是否已设置）。</p>
+      <form method="post" action="/admin/ai/settings" data-ai-form id="ai-form">
+        <input type="hidden" name="csrf" value="{{ csrf }}">
+        <div class="ai-block">
+          <h3>接口设置<span class="ai-tag{% if ai_key_set %} on{% endif %}">{% if ai_key_set %}密钥已设置{% else %}密钥未设置{% endif %}</span></h3>
+          <p class="hint">三类审核共用这一个接口。</p>
+          <div class="ai-grid">
+            <label>接口地址<input type="text" name="endpoint" value="{{ ai_endpoint }}" maxlength="200"></label>
+            <label>模型<input type="text" name="model" value="{{ ai_model }}" maxlength="80"></label>
+            <label class="wide">API 密钥<input type="password" name="api_key" maxlength="200" placeholder="{% if ai_key_set %}已设置，留空表示不改{% else %}还没设置{% endif %}"></label>
+            <label>推理强度（reasoning_effort）
+              <select name="reasoning_effort" class="ui-select">
+                <option value=""{% if ai_reasoning_effort.is_empty() %} selected{% endif %}>不传（用服务端默认：high）</option>
+                <option value="none"{% if ai_reasoning_effort == "none" %} selected{% endif %}>none · 关闭思考模式（最快最省）</option>
+                <option value="low"{% if ai_reasoning_effort == "low" %} selected{% endif %}>low · 开启思考，强度低</option>
+                <option value="high"{% if ai_reasoning_effort == "high" %} selected{% endif %}>high · 开启思考，强度高（默认）</option>
+                <option value="max"{% if ai_reasoning_effort == "max" %} selected{% endif %}>max · 最强（更慢更贵）</option>
+              </select>
+            </label>
+            <label class="wide">提示词（帖子）<textarea name="prompt_new_post" rows="3">{{ ai_prompt_new_post }}</textarea></label>
+            <label class="wide">提示词（举报复审）<textarea name="prompt_report" rows="3">{{ ai_prompt_report }}</textarea></label>
+          </div>
+          <div class="ai-actions">
+            <button class="btn sm" type="submit" form="ai-form">保存接口设置</button>
+            <button class="btn ghost sm" type="button" data-ai-test>测试连通性</button>
+            <label class="acl-switch" style="margin-left:auto"><input type="checkbox" name="review_on_report" value="1"{% if ai_review_on_report %} checked{% endif %}><span>被举报后自动复审</span></label>
+          </div>
+        </div>
+        <div class="ai-block" data-ai-block="post">
+          <h3>帖子审核<span class="ai-tag{% if ai_review_posts %} on{% endif %}">{% if ai_review_posts %}已启用{% else %}未启用{% endif %}</span></h3>
+          <p class="hint">新帖送 AI 判定；不通过会被置为 rejected（普通用户不可见），待定留在人工队列。</p>
+          <label class="acl-switch"><input type="checkbox" name="review_posts" value="1"{% if ai_review_posts %} checked{% endif %}><span>开启帖子 AI 审核</span></label>
+          <div class="ai-actions">
+            <input type="number" min="1" style="width:90px" data-ai-id placeholder="帖子 id">
+            <button class="btn ghost sm" type="button" data-ai-preview>预览发给 AI 的文本</button>
+            <button class="btn sm" type="button" data-ai-run>立刻审核一次</button>
+            <button class="btn sm" type="submit" form="ai-form">保存帖子审核设置</button>
+          </div>
+        </div>
+        <div class="ai-block" data-ai-block="comment">
+          <h3>评论审核<span class="ai-tag{% if ai_review_comments %} on{% endif %}">{% if ai_review_comments %}已启用{% else %}未启用{% endif %}</span></h3>
+          <p class="hint">默认关闭（评论量大，开了会明显增加调用成本）。开启后新评论送 AI 判定，被举报的评论也会复审。</p>
+          <label class="acl-switch"><input type="checkbox" name="review_comments" value="1"{% if ai_review_comments %} checked{% endif %}><span>开启评论 AI 审核</span></label>
+          <div class="ai-actions">
+            <input type="number" min="1" style="width:90px" data-ai-id placeholder="评论 id">
+            <button class="btn ghost sm" type="button" data-ai-preview>预览发给 AI 的文本</button>
+            <button class="btn sm" type="button" data-ai-run>立刻审核一次</button>
+            <button class="btn sm" type="submit" form="ai-form">保存评论审核设置</button>
+          </div>
+        </div>
+        <div class="ai-block ai-wip">
+          <h3>新用户审核<span class="ai-tag wip">WIP</span></h3>
+          <p class="hint">还没做：计划是按注册资料（昵称、简介、邀请来源）判「正常 / 观察 / 拒绝」，拒绝即不激活。
+            下面的控件只是占位，点了不会有任何效果。</p>
+          <label class="acl-switch"><input type="checkbox" disabled><span>开启新用户 AI 审核（未实现）</span></label>
+          <div class="ai-actions">
+            <input type="text" disabled placeholder="示例用户 id" style="width:120px">
+            <button class="btn ghost sm" type="button" disabled>预览注册文本（未实现）</button>
+          </div>
+        </div>
+        <div class="ai-actions"><button class="btn" type="submit" form="ai-form">保存全部设置</button>
+          <span class="hint" data-ai-note>三个板块共用同一份接口配置：点任意一个保存按钮都会把整页设置一起存下来。</span></div>
+      </form>
+      <p class="ai-result" data-ai-result hidden></p>
+      <pre class="ai-out" data-ai-out hidden></pre>
+      <script>
+      (() => {
+        const out = document.querySelector('[data-ai-out]');
+        const note = document.querySelector('[data-ai-note]');
+        const csrf = () => (document.querySelector('[data-ai-form] input[name="csrf"]') || {}).value || '';
+        const post = async (url, body) => {
+          const res = await fetch(url, { method: 'POST', headers: { 'x-csrf-token': csrf() }, body });
+          const data = await res.json().catch(() => null);
+          if (!data) { note.textContent = '请求失败 ' + res.status; return; }
+          if (data.text) { out.hidden = false; out.textContent = data.text; }
+          note.textContent = data.ok === false ? (data.message || '失败')
+            : (data.message || (data.verdict ? ('判词：' + data.verdict + (data.reason ? '（' + data.reason + '）' : '')) : '完成'));
+        };
+        const result = document.querySelector('[data-ai-result]');
+        const showResult = (text, good) => {
+          if (!result) return;
+          result.hidden = false;
+          result.textContent = (good ? '✓ ' : '✗ ') + text;
+          result.dataset.state = good ? 'ok' : 'bad';
+        };
+        const test = document.querySelector('[data-ai-test]');
+        if (test) test.addEventListener('click', async () => {
+          test.disabled = true;
+          const label = test.textContent;
+          test.textContent = '正在测试…';
+          showResult('正在发起真实调用（连通 + 工具调用各一次，最多等 60 秒）', true);
+          const res = await fetch('/admin/ai/test', { method: 'POST', headers: { 'x-csrf-token': csrf() } });
+          const data = await res.json().catch(() => null);
+          if (!data) showResult('请求失败 ' + res.status, false);
+          else showResult(data.message || '没有返回内容', data.ok === true);
+          test.disabled = false;
+          test.textContent = label;
+        });
+        // 预览用：带上 ?aitest=1 进页面就直接跑一次（出图/自检省一次点击）
+        if (new URLSearchParams(location.search).get('aitest') === '1' && test) test.click();
+        document.querySelectorAll('[data-ai-block]').forEach((block) => {
+          const kind = block.dataset.aiBlock;
+          const idOf = () => Number((block.querySelector('[data-ai-id]') || {}).value || 0);
+          const body = () => { const form = new URLSearchParams(); form.set('csrf', csrf()); form.set('kind', kind); form.set('id', String(idOf())); return form; };
+          const preview = block.querySelector('[data-ai-preview]');
+          if (preview) preview.addEventListener('click', () => { const form = body(); form.set('dry_run', '1'); post('/admin/ai/preview', form); });
+          const run = block.querySelector('[data-ai-run]');
+          if (run) run.addEventListener('click', () => post('/admin/ai/review', body()));
+        });
+      })();
+      </script>
+    </section>
+    <section class="panel" id="settings">
+      <h2>注册策略 <span class="count">{% if require_activation %}人工激活{% else %}自动激活{% endif %}</span></h2>
+      <p class="hint">
+        {% if require_activation %}新注册用户需要管理员激活后才能发帖与上传。{% else %}新注册用户注册完即可发帖与上传。{% endif %}
+      </p>
+      <form method="post" action="/admin/settings/require-activation" class="actions-inline" data-async data-after="refresh">
+        <input type="hidden" name="csrf" value="{{ csrf }}">
+        <button class="btn" type="submit">切换为{% if require_activation %}自动激活{% else %}人工激活{% endif %}</button>
+      </form>
+      <p class="hint" id="audit-note">所有管理动作都会写入审计日志（可在自检面板查看）。</p>
+    </section>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}<script type="module" src="/static/islands/admin.js?v=20261009-covers-v14"></script>{% endblock %}
