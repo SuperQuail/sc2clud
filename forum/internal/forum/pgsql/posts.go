@@ -232,10 +232,11 @@ RETURNING id`,
 // UpdatePostContent 是 PATCH /posts/{id}：正文换了，updated_at 前进；
 // **不动 last_reply_at**——编辑不是回复（§4.5）。
 //
-// **1 楼顺带把 visibility 置回 normal**：1 楼可以被作者软删（DeletePostRow，读者看到「正文已被作者删除」），
-// 但作者重新写正文就是对那一行的「恢复」——不置回来的话，编辑永远改不动读者看到的东西
-// （正文写进 content_md，visibility 还是 deleted，页面上仍是「已删除」）。
-// 回复不在此列：删掉的回复不该因为一次改稿又冒出来，所以只对 floor = 1 生效。
+// **1 楼顺带把 visibility 置回 normal**：这是给**历史残留**与「非服务层路径」留的防御 ——
+// 迁移 0061 之前正文行可以被当评论删掉（现在 Service.DeletePost 直接拒绝 floor = 1，
+// 那之后除了删整帖 DeleteTopicRow，没有应用路径会软删正文行）。
+// 「作者重新写正文」就是对那一行的恢复：不置回来的话，content_md 改了，visibility 还是 deleted，
+// 那一行会一直停在「已删除」的半死状态。回复不在此列：删掉的回复不该因为一次改稿又冒出来。
 func UpdatePostContent(ctx context.Context, tx Querier, postID int64, contentMD, contentHTML string, now time.Time) error {
 	return exec(ctx, tx, `UPDATE posts
    SET content_md = $2, content_html = $3, updated_at = $4,
@@ -275,7 +276,9 @@ UPDATE topics t
  WHERE t.id = $1`, topicID)
 }
 
-// DeletePostRow 是删楼层（§4.6）：只软删楼层本身，主题行不动（1 楼也是这条）。
+// DeletePostRow 是删楼层（§4.6）：只软删楼层本身，主题行不动。
+// **这条 SQL 不设防**（底层工具，不判楼层）：正文不可当回复删的闸在服务层
+// （Service.DeletePost 拒绝 floor = 1），删整帖走 DeleteTopicRow。
 // 该楼层的票一并删掉——多态表没有外键，孤儿行必须由应用清理。
 func DeletePostRow(ctx context.Context, tx Querier, postID int64, now time.Time) error {
 	// 一条 Exec 一条语句：pgx 的扩展协议不接受多语句。
