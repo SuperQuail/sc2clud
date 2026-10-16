@@ -307,8 +307,13 @@ SELECT p.topic_id, p.id, p.content_md, p.content_html, $2, $3, $4, $4, $4
 func (s *Store) PromotePendingRevision(ctx context.Context, tx Querier, topicID, approverID int64,
 	md, html, excerpt string, now time.Time) error {
 	at := now.UTC()
+	// visibility = 'normal'：1 楼可以被作者软删成 deleted（读者看到「正文已被作者删除」，DeletePostRow），
+	// 而「放行改动」就是让这份改动**上台可见** —— 只换 content_* 不置回来的话，人工/AI 明明批了，
+	// 读者看到的仍是「已删除」，作者再怎么改也救不回来（用户实测：强制刷新也不行）。
 	if err := exec(ctx, tx,
-		"UPDATE posts SET content_md = $2, content_html = $3, updated_at = $4 WHERE topic_id = $1 AND floor = 1",
+		`UPDATE posts
+   SET content_md = $2, content_html = $3, updated_at = $4, visibility = 'normal'
+ WHERE topic_id = $1 AND floor = 1`,
 		topicID, md, html, at); err != nil {
 		return err
 	}

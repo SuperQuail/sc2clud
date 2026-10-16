@@ -231,8 +231,16 @@ RETURNING id`,
 
 // UpdatePostContent 是 PATCH /posts/{id}：正文换了，updated_at 前进；
 // **不动 last_reply_at**——编辑不是回复（§4.5）。
+//
+// **1 楼顺带把 visibility 置回 normal**：1 楼可以被作者软删（DeletePostRow，读者看到「正文已被作者删除」），
+// 但作者重新写正文就是对那一行的「恢复」——不置回来的话，编辑永远改不动读者看到的东西
+// （正文写进 content_md，visibility 还是 deleted，页面上仍是「已删除」）。
+// 回复不在此列：删掉的回复不该因为一次改稿又冒出来，所以只对 floor = 1 生效。
 func UpdatePostContent(ctx context.Context, tx Querier, postID int64, contentMD, contentHTML string, now time.Time) error {
-	return exec(ctx, tx, "UPDATE posts SET content_md = $2, content_html = $3, updated_at = $4 WHERE id = $1",
+	return exec(ctx, tx, `UPDATE posts
+   SET content_md = $2, content_html = $3, updated_at = $4,
+       visibility = CASE WHEN floor = 1 THEN 'normal' ELSE visibility END
+ WHERE id = $1`,
 		postID, contentMD, contentHTML, now.UTC())
 }
 
