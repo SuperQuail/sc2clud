@@ -162,7 +162,7 @@ export function UsersScreen({
       render: (u: AdminUser) => {
         const isSuper = u.role.key === 'superadmin';
         const banWhy = !canBan ? '本账号没有 user.ban'
-          : isSuper ? '超级管理员不可封禁（9.8：最后一个 superadmin 不可移除，service 层守卫）'
+          : isSuper ? '超级管理员不可封禁（最后一个 superadmin 不可移除，service 层守卫）'
             : undefined;
         return (
           <span className='flex flex-wrap items-center gap-1.5' onClick={(e) => e.stopPropagation()}>
@@ -185,7 +185,7 @@ export function UsersScreen({
     <div className='flex flex-col gap-3'>
       <ScreenHead
         title='用户管理'
-        note='13.2：搜索登录名 / 昵称 / 邮箱，行内激活与停用、发头衔、批量选择；磁盘配额随网盘放弃（D2），不做。'
+        note='搜索登录名 / 昵称 / 邮箱，行内激活与停用、发头衔、批量选择；磁盘配额随网盘放弃，不做。'
         actions={<Button inline={false} height={ControlsHeight.S} icon={icon16(Search)} onClick={() => onFilterChange({ ...filter, q: '' })}>重置筛选</Button>}
       />
 
@@ -205,7 +205,7 @@ export function UsersScreen({
       </StatRow>
 
       {!canAssignRole ? (
-        <GateNote perm='role.assign'>「改角色」与「批量改角色」按钮不渲染（9.8 明令：role.edit 与 role.assign 必须分成两个权限点，单持其一都不足以提权）。</GateNote>
+        <GateNote perm='role.assign'>「改角色」与「批量改角色」按钮不渲染（role.edit 与 role.assign 是两个独立权限点，单持其一都不足以提权）。</GateNote>
       ) : null}
 
       <Toolbar>
@@ -289,7 +289,7 @@ export function UsersScreen({
                   {detail && detail.user_titles.length > 0 ? <TitleBadge title={detail.user_titles[0]!} /> : null}
                   {activeUser.trusted ? <Pill tone='ok'>trusted：发帖免审</Pill> : <Pill>发帖进审核队列</Pill>}
                 </div>
-                <KV k='登录名（不可改）' v={activeUser.username} hint='DB §4.1 不变量：注册后固定' />
+                <KV k='登录名（不可改）' v={activeUser.username} hint='注册后固定' />
                 <KV k='封禁轴 status' v={activeUser.status} />
                 <KV k='邮箱验证轴' v={activeUser.email_verified_at ? fmtDate(activeUser.email_verified_at) : '未验证 → 不能登录'} />
                 <KV k='激活轴 activated_at' v={activeUser.activated_at ? fmtDate(activeUser.activated_at) : '未激活 → 能登录、写操作 403'} />
@@ -310,11 +310,11 @@ export function UsersScreen({
                 ))}
               </div>
             ) : (
-              <p className='text-[12px] text-muted-foreground'>无追加权限（基线角色已够用；RBAC：不存在「加一个角色」的第二种语义）。</p>
+              <p className='text-[12px] text-muted-foreground'>无追加权限（基线角色已够用：不存在「加一个角色」的第二种语义）。</p>
             )}
           </Panel>
 
-          <Panel title='处罚记录' note='13.7 / D6 第 2 步：含已过期的行——后台要能回答「这个人被处理过几次」，删掉历史就答不了。'>
+          <Panel title='处罚记录' note='含已过期的行——后台要能回答「这个人被处理过几次」，删掉历史就答不了。'>
             {detailLoading ? <p className='text-[12px] text-muted-foreground'>正在取详情…</p>
               : detail && detail.sanctions.length > 0 ? (
               <div className='flex flex-col gap-1.5'>
@@ -397,7 +397,7 @@ export function UsersScreen({
             ? <span>激活只写 <code>activated_at</code>（<b>不改</b> email_verified_at：手工激活不等于邮箱验证）。
                 激活后该用户就能发帖与上传；在他下次发请求前状态不会变（权限缓存 60 秒）。</span>
             : pending?.kind === 'unban'
-              ? <span>解封后该用户可以重新登录。这是 13.7 的封号轴，与「降权」是两条独立通道。</span>
+              ? <span>解封后该用户可以重新登录。这是封号轴，与「降权」是两条独立通道。</span>
               : <span>停用会让 <b>{pending?.ids.length}</b> 个用户立刻 401（status=banned）并写入审计 <code>user.ban</code>。
                   被封期间已建立的会话要另外点「踢掉全部会话」才会失效。</span>
         }

@@ -102,7 +102,7 @@ export function SettingsScreen({
     <div className='flex flex-col gap-3'>
       <ScreenHead
         title='站点设置与文案'
-        note='13.15：site_settings 是键值表，不用为每条文案加一列；键值目录由后端给（前端不维护第二张表）。13.14：域名只读。'
+        note='site_settings 是键值表，不用为每条文案加一列；键值目录由后端给（前端不维护第二张表）。域名只读。'
         actions={
           <ButtonSet>
             <Button disabled={!canSetting || dirtyKeys.length === 0} onClick={() => setForm((f) => ({ ...f, draft: valuesOf(settings) }))}>放弃改动</Button>
@@ -156,7 +156,7 @@ export function SettingsScreen({
           </Panel>
         ))}
 
-        <Panel title='公告（announcements）' note='同一套 site.setting 权限（§21.2）；enabled 与 published_at 是两件事'>
+        <Panel title='公告（announcements）' note='同一套 site.setting 权限；enabled 与 published_at 是两件事'>
           <div className='flex flex-col gap-1.5'>
             {announcements.map((a) => (
               <div key={a.id} className='flex items-center justify-between gap-2 rounded-sm border border-border px-2 py-1'>
@@ -204,7 +204,7 @@ export function SettingsScreen({
           </div>
         </Panel>
 
-        <Panel title='域名（site_domains）' note='只读：真源是配置里的 base_url（拍板 §8.11 U2），没有写端点'>
+        <Panel title='域名（site_domains）' note='只读：真源是配置里的 base_url，没有写端点'>
           <DataTable
             columns={domainColumns}
             rows={domains}

@@ -111,7 +111,7 @@ export function ReportsScreen({
     <div className='flex flex-col gap-3'>
       <ScreenHead
         title='举报处理队列'
-        note='4.6 / A7：open → handled / dismissed；处理人与处理备注落库（并在审计里能看到）。批量处理是逐条结果，不是整批回滚。'
+        note='open → handled / dismissed；处理人与处理备注落库（并在审计里能看到）。批量处理是逐条结果，不是整批回滚。'
         actions={canHandle ? <Button onClick={() => setSelected(openRows.map((r) => r.id))} disabled={openRows.length === 0}>全选本页待处理</Button> : null}
       />
 
@@ -212,7 +212,7 @@ export function ReportsScreen({
               <Pill>dismissed</Pill>
             </div>
             <p className='mt-2 text-[11px] leading-relaxed text-muted-foreground'>
-              队列索引是 (state, created_at DESC)，游标分页按 §21.1。
+              队列索引是 (state, created_at DESC)，游标分页。
               <b>就地删除被举报内容不在这里</b>：队列 DTO 没带「我能不能删这条」的判定
               （/me 只给 board_ids 数字、队列给 slug），要做得先有那个读口。
             </p>

@@ -82,7 +82,7 @@ export function AiReviewScreen({
   if (!config) {
     return (
       <div className='flex flex-col gap-3'>
-        <ScreenHead title='AI 审核' note='d7：AI 是第一道审核，人是最后一道。' />
+        <ScreenHead title='AI 审核' note='AI 是第一道审核，人是最后一道。' />
         {error}
         {loading ? <Panel title='配置'><p className='text-[12px] text-muted-foreground'>正在加载 /admin/ai/config…</p></Panel> : null}
         {!loading && !error ? <Panel title='配置'><p className='text-[12px] text-muted-foreground'>没有拿到配置。</p></Panel> : null}
@@ -110,7 +110,7 @@ export function AiReviewScreen({
     <div className='flex flex-col gap-3'>
       <ScreenHead
         title='AI 审核编辑器'
-        note='d7：新帖先判一次；被举报到阈值用「举报复核」那套提示词再审一次；复审仍不过或拿不准 → 人工。权限沿用 site.setting。'
+        note='新帖先判一次；被举报到阈值用「举报复核」那套提示词再审一次；复审仍不过或拿不准 → 人工。权限沿用 site.setting。'
         actions={
           <>
             <Pill tone={dirty ? 'warn' : 'ok'}>{dirty ? '未保存：' + dirtyKeys.length + ' 项' : '已保存'}</Pill>
@@ -135,13 +135,13 @@ export function AiReviewScreen({
       {error}
 
       <div className='grid items-start gap-3 lg:grid-cols-2'>
-        <Panel title='模型与端点' note='dto.go 的 ConfigView：字段名即契约，PATCH 只写传进来的字段'>
+        <Panel title='模型与端点' note='字段名即契约，PATCH 只写传进来的字段'>
           <div className='mb-2 flex flex-wrap items-center gap-2'>
             <Toggle checked={cfg.enabled} disabled={!canSetting || busy} onChange={(e) => patch({ enabled: e.target.checked })}>
               启用 AI 审核
             </Toggle>
             <span className='text-[11px] text-muted-foreground'>
-              关掉后新帖一律留 pending 进人工队列；<b>AI 挂了不挡发帖</b>（d7 硬规则 2）
+              关掉后新帖一律留 pending 进人工队列；<b>AI 挂了不挡发帖</b>
             </span>
           </div>
           <Select
@@ -164,13 +164,13 @@ export function AiReviewScreen({
               thinking（推理模式）
             </Toggle>
             <span className='text-[11px] leading-relaxed text-muted-foreground'>
-              关 = 走 Tool Calls + tool_choice=required；开 = 走 JSON Output。两条路不能混（d7 §3.4）。
+              关 = 走 Tool Calls + tool_choice=required；开 = 走 JSON Output。两条路不能混。
             </span>
             <Toggle checked={cfg.strict_mode} disabled={!canSetting || busy} onChange={(e) => patch({ strict_mode: e.target.checked })}>
               strict_mode（schema 严格校验）
             </Toggle>
             <span className='text-[11px] leading-relaxed text-muted-foreground'>
-              打开后「模型不按 schema 输出」的概率降到接近零，代价是 base_url 要带 /beta（d7 §3.3）。
+              打开后「模型不按 schema 输出」的概率降到接近零，代价是 base_url 要带 /beta。
             </span>
           </div>
           <div className='mt-2'>
@@ -192,7 +192,7 @@ export function AiReviewScreen({
         </Panel>
 
         <div className='flex flex-col gap-2'>
-          <Panel title='API Key' note='只写不回显：保存后连管理员也看不到，只能替换（d7 §8 验收 12）'>
+          <Panel title='API Key' note='只写不回显：保存后连管理员也看不到，只能替换'>
             <div className='mb-2 flex flex-wrap items-center gap-2'>
               <Pill tone={cfg.has_secret ? 'ok' : 'danger'}>{cfg.has_secret ? '已配置' : '未配置'}</Pill>
               <span className='text-[11px] text-muted-foreground'>
@@ -226,7 +226,7 @@ export function AiReviewScreen({
 
           <Panel
             title='连通测试'
-            note='发的是配置里那段提示词 + **下面这一段样例**（可附 0..4 张样例图，D34）；样例看得见、改得动（D33②③）'
+            note='发的是配置里那段提示词 + **下面这一段样例**（可附 0..4 张样例图）；样例看得见、改得动'
             actions={
               <Button
                 inline={false}
@@ -280,7 +280,7 @@ export function AiReviewScreen({
             value={String(cfg.temperature)}
             disabled={!canSetting || busy}
             onChange={(e) => patch({ temperature: decimal(e.target.value) })}
-            help='d7 §3.2 钉死 0：分类任务要确定性，审核结论不该抖。可调只为排查误判'
+            help='分类任务要确定性，默认 0；可调只为排查误判'
           />
           <Input
             label='max_output_tokens（64–4096）'
@@ -329,7 +329,7 @@ export function AiReviewScreen({
           <li>· <b>用量与失败率</b>：没有 <code className='rounded-sm bg-muted px-1'>GET /admin/ai/stats</code>，所以不画那两栏（数据要从 review_events 聚合，端点不存在）。</li>
           <li>· <b>任意内容的试跑</b>：样例可以改（见上，只影响这一次），但**没有「随手粘一篇正文试跑」的框** ——
             要试真内容请去「帖子审核」队列：那里选一条帖子能看它的 payload、也能真跑一次（带图）。</li>
-          <li>· <b>阈值</b>：d7 §2.2 说放 site_settings，但键值在「站点设置」屏（那一屏按后端给的目录渲染）；AI 屏不重复实现一次。</li>
+          <li>· <b>阈值</b>：键值在「站点设置」屏（那一屏按后端给的目录渲染）；AI 屏不重复实现一次。</li>
         </ul>
       </Panel>
 

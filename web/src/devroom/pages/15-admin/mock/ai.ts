@@ -145,7 +145,7 @@ export type AiThreshold = { key: string; label: string; value: number; min: numb
 export const AI_THRESHOLDS: AiThreshold[] = [
   { key: 'ai.review.report_threshold_1', label: '举报 → AI 复审阈值', value: 3, min: 1, max: 50, hint: '未处理举报累计到这么多条 → 用「举报复核」那套提示词再审一次' },
   { key: 'ai.review.report_threshold_2', label: '举报 → 直接转人工阈值', value: 5, min: 2, max: 100, hint: '累计到这么多条 → 直接进人工队列，不再调 AI（防举报风暴打爆额度）' },
-  { key: 'ai.review.daily_limit_per_topic', label: '单帖每日 AI 调用上限', value: 3, min: 1, max: 20, hint: '同一个帖子一天最多调几次，防刷（d7 §1 硬规则 3）' },
+  { key: 'ai.review.daily_limit_per_topic', label: '单帖每日 AI 调用上限', value: 3, min: 1, max: 20, hint: '同一个帖子一天最多调几次，防刷' },
 ];
 
 /** POST /api/v1/admin/ai/test（测试连通）的三种回执。真实实现只返回真结果，mock 依次走三种形态。 */

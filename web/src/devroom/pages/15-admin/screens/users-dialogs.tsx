@@ -64,7 +64,7 @@ function GrantTitleDialogContent({ user, titles, onClose, onGrant, onRevoke }: {
     <Dialog show label='发头衔' onCloseAttempt={onClose} onOverlayClick={onClose} onEscPress={onClose}>
       <div className='flex w-[420px] max-w-full flex-col gap-3 p-4'>
         <p className='text-[13px] text-foreground'>
-          给 <b>{user.nickname}</b>（@{user.username}）授予头衔。一个用户可以持多个头衔，佩戴的只有一个（DB §4.11）。
+          给 <b>{user.nickname}</b>（@{user.username}）授予头衔。一个用户可以持多个头衔，佩戴的只有一个。
         </p>
         {options.length === 0 ? (
           <p className='m-0 rounded-md border border-border bg-muted/50 px-3 py-2 text-[12px] text-muted-foreground'>
@@ -205,7 +205,7 @@ export function SetRoleDialog({ user, roles, onClose, onSet }: {
       <div className='flex w-[420px] max-w-full flex-col gap-3 p-4'>
         <p className='text-[13px] text-foreground'>
           把 <b>{user.nickname}</b> 的基线角色从 <b>{user.role.name}</b> 改到下面这个。
-          角色之间永不并集：这是替换，不是叠加（RBAC权限树设计.md §1）。
+          角色之间永不并集：这是替换，不是叠加。
         </p>
         <Select
           type={SelectType.INPUT}

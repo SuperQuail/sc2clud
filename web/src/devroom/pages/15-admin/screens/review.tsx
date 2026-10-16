@@ -175,7 +175,7 @@ export function ReviewScreen({
     <div className='flex flex-col gap-3'>
       <ScreenHead
         title='帖子审核队列'
-        note='13.3：通过 / 打回修改 / 拒绝。打回与拒绝是两档（打回是「改改就能过」，作者那一侧文案不同），两档都必须写理由。'
+        note='通过 / 打回修改 / 拒绝。打回与拒绝是两档（打回是「改改就能过」，作者那一侧文案不同），两档都必须写理由。'
         actions={canReview ? <Button onClick={() => setSelected(items.filter(bulkable).map((r) => r.id))} disabled={items.length === 0}>全选本页</Button> : null}
       />
 

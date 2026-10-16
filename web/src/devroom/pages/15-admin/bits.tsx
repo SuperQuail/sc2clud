@@ -124,7 +124,7 @@ export function GateNote({ perm, children }: { perm: string; children: ReactNode
         <span className='font-medium text-foreground'>权限示例：</span>
         本账号未持有 <code className='rounded-sm bg-muted px-1'>{perm}</code>，{children}
         <span className='block'>
-          前端权限只决定显不显示，真正的判定在后端（前端方案 §5.4 / 后端方案 §9.8）。
+          前端权限只决定显不显示，真正的判定在后端。
         </span>
       </span>
     </div>

@@ -121,7 +121,7 @@ export function MailScreen({ accounts, loading = false, error = null, canManage,
     <div className='flex flex-col gap-3'>
       <ScreenHead
         title='发信账号'
-        note='13.9：多账号（provider 中立）、优先级轮换、日额度、启用/停用、测试发信；凭据加密存储且**只写不回读**。'
+        note='多账号（provider 中立）、优先级轮换、日额度、启用/停用、测试发信；凭据加密存储且**只写不回读**。'
         actions={canManage ? (
           <Button data-testid='mail-create' inline={false} height={ControlsHeight.S} icon={icon16(Plus)} onClick={() => setCreateOpen(true)}>新增账号</Button>
         ) : null}
@@ -169,7 +169,7 @@ export function MailScreen({ accounts, loading = false, error = null, canManage,
         </Panel>
 
         <div className='flex flex-col gap-2'>
-          <Panel title='轮换与冷却' note='§8.3：按 priority 取第一个未超额度的账号；失败进冷却，不阻塞下一次发送'>
+          <Panel title='轮换与冷却' note='按 priority 取第一个未超额度的账号；失败进冷却，不阻塞下一次发送'>
             <ol className='flex flex-col gap-1 text-[12px] text-muted-foreground'>
               <li>1 按 priority 降序挑账号</li>
               <li>2 跳过 enabled=false / 今日超额度 / 冷却中的</li>

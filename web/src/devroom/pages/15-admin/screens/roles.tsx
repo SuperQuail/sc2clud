@@ -75,7 +75,7 @@ export function RolesScreen({ roles, permissions, loading = false, error = null,
     <div className='flex flex-col gap-3'>
       <ScreenHead
         title='角色与权限矩阵'
-        note='§9.8：角色可以在后台配，权限点必须在代码里。矩阵按 group 分组；改完有「未保存 / 已保存」态与影响预览。新建与删除角色**后端没有端点**，所以这里没有那两颗按钮。'
+        note='角色可以在后台配，权限点必须在代码里。矩阵按 group 分组；改完有「未保存 / 已保存」态与影响预览。新建与删除角色**后端没有端点**，所以这里没有那两颗按钮。'
       />
 
       {!canEdit ? <GateNote perm='role.edit'>整张矩阵只读：本账号没有 role.edit。</GateNote> : null}
@@ -121,7 +121,7 @@ export function RolesScreen({ roles, permissions, loading = false, error = null,
                 <Pill tone='outline'>{role.perm_keys.length} 个权限点</Pill>
               </div>
               {role.is_super ? (
-                <DisabledReason>超管的矩阵只读：后端在 authz.Require 与中间件里都短路（§9.8），矩阵对它没有意义，改它只会产生一个骗人的勾。</DisabledReason>
+                <DisabledReason>超管的矩阵只读：后端在 authz.Require 与中间件里都短路，矩阵对它没有意义，改它只会产生一个骗人的勾。</DisabledReason>
               ) : null}
               {!canEdit ? <DisabledReason>本账号没有 role.edit：整张矩阵只读</DisabledReason> : null}
               {busy ? <DisabledReason>正在保存…</DisabledReason> : null}
@@ -166,7 +166,7 @@ export function RolesScreen({ roles, permissions, loading = false, error = null,
           )}
 
           {role ? (
-            <Panel title='影响预览' note='保存前先看清「这次变更会让谁多拿到什么」——提权是攻击者的第一目标（§9.8 审计）'>
+            <Panel title='影响预览' note='保存前先看清「这次变更会让谁多拿到什么」——提权是攻击者的第一目标'>
               <Toolbar className='mb-2'>
                 <Pill tone='outline'>{role.user_count} 个用户在受影响范围内</Pill>
                 <Pill tone='outline'>当前 {saved.length} 个点 → 保存后 {current.length} 个</Pill>
@@ -180,7 +180,7 @@ export function RolesScreen({ roles, permissions, loading = false, error = null,
                   <KV
                     k='写穿自检'
                     v='这一屏做不到'
-                    hint='后端 RoleItem 没有 parent_id（只给 depth 与已展开的并集），所以「子 ⊇ 父」只能在 DB §12 自检 2 里跑'
+                    hint='后端 RoleItem 没有 parent_id（只给 depth 与已展开的并集），所以「子 ⊇ 父」只能在启动自检里跑'
                   />
                 </div>
               ) : (

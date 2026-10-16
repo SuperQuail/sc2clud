@@ -248,7 +248,7 @@ export const REVIEW_EVENTS: Record<string, ReviewEvent[]> = {
   ],
   tp_03: [
     { id: 'ev_3_2', trigger: 'create', source: 'ai', verdict: 'review', categories: [], model: 'deepseek-flash', latency_ms: 15000, actor: null,
-      reason: '调用超时（timeout_ms=15000）：退避重试 2 次仍失败，按 d7「AI 失败不挡发帖」留在 pending 交人工。', created_at: '2026-10-12T08:16:00Z' },
+      reason: '调用超时（timeout_ms=15000）：退避重试 2 次仍失败，AI 失败不挡发帖，留在 pending 交人工。', created_at: '2026-10-12T08:16:00Z' },
     { id: 'ev_3_1', trigger: 'create', source: 'ai', verdict: 'review', categories: [], model: 'deepseek-flash', latency_ms: 15000, actor: null,
       reason: '第一次尝试超时，进入退避重试。', created_at: '2026-10-12T08:15:30Z' },
   ],

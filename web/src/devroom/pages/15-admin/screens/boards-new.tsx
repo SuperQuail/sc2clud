@@ -28,7 +28,7 @@ export function NewBoardDialog({ show, onClose, onCreate }: {
     <Dialog show label='新增分区' onCloseAttempt={onClose} onOverlayClick={onClose} onEscPress={onClose}>
       <div className='flex w-[460px] max-w-full flex-col gap-3 p-4'>
         <p className='m-0 text-[12px] leading-relaxed text-muted-foreground'>
-          分区是表驱动的：新增一个分区零代码改动（DB §4.2 / 老站把分区写成枚举，未知 key 会被静默丢弃）。
+          分区是表驱动的：新增一个分区零代码改动。
           新分区默认 <code className='rounded-sm bg-muted px-1'>acl_enabled = false</code>，也就是「登录即可发言」。
         </p>
         <Input label='名称' value={name} onChange={(e) => setName(e.target.value)} />

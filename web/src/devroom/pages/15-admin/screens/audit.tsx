@@ -166,7 +166,7 @@ export function AuditScreen({
     <div className='flex flex-col gap-3'>
       <ScreenHead
         title='审计日志'
-        note='13.13：按操作者 / 目标类型 / 动作 / 时间；提权类操作一眼看得出来。detail 是 jsonb，本屏展示截断后的摘要。'
+        note='按操作者 / 目标类型 / 动作 / 时间；提权类操作一眼看得出来。detail 是 jsonb，本屏展示截断后的摘要。'
         actions={
           canExport && exportHref ? (
             /* 导出是**浏览器直接下文件**：必须是一个真链接，不能是「fetch 完再 blob 一下」 */
@@ -231,7 +231,7 @@ export function AuditScreen({
       <div className='grid items-start gap-3 lg:grid-cols-2'>
         <Panel title='这一屏要能回答的问题'>
           <ul className='flex flex-col gap-1 text-[12px] text-muted-foreground'>
-            <li>· 谁在什么时候把什么权限给了谁（9.8：提权是攻击者的第一目标）</li>
+            <li>· 谁在什么时候把什么权限给了谁（提权是攻击者的第一目标）</li>
             <li>· 角色矩阵变更的前后值（detail jsonb 里的 before / after）</li>
             <li>· 打赏改判、举报处理这类「解释得清」的记录</li>
             <li>· 系统任务留下的行（actor 为 null）——它们没有操作人，但改动是真的</li>

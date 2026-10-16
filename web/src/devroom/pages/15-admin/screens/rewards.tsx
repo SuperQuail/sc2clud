@@ -121,7 +121,7 @@ export function RewardsScreen({
     <div className='flex flex-col gap-3'>
       <ScreenHead
         title='打赏核验队列'
-        note='12.4–12.7 / 13.8：作者收款码 + 用户自报 + 管理员人工核验。站点不经手资金，所以没有「结算」这个动作；撤回是申报人自己的事，管理员只能核验（approved / rejected）。'
+        note='作者收款码 + 用户自报 + 管理员人工核验。站点不经手资金，所以没有「结算」这个动作；撤回是申报人自己的事，管理员只能核验（approved / rejected）。'
       />
 
       <StatRow>
@@ -139,7 +139,7 @@ export function RewardsScreen({
           <Pill tone='ok'>approved</Pill>
           <span className='text-muted-foreground'>且</span>
           <Pill tone='ok'>双方都同意公开</Pill>
-          <span className='text-muted-foreground'>才累加；金额一律整数分，展示时才除 100（§21.1）。</span>
+          <span className='text-muted-foreground'>才累加；金额一律整数分，展示时才除 100。</span>
         </div>
       </Panel>
 
@@ -181,7 +181,7 @@ export function RewardsScreen({
         />
 
         <div className='flex flex-col gap-2'>
-          <Panel title='申报详情' note='站点只展示收款码，不经手资金（12.8）'>
+          <Panel title='申报详情' note='站点只展示收款码，不经手资金'>
             {active ? (
               <>
                 <div className='mb-2 flex items-center gap-2 rounded-md border border-dashed border-border p-2'>

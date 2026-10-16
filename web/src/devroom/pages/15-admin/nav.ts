@@ -13,35 +13,35 @@ export const NAV: { grp: string; items: { key: ScreenKey; title: string; note: s
   {
     grp: '用户与权限',
     items: [
-      { key: 'users', title: '用户管理', note: '13.2 / 13.7 三根状态轴 · 处罚 · 发头衔' },
-      { key: 'roles', title: '角色与权限', note: '13.5 / 9.8 角色树 × 权限点矩阵' },
-      { key: 'groups', title: '用户组', note: 'D38 建组 · 拉人入组（分区名单里按组授权）' },
+      { key: 'users', title: '用户管理', note: '三根状态轴 · 处罚 · 发头衔' },
+      { key: 'roles', title: '角色与权限', note: '角色树 × 权限点矩阵' },
+      { key: 'groups', title: '用户组', note: '建组 · 拉人入组（分区名单里按组授权）' },
     ],
   },
   {
     grp: '内容',
     items: [
-      { key: 'boards', title: '分区管理', note: '13.4 / D6 排序 · 封面 · ACL 矩阵' },
-      { key: 'review', title: '帖子审核', note: '13.3 待审队列 · 批量通过/拒绝' },
-      { key: 'reports', title: '举报处理', note: '4.6 / A7 open → handled / dismissed' },
+      { key: 'boards', title: '分区管理', note: '排序 · 封面 · ACL 矩阵' },
+      { key: 'review', title: '帖子审核', note: '待审队列 · 批量通过/拒绝' },
+      { key: 'reports', title: '举报处理', note: 'open → handled / dismissed' },
     ],
   },
   {
     grp: '运营',
     items: [
-      { key: 'rewards', title: '打赏核验', note: '12.4-12.7 / 13.8 人工核验队列' },
-      { key: 'titles', title: '头衔目录', note: '13.6 建 / 改 / 归档 + 发头衔' },
-      { key: 'mail', title: '发信账号', note: '13.9 优先级 · 日额度 · 测试发信' },
-      { key: 'mailtpl', title: '邮件模板', note: 'D37 主题/HTML/纯文本 · 双模板编译校验 · 转义预览 · 恢复内置' },
+      { key: 'rewards', title: '打赏核验', note: '人工核验队列' },
+      { key: 'titles', title: '头衔目录', note: '建 / 改 / 归档 + 发头衔' },
+      { key: 'mail', title: '发信账号', note: '优先级 · 日额度 · 测试发信' },
+      { key: 'mailtpl', title: '邮件模板', note: '主题/HTML/纯文本 · 双模板编译校验 · 转义预览 · 恢复内置' },
     ],
   },
   {
     grp: '系统',
     items: [
-      { key: 'ai', title: 'AI 审核', note: 'd7 判定来源 / 配置 / 密钥只写不回显 / 用量' },
-      { key: 'settings', title: '站点设置', note: '13.15 文案键值 · 13.14 域名（只读）' },
-      { key: 'audit', title: '审计日志', note: '13.13 actor / action / target / detail' },
-      { key: 'diagnostics', title: '自检面板', note: '13.12 debug 开关门控的只读结果' },
+      { key: 'ai', title: 'AI 审核', note: '判定来源 / 配置 / 密钥只写不回显 / 用量' },
+      { key: 'settings', title: '站点设置', note: '文案键值 · 域名（只读）' },
+      { key: 'audit', title: '审计日志', note: 'actor / action / target / detail' },
+      { key: 'diagnostics', title: '自检面板', note: 'debug 开关门控的只读结果' },
     ],
   },
 ];

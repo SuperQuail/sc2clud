@@ -67,7 +67,7 @@ export const SITE_SETTINGS: SiteSetting[] = [
   { key: 'registration.open', label: '开放注册', grp: '注册与审核', value: 'on', kind: 'toggle', hint: '关闭后只有管理员能建号' },
   // D29：键名与 label/hint 照 site.SettingSpecs() 的 auth.registration.auto_activate 逐字。
   // 旧键 registration.require_activation 作废（拍板 §12.2：模式由**一个**开关决定，不是两个）。
-  { key: 'auth.registration.auto_activate', label: '注册后自动激活（发验证码）', grp: '注册与审核', value: 'on', kind: 'toggle', hint: '打开 = 用户收到 6 位验证码后自助激活；关闭 = 用户注册后等管理员激活（拍板 §12.2）' },
+  { key: 'auth.registration.auto_activate', label: '注册后自动激活（发验证码）', grp: '注册与审核', value: 'on', kind: 'toggle', hint: '打开 = 用户收到 6 位验证码后自助激活；关闭 = 用户注册后等管理员激活' },
   { key: 'post.review_policy', label: '发帖审核策略', grp: '注册与审核', value: 'untrusted', kind: 'select', options: ['untrusted', 'all', 'off'], hint: 'untrusted = 仅未标记 trusted 的作者进人工审核队列' },
   { key: 'donation.notice_default', label: '打赏提示默认文案', grp: '赞赏', value: '如果这份战役帮到了你，可以扫码支持作者。站点不经手资金。', kind: 'multiline', hint: '作者可覆盖；超管在这里配默认值' },
   { key: 'donation.enabled', label: '开放打赏', grp: '赞赏', value: 'on', kind: 'toggle', hint: '关闭后收款码与申报入口全站隐藏' },

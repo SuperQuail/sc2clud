@@ -65,7 +65,7 @@ export function AiTrial({ cfg, canRun }: { cfg: AiConfig; canRun: boolean }) {
   return (
     <Panel
       title='试跑与连通'
-      note='POST /api/v1/admin/ai/test：用一段**真实内容**走一次完整判定（d7 §8）。输入不截断（§2.4），发出去的就是下面预览里的两段。'
+      note='POST /api/v1/admin/ai/test：用一段**真实内容**走一次完整判定。输入不截断，发出去的就是下面预览里的两段。'
       actions={
         <>
           <Pill tone={cfg.thinking ? 'warn' : 'ok'}>{cfg.thinking ? 'thinking：JSON Output 路径' : 'thinking：Tool Calls 路径'}</Pill>
@@ -165,7 +165,7 @@ function TrialResult({ result }: { result: AiTrialResult }) {
       ) : null}
       <p className='mt-1.5 break-all font-mono text-[11px] text-muted-foreground'>{result.raw}</p>
       <p className='mt-1 text-[11px] leading-relaxed text-muted-foreground'>
-        结论怎么落地（照实现，不照 d7 §1 那行字）：approve → review_state=approved；<b>reject 只把理由写进 review_note，
+        结论怎么落地：approve → review_state=approved；<b>reject 只把理由写进 review_note，
         状态仍是 pending，由人按「不通过」</b>；review → 留在 pending 进人工队列。AI 永远不删内容。
       </p>
     </div>

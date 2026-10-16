@@ -104,7 +104,7 @@ export function TitlesScreen({ titles, loading = false, error = null, canManage,
     <div className='flex flex-col gap-3'>
       <ScreenHead
         title='头衔目录'
-        note='13.6：建 / 改 / 归档 / 删除（D68：删除只在无人引用时放行，而且管理屏看得到归档项）。持有者数后端没给，所以这里不显示。'
+        note='建 / 改 / 归档 / 删除：删除只在无人引用时放行，而且管理屏看得到归档项。持有者数后端没给，所以这里不显示。'
         actions={canManage ? <Button inline={false} height={ControlsHeight.S} icon={icon16(Plus)} onClick={() => setCreateOpen(true)}>新建头衔</Button> : null}
       />
 

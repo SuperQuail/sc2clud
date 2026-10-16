@@ -35,7 +35,7 @@ export function DiagnosticsScreen({ data, loading = false, error = null, canSett
   if (isDebugOff(error)) {
     return (
       <div className='flex flex-col gap-3'>
-        <ScreenHead title='自检面板' note='13.12：debug 开关门控的只读结果。这里只回答「系统现在自洽吗」，不提供修改入口。' />
+        <ScreenHead title='自检面板' note='debug 开关门控的只读结果。这里只回答「系统现在自洽吗」，不提供修改入口。' />
         <Panel title='debug 开关关闭' data-testid='diag-debug-off'>
           <p className='text-[12px] leading-relaxed text-muted-foreground'>
             自检面板默认关闭，需在后端打开 debug 开关。开启之前这里不显示任何检查结果 ——
@@ -54,7 +54,7 @@ export function DiagnosticsScreen({ data, loading = false, error = null, canSett
     <div className='flex flex-col gap-3'>
       <ScreenHead
         title='自检面板'
-        note='13.12：debug 开关门控的只读结果。这里只回答「系统现在自洽吗」，不提供修改入口。'
+        note='debug 开关门控的只读结果。这里只回答「系统现在自洽吗」，不提供修改入口。'
       />
 
       {/* 指标格只在**真拿到结果**时画：拿不到时那一排「—」正是 D13 要消灭的东西（它看着像坏了） */}
@@ -81,13 +81,13 @@ export function DiagnosticsScreen({ data, loading = false, error = null, canSett
         <>
           {!data.debug_enabled ? (
             <Panel title='debug 开关关闭'>
-              <p className='text-[12px] text-muted-foreground'>debug 关闭时这个端点整体不可用（§21.2 要求 site.setting 且 debug 打开）；界面不应该显示上一次的缓存结果。</p>
+              <p className='text-[12px] text-muted-foreground'>debug 关闭时这个端点整体不可用（需要 site.setting 且 debug 打开）；界面不应该显示上一次的缓存结果。</p>
             </Panel>
           ) : null}
 
           <Panel
             title='自检结果'
-            note='每项都对应一条会自动红的一致性检查（DB §12 / 后端 §9.8 启动自检）'
+            note='每项都对应一条会自动红的一致性检查（启动自检）'
             actions={data.readonly ? <Pill tone='outline'>只读：检查项里不含「会拒绝启动」的那几条</Pill> : undefined}
           >
             <DataTable
@@ -133,8 +133,8 @@ export function DiagnosticsScreen({ data, loading = false, error = null, canSett
                 也不拿一句「请联系管理员」糊过去。
               </p>
               <p className='mt-2 text-[12px] leading-relaxed text-muted-foreground'>
-                探针：/healthz（版本）· /readyz（真打数据库与存储），不带 /api 前缀（§21.1）。
-                备份本身是 DB §8 的运维流程（pg_dump + 快照）。
+                探针：/healthz（版本）· /readyz（真打数据库与存储），不带 /api 前缀。
+                备份本身是运维流程（pg_dump + 快照）。
               </p>
               <DisabledReason>面板只读：任何「修复」都不在网页上做</DisabledReason>
             </Panel>

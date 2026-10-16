@@ -53,7 +53,7 @@ export function NewAccountDialog({ show, busy, onClose, onCreate }: {
     <Dialog show label='新增发信账号' onCloseAttempt={onClose} onOverlayClick={onClose} onEscPress={onClose}>
       <div className='flex w-[520px] max-w-full flex-col gap-3 p-4'>
         <p className='m-0 text-[12px] leading-relaxed text-muted-foreground'>
-          账号存在库里、由后台维护（技术方案 v2 §8.2）：改完立刻生效，不用改配置、不用重启。
+          账号存在库里、由后台维护：改完立刻生效，不用改配置、不用重启。
           <b> 账号名与 provider 建后不可改</b> —— 要换就新建一个再把旧的归档。
         </p>
         <Input label='账号名（唯一，建后不可改）' size={Size.FULL} value={name} onChange={(e) => setName(e.target.value)} placeholder='main-resend' />

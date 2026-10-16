@@ -65,7 +65,7 @@ export function MailTemplateScreen({
         note='四封信的真源：verify_email / reset_password / test / notice；缺行 = 内置模板，下面就是当前生效的那几段。'
       />
       <p className='max-w-[860px] text-[12px] leading-relaxed text-muted-foreground'>
-        D37：主题 / HTML 正文 / 纯文本替身三段**模板源**可自定义（Go text/template 与 html/template 语法；变量见文末表）。
+        主题 / HTML 正文 / 纯文本替身三段**模板源**可自定义（Go text/template 与 html/template 语法；变量见文末表）。
         保存时后端按双模板编译校验，语法错 / 尾块错**当场拒收**（400，错误原话带行位就地显示）；
         预览是**转义后的真渲染**：样本昵称带 <code>&lt;script&gt;</code>，HTML 进沙盒 iframe，纯文本并列。
       </p>
