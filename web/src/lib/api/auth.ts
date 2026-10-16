@@ -137,3 +137,31 @@ export function resetPassword(resetTicket: string, newPassword: string): Promise
     body: { reset_ticket: resetTicket, new_password: newPassword },
   });
 }
+
+// ── 登录设备（GET /me/sessions + DELETE /me/sessions/{id}）─────────────────────
+// 契约真源：forum/internal/auth/service.go:235 的 SessionItem。
+// **它不回 token、也不回 token_hash**（拍板 U21）：id 是会话摘要在服务端的影子，对外只当 opaque id 用，
+// DELETE 拿它删自己那一行，别人的 / 不存在的都回 404（不区分两者）。
+export type DeviceSession = {
+  id: string;
+  ip: string;
+  user_agent: string;
+  /** RFC3339 */
+  last_seen_at: string;
+  created_at: string;
+  /** 这一条就是当前这台设备（后端按当前 Cookie 的摘要比对） */
+  is_current: boolean;
+};
+
+/** 只列自己的会话（后端按 user_id 过滤、按 last_seen_at 倒序），走 OK() 的单对象包络 → data 是数组。 */
+export function fetchSessions(signal?: AbortSignal): Promise<DeviceSession[]> {
+  return api<DeviceSession[]>('me/sessions', { signal });
+}
+
+/**
+ * 退出某一台设备：DELETE /me/sessions/{id} → **204（没有响应体）**。
+ * 不可撤销 —— 那台设备上的 Cookie 立刻失效、要重新登录；撤当前这一台 = 本机当场掉线。
+ */
+export function revokeSession(id: string): Promise<void> {
+  return api<void>('me/sessions/' + encodeURIComponent(id), { method: 'DELETE' });
+}

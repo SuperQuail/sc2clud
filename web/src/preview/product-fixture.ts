@@ -312,6 +312,27 @@ export function fixtureFor(u: string, method: string, body?: unknown): Reply | u
   }
   if (p.endsWith('/api/v1/site')) return { body: { data: SITE } };
   if (p.endsWith('/api/v1/boards')) return { body: { data: BOARDS } };
+  // 关注者 / 我关注的 / 登录设备（L5 两批 + auth）：形状逐字照 follow.UserItem / follow.BoardItem /
+  // auth.SessionItem。**这一段必须排在下面 /users/ 与 /boards/ 的通配之前** ——
+  // 落到通配就会拿到用户资料 / 分区详情对象，列表渲染当场 TypeError（出图拍到的会是错误页）。
+  const FOLLOWER = (handle: string, nickname: string) => ({
+    id: 'u-' + handle, handle, nickname, avatar_hash: '', avatar_small_hash: '', followed_at: '2026-10-11T00:00:00Z',
+  });
+  if (p.endsWith('/api/v1/me/sessions')) {
+    return { body: { data: [
+      { id: 's-1', ip: '203.0.113.7', user_agent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/120.0', last_seen_at: '2026-10-16T03:50:00Z', created_at: '2026-10-01T00:00:00Z', is_current: true },
+      { id: 's-2', ip: '198.51.100.9', user_agent: 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0) Safari/604.1', last_seen_at: '2026-10-15T10:00:00Z', created_at: '2026-10-02T00:00:00Z', is_current: false },
+    ] } };
+  }
+  if (p.endsWith('/api/v1/me/following/boards')) {
+    return { body: { data: [{ slug: BOARD.slug, name: BOARD.name, description: BOARD.description, cover_hash: '', followed_at: '2026-10-10T00:00:00Z' }], next_cursor: null } };
+  }
+  if (p.endsWith('/api/v1/me/following/users')) {
+    return { body: { data: [FOLLOWER('demo-drone', '工蜂')], next_cursor: null } };
+  }
+  if (p.includes('/followers')) {
+    return { body: { data: [FOLLOWER('demo-drone', '工蜂'), FOLLOWER('demo-voidray', '虚空辉光舰')], next_cursor: null } };
+  }
   // 关注分区（拍板 08 §第三轮 1+2）：那一格「成员」与那颗「关注分区」按钮的真源。
   // 数字必须是**真数**（不是 0）—— 出图要看的正是「它不再是恒 0」。
   if (p.includes('/api/v1/boards/') && p.endsWith('/follow')) {

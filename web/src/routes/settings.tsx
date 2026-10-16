@@ -29,6 +29,8 @@ import {
 } from '@/lib/api/social';
 import { PageHeader } from './_parts/layout';
 import { Empty, ErrorState, Loading } from './_parts/state';
+import { SessionsPanel } from './_parts/sessions-panel';
+import { FollowingPanel } from './_parts/following-panel';
 
 // 个人设置（契约：PATCH /me、POST /me/password、POST /auth/logout、GET/PUT /notifications/settings）。
 //
@@ -42,7 +44,9 @@ import { Empty, ErrorState, Loading } from './_parts/state';
 // POST/DELETE /me/cover（media 域）+ ProfileHero 右上那颗「更换封面」。读的是公开资料
 // （GET /users/{handle} 的 cover）而不是 /me —— /me 是会话快照，它不带封面这一列。
 // 收款码**已接**（2026-10-14，L1）：POST/GET/DELETE /me/payment-channels 在 media 域，
-// 整块在 @/devroom/pages/11-profile/payment-channels 里。登录设备列表（GET /me/sessions 有契约但本轮不排）仍未做。
+// 整块在 @/devroom/pages/11-profile/payment-channels 里。
+// 登录设备（GET /me/sessions + DELETE /me/sessions/{id}）与「我关注的」（/me/following/*）在这两块面板里：
+// _parts/sessions-panel.tsx 与 _parts/following-panel.tsx（抽出去是为了本文件不越 500 行）。
 // 20 = users.nickname varchar(20) / auth.nicknameMaxLen（写死 32 会让 21-32 字的昵称在服务端被拒）
 const NICK_MAX = 20;
 const BIO_MAX = 200;
@@ -259,6 +263,11 @@ export function SettingsPage() {
       {saveAvatar.isError ? <FormAlert tone='error' title='没能上传头像' description={errorText(saveAvatar.error)} /> : null}
       {removeAvatar.isError ? <FormAlert tone='error' title='没能移除头像' description={errorText(removeAvatar.error)} /> : null}
 
+      {/* 登录设备（GET /me/sessions + DELETE /me/sessions/{id}）：整块在 _parts/sessions-panel.tsx，
+          与改密码是同一族的事（改密码会一次性踢掉全部会话），所以并排放在账号那一块下面。
+          「退出该设备」是不可撤销的动作 —— 确认弹层与后果文案都在那块面板里。 */}
+      <SessionsPanel />
+
       {/* 个人主页的封面 / 背景（0030 + POST/DELETE /me/cover）：与头像同一条图片通道、同一套控件。
           这一格在 /settings 里而不是只在主页上 —— 主页那颗「更换封面」是就地弹层（见 profile.tsx），
           这里是同一个动作的另一条路（设置页是用户找「改资料」时会来的地方）。 */}
@@ -346,6 +355,10 @@ export function SettingsPage() {
           </>
         )}
       </section>
+
+      {/* 我关注的（GET /me/following/boards + /me/following/users）：整块在 _parts/following-panel.tsx。
+          落点理由见那块文件头（/me/* 是账号私域，而个人主页是公开页）。 */}
+      <FollowingPanel />
 
       {/* 赞赏与收款码（L1）：原先这里只写了一句「本轮不排」的注释 —— 后端 13 条端点一直都有，
           缺的是这一块客户端。版面在 payment-channels.tsx（View），取数在 payment-channels-hook.ts，

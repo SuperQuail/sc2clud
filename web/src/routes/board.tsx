@@ -7,7 +7,7 @@ import { appPath, routePath } from '@/lib/url';
 import { qk } from '@/lib/query/keys';
 import { PAGE_LIMIT } from '@/lib/api/paging';
 import { fetchBoard, fetchTopics, type Topic as ApiTopic } from '@/lib/api/forum';
-import { fetchBoardFollow, followBoard, unfollowBoard } from '@/lib/api/follow';
+import { fetchBoardFollowers, fetchBoardFollow, followBoard, unfollowBoard } from '@/lib/api/follow';
 import { useSession } from '@/lib/perms';
 import { ArrowLeft, LayoutGrid, List, Star, UserPlus } from 'lucide-react';
 import { icon16 } from '@/ui/icons';
@@ -18,6 +18,7 @@ import { ListEnd, SquareCardSkeleton } from '@/devroom/pages/14-home/states';
 import { BoardRail, ComposeButton, PageHeader } from './_parts/layout';
 import { Empty, ErrorState, GRID } from './_parts/state';
 import { toCardTopic } from './_parts/mappers';
+import { UserFollowList } from './_parts/follow-lists';
 
 // 分区页（契约：GET /boards/{slug} + GET /topics?board=<slug>）。
 // 分区身份（简介 / 统计）来自 board 详情，列表来自 topics；两块各自三态，
@@ -230,6 +231,20 @@ export function BoardPage() {
             )}
           </>
         )}
+
+        {/* 关注者（GET /boards/{slug}/followers，follow.UserItem 列表，公开读）：
+            页头那格是关注**数**，这一格回答「是谁」。只取第一页，真数由页头那份 follow.State 给 ——
+            列表被截断时就写「还有 N 人」，不编。 */}
+        <section data-testid='board-followers' className='flex flex-col gap-2 border-t border-border pt-4'>
+          <h2 className='m-0 text-[15px] font-semibold text-foreground'>关注者</h2>
+          <UserFollowList
+            queryKey={qk.boardFollowers(slug)}
+            fetchPage={(signal) => fetchBoardFollowers(slug, {}, signal)}
+            emptyTitle='还没有人关注这个分区'
+            emptyHint='点页头那颗「关注分区」，你会是第一个。'
+            total={follow.data?.follower_count ?? null}
+          />
+        </section>
 
         <Link
           to={routePath('')}

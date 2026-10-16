@@ -46,6 +46,14 @@ function mockApi(overrides: { follow?: number } = {}) {
         followers = (overrides.follow ?? 0) > 0 ? overrides.follow! : following ? 8 : 7;
         return json({ target: 'board', slug: 'general', following, follower_count: followers });
       }
+      // 关注者（GET /boards/{slug}/followers）：**必须排在下面那条 /api/v1/boards/ 通配之前**，
+      // 否则它会拿到分区详情对象，列表渲染当场 TypeError（这是真的会在浏览器里炸的那一类）。
+      if (path.endsWith('/api/v1/boards/general/followers')) {
+        return new Response(
+          JSON.stringify({ data: [{ id: 'u-9', handle: 'demo-drone', nickname: '工蜂', avatar_hash: '', avatar_small_hash: '', followed_at: '2026-10-11T00:00:00Z' }], next_cursor: null }),
+          { status: 200, headers: { 'content-type': 'application/json' } },
+        );
+      }
       if (path.endsWith('/api/v1/me')) return json(ME);
       if (u.includes('/api/v1/site')) return json({ name: 'SC2clud', announcements: [], banner: null });
       // 列表（左栏 BoardRail 要数组，它的 data.map 不认单对象） vs 详情
@@ -89,4 +97,14 @@ it('分区页的「关注数」来自 GET /boards/{slug}/follow，点关注发 P
   await waitFor(() => expect(writes.some((w) => w.method === 'DELETE')).toBe(true));
   expect(await screen.findByText(/7 关注/)).toBeTruthy();
   expect(screen.getByTestId('board-follow').textContent).toContain('关注分区');
+});
+
+// 关注者（GET /boards/{slug}/followers，follow.UserItem 列表，公开读）：
+// 分区页此前只有一个关注**数**，这一格回答「是谁」；每一行链回那个人自己的主页。
+it('关注者：GET /boards/{slug}/followers 列出关注这个分区的人', async () => {
+  mockApi();
+  renderBoard();
+  await screen.findByTestId('board-followers');
+  const link = await screen.findByRole('link', { name: /工蜂/ });
+  expect(link.getAttribute('href')).toBe('/u/demo-drone');
 });

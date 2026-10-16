@@ -110,3 +110,16 @@ export function clearCover(): Promise<void> {
 export function fetchUserTopics(handle: string, q: PageQuery = {}, signal?: AbortSignal): Promise<Paged<Topic>> {
   return apiPage<Topic>('users/' + encodeURIComponent(handle) + '/topics', { query: pageQuery(q), signal });
 }
+
+// ── 拉黑 / 解除拉黑（PUT/DELETE /users/{handle}/block）────────────────────────
+// 真源 forum/internal/forum/handler.go:560-569 → votes.go:190 的 BlockUser：方向性明确
+// （A 拉黑 B 不影响 B 看 A 的帖），不能拉黑自己（那不是校验失败，是请求本身没意义）。
+// 两条都回 OK(gin.H{"ok": true})，**没有响应体形状可读** —— 更关键的是后端**没有读状态的端点**，
+// 所以界面只能按动作回执说话（见 routes/_parts/block-action.tsx 的 shortcut 注释）。
+export function blockUser(handle: string): Promise<{ ok: boolean }> {
+  return api<{ ok: boolean }>('users/' + encodeURIComponent(handle) + '/block', { method: 'PUT' });
+}
+
+export function unblockUser(handle: string): Promise<{ ok: boolean }> {
+  return api<{ ok: boolean }>('users/' + encodeURIComponent(handle) + '/block', { method: 'DELETE' });
+}

@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { MemoryRouter, Route, Routes } from 'react-router';
 import { afterEach, expect, it, vi } from 'vitest';
 import { Providers } from '@/app/providers';
@@ -79,6 +79,9 @@ const TITLES = {
 
 const CURRENT = { name: '执政官', color: '#2563eb' };
 
+/** follow.UserItem 逐字（forum/internal/follow/types.go:32）：头像两根都是**裸哈希**，'' = 没有。 */
+const FOLLOWER = { id: 'u-9', handle: 'demo-drone', nickname: '工蜂', avatar_hash: '', avatar_small_hash: '', followed_at: '2026-10-11T00:00:00Z' };
+
 function renderProfile(handle: string) {
   return render(
     <Providers>
@@ -109,6 +112,9 @@ function stubProfile(opts: { me?: boolean; handle?: string; following?: boolean;
       if (method === 'DELETE') following = false;
       return { body: { data: { target: 'user', handle, following, follower_count: following ? 128 : 127 } } };
     }
+    // 关注者（GET /users/{handle}/followers，follow.UserItem 列表）与拉黑（PUT/DELETE block → {ok:true}）
+    if (path.endsWith('/api/v1/users/' + handle + '/followers')) return { body: { data: [FOLLOWER], next_cursor: null } };
+    if (path.endsWith('/api/v1/users/' + handle + '/block')) return { body: { data: { ok: true } } };
     if (path.endsWith('/api/v1/users/' + handle + '/titles')) return { body: TITLES };
     if (path.endsWith('/api/v1/users/' + handle + '/topics')) return { body: { data: [], next_cursor: null } };
     if (path.endsWith('/api/v1/users/' + handle + '/channels')) return { body: { data: [] } };
@@ -234,4 +240,49 @@ it('D18：本人没有头衔时不画假占位（不出现「无头衔」）', a
   await screen.findByText('示范管理员');
   expect(container.textContent).not.toContain('无头衔');
   expect(screen.queryByTestId('dropdown-trigger')).toBeNull();
+});
+
+// 关注者（GET /users/{handle}/followers，公开读）：主页右栏那一格原来写的是「本产品没有关注关系」，
+// L5 之后那句话已经是假的 —— 端点在、只是没人调。
+it('关注者：GET /users/{handle}/followers 渲染在主页右栏，链回各自主页', async () => {
+  stubProfile({ handle: 'demo-voidray' });
+  renderProfile('demo-voidray');
+  await screen.findByTestId('profile-followers');
+  const link = await screen.findByRole('link', { name: /工蜂/ });
+  expect(link.getAttribute('href')).toBe('/u/demo-drone');
+});
+
+// 拉黑（PUT/DELETE /users/{handle}/block，真源 forum/internal/forum/votes.go:190）：
+// 它改的是**关系**，所以落在主页动作条（关注 / 私信 / 举报 那一排）。
+// 后端**没有读拉黑状态的端点**，所以按钮的态只能来自动作回执 —— 这一条盯的就是「先确认、再发、发完换态」。
+it('拉黑：动作条「拉黑」→ 确认弹层 → PUT /users/{handle}/block；成功后可「解除拉黑」发 DELETE', async () => {
+  stubProfile({ handle: 'demo-voidray' });
+  renderProfile('demo-voidray');
+  const btn = await screen.findByTestId('profile-block');
+  expect(btn.textContent).toContain('拉黑');
+
+  fireEvent.click(btn);
+  const dialog = await screen.findByRole('dialog');
+  // 打开弹层 ≠ 已经拉黑：没点确认之前一个 PUT 都不许发
+  expect(calls.some((c) => c.method === 'PUT')).toBe(false);
+  fireEvent.click(within(dialog).getByRole('button', { name: '拉黑' }));
+  await waitFor(() => {
+    expect(calls.some((c) => c.method === 'PUT' && c.url.endsWith('/api/v1/users/demo-voidray/block'))).toBe(true);
+  });
+  await waitFor(() => expect(screen.getByTestId('profile-block').textContent).toContain('解除拉黑'));
+
+  // 解除拉黑不再问第二遍（它只是把限制撤掉），直接 DELETE
+  fireEvent.click(screen.getByTestId('profile-block'));
+  await waitFor(() => {
+    expect(calls.some((c) => c.method === 'DELETE' && c.url.endsWith('/api/v1/users/demo-voidray/block'))).toBe(true);
+  });
+  await waitFor(() => expect(screen.getByTestId('profile-block').textContent).not.toContain('解除'));
+});
+
+// 拉黑自己不是校验失败、是请求本身没意义（后端 votes.go:201「不能拉黑自己」）——本人主页连这颗按钮都不画。
+it('拉黑：本人主页没有拉黑按钮', async () => {
+  stubProfile({});
+  renderProfile('demo-admin');
+  await screen.findByText('示范管理员');
+  expect(screen.queryByTestId('profile-block')).toBeNull();
 });

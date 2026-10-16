@@ -4,8 +4,7 @@ import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tansta
 import Button from '@jetbrains/ring-ui-built/components/button/button';
 import Island from '@jetbrains/ring-ui-built/components/island/island';
 import { ControlsHeight } from '@jetbrains/ring-ui-built/components/global/controls-height';
-import { FolderOpen, Flag, MessageSquare, Star, UserPlus } from 'lucide-react';
-import { icon16 } from '@/ui/icons';
+import { FolderOpen, Star } from 'lucide-react';
 import { TitleBadge } from '@/ui/user/title-badge';
 import { RoleBadge } from '@/ui/user/role-badge';
 import { IconTabs, type IconTabItem } from '@/ui/nav/icon-tabs';
@@ -19,7 +18,7 @@ import { qk } from '@/lib/query/keys';
 import { can, useSession } from '@/lib/perms';
 import { clearCover, fetchUserProfile, fetchUserTopics, uploadAvatar, uploadCover } from '@/lib/api/user';
 import { equipTitle, fetchUserTitles } from '@/lib/api/title';
-import { fetchUserFollow, followUser, unfollowUser } from '@/lib/api/follow';
+import { fetchUserFollowers } from '@/lib/api/follow';
 import { createDonation, fetchDonationSettings, fetchUserChannels } from '@/lib/api/rewards';
 import { useMyPaymentChannels } from '@/devroom/pages/11-profile/payment-channels-hook';
 import { formatCents, formatTime } from '@/lib/format';
@@ -27,6 +26,8 @@ import { isApiError } from '@/lib/api/errors';
 import { toCardTopic } from './_parts/mappers';
 import { Empty, ErrorState, Loading } from './_parts/state';
 import { ReportPanel } from './_parts/report-panel';
+import { ProfileActions } from './_parts/profile-actions';
+import { UserFollowList } from './_parts/follow-lists';
 import { PAGE_LIMIT } from '@/lib/api/paging';
 import { ListEnd } from '@/devroom/pages/14-home/states';
 
@@ -88,19 +89,6 @@ export function ProfilePage() {
     queryFn: ({ signal }) => fetchDonationSettings(signal),
     enabled: isSelf,
   });
-  // 关注这个人（D19）：PUT/DELETE /users/{handle}/follow 后端一直在（K-REL 的 L5），前端此前**零调用**。
-  // 看自己时连请求都不发（后端也会拒）；**态以服务端回执为准** —— 回执写回缓存，不本地翻转
-  // （关注/取关都是幂等的，回执里的 following 就是真值）。
-  const follow = useQuery({
-    queryKey: qk.followUser(handle),
-    queryFn: ({ signal }) => fetchUserFollow(handle, signal),
-    enabled: handle !== '' && !isSelf && session.isLoggedIn,
-  });
-  const followToggle = useMutation({
-    mutationFn: (next: boolean) => (next ? followUser(handle) : unfollowUser(handle)),
-    onSuccess: (st) => queryClient.setQueryData(qk.followUser(handle), st),
-  });
-
   // 头衔（D18）：本人的头衔可点开下拉（佩戴 / 不佩戴）。清单来自 GET /users/{handle}/titles
   // ——**只有本人**才发这个请求：下拉只对本人有意义，别人的主页那一枚是纯展示（hero 没拿到 options 就不包触发器）。
   const titles = useQuery({
@@ -211,55 +199,14 @@ export function ProfilePage() {
                 账号设置
               </Button>
             ) : (
-              <>
-                {/* 关注（D19）：登录态是开关（态来自 GET/PUT/DELETE /users/{handle}/follow 的回执），
-                    未登录那颗是去登录的链接 —— 原来这里写的是「关注没有端点，所以不画」，那句话
-                    在 L5 之后就是假话了（端点在，缺的只是调用方）。 */}
-                {session.isLoggedIn ? (
-                  <Button
-                    data-testid='profile-follow'
-                    inline={false}
-                    height={ControlsHeight.S}
-                    icon={icon16(UserPlus)}
-                    primary={!follow.data?.following}
-                    active={follow.data?.following}
-                    loader={followToggle.isPending}
-                    onClick={() => followToggle.mutate(!(follow.data?.following ?? false))}
-                  >
-                    {follow.data?.following ? '已关注' : '关注'}
-                  </Button>
-                ) : (
-                  <Button
-                    data-testid='profile-follow'
-                    inline={false}
-                    height={ControlsHeight.S}
-                    icon={icon16(UserPlus)}
-                    href={appPath('login?next=' + encodeURIComponent(routePath('u/' + handle)))}
-                  >
-                    登录后关注
-                  </Button>
-                )}
-                <Button
-                  inline={false}
-                  height={ControlsHeight.S}
-                  icon={icon16(MessageSquare)}
-                  href={appPath('messages/' + encodeURIComponent(u.handle))}
-                >
-                  发私信
-                </Button>
-                {session.isLoggedIn ? (
-                  <Button
-                    data-testid='profile-report'
-                    inline={false}
-                    height={ControlsHeight.S}
-                    icon={icon16(Flag)}
-                    active={reporting}
-                    onClick={() => setReporting((v) => !v)}
-                  >
-                    举报
-                  </Button>
-                ) : null}
-              </>
+              // 别人主页的动作条整块在 _parts/profile-actions（关注 / 私信 / 举报 / 拉黑）。
+              // 抽出去的理由是行数：这一格是 profile.tsx 里最大的一块版式，而它已经贴着 500 行。
+              <ProfileActions
+                handle={handle}
+                isLoggedIn={session.isLoggedIn}
+                reporting={reporting}
+                onToggleReport={() => setReporting((v) => !v)}
+              />
             )}
           </>
         }
@@ -405,12 +352,13 @@ export function ProfilePage() {
       ) : null}
         </div>
 
-        {/* 右栏：徽章 → 赞助 → 关注的人。
+        {/* 右栏：徽章 → 赞助 → 关注者。
             赞助放在徽章下面一格：它是这个页面唯一的转化点（读完之后「想支持一下」的那一秒）。
             **2026-10-14（L1）接的是真数据**：这一格原先传 `channels={[]}` + `disableReason`
             （那时以为「后端没有收款码列、没有 GET /users/{handle}/channels、没有 POST /rewards」）——
             三样后端一直都有，缺的是前端客户端，所以那个逃生口连同它的注释一起删了。
-            「关注的人」**整格不做**：本产品没有关注关系（拍板 §8.3），后端也没有这个端点。 */}
+            「关注的人」那句「本产品没有关注关系、后端也没有这个端点」在 L5 之后是**假话** ——
+            端点在（GET /users/{handle}/followers，公开读），缺的只是调用方。 */}
         <aside className='flex flex-col gap-3'>
           {u.title || (isSelf && session.session?.role) ? (
             <Island withoutPaddings>
@@ -459,6 +407,21 @@ export function ProfilePage() {
             loggedIn={session.isLoggedIn}
             loginHref={appPath('login?next=' + encodeURIComponent(routePath('u/' + handle)))}
           />
+          {/* 关注者（GET /users/{handle}/followers）：**公开读**，游客也看得到「谁关注了 TA」。
+              这一格只取第一页（20 条）；「共多少人」这里不显示 —— 那份真数（follow.State.follower_count）
+              要登录才拿得到（GET /users/{handle}/follow 挂在 requireLogin 后面），
+              拿不到就宁可不写，也不编一个数（总览里的三个统计同理）。 */}
+          <Island withoutPaddings>
+            <div data-testid='profile-followers' className='flex flex-col gap-2 p-4'>
+              <span className='text-[12px] font-medium tracking-wide text-muted-foreground'>关注者</span>
+              <UserFollowList
+                queryKey={qk.userFollowers(handle)}
+                fetchPage={(signal) => fetchUserFollowers(handle, {}, signal)}
+                emptyTitle='还没有人关注 TA'
+                emptyHint='关注是公开的：谁关注了谁，这一格都看得到。'
+              />
+            </div>
+          </Island>
         </aside>
       </div>
     </div>
