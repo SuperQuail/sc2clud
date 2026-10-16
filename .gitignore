@@ -64,6 +64,9 @@ desktop.ini
 
 # ---------- 工具链与构建产物 ----------
 /.tools/
+
+# 测试台内嵌 PG 的运行时数据（每个包一份，跑一次测试就出现）
+**/.embedded-postgres-go/
 node_modules/
 dist/
 *.exe
@@ -87,7 +90,7 @@ preview-dist/
 forum/.probe*/
 **/zz*_test.go
 
-��ȫ�ع�/.migration-scratch/
+��ȫ�ع�/.migration-scratch/
 
 
 deploy/.legacy-blobs/
