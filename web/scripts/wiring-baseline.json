@@ -1,0 +1,106 @@
+{
+  "routes": [
+    {
+      "route": "GET /admin/audit-logs/export",
+      "reason": "假阳性：routes/admin/audit.tsx:64 用 auditExportUrl(BASE) 拼 href 下载 CSV，不经 api()（真源 B 只认 lib/api 的 api()/apiPage()/apiEnvelope()）"
+    },
+    {
+      "route": "POST /me/password",
+      "reason": "假阳性：routes/settings.tsx:66 内联调用 api()，调用点不在 lib/api（扫描面外）"
+    },
+    {
+      "route": "GET /me/sessions",
+      "reason": "真孤儿：登录设备列表有契约没界面（settings.tsx:45 写明本轮不排），等落地屏 web/src/routes/settings.tsx"
+    },
+    {
+      "route": "DELETE /me/sessions/:id",
+      "reason": "真孤儿：同上，设备撤销入口没做"
+    },
+    {
+      "route": "GET /boards/:slug/followers",
+      "reason": "真孤儿：分区页只显示关注数，没有关注者列表"
+    },
+    {
+      "route": "GET /me/following/boards",
+      "reason": "真孤儿：「我关注的板块」列表没有界面"
+    },
+    {
+      "route": "GET /me/following/users",
+      "reason": "真孤儿：「我关注的用户」列表没有界面"
+    },
+    {
+      "route": "GET /users/:handle/followers",
+      "reason": "真孤儿：个人页没有关注者列表"
+    },
+    {
+      "route": "GET /issues/kinds",
+      "reason": "真孤儿：J6 的值域端点后端已挂（handler.go:72 的注释就是为它写的），前端筛选与新建入口仍写死四类"
+    },
+    {
+      "route": "GET /posts/:id/replies",
+      "reason": "真孤儿：楼中楼只接了 issue-comments/:id/replies，post 的这条没接"
+    },
+    {
+      "route": "POST /topics/:id/lock",
+      "reason": "真孤儿：锁帖按钮没做（lib/api/forum.ts 里连 lockTopic 都没有）"
+    },
+    {
+      "route": "GET /topics/:id/sources/:sid/go",
+      "reason": "假阳性：读者点的是 DTO 里的 go_path 链接（302 计数），不是 fetch"
+    },
+    {
+      "route": "PUT /users/:handle/block",
+      "reason": "真孤儿：拉黑入口没做"
+    },
+    {
+      "route": "DELETE /users/:handle/block",
+      "reason": "真孤儿：同上（解除拉黑）"
+    },
+    {
+      "route": "GET /notifications/stream",
+      "reason": "假阳性：lib/api/social.ts:190 用 appPath 手工拼 URL 给 EventSource（SSE 不能走 api()）"
+    },
+    {
+      "route": "POST /admin/launcher/releases",
+      "reason": "真孤儿：下载源的运营端（releases/assets 增删改）整族没有界面，需要落在 web/src/routes/admin.tsx"
+    },
+    {
+      "route": "PATCH /admin/launcher/releases/:id",
+      "reason": "真孤儿：同上"
+    },
+    {
+      "route": "POST /admin/launcher/assets",
+      "reason": "真孤儿：同上"
+    },
+    {
+      "route": "DELETE /admin/launcher/assets/:id",
+      "reason": "真孤儿：同上"
+    },
+    {
+      "route": "GET /launcher/assets/:id/go",
+      "reason": "假阳性：routes/download.tsx 的按钮 href 走 goHref()（302 转链），不是 fetch"
+    },
+    {
+      "route": "POST /markdown/preview",
+      "reason": "真孤儿：写稿预览在前端本地渲染，服务端预览端点没人调"
+    },
+    {
+      "route": "GET /titles",
+      "reason": "真孤儿：头衔目录端点没接（前端只用了 users/:handle/titles 与 PUT /me/title）"
+    },
+    {
+      "route": "GET /users/search",
+      "reason": "真孤儿：前端统一走 /search?type=users，这条旧入口没人调"
+    }
+  ],
+  "ghosts": [
+    {
+      "pattern": "search",
+      "reason": "假阳性：路由注册在 forum/internal/app/http.go:107（真源 A 只扫 **/handler.go），前端 lib/api/forum.ts:176 走的就是它"
+    },
+    {
+      "pattern": "healthz",
+      "reason": "假阳性：探针路由注册在 forum/internal/platform/httpx/probe.go，且 lib/api/system.ts:8 用裸 BASE（不带 /api/v1）"
+    }
+  ]
+}
