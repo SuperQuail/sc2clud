@@ -53,7 +53,11 @@ function ImageRow({ img }: { img: AiPayloadImage }) {
       <span className='min-w-0 flex-1 text-[11px] leading-relaxed text-muted-foreground'>
         <span className='flex flex-wrap items-center gap-1.5'>
           <Pill tone={img.sent ? 'ok' : 'danger'}>{img.sent ? '会发给模型' : '不发给模型'}</Pill>
-          <span className='text-foreground'>{'第 ' + (img.position + 1) + ' 张 · ' + img.floor + ' 楼'}</span>
+          {/* 1 楼是**主题正文**不是评论（D71/D83 口径）：正文里的配图不再叫「1 楼」；
+              floor 0 = 这一行没挂到任何楼层（图片的 posts 行没了）——照实说，别编一个楼层号。 */}
+          <span className='text-foreground'>
+            {'第 ' + (img.position + 1) + ' 张 · ' + (img.floor === 1 ? '正文配图' : img.floor > 1 ? img.floor + ' 楼' : '未挂楼层')}
+          </span>
           <span>{img.mime + ' · ' + kb(img.bytes)}</span>
         </span>
 
