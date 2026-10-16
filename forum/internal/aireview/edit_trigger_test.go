@@ -199,6 +199,33 @@ func TestEditRejectOrReviewOnlyLeavesAnEvent(t *testing.T) {
 	}
 }
 
+// ⑥ 从没过审的帖（没有待审槽）：编辑走的是 n==0 那一支 —— 正文直接写 posts 并打回 pending
+// （那是作者自己的新帖，别人看不到它）。这时 AI 判通过**没有「改动要替换」**，只有状态那一半：
+// 少了它，作者改完自己的待审帖、AI 也说通过，帖子却永远上不了线。
+func TestEditApproveWithoutDraftJustApproves(t *testing.T) {
+	h := newHarness(t)
+	h.putKey()
+	id := h.topic("新帖", "作者自己的新正文", nil, "pending")
+
+	if err := h.svc.ReviewTopic(h.ctx, id, "edit"); err != nil {
+		t.Fatalf("ReviewTopic: %v", err)
+	}
+	state, _, source, _ := h.topicState(id)
+	if state != "approved" || source == nil || *source != "ai" {
+		t.Fatalf("没有待审槽时 approve 只该落状态：state=%q source=%v", state, source)
+	}
+	var n int
+	if err := h.pool.QueryRow(h.ctx, "SELECT count(*) FROM topic_revisions WHERE topic_id = $1", id).Scan(&n); err != nil {
+		t.Fatal(err)
+	}
+	if n != 0 {
+		t.Fatalf("没有待审改动就不该凭空造一份快照行（首次批准不写快照），实际 %d 行", n)
+	}
+	if trigger, src, verdict, _ := h.event(id); trigger != "edit" || src != "ai" || verdict != "approve" {
+		t.Fatalf("留痕形状不对: trigger=%q source=%q verdict=%q", trigger, src, verdict)
+	}
+}
+
 // ⑤ 「同一动作的两个实现」必须同形：aireview 的 promote（pgx.Tx）与 forum/pgsql 的
 // PromotePendingRevision（database/sql 口味的 Querier）对同一份待审内容写出来的行，逐列相同。
 // 跨包 + 跨 Tx 类型，共用不了语句 —— 任一边单独改了 SQL 而另一边没改，这条就红。
