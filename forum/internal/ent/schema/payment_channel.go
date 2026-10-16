@@ -41,7 +41,7 @@ func (PaymentChannel) Fields() []ent.Field {
 	return []ent.Field{
 		field.Int64("id"),
 		field.Int64("user_id"),
-		field.String("label").MaxLen(32),
+		field.String("label").MaxRuneLen(32),
 		field.String("image_hash").MaxLen(64).Comment("char(64)；images.hash"),
 		field.Int("sort").Default(0),
 		field.Time("created_at").Default(time.Now).Immutable().

@@ -43,12 +43,12 @@ func (DonationRecord) Fields() []ent.Field {
 		field.Int64("donor_id").Comment("打赏人"),
 		field.Int64("recipient_id").Comment("收款人；check donor_id <> recipient_id"),
 		field.Int64("amount_cents").Comment("金额（分），申报值"),
-		field.String("txn_id").MaxLen(64).Default("").Comment("用户自报的支付单号/备注"),
+		field.String("txn_id").MaxRuneLen(64).Default("").Comment("用户自报的支付单号/备注"),
 		field.Int64("post_id").Optional().Nillable().Comment("topics.id，可关联帖子"),
 		field.Int64("channel_id").Optional().Nillable().
 			Comment("payment_channels.id：当时展示的是哪张码（拍板 §8.11 U3 保留）"),
 		field.String("state").MaxLen(16).Default("pending").Comment("pending/approved/rejected/withdrawn"),
-		field.String("note").MaxLen(200).Default("").Comment("申报留言"),
+		field.String("note").MaxRuneLen(200).Default("").Comment("申报留言"),
 		field.Int64("verified_by").Optional().Nillable().Comment("核验人；与 state 的联合 CHECK 在手写迁移"),
 		field.Time("verified_at").Optional().Nillable(),
 		field.Time("created_at").Default(time.Now).Immutable().

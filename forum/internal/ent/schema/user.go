@@ -57,9 +57,10 @@ func (User) Fields() []ent.Field {
 			Comment("大小写不敏感唯一靠 uq_users_email_lower"),
 		field.String("password_hash").
 			Comment("argon2id PHC 串（D2 §7.3）"),
-		field.String("nickname").MaxLen(20).
+		// 见 board.go 顶部的长度校验规矩：ent 的 MaxLen 按字节，中文昵称 7 个字就会 500。
+		field.String("nickname").MaxRuneLen(20).
 			Comment("显示名，非空、允许重名"),
-		field.String("bio").MaxLen(200).Default(""),
+		field.String("bio").MaxRuneLen(200).Default(""),
 		field.String("avatar_hash").MaxLen(64).Optional().Nillable().
 			Comment("sha256 hex；FK images(hash) ON DELETE SET NULL"),
 		field.String("avatar_small_hash").MaxLen(64).Optional().Nillable().

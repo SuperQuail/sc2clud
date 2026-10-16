@@ -38,9 +38,9 @@ func (Title) Fields() []ent.Field {
 	return []ent.Field{
 		field.Int64("id"),
 		field.String("key").MaxLen(32).Unique(),
-		field.String("name").MaxLen(32),
+		field.String("name").MaxRuneLen(32),
 		field.String("color").MaxLen(16).Default("").Comment("#rrggbb，空 = 前端用默认色"),
-		field.String("description").MaxLen(200).Default(""),
+		field.String("description").MaxRuneLen(200).Default(""),
 		field.Time("archived_at").Optional().Nillable(),
 		field.Time("created_at").Default(time.Now).Immutable().
 			Annotations(entsql.DefaultExpr("now()")),

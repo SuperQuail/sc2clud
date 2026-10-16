@@ -38,14 +38,14 @@ func (Report) Fields() []ent.Field {
 		field.String("target_type").SchemaType(pgType("text")).
 			Comment("topic/post/user，CHECK 在迁移"),
 		field.Int64("target_id").Comment("多态，无外键（见文件头）"),
-		field.String("reason").MaxLen(500).SchemaType(pgType("varchar(500)")),
-		field.String("detail").MaxLen(1000).SchemaType(pgType("varchar(1000)")).Default(""),
+		field.String("reason").MaxRuneLen(500).SchemaType(pgType("varchar(500)")),
+		field.String("detail").MaxRuneLen(1000).SchemaType(pgType("varchar(1000)")).Default(""),
 		field.Int64("reporter_id"),
 		field.String("state").SchemaType(pgType("text")).Default("open").
 			Comment("open/handled/dismissed，CHECK 在迁移"),
 		field.Int64("handler_id").Optional().Nillable(),
 		field.Time("handled_at").Optional().Nillable(),
-		field.String("handle_note").MaxLen(500).SchemaType(pgType("varchar(500)")).Default(""),
+		field.String("handle_note").MaxRuneLen(500).SchemaType(pgType("varchar(500)")).Default(""),
 		field.Time("created_at").Default(time.Now).Immutable().
 			Annotations(entsql.DefaultExpr("now()")),
 		field.Time("updated_at").Default(time.Now).UpdateDefault(time.Now).

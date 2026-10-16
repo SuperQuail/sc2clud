@@ -42,7 +42,7 @@ func (Message) Fields() []ent.Field {
 		field.Int64("low_id").Comment("规范化用户对：恒为较小的 user id"),
 		field.Int64("high_id"),
 		field.Int64("sender_id").Comment("必为 low_id / high_id 之一（CHECK）"),
-		field.String("body").MaxLen(2000).Comment("纯文本，私信不做 Markdown 渲染"),
+		field.String("body").MaxRuneLen(2000).Comment("纯文本，私信不做 Markdown 渲染"),
 		field.Time("read_at").Optional().Nillable().Comment("收件人的已读时间"),
 		field.Bool("deleted_by_low").Default(false),
 		field.Bool("deleted_by_high").Default(false),

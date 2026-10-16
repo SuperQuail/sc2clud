@@ -43,7 +43,7 @@ func (UserPermission) Fields() []ent.Field {
 			Annotations(entsql.DefaultExpr("now()")),
 		field.Time("expires_at").Optional().Nillable().
 			Comment("NULL = 永不过期；CHECK (expires_at IS NULL OR expires_at > granted_at) 在迁移"),
-		field.String("reason").MaxLen(200).
+		field.String("reason").MaxRuneLen(200).
 			Comment("授权理由，必填非空（CHECK btrim(reason) <> ''）——提权必须留痕"),
 	}
 }

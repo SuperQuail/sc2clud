@@ -39,13 +39,13 @@ func (MailAccount) Mixin() []ent.Mixin {
 func (MailAccount) Fields() []ent.Field {
 	return []ent.Field{
 		field.Int64("id"),
-		field.String("name").MaxLen(64).Unique(),
+		field.String("name").MaxRuneLen(64).Unique(),
 		field.String("provider").MaxLen(8).Comment("resend / smtp"),
 		field.Int("priority").Default(0).Comment("越大越优先"),
 		field.Int("daily_limit").Default(100),
 		field.String("reset_tz").MaxLen(64).Default("Asia/Shanghai").Comment("IANA 名字"),
 		field.String("from_address").MaxLen(254),
-		field.String("from_name").MaxLen(64).Default(""),
+		field.String("from_name").MaxRuneLen(64).Default(""),
 		field.JSON("options_json", json.RawMessage{}).Default(json.RawMessage("{}")),
 		field.Bytes("secret_cipher").Optional().Nillable().Comment("凭据密文；与 nonce 成对"),
 		field.Bytes("secret_nonce").Optional().Nillable(),

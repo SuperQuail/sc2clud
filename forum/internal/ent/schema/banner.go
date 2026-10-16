@@ -37,7 +37,7 @@ func (Banner) Fields() []ent.Field {
 	return []ent.Field{
 		field.Int64("id"),
 		field.String("kind").MaxLen(8).Comment("info / warning / promo"),
-		field.String("text").MaxLen(200),
+		field.String("text").MaxRuneLen(200),
 		field.Text("url").Optional().Nillable().Comment("可选跳转链接"),
 		field.Time("starts_at").Default(time.Now).Annotations(entsql.DefaultExpr("now()")),
 		field.Time("ends_at").Optional().Nillable().Comment("NULL = 不过期"),

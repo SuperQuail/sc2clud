@@ -33,7 +33,7 @@ func (Announcement) Mixin() []ent.Mixin {
 func (Announcement) Fields() []ent.Field {
 	return []ent.Field{
 		field.Int64("id"),
-		field.String("title").MaxLen(120),
+		field.String("title").MaxRuneLen(120),
 		field.Text("body_md"),
 		field.Text("body_html").Comment("goldmark + bluemonday，与帖子同一套"),
 		field.Bool("enabled").Default(true),

@@ -35,9 +35,9 @@ func (Permission) Fields() []ent.Field {
 			Comment("权限点 key，如 topic.create；与 Go 常量逐字同名"),
 		field.String("grp").MaxLen(32).
 			Comment("后台勾选界面分组：topic/board/user/title/site"),
-		field.String("name").MaxLen(32).
+		field.String("name").MaxRuneLen(32).
 			Comment("中文名（后台标签）"),
-		field.String("description").MaxLen(200).Default(""),
+		field.String("description").MaxRuneLen(200).Default(""),
 		field.Time("created_at").Default(time.Now).Immutable().
 			Annotations(entsql.DefaultExpr("now()")),
 	}

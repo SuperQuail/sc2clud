@@ -47,14 +47,14 @@ func (Topic) Fields() []ent.Field {
 		field.Int64("author_id"),
 		field.String("kind").SchemaType(pgType("text")).Default("discussion").
 			Comment("discussion/resource/repost，CHECK 在迁移。只有 resource 能挂 topic_sources 与非空 resource_status"),
-		field.String("title").MaxLen(200).SchemaType(pgType("varchar(200)")),
-		field.String("excerpt").MaxLen(200).SchemaType(pgType("varchar(200)")).Default("").
+		field.String("title").MaxRuneLen(200).SchemaType(pgType("varchar(200)")),
+		field.String("excerpt").MaxRuneLen(200).SchemaType(pgType("varchar(200)")).Default("").
 			Comment("列表卡片摘要，写入时由 1 楼正文派生。有它列表才不用读 posts 的大字段正文"),
 		field.String("visibility").SchemaType(pgType("text")).Default("normal").
 			Comment("公开轴：normal/hidden/deleted，CHECK 在迁移"),
 		field.String("review_state").SchemaType(pgType("text")).Default("approved").
 			Comment("审核轴：pending/approved/rejected。pending/rejected 只有作者本人与持 post.review 的人可见"),
-		field.String("review_note").MaxLen(500).SchemaType(pgType("varchar(500)")).Optional().Nillable().
+		field.String("review_note").MaxRuneLen(500).SchemaType(pgType("varchar(500)")).Optional().Nillable().
 			Comment("「请求修改」给作者看的话；request_revision 时必填（service 判）"),
 		field.Int64("reviewed_by").Optional().Nillable().Comment("审核人；FK users(id) ON DELETE SET NULL"),
 		field.Time("reviewed_at").Optional().Nillable(),

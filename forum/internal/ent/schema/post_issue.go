@@ -43,7 +43,7 @@ func (PostIssue) Fields() []ent.Field {
 		field.Int32("number").Comment("帖内编号（#12）；响应同时给 public_id 与它"),
 		field.String("kind").SchemaType(pgType("text")).
 			Comment("bug/feature/difficulty/other，CHECK 在迁移（四类，界面施工 §3.2）"),
-		field.String("title").MaxLen(120).SchemaType(pgType("varchar(120)")),
+		field.String("title").MaxRuneLen(120).SchemaType(pgType("varchar(120)")),
 		field.String("body_md").SchemaType(pgType("text")),
 		field.String("body_html").SchemaType(pgType("text")),
 		field.String("body_text").SchemaType(pgType("text")).Default("").

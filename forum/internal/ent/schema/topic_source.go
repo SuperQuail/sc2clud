@@ -38,12 +38,12 @@ func (TopicSource) Fields() []ent.Field {
 		field.Int64("topic_id"),
 		field.String("provider").MaxLen(24).SchemaType(pgType("varchar(24)")).
 			Comment("已知 13 个 key（baidu/aliyun/quark/lanzou/pan123/weiyun/onedrive/mega/website/github/gitee/other），CHECK 在迁移"),
-		field.String("label").MaxLen(60).SchemaType(pgType("varchar(60)")).Default("").
+		field.String("label").MaxRuneLen(60).SchemaType(pgType("varchar(60)")).Default("").
 			Comment("作者写的显示名"),
 		field.String("url").SchemaType(pgType("text")).Comment("外部直链；CHECK 只兜住「不是 http(s)」，没有域名白名单"),
 		field.String("extraction_code").MaxLen(16).SchemaType(pgType("varchar(16)")).Optional().Nillable().
 			Comment("网盘提取码，**明文存**：它是给所有人看的分享口令，不是密码"),
-		field.String("size_text").MaxLen(64).SchemaType(pgType("varchar(64)")).Default("").
+		field.String("size_text").MaxRuneLen(64).SchemaType(pgType("varchar(64)")).Default("").
 			Comment("普通展示文本（D70 拍板：不托管文件，大小就是作者随手写的一截字；格式检查已随 0057 删除）"),
 		field.String("upkeep").SchemaType(pgType("text")).Default("active").
 			Comment("active/archived。**不许从 verified_at 推断**：链接昨天验过、作者已弃坑是常见组合"),

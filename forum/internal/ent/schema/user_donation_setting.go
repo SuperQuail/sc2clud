@@ -31,7 +31,7 @@ func (UserDonationSetting) Fields() []ent.Field {
 		field.Bool("show_channels").Default(false).Comment("展示收款码（旧站默认关）"),
 		field.Bool("records_public").Default(false).Comment("我的打赏记录可公开（旧站默认关）"),
 		field.Bool("notice_visible").Default(true).Comment("显示打赏提示文案"),
-		field.String("notice_text").MaxLen(200).Default("").Comment("空 = 用 donation_notice_defaults"),
+		field.String("notice_text").MaxRuneLen(200).Default("").Comment("空 = 用 donation_notice_defaults"),
 		field.Time("created_at").Default(time.Now).Immutable().
 			Annotations(entsql.DefaultExpr("now()")),
 		field.Time("updated_at").Default(time.Now).UpdateDefault(time.Now).

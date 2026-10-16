@@ -37,9 +37,9 @@ func (Role) Fields() []ent.Field {
 		field.String("key").MaxLen(32).Unique().
 			Immutable().
 			Comment("机器名（user/creator/admin/superadmin 或自定义），授权判定只用它以外的数据"),
-		field.String("name").MaxLen(32).
+		field.String("name").MaxRuneLen(32).
 			Comment("后台展示名"),
-		field.String("description").MaxLen(200).Default(""),
+		field.String("description").MaxRuneLen(200).Default(""),
 		field.Int64("parent_id").Optional().Nillable().
 			Comment("父角色（层级只给自定义角色用）；FK roles(id) ON DELETE RESTRICT"),
 		field.Int("depth").Default(0).

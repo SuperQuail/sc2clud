@@ -30,7 +30,7 @@ func (Sanction) Fields() []ent.Field {
 		field.Int64("board_id").Optional().Nillable().Comment("NULL = 全站；非空 = 只在该分区生效"),
 		field.String("action").SchemaType(pgType("text")).Default("reply").
 			Comment("post/reply/all，CHECK 在迁移。发主题查 action IN ('post','all')，回复查 IN ('reply','all')"),
-		field.String("reason").MaxLen(200).SchemaType(pgType("varchar(200)")).Default(""),
+		field.String("reason").MaxRuneLen(200).SchemaType(pgType("varchar(200)")).Default(""),
 		field.Time("until").Optional().Nillable().Comment("NULL = 永久"),
 		field.Int64("created_by").Optional().Nillable().Comment("开单人；FK users(id) ON DELETE SET NULL"),
 		field.Time("created_at").Default(time.Now).Immutable().
