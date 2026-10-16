@@ -1,7 +1,7 @@
 import Button from '@jetbrains/ring-ui-built/components/button/button';
 import LoaderInline from '@jetbrains/ring-ui-built/components/loader-inline/loader-inline';
 import { CircleAlert, Lock, ServerCrash } from 'lucide-react';
-import { isApiError } from '@/lib/api/errors';
+import { apiErrorLine, isApiError } from '@/lib/api/errors';
 import { cn } from '@/lib/utils';
 import { Empty } from '@/ui/state/empty';
 
@@ -68,9 +68,7 @@ export function ErrorState({
                 ? '服务器开小差了'
                 : '加载失败';
   const Icon = status === 403 || status === 401 ? Lock : status >= 500 || status === 0 ? ServerCrash : CircleAlert;
-  const detail = api
-    ? api.message + (api.requestId ? '（错误编号 ' + api.requestId + '）' : '')
-    : '未知错误：' + String(error);
+  const detail = api ? apiErrorLine(api) : '未知错误：' + String(error);
   const retryAfter = api?.retryAfterMs ? Math.ceil(api.retryAfterMs / 1000) + ' 秒后可以再试。' : '';
 
   return (

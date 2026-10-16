@@ -1,12 +1,10 @@
 import { useRouteError } from 'react-router';
-import { isApiError } from '@/lib/api/errors';
+import { apiErrorLine, isApiError } from '@/lib/api/errors';
 
 // 路由级错误边界：不吞错、不静默降级（前端方案 §1.3 / 复盘根因 5）
 export function RouteError() {
   const error = useRouteError();
-  const detail = isApiError(error)
-    ? error.message + (error.requestId ? '（错误编号 ' + error.requestId + '）' : '')
-    : '页面出错了';
+  const detail = isApiError(error) ? apiErrorLine(error) : '页面出错了';
   return (
     <section className='py-16 text-center'>
       <h1 className='text-lg font-semibold text-foreground'>出错了</h1>

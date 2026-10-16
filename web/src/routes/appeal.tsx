@@ -7,7 +7,7 @@ import Select, { Type as SelectType } from '@jetbrains/ring-ui-built/components/
 import { AuthShell } from '@/devroom/pages/16-auth/auth-shell';
 import { FormAlert } from '@/devroom/pages/16-auth/form-alert';
 import { appPath } from '@/lib/url';
-import { isApiError } from '@/lib/api/errors';
+import { apiErrorLine, apiErrorLineWith, isApiError } from '@/lib/api/errors';
 import { api } from '@/lib/api/client';
 import { useSession } from '@/lib/perms';
 import { ProductCaptcha } from './login';
@@ -275,14 +275,14 @@ export function AppealPage() {
 
 function errorText(e: unknown): string {
   if (!isApiError(e)) return String(e);
-  const rid = e.requestId ? '（错误编号 ' + e.requestId + '）' : '';
   if (e.status === 404) {
-    return (
+    return apiErrorLineWith(
+      e,
       '后端还没有这条免登录申诉的端点（见回报的端点清单：POST /api/v1/appeals）。' +
-      '在这之前，请用站点公告里的管理员邮箱联系我们 —— 这次提交没有被记录。' + rid
+        '在这之前，请用站点公告里的管理员邮箱联系我们 —— 这次提交没有被记录。',
     );
   }
-  if (e.status === 429) return '同一个账号/IP 24 小时最多提交 3 条，请明天再试。' + rid;
-  if (e.code === 'auth.captcha_wrong') return '图形验证码不对，请重新输入。' + rid;
-  return e.message + rid;
+  if (e.status === 429) return apiErrorLineWith(e, '同一个账号/IP 24 小时最多提交 3 条，请明天再试。');
+  if (e.code === 'auth.captcha_wrong') return apiErrorLineWith(e, '图形验证码不对，请重新输入。');
+  return apiErrorLine(e);
 }

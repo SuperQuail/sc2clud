@@ -18,7 +18,7 @@ import { appPath, routePath } from '@/lib/url';
 import { qk } from '@/lib/query/keys';
 import { useSession } from '@/lib/perms';
 import { api } from '@/lib/api/client';
-import { isApiError } from '@/lib/api/errors';
+import { apiErrorLine, isApiError } from '@/lib/api/errors';
 import { logout } from '@/lib/api/auth';
 import { clearAvatar, clearCover, fetchUserProfile, uploadAvatar, uploadCover } from '@/lib/api/user';
 // 类型与组件同名，所以按全站口径起别名（messages.tsx 也是这么写的）
@@ -383,5 +383,5 @@ export function SettingsPage() {
 }
 
 function errorText(e: unknown): string {
-  return isApiError(e) ? e.message + (e.requestId ? '（错误编号 ' + e.requestId + '）' : '') : String(e);
+  return isApiError(e) ? apiErrorLine(e) : String(e);
 }

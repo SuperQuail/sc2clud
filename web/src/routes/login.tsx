@@ -9,7 +9,7 @@ import { FormAlert } from '@/devroom/pages/16-auth/form-alert';
 import { PasswordField } from '@/ui/password-field';
 import { appPath } from '@/lib/url';
 import { qk } from '@/lib/query/keys';
-import { isApiError } from '@/lib/api/errors';
+import { apiErrorLine, apiErrorLineWith, isApiError } from '@/lib/api/errors';
 import { fetchCaptcha, fetchMe, login } from '@/lib/api/auth';
 
 // 登录页（契约：POST /auth/login、GET /captcha、GET /me）。
@@ -267,9 +267,8 @@ function fieldError(e: unknown, key: string): string | undefined {
 
 function errorText(e: unknown): string {
   if (!isApiError(e)) return String(e);
-  const rid = e.requestId ? '（错误编号 ' + e.requestId + '）' : '';
-  if (e.code === 'auth.bad_credentials') return '账号或密码错误。为保护账号，我们不会说明是哪一项不对。' + rid;
-  if (e.code === 'auth.email_unverified') return '邮箱还没激活：登录后在提示里输入邮件里的 6 位验证码即可。' + rid;
-  if (e.code === 'forum.sanctioned') return '账号正在禁言中，暂时不能发帖回复；浏览不受影响。' + rid;
-  return e.message + rid;
+  if (e.code === 'auth.bad_credentials') return apiErrorLineWith(e, '账号或密码错误。为保护账号，我们不会说明是哪一项不对。');
+  if (e.code === 'auth.email_unverified') return apiErrorLineWith(e, '邮箱还没激活：登录后在提示里输入邮件里的 6 位验证码即可。');
+  if (e.code === 'forum.sanctioned') return apiErrorLineWith(e, '账号正在禁言中，暂时不能发帖回复；浏览不受影响。');
+  return apiErrorLine(e);
 }

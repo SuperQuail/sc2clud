@@ -6,7 +6,7 @@ import Input, { Size } from '@jetbrains/ring-ui-built/components/input/input';
 import { AuthShell } from '@/devroom/pages/16-auth/auth-shell';
 import { FormAlert } from '@/devroom/pages/16-auth/form-alert';
 import { appPath, routePath } from '@/lib/url';
-import { isApiError } from '@/lib/api/errors';
+import { apiErrorLine, apiErrorLineWith, isApiError } from '@/lib/api/errors';
 import { resendVerification, verifyEmail } from '@/lib/api/auth';
 
 // 邮箱激活（契约：POST /auth/email/verify { username|email, code }、POST /auth/email/resend）。
@@ -109,8 +109,7 @@ export function VerifyPage() {
 
 function errorText(e: unknown): string {
   if (!isApiError(e)) return String(e);
-  const rid = e.requestId ? '（错误编号 ' + e.requestId + '）' : '';
-  if (e.code === 'auth.token_invalid') return '验证码不正确或已过期。登录后可以让页面再发一次。' + rid;
-  if (e.status === 429) return '发送太频繁了（1 分钟 1 次、每天 5 次）。' + rid;
-  return e.message + rid;
+  if (e.code === 'auth.token_invalid') return apiErrorLineWith(e, '验证码不正确或已过期。登录后可以让页面再发一次。');
+  if (e.status === 429) return apiErrorLineWith(e, '发送太频繁了（1 分钟 1 次、每天 5 次）。');
+  return apiErrorLine(e);
 }

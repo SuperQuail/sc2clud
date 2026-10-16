@@ -7,7 +7,7 @@ import { AuthShell } from '@/devroom/pages/16-auth/auth-shell';
 import { FormAlert } from '@/devroom/pages/16-auth/form-alert';
 import { PasswordField } from '@/ui/password-field';
 import { appPath, routePath } from '@/lib/url';
-import { isApiError } from '@/lib/api/errors';
+import { apiErrorLine, apiErrorLineWith, isApiError } from '@/lib/api/errors';
 import { register } from '@/lib/api/auth';
 import { ProductCaptcha } from './login';
 
@@ -193,11 +193,9 @@ function fieldError(e: unknown, key: string): string | undefined {
 
 function errorText(e: unknown): string {
   if (!isApiError(e)) return String(e);
-  const rid = e.requestId ? '（错误编号 ' + e.requestId + '）' : '';
-  if (e.status === 409 || e.code === 'common.conflict') return '这个用户名或邮箱已经被注册过了。' + rid;
-  if (e.code === 'auth.captcha_wrong' || e.code === 'auth.captcha_required') return '图形验证码不对，请重新输入。' + rid;
-  if (e.status === 429) return '提交太频繁了，等一会儿再试。' + rid;
-  // 400 的字段级文案（服务端说的最准）优先贴出来，例如「昵称最多 20 个字」。
-  const firstField = e.fields ? Object.values(e.fields)[0] : undefined;
-  return (firstField ?? e.message) + rid;
+  if (e.status === 409 || e.code === 'common.conflict') return apiErrorLineWith(e, '这个用户名或邮箱已经被注册过了。');
+  if (e.code === 'auth.captcha_wrong' || e.code === 'auth.captcha_required') return apiErrorLineWith(e, '图形验证码不对，请重新输入。');
+  if (e.status === 429) return apiErrorLineWith(e, '提交太频繁了，等一会儿再试。');
+  // 400 的字段级文案（服务端说的最准）由 apiErrorLine 抬成正文，例如「nickname：最多 20 个字」。
+  return apiErrorLine(e);
 }
