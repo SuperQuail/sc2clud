@@ -199,6 +199,27 @@ func TestEditRejectOrReviewOnlyLeavesAnEvent(t *testing.T) {
 	}
 }
 
+// ⑦ 举报触发的复核判的是**线上那一版**（读者看到的那一份），不是作者还没过审的草稿。
+// 举报人举报的就是线上正文；拿一份读者看不到的草稿去判，一旦 reject 就会把线上帖 hidden ——
+// 判错了对象，还罚了一个没露过面的版本。
+func TestReportReviewJudgesLiveBodyNotDraft(t *testing.T) {
+	h := newHarness(t)
+	h.putKey()
+	id := h.topic("教程", "线上正文", nil, "approved")
+	h.pending(id, "草稿里的违禁内容", "<p>草稿里的违禁内容</p>")
+	h.judge.next = ai.Result{Verdict: ai.Approve, Reason: "没问题", Model: "fake-model"}
+
+	if err := h.svc.ReviewTopic(h.ctx, id, "report"); err != nil {
+		t.Fatalf("ReviewTopic(report): %v", err)
+	}
+	if !strings.Contains(h.judge.text, "线上正文") {
+		t.Fatalf("举报复核该判线上那一版，实际 %q", h.judge.text)
+	}
+	if strings.Contains(h.judge.text, "草稿里的违禁内容") {
+		t.Fatalf("举报复核读到了待审草稿（会按读者看不到的内容判线上帖）：%q", h.judge.text)
+	}
+}
+
 // ⑥ 从没过审的帖（没有待审槽）：编辑走的是 n==0 那一支 —— 正文直接写 posts 并打回 pending
 // （那是作者自己的新帖，别人看不到它）。这时 AI 判通过**没有「改动要替换」**，只有状态那一半：
 // 少了它，作者改完自己的待审帖、AI 也说通过，帖子却永远上不了线。

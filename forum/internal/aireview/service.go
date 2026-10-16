@@ -121,7 +121,10 @@ func (s *Service) ReviewTopic(ctx context.Context, topicID int64, trigger string
 		openReports int
 		images      int
 	)
-	err = s.pool.QueryRow(ctx, sqlSubject, topicID).Scan(&id, &publicID, &title, &body, &visibility, &source, &openReports, &images)
+	// 判哪一版由**调用点**说（sqlSubject 的 $2）：编辑触发判的就是待审槽里那份改动；
+	// create / report 判线上那一版 —— 举报人举报的就是读者看到的内容，不是作者的草稿。
+	pending := trigger == "edit"
+	err = s.pool.QueryRow(ctx, sqlSubject, topicID, pending).Scan(&id, &publicID, &title, &body, &visibility, &source, &openReports, &images)
 	if err != nil {
 		return nil // 主题没了：没什么可审的，不是错误
 	}
@@ -342,7 +345,12 @@ func (s *Service) TestTopic(ctx context.Context, topicID int64) (*TestView, erro
 		openReports int
 		attached    int // 图集里的引用行数（loadImages 才是取字节的那一步）
 	)
-	err = s.pool.QueryRow(ctx, sqlSubject, topicID).Scan(
+	// 试跑要显示「将要被审的那一版」：有待审槽就是它，与审核屏 draft 页签同一个判据。
+	pending, err := s.hasPending(ctx, topicID)
+	if err != nil {
+		return nil, err
+	}
+	err = s.pool.QueryRow(ctx, sqlSubject, topicID, pending).Scan(
 		&id, &publicID, &title, &body, &visibility, &source, &openReports, &attached)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, apperr.ErrNotFound
@@ -391,6 +399,14 @@ func (s *Service) TopicIDByPublicID(ctx context.Context, publicID string) (int64
 		return 0, apperr.ErrNotFound
 	}
 	return id, err
+}
+
+// hasPending 回答「这条帖有没有待审槽」：管理端预览 / 试跑要显示**将要被审的那一版**，
+// 而「那一版」只在这条帖确实有待审改动时才存在（判据与 sqlSubject 的 $2=true 分支同一个）。
+func (s *Service) hasPending(ctx context.Context, topicID int64) (bool, error) {
+	var has bool
+	err := s.pool.QueryRow(ctx, sqlHasPending, topicID).Scan(&has)
+	return has, err
 }
 
 // TriggerReportReview 是举报域的 ReviewTrigger（d7 §1/§7）：举报到阈值 → 复核。

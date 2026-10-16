@@ -34,7 +34,9 @@ const ToolName = "submit_review"
 // 客户端塞不进一份「和真发的不一样」的正文（那正是「同源」要防的事）。
 type PayloadInput struct {
 	TopicID int64
-	Trigger string // create（空 = create）| report
+	// create（空 = create）| report | edit：只有 report 会换提示词与前缀；
+	// **判哪一版不由这个字段决定**，而是「这条帖有没有待审槽」（与审核屏 draft 页签同源）。
+	Trigger string
 }
 
 // Payload 是「下一次真调用会发出去的东西」。
@@ -143,7 +145,13 @@ func (s *Service) Preview(ctx context.Context, in PayloadInput) (*PayloadView, e
 		openReports int
 		images      int
 	)
-	err = s.pool.QueryRow(ctx, sqlSubject, in.TopicID).Scan(
+	// 预览显示「将要被审的那一版」：有待审槽就是它（与审核队列的 draft 页签一致）。
+	// 真判定按 trigger 各判各的（见 ReviewTopic），预览只有这一档 —— 它显示的就是草稿页签里那份。
+	pending, err := s.hasPending(ctx, in.TopicID)
+	if err != nil {
+		return nil, err
+	}
+	err = s.pool.QueryRow(ctx, sqlSubject, in.TopicID, pending).Scan(
 		&id, &publicID, &title, &body, &visibility, &source, &openReports, &images)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, apperr.ErrNotFound // 主题没了：没什么可组装的，404 而不是 500

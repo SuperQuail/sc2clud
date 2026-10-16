@@ -43,12 +43,22 @@ const sqlMarkError = `UPDATE ai_config SET last_error = $1, last_error_at = now(
 // **不含作者**：d7 §11 明确 prompt 里不放昵称/邮箱/IP。
 // 真判定与审核屏的预览（preview.go）读同一条 —— 预览要是另起一条 SELECT，两边就会各自漂。
 //
-// 正文是 COALESCE(rv.pending_md, p.content_md, '')：**待审的改动优先**，与审核队列预览
-// （pgsql/review_queue.go 的 reviewQueueColumns）逐字同源 —— 编辑过的帖改的正是待审槽里
-// 那一份，拿 posts 里的线上旧版去判等于审错对象（还可能把旧文写成 approved）。
+// $2 决定**判哪一版**，由调用点显式给（SQL 不自己挑）：
+//   · true  = 待审槽那一份（rv.pending_md，没有待审改动时回落线上）—— 编辑触发判的就是这份改动；
+//     管理端预览 / 试跑（Preview / TestTopic）也走 true：要显示「将要被审的那一版」，
+//     与审核队列 draft 页签（pgsql/review_queue.go 的 reviewQueueColumns）同源。
+//   · false = 线上那一份（p.content_md）—— create 与 report 判的都是读者看到的内容：
+//     举报人举报的就是这一版，拿一份没人看得见的草稿去判，reject 会把线上帖 hidden 掉。
+//
+// 这条布尔是**调用点各给各的**，不是「哪种取值才正确」：曾经在这里无条件优先 pending_md
+// （为与审核屏预览同源），副作用是 report 触发的复核也去审草稿 —— 判错了对象，
+// 还罚了一个从没露过面的版本。
 // 一帖一行的 uq_topic_revisions_topic 保证这个 JOIN 不会放大行数。
 const sqlSubject = `
-	SELECT t.id, t.public_id, t.title, COALESCE(rv.pending_md, p.content_md, ''), t.visibility, t.review_source,
+	SELECT t.id, t.public_id, t.title,
+	       CASE WHEN $2 THEN COALESCE(rv.pending_md, p.content_md, '')
+	            ELSE COALESCE(p.content_md, '') END,
+	       t.visibility, t.review_source,
 	       (SELECT count(*) FROM reports r
 	         WHERE r.target_type = 'topic' AND r.target_id = t.id AND r.state = 'open'),
 	       (SELECT count(*) FROM topic_images ti WHERE ti.topic_id = t.id)
@@ -56,6 +66,11 @@ const sqlSubject = `
 	  LEFT JOIN posts p ON p.topic_id = t.id AND p.floor = 1
 	  LEFT JOIN topic_revisions rv ON rv.topic_id = t.id
 	 WHERE t.id = $1`
+
+// sqlHasPending 问的是「这条帖有没有待审槽」：管理端预览 / 试跑要显示**将要被审的那一版**，
+// 而「那一版」只在这条帖确实有待审改动时才存在（判据与 sqlSubject 的 $2=true 分支同一个）。
+const sqlHasPending = `
+	SELECT EXISTS (SELECT 1 FROM topic_revisions WHERE topic_id = $1 AND pending_md IS NOT NULL)`
 
 // sqlTopicIDByPublicID 是对外 id → 内部 id 的换算：管理端手里只有 uuid（审核队列 DTO 的 id 就是它），
 // 而判定链路（sqlSubject / topic_images）用自增 bigint 寻址。
