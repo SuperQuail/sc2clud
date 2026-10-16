@@ -56,6 +56,8 @@ export type DataTableProps<T> = {
   density?: 'normal' | 'compact';
   /** 整行提示（例如「AI 转人工」这一行要一眼看出来）；返回 undefined 表示不加 */
   rowClassName?: (row: T) => string | undefined;
+  /** 行级 data-testid：给「这一行上的按钮」定位用（列里的按钮 testid 由列的 render 自己带）。 */
+  rowTestId?: (row: T) => string;
 };
 
 export function DataTable<T>({
@@ -76,6 +78,7 @@ export function DataTable<T>({
   minWidth = 720,
   density = 'normal',
   rowClassName,
+  rowTestId,
 }: DataTableProps<T>) {
   const sorted = useMemo(() => {
     if (!sort) return rows;
@@ -180,6 +183,7 @@ export function DataTable<T>({
               <div
                 key={key}
                 role='row'
+                data-testid={rowTestId?.(row)}
                 onClick={onRowClick ? () => onRowClick(row) : undefined}
                 className={cn(
                   'grid items-center gap-2 border-b border-border px-2 last:border-0',
