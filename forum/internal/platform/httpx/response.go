@@ -8,9 +8,11 @@ import (
 	"log/slog"
 	"net"
 	"net/http"
+	"strings"
 	"syscall"
 
 	"github.com/gin-gonic/gin"
+	"github.com/jackc/pgx/v5/pgconn"
 
 	"forum/internal/platform/apperr"
 )
@@ -63,7 +65,9 @@ func NoContent(c *gin.Context) {
 //  1. *apperr.Error        → 用它（带 fields 时一起写）
 //  2. context.Canceled     → 499，只记 Debug（客户端断开不是服务端故障）
 //  3. 参数超限 / 超时      → 对应码（413 / 408）
-//  4. 其它                 → 500 common.internal，细节只进日志
+//  4. 连不上数据库         → 500 common.internal +「数据库连接不可用」
+//  5. 其它                 → 500 common.internal：认识的 SQLSTATE 说清是哪一类，
+//     其余用 ErrInternal 的笼统句；细节只进日志
 func Fail(c *gin.Context, err error) {
 	if err == nil {
 		return
@@ -107,6 +111,12 @@ func Fail(c *gin.Context, err error) {
 		}})
 		return
 	}
+	// 连不上数据库：底层是 *net.OpError，必须在下面按「客户端提前断开」吞成 200 空响应之前认出来
+	if dbUnavailable(err) {
+		log.Error("db unavailable", "err", err.Error())
+		Fail(c, apperr.ErrInternal.WithMsg("数据库连接不可用，请稍后重试"))
+		return
+	}
 	// 客户端在写响应前就断了：不是服务端故障，也不该记 Error
 	if errors.Is(err, syscall.EPIPE) || errors.Is(err, syscall.ECONNRESET) || isClosedConn(err) {
 		log.Debug("http conn closed", "err", err.Error())
@@ -115,8 +125,43 @@ func Fail(c *gin.Context, err error) {
 	}
 
 	log.Error("internal error", "err", err.Error())
-	// 对外只说这一句：内部信息不出响应体
-	Fail(c, apperr.ErrInternal)
+	// 对外只说归类后的那句话：内部信息（表名/约束名/SQL）不出响应体
+	Fail(c, internalError(err))
+}
+
+// pgReasons 是 SQLSTATE → 中文原因。D70：线上保存来源撞 ck_topic_sources_size（23514）时，
+// 用户只看到「（错误编号 …）」、真实原因只在日志里 —— 只给编号等于没给原因。
+var pgReasons = map[string]string{
+	"23505": "已有相同记录（唯一约束冲突）",
+	"23503": "关联的数据不存在",
+	"23514": "数据不满足字段约束",
+	"23502": "必填字段为空",
+	"22P02": "参数格式不正确",
+	"40001": "并发冲突，请重试",
+	"40P01": "并发冲突，请重试",
+	"57014": "查询超时",
+}
+
+// internalError 把未识别的错误翻成对外那句话：认识的说清是哪一类，其余交给 ErrInternal 的笼统句。
+// code / status 一律照旧（契约不动）。
+func internalError(err error) *apperr.Error {
+	var pg *pgconn.PgError
+	if errors.As(err, &pg) {
+		if reason, ok := pgReasons[pg.Code]; ok {
+			return apperr.ErrInternal.WithMsg(reason)
+		}
+	}
+	return apperr.ErrInternal
+}
+
+// dbUnavailable 认「连不上数据库」：pgx 拨号失败给 *pgconn.ConnectError，服务端说连接异常时给 08 类。
+func dbUnavailable(err error) bool {
+	var ce *pgconn.ConnectError
+	if errors.As(err, &ce) {
+		return true
+	}
+	var pg *pgconn.PgError
+	return errors.As(err, &pg) && strings.HasPrefix(pg.Code, "08")
 }
 
 func isClosedConn(err error) bool {
