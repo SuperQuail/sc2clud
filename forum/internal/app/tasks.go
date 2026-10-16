@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strconv"
 	"time"
 
 	"forum/internal/media"
@@ -105,7 +106,8 @@ func (m *Modules) indexTopic(ctx context.Context, payload []byte) error {
 	})
 }
 
-// reviewTopic 处理 ai:review（d7 §6）：payload {"topic_id": <bigint>, "trigger": "create"|"report"}。
+// reviewTopic 处理 ai:review（d7 §6）：payload {"topic_id": <bigint>, "trigger": "create"|"report"|"edit"}。
+// edit 来自**编辑正文**：UpdateTopic 把改动存进待审槽后入队一条（forum/topics.go 的 UpdateTopic）。
 //
 // 任务的返回值就是「要不要重试」：网络 / 5xx / 429 这类 return err 交给队列退避（max_retry=2 之后进 dead，
 // 主题留在 pending 交人工）；解析失败与「拿不准」都是成功返回 —— 重试也是同样的结果。
@@ -117,7 +119,29 @@ func (m *Modules) reviewTopic(ctx context.Context, payload []byte) error {
 	if err := unmarshalPayload(payload, &p); err != nil || p.TopicID <= 0 {
 		return queue.ErrSkipRetry // payload 是我们自己写的：解不出就是代码 bug
 	}
-	return m.AIReview.ReviewTopic(ctx, p.TopicID, p.Trigger)
+	return reviewThenIndex(ctx, m.AIReview.ReviewTopic, m.in.Queue.Enqueue, p.TopicID, p.Trigger)
+}
+
+// reviewThenIndex 跑一次 AI 判定；判定成功后**补一条 search:index**。
+//
+// 为什么非补不可：indexTopic（上面）对「未过审」的主题是把索引行**删掉**，而 search:index
+// 只由发帖 / 改帖 / 删帖入队。人工放行在 forum/review_queue.go（放行那一刻自己补了一条），
+// 而 AI 判定跑在 pgx.Tx 里、够不到 ent 事务（跨包跨驱动），它补不了 —— 只能由这里补，
+// 这是 AI 放行链路上唯一的事务外落点。少了这一步，AI 放行的帖（create 放行、edit 放行）
+// 在搜索里**永远**不存在，直到下一次编辑 / 删除把它重新入队（create 那条是 D63 把 AI 审核
+// 默认打开之后就存在的既有缺口）。
+//
+// 判定没成功（err != nil）就不补：那条任务会退避重试，重建留给重试成功的那一次。
+// 队列对同 key 会去重（人工那条路 / 重复判定多排一次也只是幂等重建），而入队失败原样返回 ——
+// 任务重试时判定与补索引一起再来一次。
+func reviewThenIndex(ctx context.Context, review func(context.Context, int64, string) error, enqueue func(context.Context, queue.Task) error, topicID int64, trigger string) error {
+	if err := review(ctx, topicID, trigger); err != nil {
+		return err
+	}
+	return enqueue(ctx, queue.Task{
+		Type: queue.TypeSearchIndex, Payload: map[string]int64{"id": topicID},
+		UniqueKey: "topic:" + strconv.FormatInt(topicID, 10),
+	})
 }
 
 // cleanup 处理 queue:cleanup（cron 每小时入队一次，启动时先跑一轮）。
