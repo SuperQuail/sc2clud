@@ -2,11 +2,12 @@ import { useEffect, useMemo, useState } from 'react';
 import Button from '@jetbrains/ring-ui-built/components/button/button';
 import { Tab, Tabs } from '@jetbrains/ring-ui-built/components/tabs/tabs';
 import { SearchX } from 'lucide-react';
-import { cn } from '@/lib/utils';
-import { IssueCard } from '../12-topic/_task/issue-card';
-import { ISSUE_STATUS_LABEL, type IssueStatus, type IssueSummary } from '../12-topic/_task/types';
+import { ISSUE_STATUS_LABEL, type IssueStatus } from '../12-topic/_task/types';
 import { COMMENTS, ISSUES, ME, MENTION_CANDIDATES } from './data';
 import { IssueDetail } from './issue-detail';
+import { IssueReportButton } from './report-entry';
+// 行（含行上的举报入口）与产品页**同一件**：routes/_parts/issue-row.tsx（房间给它 demo 档，不发请求）
+import { IssueRow } from '@/routes/_parts/issue-row';
 import { IssueFilterBar, SORT_LABEL, type Scope, type SortKey } from './issue-filter-bar';
 import { NewIssuePanel } from './new-issue-panel';
 import { matchesQuery, parseQuery } from './query';
@@ -60,6 +61,8 @@ export default function IssuePage() {
     if (k === 'bug' || k === 'feature' || k === 'difficulty' || k === 'other') setDialogKind(k);
   }, []);
   const [lastCreated, setLastCreated] = useState<string | null>(null);
+  // 举报回执（房间不发请求：report-entry 的 demo 档走同一套步骤，只给本地回执）
+  const [reportReceipt, setReportReceipt] = useState<string | null>(null);
 
   const parsed = useMemo(() => parseQuery(query), [query]);
   const openCount = issues.filter((i) => i.status === 'open').length;
@@ -225,6 +228,15 @@ export default function IssuePage() {
           </p>
         ) : null}
 
+        {reportReceipt ? (
+          <p role='status' className='mt-3 flex items-center gap-2 rounded-lg border border-border bg-muted px-3 py-2 text-[12px] text-foreground'>
+            {reportReceipt}
+            <Button ghost className='ml-auto' onClick={() => setReportReceipt(null)}>
+              知道了
+            </Button>
+          </p>
+        ) : null}
+
         <div className='mt-4 grid items-start gap-4 md:grid-cols-[minmax(340px,384px)_minmax(0,1fr)]'>
           <section className='flex min-w-0 flex-col rounded-lg border border-border bg-card' aria-label='反馈列表'>
             <div className='border-b border-border p-3'>
@@ -255,10 +267,14 @@ export default function IssuePage() {
               <ul className='flex flex-col'>
                 {visible.map((i) => (
                   <li key={String(i.id)}>
-                    <ClickableIssueRow
+                    <IssueRow
+                      issueId={String(i.id)}
+                      number={Number(i.id)}
                       issue={i}
                       selected={String(i.id) === String(selectedId)}
                       onOpen={() => setSelectedId(i.id)}
+                      demo
+                      onReported={(label) => setReportReceipt('（房间演示：这里不发请求）已举报' + label + '。')}
                     />
                   </li>
                 ))}
@@ -275,6 +291,14 @@ export default function IssuePage() {
                 candidates={MENTION_CANDIDATES}
                 onSetStatus={setIssueStatus}
                 onComment={addComment}
+                report={
+                  <IssueReportButton
+                    testId='issue-detail-report'
+                    targetLabel={'反馈 #' + selected.id + '「' + selected.title + '」'}
+                    onSubmit={() => Promise.resolve()}
+                    onDone={(label) => setReportReceipt('（房间演示：这里不发请求）已举报' + label + '。')}
+                  />
+                }
                 onClose={() => setSelectedId(null)}
               />
             ) : (
@@ -297,30 +321,4 @@ export default function IssuePage() {
   );
 }
 
-/**
- * 列表行的**点击容器**：W1 的 IssueCard 是纯展示件（它自己写了这一句：点击行为由列表容器决定），
- * 所以这里只负责「能点 + 能只用键盘进详情」，行本身仍然是那一份共享件。
- */
-function ClickableIssueRow({ issue, selected, onOpen }: { issue: IssueSummary; selected: boolean; onOpen: () => void }) {
-  return (
-    <div
-      role='button'
-      tabIndex={0}
-      aria-current={selected ? 'true' : undefined}
-      aria-label={'打开反馈 #' + issue.id + ' ' + issue.title}
-      onClick={onOpen}
-      onKeyDown={(e) => {
-        if (e.key === 'Enter' || e.key === ' ') {
-          e.preventDefault();
-          onOpen();
-        }
-      }}
-      className={cn(
-        'cursor-pointer outline-none transition-colors hover:bg-muted/50 focus-visible:ring-[3px] focus-visible:ring-ring/50',
-        selected && 'bg-muted/60',
-      )}
-    >
-      <IssueCard issue={issue} />
-    </div>
-  );
-}
+

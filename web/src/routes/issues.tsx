@@ -19,15 +19,14 @@ import { appPath, routePath } from '@/lib/url';
 import { qk } from '@/lib/query/keys';
 import { useSession } from '@/lib/perms';
 import { editorJsonToMarkdown } from '@/ui/rich/editor-json-to-markdown';
-import { cn } from '@/lib/utils';
-import { IssueCard } from '@/devroom/pages/12-topic/_task/issue-card';
-import { ISSUE_STATUS_LABEL, type IssueKind, type IssueStatus, type IssueSummary } from '@/devroom/pages/12-topic/_task/types';
+import { ISSUE_STATUS_LABEL, type IssueKind, type IssueStatus } from '@/devroom/pages/12-topic/_task/types';
 import { IssueDetail } from '@/devroom/pages/13-issue/issue-detail';
 import { IssueFilterBar, type Scope, type SortKey } from '@/devroom/pages/13-issue/issue-filter-bar';
 import { NewIssuePanel, type IssueEditorProps } from '@/devroom/pages/13-issue/new-issue-panel';
 import { matchesQuery, parseQuery } from '@/devroom/pages/13-issue/query';
 import { IssueKindButton, KINDS, TopicTaskTabs } from '@/devroom/pages/13-issue/shared';
 import { toIssueComment, toIssueDesignDetail, toIssueSummary, toMentionCandidates } from './_parts/issues-mappers';
+import { issueDetailReport, IssueRow } from './_parts/issue-row';
 import { Empty, ErrorState, Loading } from './_parts/state';
 
 // 问题反馈页：DevRoom 13-issue 的**同一个版面**，数据换成真端点（完全重构/进行中/设计对齐.md 第 2 节「问题反馈」一行）。
@@ -91,6 +90,9 @@ export function IssuesPage({
   const [pickedLabels, setPickedLabels] = useState<string[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [receipt, setReceipt] = useState<string | null>(null);
+  // 举报回执**与 receipt 分开一份**：正在写反馈或刚改完状态时，举报成功的回执行不该被下一次
+  // 动作的失败覆盖（两份都是「刚发生的事」，合成一份就会互相盖）。
+  const [reportReceipt, setReportReceipt] = useState<string | null>(null);
   // @ 提及候选（拍板 08 §第三轮 4）：与帖子页同一条端点（GET /search?type=users），
   // 同一个规矩 —— **敲 @ 才去取**（后端对空词回 400，而且每次进页面都发是白花钱）。
   // 反馈评论的编辑器就是 @/ui/comment 的 ReplyBox（MarkdownEditor），所以候选从这里喂进去。
@@ -340,6 +342,15 @@ export function IssuesPage({
           </p>
         ) : null}
 
+        {reportReceipt ? (
+          <p role='status' className='mt-3 flex flex-wrap items-center gap-2 rounded-lg border border-border bg-muted px-3 py-2 text-[12px] text-foreground'>
+            {reportReceipt}
+            <Button ghost className='ml-auto' onClick={() => setReportReceipt(null)}>
+              知道了
+            </Button>
+          </p>
+        ) : null}
+
         {failed ? (
           <div className='mt-3'>
             <ErrorState what={failed.what} error={failed.m.error} />
@@ -397,7 +408,14 @@ export function IssuesPage({
                 <ul className='flex flex-col'>
                   {visible.map((row) => (
                     <li key={row.id}>
-                      <ClickableIssueRow issue={toIssueSummary(row)} selected={row.id === selectedId} onOpen={() => setSelectedId(row.id)} />
+                      <IssueRow
+                        issueId={row.id}
+                        number={row.number}
+                        issue={toIssueSummary(row)}
+                        selected={row.id === selectedId}
+                        onOpen={() => setSelectedId(row.id)}
+                        onReported={(label) => setReportReceipt('已举报' + label + '，进入「举报处理」队列（待处理）。')}
+                      />
                     </li>
                   ))}
                 </ul>
@@ -438,6 +456,14 @@ export function IssuesPage({
                 onComment={(parentId, body) => comment.mutate({ parentId, body: editorJsonToMarkdown(body.json) })}
                 // on = 已经在同向投过 -> 这一次是取消（CommentList 的约定与帖子页一致）
                 onVote={(id, value) => voteComment.mutate({ id, value })}
+                // 详情的举报入口：对象就是当前这条（targetId 用**详情响应里的 public_id**，
+                // 不是设计件吃的 #编号 —— 上报的是 uuid）
+                report={issueDetailReport({
+                  issueId: detail.data.id,
+                  number: detail.data.number,
+                  title: detail.data.title,
+                  onReported: (label) => setReportReceipt('已举报' + label + '，进入「举报处理」队列（待处理）。'),
+                })}
                 onClose={() => setSelectedId(null)}
               />
             ) : null}
@@ -463,36 +489,6 @@ export function IssuesPage({
           }
         />
       ) : null}
-    </div>
-  );
-}
-
-/**
- * 列表行的**点击容器**：W1 的 IssueCard 是纯展示件（它自己写了这一句：点击行为由列表容器决定），
- * 所以这里只负责「能点 + 能只用键盘进详情」，行本身仍然是那一份共享件。
- * **为什么这里有一份**：13-issue/index.tsx 里的同款是文件内私有函数（没 export），产品页拿不到它；
- * 行为与那份逐条一致（role=button / Enter+Space / aria-current / aria-label）。
- */
-function ClickableIssueRow({ issue, selected, onOpen }: { issue: IssueSummary; selected: boolean; onOpen: () => void }) {
-  return (
-    <div
-      role='button'
-      tabIndex={0}
-      aria-current={selected ? 'true' : undefined}
-      aria-label={'打开反馈 #' + issue.id + ' ' + issue.title}
-      onClick={onOpen}
-      onKeyDown={(e) => {
-        if (e.key === 'Enter' || e.key === ' ') {
-          e.preventDefault();
-          onOpen();
-        }
-      }}
-      className={cn(
-        'cursor-pointer outline-none transition-colors hover:bg-muted/50 focus-visible:ring-[3px] focus-visible:ring-ring/50',
-        selected && 'bg-muted/60',
-      )}
-    >
-      <IssueCard issue={issue} />
     </div>
   );
 }
