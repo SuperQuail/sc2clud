@@ -60,7 +60,6 @@ desktop.ini
 /other-dev.patch*
 /protection.json
 /部署记录.md
-/README.md
 
 # ---------- 工具链与构建产物 ----------
 /.tools/
