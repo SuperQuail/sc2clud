@@ -20,6 +20,8 @@
 | `main` / `master` | 现行 Go + React 实现（两者同一提交） |
 | `old-site-rust-vue` | 旧站（Rust + Vue）完整历史，只读 |
 
+> **本仓库就是现行实现**：`github.com/SuperQuail/sc2clud`（组织仓）。老站的上游历史另存于 `old-site-rust-vue` 分支；只读快照在 `archive/old-site/`。
+
 > **别和上游搞混**：老站的公开原始仓库是 [`SuperQuail/sc2clud`](https://github.com/SuperQuail/sc2clud)（只读参考，自 2026-10-12 起不再更新）；**本仓库 `Tang-Tian-dev/SC2clud`（私有）才是现行 Go + React 实现**，默认分支 `main`。
 
 ## 环境
