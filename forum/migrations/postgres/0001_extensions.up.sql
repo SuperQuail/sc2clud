@@ -1,0 +1,11 @@
+-- 0001_extensions（空迁移）
+--
+-- 拍板 §8.6：删除 pg_trgm。D5 已确认没有任何查询用它（单字搜索走 topic_search 的同一个
+-- bigram/单字 GIN，用户搜索走 users 上的 lower() 前缀索引），而一个扩展要装、要维护、
+-- 要进备份。数据库设计-postgresql.md §5 里「依赖扩展 CREATE EXTENSION IF NOT EXISTS pg_trgm;
+-- （必须是第一个迁移）」那句作废。
+--
+-- 结论：本迁移确认**不需要任何扩展**。保留这份文件是为了占住 0001 这个序号
+-- （d1-platform.md §8.1 已冻结编号），将来若真需要扩展，加在这里。
+--
+-- 因此 up/down 都只有这段注释，没有可执行的 DDL。

@@ -1,0 +1,259 @@
+{
+ "base": "http://127.0.0.1:19999",
+ "pages": [
+  {
+   "name": "首页(游客,首帧白屏测量)",
+   "url": "/dev/?theme=light",
+   "shot": "00-home-guest-firstpaint.png",
+   "xff": "203.0.113.9",
+   "maxWaitMs": 25000
+  },
+  {
+   "name": "首页(游客)",
+   "url": "/dev/?theme=light",
+   "shot": "01-home-guest.png",
+   "xff": "203.0.113.10",
+   "maxWaitMs": 25000
+  },
+  {
+   "name": "首页(登录)",
+   "url": "/dev/?theme=light",
+   "shot": "02-home-auth.png",
+   "xff": "203.0.113.11"
+  },
+  {
+   "name": "分区页-announcement",
+   "url": "/dev/b/announcement?theme=light",
+   "shot": "03-board-announcement.png",
+   "xff": "203.0.113.12"
+  },
+  {
+   "name": "分区页-vanilla-mod",
+   "url": "/dev/b/vanilla-mod?theme=light",
+   "shot": "04-board-vanilla-mod.png",
+   "xff": "203.0.113.13"
+  },
+  {
+   "name": "分区页-custom-campaign",
+   "url": "/dev/b/custom-campaign?theme=light",
+   "shot": "05-board-custom-campaign.png",
+   "xff": "203.0.113.14"
+  },
+  {
+   "name": "分区页-tool-player",
+   "url": "/dev/b/tool-player?theme=light",
+   "shot": "06-board-tool-player.png",
+   "xff": "203.0.113.15"
+  },
+  {
+   "name": "分区页-tool-dev",
+   "url": "/dev/b/tool-dev?theme=light",
+   "shot": "07-board-tool-dev.png",
+   "xff": "203.0.113.16"
+  },
+  {
+   "name": "分区页-emperor",
+   "url": "/dev/b/emperor?theme=light",
+   "shot": "08-board-emperor.png",
+   "xff": "203.0.113.17"
+  },
+  {
+   "name": "分区页-不存在",
+   "url": "/dev/b/no-such-board-xyz?theme=light",
+   "shot": "09-board-missing.png",
+   "xff": "203.0.113.18"
+  },
+  {
+   "name": "帖子页-A",
+   "url": "/dev/t/3db0425a-1053-5011-8484-a58e828fdd4d?theme=light",
+   "shot": "10-topic-a.png",
+   "xff": "203.0.113.19"
+  },
+  {
+   "name": "帖子页-B",
+   "url": "/dev/t/01a13528-14b3-78f1-a766-41d58eec2b84?theme=light",
+   "shot": "11-topic-b.png",
+   "xff": "203.0.113.20"
+  },
+  {
+   "name": "帖子页-不存在",
+   "url": "/dev/t/00000000-0000-0000-0000-000000000000?theme=light",
+   "shot": "12-topic-missing.png",
+   "xff": "203.0.113.21"
+  },
+  {
+   "name": "个人主页-Alenger",
+   "url": "/dev/u/Alenger?theme=light",
+   "shot": "13-profile-alenger.png",
+   "xff": "203.0.113.22"
+  },
+  {
+   "name": "个人主页-自己",
+   "url": "/dev/u/probe-admin?theme=light",
+   "shot": "14-profile-self.png",
+   "xff": "203.0.113.23"
+  },
+  {
+   "name": "个人主页-不存在",
+   "url": "/dev/u/no-such-user-xyz?theme=light",
+   "shot": "15-profile-missing.png",
+   "xff": "203.0.113.24"
+  },
+  {
+   "name": "发帖页",
+   "url": "/dev/new?theme=light",
+   "shot": "16-compose.png",
+   "xff": "203.0.113.25"
+  },
+  {
+   "name": "登录页",
+   "url": "/dev/login?theme=light",
+   "shot": "17-login.png",
+   "xff": "203.0.113.26"
+  },
+  {
+   "name": "注册页",
+   "url": "/dev/register?theme=light",
+   "shot": "18-register.png",
+   "xff": "203.0.113.27"
+  },
+  {
+   "name": "激活页",
+   "url": "/dev/register/verify?theme=light",
+   "shot": "19-verify.png",
+   "xff": "203.0.113.28"
+  },
+  {
+   "name": "申诉页",
+   "url": "/dev/appeal?theme=light",
+   "shot": "20-appeal.png",
+   "xff": "203.0.113.29"
+  },
+  {
+   "name": "搜索页",
+   "url": "/dev/search?theme=light",
+   "shot": "21-search.png",
+   "xff": "203.0.113.30"
+  },
+  {
+   "name": "下载页",
+   "url": "/dev/download?theme=light",
+   "shot": "22-download.png",
+   "xff": "203.0.113.31"
+  },
+  {
+   "name": "404页",
+   "url": "/dev/this-does-not-exist?theme=light",
+   "shot": "23-notfound.png",
+   "xff": "203.0.113.32"
+  },
+  {
+   "name": "设置页",
+   "url": "/dev/settings?theme=light",
+   "shot": "24-settings.png",
+   "xff": "203.0.113.33"
+  },
+  {
+   "name": "通知页",
+   "url": "/dev/notifications?theme=light",
+   "shot": "25-notifications.png",
+   "xff": "203.0.113.34"
+  },
+  {
+   "name": "私信页",
+   "url": "/dev/messages?theme=light",
+   "shot": "26-messages.png",
+   "xff": "203.0.113.35"
+  },
+  {
+   "name": "私信页-指定人",
+   "url": "/dev/messages/Alenger?theme=light",
+   "shot": "27-messages-handle.png",
+   "xff": "203.0.113.36"
+  },
+  {
+   "name": "后台-用户管理",
+   "url": "/dev/admin/users?theme=light",
+   "shot": "28-admin-users.png",
+   "xff": "203.0.113.37"
+  },
+  {
+   "name": "后台-角色与权限",
+   "url": "/dev/admin/roles?theme=light",
+   "shot": "29-admin-roles.png",
+   "xff": "203.0.113.38"
+  },
+  {
+   "name": "后台-分区管理",
+   "url": "/dev/admin/boards?theme=light",
+   "shot": "30-admin-boards.png",
+   "xff": "203.0.113.39"
+  },
+  {
+   "name": "后台-帖子审核",
+   "url": "/dev/admin/review?theme=light",
+   "shot": "31-admin-review.png",
+   "xff": "203.0.113.40"
+  },
+  {
+   "name": "后台-举报处理",
+   "url": "/dev/admin/reports?theme=light",
+   "shot": "32-admin-reports.png",
+   "xff": "203.0.113.41"
+  },
+  {
+   "name": "后台-打赏核验",
+   "url": "/dev/admin/rewards?theme=light",
+   "shot": "33-admin-rewards.png",
+   "xff": "203.0.113.42"
+  },
+  {
+   "name": "后台-头衔目录",
+   "url": "/dev/admin/titles?theme=light",
+   "shot": "34-admin-titles.png",
+   "xff": "203.0.113.43"
+  },
+  {
+   "name": "后台-发信账号",
+   "url": "/dev/admin/mail?theme=light",
+   "shot": "35-admin-mail.png",
+   "xff": "203.0.113.44"
+  },
+  {
+   "name": "后台-AI审核",
+   "url": "/dev/admin/ai?theme=light",
+   "shot": "36-admin-ai.png",
+   "xff": "203.0.113.45"
+  },
+  {
+   "name": "后台-站点设置",
+   "url": "/dev/admin/settings?theme=light",
+   "shot": "37-admin-settings.png",
+   "xff": "203.0.113.46"
+  },
+  {
+   "name": "后台-审计日志",
+   "url": "/dev/admin/audit?theme=light",
+   "shot": "38-admin-audit.png",
+   "xff": "203.0.113.47"
+  },
+  {
+   "name": "后台-自检面板",
+   "url": "/dev/admin/diagnostics?theme=light",
+   "shot": "39-admin-diagnostics.png",
+   "xff": "203.0.113.48"
+  },
+  {
+   "name": "后台-根路径重定向",
+   "url": "/dev/admin?theme=light",
+   "shot": "40-admin-root.png",
+   "xff": "203.0.113.49"
+  },
+  {
+   "name": "设计房间",
+   "url": "http://191.40.41.97/dev/devroom/",
+   "shot": "41-devroom.png",
+   "xff": "203.0.113.50"
+  }
+ ]
+}

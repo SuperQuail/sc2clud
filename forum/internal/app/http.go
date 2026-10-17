@@ -1,0 +1,185 @@
+package app
+
+import (
+	"context"
+	"fmt"
+	"net/http"
+	"strings"
+	"time"
+
+	"github.com/gin-gonic/gin"
+
+	"forum/internal/aireview"
+	"forum/internal/appeal"
+	"forum/internal/auth"
+	"forum/internal/config"
+	"forum/internal/follow"
+	"forum/internal/forum"
+	"forum/internal/mail"
+	"forum/internal/media"
+	"forum/internal/message"
+	"forum/internal/notify"
+	"forum/internal/platform/db"
+	"forum/internal/platform/httpx"
+	"forum/internal/release"
+	"forum/internal/report"
+	"forum/internal/reward"
+	"forum/internal/site"
+	"forum/internal/title"
+	"forum/internal/user"
+)
+
+// HTTPServer 把 gin 引擎与 http.Server 绑在一起，供 run 的关闭流程使用。
+type HTTPServer struct {
+	Engine *gin.Engine
+	Srv    *http.Server
+}
+
+// newHTTPServer 建引擎、挂中间件与路由。顺序写死（d1 §4.3）：
+// requestid → accesslog → recover → （LoadPrincipal：D2）→ ratelimit → Perm → handler。
+func newHTTPServer(cfg *config.Config, in *Infra, m *Modules, bi BuildInfo) (*HTTPServer, error) {
+	if cfg.Env == "prod" {
+		gin.SetMode(gin.ReleaseMode)
+	}
+	// 不用 gin.Default()：它自带 Logger/Recovery，与本设计的中间件重复
+	r := gin.New()
+	// 必须调：不设可信代理时 c.ClientIP() 可以被 X-Forwarded-For 伪造，限流就失效了
+	if err := r.SetTrustedProxies(cfg.HTTP.TrustedProxies); err != nil {
+		return nil, fmt.Errorf("http: set trusted proxies: %w", err)
+	}
+
+	r.Use(httpx.RequestIDMiddleware(in.Log))
+	r.Use(httpx.AccessLog())
+	r.Use(httpx.Recover())
+
+	// 自检面板（C3）要「跑的是哪个制品、什么时候起的」：进程级事实在 app 层才知道，
+	// 所以在这里注入，而不是让 auth 域去 import app 或 main。
+	// Readonly=true：那四条检查里的前两条跑在 run 的启动自检里 —— 红了进程根本起不来。
+	m.Auth.SetDiagnostics(auth.DiagnosticsInfo{
+		Version: bi.Version, StartedAt: bi.StartedAt, Readonly: true,
+	})
+
+	probe := &httpx.Probe{
+		Version:    bi.Version,
+		WebVersion: bi.WebVersion(),
+		Checks: []httpx.Check{
+			{Name: "db", Ready: true, Run: func(ctx context.Context) error {
+				return db.Ping(ctx, in.Pool)
+			}},
+		},
+	}
+	probe.Register(r)
+
+	registerAPIRoutes(r, cfg, m)
+
+	if err := registerStatic(r, cfg, bi); err != nil {
+		return nil, err
+	}
+
+	srv := &http.Server{
+		Addr:              cfg.HTTP.Addr,
+		Handler:           r,
+		ReadHeaderTimeout: cfg.HTTP.ReadHeaderTimeout,
+		ReadTimeout:       cfg.HTTP.ReadTimeout,
+		WriteTimeout:      cfg.HTTP.WriteTimeout,
+		IdleTimeout:       cfg.HTTP.IdleTimeout,
+		MaxHeaderBytes:    cfg.HTTP.MaxHeaderBytes,
+	}
+	return &HTTPServer{Engine: r, Srv: srv}, nil
+}
+
+// registerAPIRoutes 把各域的路由挂到 /api/v1 上。
+//
+// 这里**只写路由**：依赖细节（谁实现谁的 deps.go、各域的中间件工厂）全在 modules.go。
+// auth 先挂：它自己 v1.Use(LoadPrincipal)，其余域的路由都要排在它后面才拿得到身份。
+func registerAPIRoutes(r *gin.Engine, cfg *config.Config, m *Modules) {
+	v1 := r.Group("/api/v1", httpx.BodyLimit(cfg.HTTP.BodyLimit()))
+
+	// 图片读路径不在 /api/v1 下（d5 §1.4）：/img/<hash>。游客可读，可见性在 service 里判。
+	mediaHandler := media.NewHandler(m.Media, auth.FromGin)
+	r.GET("/img/:hash", mediaHandler.ServeImage)
+
+	// 认证与会话（含 /me 与 /admin 的角色权限）。
+	auth.NewHandler(m.Auth).Register(v1)
+	// 公开资料：/users/search 与 /users/:handle。
+	user.NewHandler(m.User).Register(v1)
+	// 全站搜索：一个端点横跨两个域（topics 归 forum、users 归 user），所以组合在 app 层。
+	v1.GET("/search", m.searchEndpoint)
+
+	forum.NewHandler(m.Forum, actorOf).Register(v1, m.requireLogin(), m.perm1)
+	mediaHandler.Register(v1, m.requireLoginFn, m.perm, httpx.BodyLimit)
+	release.NewHandler(m.Release, auth.FromGin).Register(v1, m.requireLoginFn, m.perm)
+	reward.NewHandler(m.Reward, auth.FromGin).Register(v1, m.requireLoginFn, m.perm, m.limit)
+	notify.NewHandler(m.Notify, auth.FromGin).Register(v1, m.requireLogin())
+	message.NewHandler(m.Message, auth.FromGin).Register(v1, m.requireLogin())
+	// 关注（L5）：关注/取关要登录，读关注数与列表游客也能看（following 恒 false）。
+	follow.NewHandler(m.Follow, auth.FromGin).Register(v1, m.requireLogin())
+	title.NewHandler(m.Title, m.titleUsers(), auth.FromGin).Register(v1, m.requireLogin(), m.perm)
+	site.NewHandler(m.Site, auth.FromGin).Register(v1, m.requireLogin, m.perm)
+	mail.NewHandler(m.Mail, auth.FromGin).Register(v1, m.requireLogin, m.perm)
+	report.NewHandler(m.Report, auth.FromGin).Register(v1, m.requireLogin, m.perm, m.limit)
+	// AI 审核的配置与连通测试（d7 §8）：权限点沿用 site.setting，不新造。
+	// 样例图是 multipart、最大 4×2 MiB ≈ 10.7 MiB（D34 契约）——组级 BodyLimit 默认 1 MiB
+	// 是给 JSON 写路径的，且**外层包装首先生效**（内层再包救不回来），所以这两条端点要
+	// 独立成组（2026-10-15 prod 实测 >1 MiB 的样例直接断流 400/413）。LoadPrincipal
+	// 在这里补上——v1 组上的那份只属于它自己的链，别的组要自己带。
+	ai := r.Group("/api/v1", httpx.BodyLimit(16<<20), m.Auth.LoadPrincipal())
+	aireview.NewHandler(m.AIReview, auth.FromGin).Register(ai, m.requireLogin, m.perm)
+	// 申诉与反馈（C4 免登录 + C5 作者申诉）：**每请求一个 handler**，
+	// 因为它的 Store 上带着「当前事务执行器」这一份可变状态（见 app/appeal.go 的说明）。
+	registerAppeal(r, v1, m)
+}
+
+// registerAppeal 把 appeal 域的路由挂上去。三条与别的域不同的地方：
+//
+//  1. 每请求新装配一次（`m.appealService()` 里 new 一个 Store）—— Store 带可变状态，不能共享；
+//  2. 免登录的两条路走**按 IP** 的限流（同层的 m.limit 按登录用户计数，对它们不适用）；
+//  3. 其余三条（/me/appeals、C5、管理端）与别的域完全一样。
+func registerAppeal(r *gin.Engine, v1 *gin.RouterGroup, m *Modules) {
+	// 每请求一份：构造只有几次分配，而共享会让并发的两个请求互相清掉对方的事务。
+	perRequest := func(fn func(*appeal.Handler) gin.HandlerFunc) gin.HandlerFunc {
+		return func(c *gin.Context) { fn(appeal.NewHandler(m.appealService(), auth.FromGin))(c) }
+	}
+	appeal.RegisterRoutes(v1, perRequest, m.requireLogin, m.perm, m.limitIP)
+}
+
+// registerStatic 挂静态托管与 SPA 回退。
+// web.serve_shell=false 时什么都不挂（本地用 Vite 提供 shell）。
+// 生产由 nginx 直出 /assets/，那时把 web.serve_assets 设成 false。
+func registerStatic(r *gin.Engine, cfg *config.Config, bi BuildInfo) error {
+	if !cfg.Web.ServeShell && !cfg.Web.ServeAssets {
+		return nil
+	}
+	shell, err := NewShell(bi.WebDir, cfg.Web.BasePath)
+	if err != nil {
+		return err
+	}
+	handler, err := httpx.Static(bi.WebDir, cfg.Web.ServeAssets, shell.Handler())
+	if err != nil {
+		return err
+	}
+	r.NoRoute(func(c *gin.Context) {
+		// `/api/` 前缀下未命中 = **这个接口不存在**，必须回 404 JSON。
+		//
+		// 2026-10-13 之前这里对所有路径一视同仁地返回 SPA 壳，于是「不存在的接口」返回 **200 + HTML**：
+		// 客户端把「成功但空」与「功能不存在」混为一谈（比如 GET /api/v1/users/x/topics 在路由注册前
+		// 就是 200 + index.html）。这与「200 其实不是我们的站」是同一族问题 —— 报告里出现过三次。
+		if strings.HasPrefix(c.Request.URL.Path, "/api/") {
+			c.JSON(http.StatusNotFound, gin.H{"error": gin.H{
+				"code":    "common.route_not_found",
+				"message": "接口不存在",
+			}})
+			return
+		}
+		handler(c)
+	})
+	return nil
+}
+
+// shutdownTimeout 给优雅关闭一个统一预算（HTTP 停止接收新请求的上限）。
+func shutdownTimeout(cfg *config.Config) time.Duration {
+	if cfg.HTTP.ShutdownTimeout > 0 {
+		return cfg.HTTP.ShutdownTimeout
+	}
+	return 15 * time.Second
+}

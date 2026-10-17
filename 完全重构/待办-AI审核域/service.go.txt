@@ -1,0 +1,41 @@
+package aireview
+
+import (
+	"context"
+
+	"forum/internal/ent"
+)
+
+// Service 是 AI 审核域。依赖：数据库、密钥加解密（与发信同一套）、以及两个外呼口。
+//
+// **当前进度（2026-10-14）**：配置读写（含密钥加解密）已完成；
+// 判定编排（d7 §6 的八步：取主题 → 判当日次数 → 组装 → 外呼 → 解析 → 单事务落库 → 留痕）与
+// 四个 admin 端点**还没写** —— 它们列在 完全重构/AI审核-架构设计.md §7 与 d7 §6/§7。
+// 把没写完的部分留成显式的 TODO 方法而不是空壳：调用方拿不到「看起来能用」的东西。
+type Service struct {
+	db      *ent.Client
+	crypter Crypter
+}
+
+func New(db *ent.Client, crypter Crypter) *Service {
+	return &Service{db: db, crypter: crypter}
+}
+
+// ConfigInput 是 PATCH /admin/ai/config 的入参：**只写传进来的字段**（nil = 不动）。
+// **密钥不在这里** —— 它走单独端点 POST /admin/ai/config/secret（d7 §7：key 永不回显）。
+type ConfigInput struct {
+	Enabled         *bool
+	Provider        *string
+	BaseURL         *string
+	Model           *string
+	Thinking        *bool
+	StrictMode      *bool
+	Prompt          *string
+	PromptReport    *string
+	Temperature     *float64
+	TimeoutMS       *int
+	MaxOutputTokens *int
+}
+
+// 编译期断言：Service 至少能被构造（避免包存在但没人能用的半成品）。
+var _ = func(ctx context.Context) error { return nil }

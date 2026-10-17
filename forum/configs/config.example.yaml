@@ -1,0 +1,65 @@
+# SC2clud 后端配置示例（不含任何真实密钥）。
+# 加载顺序：代码默认值 → 本文件 → 环境变量（FORUM_ 前缀，双下划线分层级）。
+#   FORUM_DB__DSN  → db.dsn      FORUM_MAIL__KEY → mail.key      FORUM_SITE__COOKIE_NAME → site.cookie_name
+# 列表类配置（trusted_proxies / allowed_origins）不能用环境变量覆盖，只能写在这里。
+# 密钥只从环境变量注入，禁止写进本文件、禁止提交进仓库。
+
+env: dev # dev | prod
+
+http:
+  addr: 127.0.0.1:8081
+  # 生产与 nginx 同机时写 ["127.0.0.1"]；留空 = 不信任任何代理
+  trusted_proxies: []
+  debug: false # 门控 /api/v1/admin/diagnostics
+  cors:
+    enabled: false # 跨站部署才开；开启时 cookie 必须 SameSite=None; Secure（校验会一起检查）
+
+log:
+  level: info # debug | info | warn | error
+  format: json # json | text
+
+db:
+  # dsn 只从 FORUM_DB__DSN 注入；这里写空串在 Validate 时会被拒绝
+  max_conns: 16 # 2 核机器：连接数不是越多越好
+  min_conns: 2
+
+kv:
+  driver: redis # redis | memory（memory 只允许 dev/CI，prod 用它会拒绝启动）
+  addr: 127.0.0.1:6379
+
+queue:
+  workers: 0 # 0 = 按容量档位（small 4 / standard 8）
+  poll_interval: 1s
+  lease: 5m
+
+auth:
+  session_ttl: 720h # 30 天
+  argon2_time: 2
+  argon2_memory: 32768 # KiB；2 并发 × 32MB 是 2GB 机器的峰值
+  argon2_threads: 2
+  argon2_key_len: 32
+  argon2_max_concur: 2 # 并发哈希的信号量容量
+  argon2_wait_timeout: 3s # 等信号量的上限，超时返回 503 auth.hash_busy
+  touch_interval: 10m # 同一会话两次写 last_seen_at 的最小间隔
+  renew_interval: 24h # expires_at 真正的续期间隔
+
+image:
+  root: data/images
+  serve_locally: true # 生产 false：走 nginx 的 X-Accel-Redirect
+
+captcha:
+  mode: off # off | on_failure | always
+
+site:
+  base_url: http://127.0.0.1:8081
+  cookie_name: forum_session # dev/prod 同域部署必须不同，否则两边会话互顶
+  allowed_origins: [] # 留空 = 由 base_url 推导
+
+web:
+  dist_dir: web/dist
+  base_path: / # dev 实例写 /dev/
+  serve_shell: true # 本地用 Vite 提供 shell 时关掉
+  serve_assets: true # 生产由 nginx 直出 /assets/ 时关掉
+
+capacity:
+  profile: auto # auto | small | standard

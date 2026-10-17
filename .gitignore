@@ -1,59 +1,44 @@
 # ============================================================
-# SC2clud —— Git 忽略规则
-# 原则：构建产物、依赖、运行数据、本地配置、敏感文件一律不入库
-# 注意：Cargo.lock **需要**提交（本项目是应用程序而非库）
+# 外层工作区兜底忽略规则（本目录本身**不是** git 仓库）
+# ------------------------------------------------------------
+#   SC2clud/        外层：凭据、运行数据、备份
+#   SC2clud/site/   内层：真正的 git 仓库
+#
+# 外层 .gitignore 的作用是兜底：万一有人在外层误执行 git init，
+# 这份规则保证 secrets/ 与运行数据不会被 git add -A 扫进去。
 # ============================================================
 
-# ---------- Rust ----------
-/target/
-**/target/
-**/*.rs.bk
-*.pdb
-*.profraw
-*.profdata
+# ---------- 内层仓库（独立 .git，外层不得吞并）----------
+/site/
 
-# ---------- 前端 ----------
-node_modules/
-/web/dist/
-**/dist/
-dist-ssr/
-.vite/
-*.tsbuildinfo
-pnpm-debug.log*
-npm-debug.log*
-package-lock.json
-yarn.lock
+# ---------- 凭据 / 私钥（永不入库）----------
+/secrets/
+*.pem
+*.key
+*.ppk
+*.p12
+*.pfx
+id_rsa*
+id_ecdsa*
+id_ed25519*
+known_hosts
+*.kdbx
 
-# ---------- 截图产物（scripts/shot.ps1 的输出）----------
-/shots/
-
-# ---------- 前端岛构建产物（发布时先构建前端，再编译后端）----------
-crates/sc2clud-web/static/islands/
-
-# ---------- 运行数据（同级 data 目录约定）----------
-/data/
-/blobs/
-*.sqlite
-*.sqlite3
-*.sqlite-wal
-*.sqlite-shm
-*.db
-/logs/
-*.log
-
-# ---------- 本地配置与环境变量 ----------
+# ---------- 环境与配置 ----------
 .env
 .env.*
 !.env.example
 *.local
 
-# ---------- 敏感文件兜底（仓库内本就不该出现）----------
-/secrets/
-*.pem
-*.key
-id_rsa*
-id_ed25519*
-known_hosts
+# ---------- 运行数据 / 日志 / 备份 ----------
+/data/
+/logs/
+/backups/
+*.sqlite
+*.sqlite3
+*.sqlite-*
+*.db
+*.log
 
 # ---------- 编辑器 / 系统 ----------
 .idea/
@@ -61,3 +46,58 @@ known_hosts
 *.swp
 Thumbs.db
 desktop.ini
+
+# ============================================================
+# 新项目（2026-10-12 起）：本目录**现在是** git 仓库
+# 旧的 site/ 仍由它自己的 .git 管；下面是新项目需要的规则
+# ============================================================
+
+# ---------- 旧站遗留：生产凭据、明文口令、一次性脚本与补丁 ----------
+# （复盘根因 9/10：这些脚本自带生产 IP 与明文口令，不进新仓库）
+/server_data/
+/*.sh
+/*.ps1
+/other-dev.patch*
+/protection.json
+/部署记录.md
+
+# ---------- 工具链与构建产物 ----------
+/.tools/
+
+# 测试台内嵌 PG 的运行时数据（每个包一份，跑一次测试就出现）
+**/.embedded-postgres-go/
+node_modules/
+dist/
+*.exe
+
+# ---------- 预览截图（产物，不进库）----------
+/shots/
+
+# 子 agent 跑截图/浏览器留下的临时目录
+.tmp-*/
+web/.tmp-*/
+preview-dist/
+
+/undefined/
+
+# 阻止 agent 把 $env:TEMP 当相对路径时误建目录
+/undefined/
+
+# 一次性探针文件（agent 用来定位某个缺陷、用完即删）——
+# 它们能编译但是垃圾，而且会被 go build / go vet / go test 扫到
+/.probe*/
+forum/.probe*/
+**/zz*_test.go
+
+��ȫ�ع�/.migration-scratch/
+
+
+deploy/.legacy-blobs/
+
+
+__pycache__/
+
+
+.tools/ref/
+
+/web/shots/

@@ -1,0 +1,26 @@
+{
+ "base": "http://127.0.0.1:19999",
+ "pages": [
+  {
+   "name": "首页(游客)",
+   "url": "/dev/?theme=light",
+   "shot": "dbg-home-guest.png",
+   "xff": "203.0.113.201",
+   "maxWaitMs": 20000
+  },
+  {
+   "name": "后台根路径",
+   "url": "/dev/admin",
+   "shot": "dbg-admin-root.png",
+   "xff": "203.0.113.202",
+   "maxWaitMs": 20000
+  },
+  {
+   "name": "后台根路径-斜杠",
+   "url": "/dev/admin/",
+   "shot": "dbg-admin-root-slash.png",
+   "xff": "203.0.113.203",
+   "maxWaitMs": 20000
+  }
+ ]
+}

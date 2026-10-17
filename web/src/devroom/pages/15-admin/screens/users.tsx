@@ -1,0 +1,448 @@
+import { useState, type ReactNode } from 'react';
+import Button from '@jetbrains/ring-ui-built/components/button/button';
+import Input from '@jetbrains/ring-ui-built/components/input/input';
+import Select, { Type as SelectType } from '@jetbrains/ring-ui-built/components/select/select';
+import { ControlsHeight } from '@jetbrains/ring-ui-built/components/global/controls-height';
+import { Ban, KeyRound, Search, ShieldCheck, UserCheck } from 'lucide-react';
+import { icon16 } from '@/ui/icons';
+import { UserAvatar } from '@/ui/user/avatar';
+import { Username } from '@/ui/user/username';
+import { RoleBadge } from '@/ui/user/role-badge';
+import { TitleBadge } from '@/ui/user/title-badge';
+import type { AdminUser, AdminUserDetail, Role, Title } from '@/lib/api/admin';
+import { DataTable, type Sort } from '../data-table';
+import { PAGE_SIZE, UsersFooter } from './users-footer';
+import { ConfirmDialog, DangerAction } from '../confirm';
+import { DisabledReason, GateNote, KV, Numbers, Panel, Pill, ScreenHead, Stat, StatRow, Toolbar } from '../bits';
+import { ResetPasswordDialog, SetRoleDialog, TitleEditDialog } from './users-dialogs';
+
+// 屏 a：用户管理（13.2 用户管理 + 13.7 处罚 + 13.6 头衔编辑）。
+// 磁盘配额**不做**：D2 已定案放弃网盘，quota_bytes / used_bytes 不迁（见 admin-map.md）。
+//
+// **prop 驱动**（照 12-topic/topic-view.tsx 的做法）：数据与动作全部由宿主给，屏里不 import mock。
+// 之前这一屏直接 import ../mock —— 于是整个后台是一张示例表，后端改了也没人看得见。
+// 角色目录来自 GET /admin/roles（已实装）、头衔目录 GET /admin/titles（已实装）、
+// 角色 / 封号 / 踢会话 / 头衔编辑四个动作都走 auth 与 title 域**已实装**的管理端点。
+// **GET /admin/users 与 /admin/users/{id} 已落地**（C1）。列表项与详情是**两个形状**：
+// 详情那三张表（sanctions / user_permissions / user_titles）只有 GET /admin/users/{id} 给，
+// 所以右栏在选中一行之后才去取它 —— 不在列表接口上假装那些字段存在（这正是上一版类型的错法）。
+
+export type StatusFilter = 'all' | 'normal' | 'pending_act' | 'banned' | 'unverified';
+
+const STATUS_OPTIONS: { key: StatusFilter; label: string }[] = [
+  { key: 'all', label: '全部状态' },
+  { key: 'normal', label: '正常（已激活）' },
+  { key: 'pending_act', label: '待激活（可读不可写）' },
+  { key: 'banned', label: '已封禁' },
+  { key: 'unverified', label: '邮箱未验证（不能登录）' },
+];
+
+/** 三个筛选一起送后端（?q=&status=&role=）—— 过滤在服务端做，前端不拿全表筛。 */
+export type UsersFilter = { q: string; status: StatusFilter; role: string };
+
+/** 整个筛选结果集的四个数（后端 v2 包络的 counts）。字段名照 auth 的 AdminUsersCountsDTO 抄。 */
+export type UsersCounts = { total: number; banned: number; pending_activation: number; email_unverified: number };
+
+export type UsersScreenProps = {
+  users: AdminUser[];
+  /** 选中那一行的详情（GET /admin/users/{id}）：三张关联表只有它有。没选中或还没到就是 null */
+  detail: AdminUserDetail | null;
+  detailLoading?: boolean;
+  /** 点一行 → 宿主去取详情（右栏的三张表要它） */
+  onSelect: (id: string) => void;
+  /** 整个筛选结果集的计数（v2 包络的 counts）：总数与三根状态轴，**不是本页条数**。
+   *  为什么必须是服务端给的：本页只有 20 行，数本页会同时出现「共 137 人」和「本页已封禁 0」。 */
+  counts: UsersCounts;
+  /** 当前页码（1 起）。页码**只由宿主改**——屏里自己 +1 就会与游标对不上（旧版就是这么坏的） */
+  page: number;
+  /** 游标栈里还有没有下一页：没有就禁用「下一页」 */
+  canNext: boolean;
+  /** 翻页请求（上一页/下一页/跳页都走它；跳页只允许 <= 已经到过的下一页） */
+  onPage: (page: number) => void;
+  /** 每页条数（= 请求里的 limit）。默认 20，与 lib/api/paging.ts 的 PAGE_LIMIT 一致 */
+  size?: number;
+  loading?: boolean;
+  /** 取不到时的错误（宿主把 useQuery 的 error 原样传下来；屏里如实显示，不假装成功） */
+  error?: { message: string; status: number } | null;
+  filter: UsersFilter;
+  onFilterChange: (next: UsersFilter) => void;
+  /** 角色目录（GET /admin/roles）：改角色与筛选都要它 */
+  roles: Role[];
+  /** 头衔目录（GET /admin/titles）：编辑弹层的行从这里来（未归档的那些） */
+  titles: Title[];
+  canBan: boolean;
+  canAssignRole: boolean;
+  canGrantTitle: boolean;
+  /** 封号 / 解封；reason 必填（危险动作走 ConfirmDialog 收集，绝不自己写弹层） */
+  onBan: (ids: string[], action: 'ban' | 'unban', reason: string) => void;
+  /** 手工激活（D29）：站点关掉自动激活后，这是**唯一**的激活入口。
+   *  不走 batch 那条路（单条也走同一个端点，后端逐条返回成败）。 */
+  onActivate: (ids: string[]) => void;
+  /** 踢掉全部会话（封号不带踢，这是独立动作） */
+  onRevokeSessions: (id: string) => void;
+  onSetRole: (id: string, roleId: number) => void;
+  /** 头衔编辑弹层里的每一次勾选（title.grant 同一根权限）：held=true 授予、false 撤销。
+   *  返回 Promise：弹层就地 pending 与就地报错，成功后由弹层失效 qk.userTitles 回填真值。 */
+  onSetTitle: (userId: string, titleId: string, held: boolean) => Promise<void>;
+  /** D56 重置密码（忘记密码的后台通道）。返回 Promise：成功值带一次性临时密码（生成时），
+   *  失败 reject——弹层留住并把错误挂到输入附近（同 D48「失败不关窗」）。 */
+  onResetPassword: (userId: string, password: string) => Promise<{ password?: string; revoked: number }>;
+  /** 动作回执（宿主把请求结果放这里） */
+  receipt?: ReactNode;
+};
+
+export function UsersScreen({
+  users, detail, detailLoading = false, onSelect, counts, page, canNext, onPage,
+  size = PAGE_SIZE,
+  loading = false, error = null, filter, onFilterChange,
+  roles, titles, canBan, canAssignRole, canGrantTitle,
+  onBan, onActivate, onRevokeSessions, onSetRole, onSetTitle, onResetPassword, receipt,
+}: UsersScreenProps) {
+  const [selected, setSelected] = useState<string[]>([]);
+  const [sort, setSort] = useState<Sort>({ key: 'created_at', dir: 'desc' });
+  // 选中态就在列表里（不另存 state）：屏是无状态展示，详情由宿主持有 —— 少一处会与列表错位的状态
+  const activeId = detail?.id ?? null;
+  // activate 与封号走同一个确认弹层：三者的形状一模一样（选人 → 确认 → 一次请求），
+  // 差别只在文案与是否危险 —— 再抄一份弹层只会多一处漂移。
+  const [pending, setPending] = useState<{ kind: 'ban' | 'unban' | 'activate'; ids: string[] } | null>(null);
+  const [grantTo, setGrantTo] = useState<string | null>(null);
+  const [roleTo, setRoleTo] = useState<string | null>(null);
+  // D56 重置密码的目标：两个入口（行内 + 右栏危险面板）只吸同一个 state。
+  const [resetTo, setResetTo] = useState<string | null>(null);
+
+  // 详情接口那一份优先（它多三张表）；回退到列表项只在「详情还没到」的空档里用
+  const activeUser: AdminUserDetail | AdminUser | null = detail ?? null;
+  const selectedUsers = users.filter((u) => selected.includes(u.id));
+  const bannedSelected = selectedUsers.filter((u) => u.status !== 'banned');
+  const activeSelected = selectedUsers.filter((u) => u.status === 'banned');
+  const batchIds = (bannedSelected.length > 0 ? bannedSelected : activeSelected).map((u) => u.id);
+
+  // 列定义：数据驱动（列 + 行 + 排序 + 选中都交给 DataTable）。
+  // 宽屏下这里只有 ~600px（左导航 + 右详情栏占掉了其余），所以列数压到 4 列：
+  // 「帖子/回复 + 注册/最后登录」并进用户单元格的第二行，需要细看时看右栏。
+  const columns = [
+    {
+      key: 'user', title: '用户', track: 'minmax(158px,1.5fr)', sortable: true, sortValue: (u: AdminUser) => u.nickname,
+      render: (u: AdminUser) => (
+        <span className='flex min-w-0 items-center gap-2'>
+          {/* 列表项 DTO 里没有 avatar（不给密码/会话/IP，也顺手不回头像）：这一格按昵称首字起色块 */}
+          <UserAvatar name={u.nickname} src={null} size='sm' />
+          <span className='flex min-w-0 flex-col leading-tight'>
+            <Username nickname={u.nickname} handle={u.username} size='sm' strong badge='none' />
+            <span className='truncate text-[10px] text-muted-foreground'>{u.email}</span>
+            <span className='truncate text-[10px] text-muted-foreground'>
+              注册 {fmtDate(u.created_at)} · {u.topic_count} 帖子 / {u.reply_count} 回复
+            </span>
+          </span>
+        </span>
+      ),
+    },
+    {
+      // 没有 sortable：列表项的 role 只有 key/name/badge_color 三列（AdminUserRoleRef），
+      // 没有 priority 可排 —— 上一版拿 RoleItem.priority 排，那字段在这一行根本不存在。
+      key: 'role', title: '角色', track: 'minmax(88px,0.8fr)',
+      render: (u: AdminUser) => (
+        <span className='flex min-w-0 flex-col gap-0.5 leading-tight'>
+          <RoleBadge role={{ key: u.role.key, name: u.role.name, color: u.role.badge_color }} />
+        </span>
+      ),
+    },
+    {
+      key: 'status', title: '状态（三根轴）', track: 'minmax(126px,1.05fr)',
+      render: (u: AdminUser) => (
+        <span className='flex flex-wrap items-center gap-1'>
+          <Pill tone={u.status === 'banned' ? 'danger' : 'ok'}>{u.status === 'banned' ? '已封禁' : u.status === 'deleted' ? '已注销' : '正常'}</Pill>
+          <Pill tone={u.email_verified_at ? 'neutral' : 'warn'}>{u.email_verified_at ? '邮箱已验证' : '邮箱未验证'}</Pill>
+          <Pill tone={u.activated_at ? 'neutral' : 'warn'}>{u.activated_at ? '已激活' : '待激活'}</Pill>
+        </span>
+      ),
+    },
+    {
+      key: 'actions', title: '就地操作', track: 'minmax(186px,1.3fr)',
+      render: (u: AdminUser) => {
+        const isSuper = u.role.key === 'superadmin';
+        const banWhy = !canBan ? '本账号没有 user.ban'
+          : isSuper ? '超级管理员不可封禁（最后一个 superadmin 不可移除，service 层守卫）'
+            : undefined;
+        return (
+          <span className='flex flex-wrap items-center gap-1.5' onClick={(e) => e.stopPropagation()}>
+            {u.status === 'banned' ? (
+              <DangerAction why={banWhy} disabled={Boolean(banWhy)} onClick={() => setPending({ kind: 'unban', ids: [u.id] })}>解封</DangerAction>
+            ) : (
+              <DangerAction why={banWhy} disabled={Boolean(banWhy)} onClick={() => setPending({ kind: 'ban', ids: [u.id] })}>停用</DangerAction>
+            )}
+            {canGrantTitle ? <Button onClick={() => setGrantTo(u.id)}>头衔编辑</Button> : null}
+            {canAssignRole ? <Button onClick={() => setRoleTo(u.id)}>改角色</Button> : null}
+            {canBan ? <Button onClick={() => setResetTo(u.id)}>重置密码</Button> : null}
+            <Button onClick={() => onSelect(u.id)}>详情</Button>
+          </span>
+        );
+      },
+    },
+  ];
+
+  return (
+    <div className='flex flex-col gap-3'>
+      <ScreenHead
+        title='用户管理'
+        note='搜索登录名 / 昵称 / 邮箱，行内激活与停用、头衔编辑、批量选择；磁盘配额随网盘放弃，不做。'
+        actions={<Button inline={false} height={ControlsHeight.S} icon={icon16(Search)} onClick={() => onFilterChange({ ...filter, q: '' })}>重置筛选</Button>}
+      />
+
+      {/* 四格都是**整个筛选结果集**的数（后端 v2 的 counts）：换成筛选条件时它们跟着变。
+          本页的分布不在这里数 —— 那会与「共 N 人」并排出现两个口径的数。 */}
+      <StatRow>
+        <Stat
+          label='总人数'
+          value={counts.total}
+          tone={counts.total > 0 ? 'info' : 'neutral'}
+          hint='当前筛选条件下的全部用户（不是本页条数）'
+          data-testid='users-stat-total'
+        />
+        <Stat label='已封禁' value={counts.banned} tone={counts.banned > 0 ? 'danger' : 'neutral'} hint='status = banned，全量口径' data-testid='users-stat-banned' />
+        <Stat label='待激活' value={counts.pending_activation} hint='activated_at 为空（可读不可写），全量口径' data-testid='users-stat-pending' />
+        <Stat label='邮箱未验证' value={counts.email_unverified} hint='email_verified_at 为空（不能登录），全量口径' data-testid='users-stat-unverified' />
+      </StatRow>
+
+      {!canAssignRole ? (
+        <GateNote perm='role.assign'>「改角色」与「批量改角色」按钮不渲染（role.edit 与 role.assign 是两个独立权限点，单持其一都不足以提权）。</GateNote>
+      ) : null}
+
+      <Toolbar>
+        <Input
+          label='搜索登录名 / 昵称 / 邮箱'
+          icon={icon16(Search)}
+          value={filter.q}
+          onChange={(e) => onFilterChange({ ...filter, q: e.target.value })}
+          placeholder='例如 demo-admin / 示范管理员 / @example.com'
+        />
+        <Select
+          type={SelectType.INPUT}
+          label='状态'
+          data={STATUS_OPTIONS}
+          selected={STATUS_OPTIONS.find((o) => o.key === filter.status) ?? null}
+          onSelect={(item) => { if (item) onFilterChange({ ...filter, status: item.key as StatusFilter }); }}
+        />
+        <Select
+          type={SelectType.INPUT}
+          label='基线角色'
+          data={[{ key: 'all', label: '全部角色' }, ...roles.map((r) => ({ key: r.key, label: r.name + '（' + r.key + '）' }))]}
+          selected={{ key: filter.role, label: filter.role === 'all' ? '全部角色' : filter.role }}
+          onSelect={(item) => { if (item) onFilterChange({ ...filter, role: String(item.key) }); }}
+        />
+        {canBan ? (
+          <>
+            <DangerAction
+              disabled={batchIds.length === 0}
+              why={batchIds.length === 0 ? '先在列表里勾选要处理的用户' : undefined}
+              onClick={() => setPending({ kind: bannedSelected.length > 0 ? 'ban' : 'unban', ids: batchIds })}
+            >
+              批量{bannedSelected.length > 0 ? '停用' : '解封'}
+            </DangerAction>
+            <span className='text-[11px] text-muted-foreground'>{batchIds.length} 行可批量处理</span>
+          </>
+        ) : null}
+      </Toolbar>
+
+      {receipt}
+
+      <div className='grid items-start gap-3 xl:grid-cols-[minmax(0,1fr)_252px]'>
+        <div className='flex min-w-0 flex-col gap-2'>
+          {error ? (
+            <div role='alert' className='rounded-md border border-destructive/40 bg-destructive/8 px-3 py-2 text-[12px] text-foreground'>
+              用户列表没能加载（HTTP {error.status}）：{error.message}
+            </div>
+          ) : null}
+          <DataTable
+            columns={columns}
+            rows={users}
+            rowKey={(u) => u.id}
+            rowLabel={(u) => u.nickname}
+            selectable
+            selected={selected}
+            onSelectedChange={setSelected}
+            selectDisabledReason={(u) => (u.role.key === 'superadmin' ? '超级管理员不参与批量操作' : null)}
+            sort={sort}
+            onSortChange={setSort}
+            activeKey={activeId}
+            onRowClick={(u) => onSelect(u.id)}
+            loading={loading}
+            minWidth={604}
+            empty='没有符合条件的用户'
+          />
+          <UsersFooter counts={counts} page={page} canNext={canNext} onPage={onPage} size={size} />
+        </div>
+
+        <div className='flex flex-col gap-2'>
+          <Panel title='用户详情' note='右栏详情：三根状态轴分开显示，不合成一个「状态」'>
+            {activeUser ? (
+              <>
+                <div className='mb-2 flex items-center gap-2'>
+                  <UserAvatar name={activeUser.nickname} src={null} size='lg' />
+                  <span className='flex min-w-0 flex-col leading-tight'>
+                    <Username nickname={activeUser.nickname} handle={activeUser.username} strong badge='none' />
+                    <span className='truncate text-[11px] text-muted-foreground'>{activeUser.email}</span>
+                  </span>
+                </div>
+                <div className='mb-2 flex flex-wrap items-center gap-1'>
+                  <RoleBadge role={{ key: activeUser.role.key, name: activeUser.role.name, color: activeUser.role.badge_color }} />
+                  {detail && detail.user_titles.length > 0 ? <TitleBadge title={detail.user_titles[0]!} /> : null}
+                  {activeUser.trusted ? <Pill tone='ok'>trusted：发帖免审</Pill> : <Pill>发帖进审核队列</Pill>}
+                </div>
+                <KV k='登录名（不可改）' v={activeUser.username} hint='注册后固定' />
+                <KV k='封禁轴 status' v={activeUser.status} />
+                <KV k='邮箱验证轴' v={activeUser.email_verified_at ? fmtDate(activeUser.email_verified_at) : '未验证 → 不能登录'} />
+                <KV k='激活轴 activated_at' v={activeUser.activated_at ? fmtDate(activeUser.activated_at) : '未激活 → 能登录、写操作 403'} />
+                <KV k='注册 / 最后登录' v={fmtDate(activeUser.created_at) + ' / ' + fmtTime(activeUser.last_login_at)} />
+                <Numbers items={[{ label: '帖子', value: activeUser.topic_count }, { label: '回复', value: activeUser.reply_count }]} />
+              </>
+            ) : (
+              <p className='text-[12px] text-muted-foreground'>在左侧列表里点一行查看详情。</p>
+            )}
+          </Panel>
+
+          <Panel title='追加权限（user_permissions）' note='点对点追加：带 reason 与 expires_at，到期自动失效。这两列只有详情接口给（AdminGrantDTO）。'>
+            {detailLoading ? <p className='text-[12px] text-muted-foreground'>正在取详情…</p>
+              : detail && detail.user_permissions.length > 0 ? (
+              <div className='flex flex-col'>
+                {detail.user_permissions.map((g) => (
+                  <KV key={g.key} k={g.name + '（' + g.key + '）'} v={g.expires_at ? fmtDate(g.expires_at) + ' 到期' : '永久'} hint={g.reason} />
+                ))}
+              </div>
+            ) : (
+              <p className='text-[12px] text-muted-foreground'>无追加权限（基线角色已够用：不存在「加一个角色」的第二种语义）。</p>
+            )}
+          </Panel>
+
+          <Panel title='处罚记录' note='含已过期的行——后台要能回答「这个人被处理过几次」，删掉历史就答不了。'>
+            {detailLoading ? <p className='text-[12px] text-muted-foreground'>正在取详情…</p>
+              : detail && detail.sanctions.length > 0 ? (
+              <div className='flex flex-col gap-1.5'>
+                {detail.sanctions.map((s) => (
+                  <div key={String(s.id)} className='rounded-sm border border-border px-2 py-1'>
+                    <div className='flex items-center gap-1.5'>
+                      {/* action 的值域是 post | reply | all（DB 的 sanctions），不是 mock 里的 mute_post */}
+                      <Pill tone='danger'>{s.action === 'post' ? '禁发帖' : s.action === 'reply' ? '禁回复' : '全站禁言'}</Pill>
+                      <span className='text-[12px] text-foreground'>{s.board ? '/' + s.board.slug + ' ' + s.board.name : '全站'}</span>
+                      <span className='text-[11px] text-muted-foreground'>{s.until ? '至 ' + fmtDate(s.until) : '永久'}</span>
+                      <span className='text-[11px] text-muted-foreground'>开单 {fmtDate(s.created_at)}</span>
+                    </div>
+                    <p className='text-[11px] text-muted-foreground'>{s.reason}</p>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <p className='text-[12px] text-muted-foreground'>无处罚记录。</p>
+            )}
+          </Panel>
+
+          {activeUser ? (
+            <Panel title='危险动作'>
+              <div className='flex flex-wrap items-center gap-2'>
+                {!activeUser.activated_at ? (
+                  <Button
+                    primary
+                    inline={false}
+                    height={ControlsHeight.S}
+                    icon={icon16(UserCheck)}
+                    disabled={!canBan}
+                    onClick={() => setPending({ kind: 'activate', ids: [activeUser.id] })}
+                  >
+                    激活账号
+                  </Button>
+                ) : null}
+                <DangerAction
+                  disabled={!canBan || activeUser.status === 'banned'}
+                  why={!canBan ? '本账号没有 user.ban' : activeUser.status === 'banned' ? '该用户已经是封禁状态' : undefined}
+                  onClick={() => setPending({ kind: 'ban', ids: [activeUser.id] })}
+                >
+                  <span className='flex items-center gap-1'><Ban size={13} aria-hidden />停用账号</span>
+                </DangerAction>
+                <Button
+                  inline={false}
+                  height={ControlsHeight.S}
+                  icon={icon16(ShieldCheck)}
+                  disabled={!canBan}
+                  onClick={() => onRevokeSessions(activeUser.id)}
+                >
+                  踢掉全部会话
+                </Button>
+                {/* D56：密码重置放在同一个人身上，与「换掉这张凭证」的安全动作凑一块 */}
+                <Button
+                  inline={false}
+                  height={ControlsHeight.S}
+                  icon={icon16(KeyRound)}
+                  disabled={!canBan}
+                  onClick={() => setResetTo(activeUser.id)}
+                >
+                  重置密码
+                </Button>
+              </div>
+              {!canBan ? <DisabledReason>没有 user.ban：停用、踢会话与重置密码都不可用</DisabledReason> : null}
+            </Panel>
+          ) : null}
+        </div>
+      </div>
+
+      <ConfirmDialog
+        show={pending !== null}
+        label={pending?.kind === 'activate' ? '确认激活？' : pending?.kind === 'unban' ? '确认解封？' : '确认停用（封号）？'}
+        danger={pending?.kind === 'ban'}
+        confirmText={pending?.kind === 'activate' ? '激活账号' : pending?.kind === 'unban' ? '解封' : '停用'}
+        reasonLabel={pending?.kind === 'ban' ? '封号理由（必填，进审计）' : pending?.kind === 'activate' ? '备注（可选，进审计）' : '解封说明（可选，进审计）'}
+        reasonRequired={pending?.kind === 'ban'}
+        disabledReason={!canBan ? '本账号没有 user.ban，按钮不可用' : undefined}
+        body={
+          pending?.kind === 'activate'
+            ? <span>激活只写 <code>activated_at</code>（<b>不改</b> email_verified_at：手工激活不等于邮箱验证）。
+                激活后该用户就能发帖与上传；在他下次发请求前状态不会变（权限缓存 60 秒）。</span>
+            : pending?.kind === 'unban'
+              ? <span>解封后该用户可以重新登录。这是封号轴，与「降权」是两条独立通道。</span>
+              : <span>停用会让 <b>{pending?.ids.length}</b> 个用户立刻 401（status=banned）并写入审计 <code>user.ban</code>。
+                  被封期间已建立的会话要另外点「踢掉全部会话」才会失效。</span>
+        }
+        onClose={() => setPending(null)}
+        onConfirm={(reason) => {
+          if (pending?.kind === 'activate') onActivate(pending.ids);
+          else if (pending) onBan(pending.ids, pending.kind, reason);
+          setPending(null);
+        }}
+      />
+
+      <TitleEditDialog
+        titles={titles}
+        user={users.find((u) => u.id === grantTo) ?? null}
+        onClose={() => setGrantTo(null)}
+        onSet={onSetTitle}
+      />
+      <SetRoleDialog
+        roles={roles}
+        user={users.find((u) => u.id === roleTo) ?? null}
+        onClose={() => setRoleTo(null)}
+        onSet={onSetRole}
+      />
+      {/* D56：key=目标任务 —— 换人重开弹层必然是干净状态（不带出上一个人的残留结果/错误） */}
+      <ResetPasswordDialog
+        key={resetTo ?? 'none'}
+        user={users.find((u) => u.id === resetTo) ?? null}
+        onClose={() => setResetTo(null)}
+        onReset={onResetPassword}
+      />
+    </div>
+  );
+}
+
+// 时间戳的本地展示。**不再从 ../mock/core 引**：那是示例数据层，接了真端点就不该再依赖它。
+function fmtDate(iso: string | null): string {
+  if (!iso) return '—';
+  const d = new Date(iso);
+  const p = (n: number) => String(n).padStart(2, '0');
+  return d.getFullYear() + '-' + p(d.getMonth() + 1) + '-' + p(d.getDate());
+}
+
+function fmtTime(iso: string | null): string {
+  if (!iso) return '—';
+  const d = new Date(iso);
+  const p = (n: number) => String(n).padStart(2, '0');
+  return p(d.getMonth() + 1) + '-' + p(d.getDate()) + ' ' + p(d.getHours()) + ':' + p(d.getMinutes());
+}

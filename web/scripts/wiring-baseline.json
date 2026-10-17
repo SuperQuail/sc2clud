@@ -1,0 +1,66 @@
+{
+  "routes": [
+    {
+      "route": "GET /admin/audit-logs/export",
+      "reason": "假阳性：routes/admin/audit.tsx:64 用 auditExportUrl(BASE) 拼 href 下载 CSV，不经 api()（真源 B 只认 lib/api 的 api()/apiPage()/apiEnvelope()）"
+    },
+    {
+      "route": "POST /admin/launcher/assets",
+      "reason": "之后再做（用户 2026-10-16 拍板）：启动器分发整体**未启用** —— dev/prod 的 releases 与 release_assets 均 0 行，prod 公开读实测 /launcher/latest=404、/launcher/releases 空数组，15-admin 从无此屏。要做时先做管理端一屏（账本 D88）；在这之前它不是「UI 漏做」"
+    },
+    {
+      "route": "DELETE /admin/launcher/assets/:id",
+      "reason": "之后再做（用户 2026-10-16 拍板）：启动器分发整体**未启用** —— dev/prod 的 releases 与 release_assets 均 0 行，prod 公开读实测 /launcher/latest=404、/launcher/releases 空数组，15-admin 从无此屏。要做时先做管理端一屏（账本 D88）；在这之前它不是「UI 漏做」"
+    },
+    {
+      "route": "POST /admin/launcher/releases",
+      "reason": "之后再做（用户 2026-10-16 拍板）：启动器分发整体**未启用** —— dev/prod 的 releases 与 release_assets 均 0 行，prod 公开读实测 /launcher/latest=404、/launcher/releases 空数组，15-admin 从无此屏。要做时先做管理端一屏（账本 D88）；在这之前它不是「UI 漏做」"
+    },
+    {
+      "route": "PATCH /admin/launcher/releases/:id",
+      "reason": "之后再做（用户 2026-10-16 拍板）：启动器分发整体**未启用** —— dev/prod 的 releases 与 release_assets 均 0 行，prod 公开读实测 /launcher/latest=404、/launcher/releases 空数组，15-admin 从无此屏。要做时先做管理端一屏（账本 D88）；在这之前它不是「UI 漏做」"
+    },
+    {
+      "route": "GET /launcher/assets/:id/go",
+      "reason": "假阳性：routes/download.tsx 的按钮 href 走 goHref()（302 转链），不是 fetch"
+    },
+    {
+      "route": "POST /markdown/preview",
+      "reason": "真孤儿：写稿预览在前端本地渲染，服务端预览端点没人调"
+    },
+    {
+      "route": "POST /me/password",
+      "reason": "假阳性：routes/settings.tsx:66 内联调用 api()，调用点不在 lib/api（扫描面外）"
+    },
+    {
+      "route": "GET /notifications/stream",
+      "reason": "假阳性：lib/api/social.ts:190 用 appPath 手工拼 URL 给 EventSource（SSE 不能走 api()）"
+    },
+    {
+      "route": "GET /posts/:id/replies",
+      "reason": "真孤儿：楼中楼只接了 issue-comments/:id/replies，post 的这条没接"
+    },
+    {
+      "route": "GET /titles",
+      "reason": "真孤儿：头衔目录端点没接（前端只用了 users/:handle/titles 与 PUT /me/title）"
+    },
+    {
+      "route": "GET /topics/:id/sources/:sid/go",
+      "reason": "假阳性：读者点的是 DTO 里的 go_path 链接（302 计数），不是 fetch"
+    },
+    {
+      "route": "GET /users/search",
+      "reason": "真孤儿：前端统一走 /search?type=users，这条旧入口没人调"
+    }
+  ],
+  "ghosts": [
+    {
+      "pattern": "healthz",
+      "reason": "假阳性：探针路由注册在 forum/internal/platform/httpx/probe.go，且 lib/api/system.ts:8 用裸 BASE（不带 /api/v1）"
+    },
+    {
+      "pattern": "search",
+      "reason": "假阳性：路由注册在 forum/internal/app/http.go:107（真源 A 只扫 **/handler.go），前端 lib/api/forum.ts:176 走的就是它"
+    }
+  ]
+}

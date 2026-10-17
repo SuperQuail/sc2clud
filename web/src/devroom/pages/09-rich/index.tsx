@@ -1,0 +1,137 @@
+import { useState } from 'react';
+import Button from '@jetbrains/ring-ui-built/components/button/button';
+import { Card, Row } from '@/devroom/kit';
+import { CommentBody } from '@/ui/comment/comment-body';
+import { textLength } from '@/ui/comment/comment-body';
+import { ImageUploader, type UploadedImage } from '@/ui/rich/image-uploader';
+import { MarkdownEditor } from '@/ui/rich/markdown-editor';
+import { countImageNodes } from '@/ui/rich/lexical/image-node';
+
+// DevRoom 09 · 富文本编辑器与图片上传（两个高复用控件）
+// 图片能力全部由属性控制：max（默认 10）、compress（默认开）、allowOriginal（默认关）。
+const CANDIDATES = [
+  { id: '12', nickname: '示范管理员', handle: 'demo-admin', role: { key: 'admin', name: '管理员' } },
+  { id: '37', nickname: '雷神', handle: 'demo-thor', role: { key: 'creator', name: '认证创作者' } },
+  { id: '58', nickname: '陆战队员', handle: 'demo-marine' },
+  { id: '91', nickname: '陆战队员（同名）', handle: 'demo-marine-2', duplicate: true },
+];
+
+export default function RichPage() {
+  const [imgs10, setImgs10] = useState<UploadedImage[]>([]);
+  const [imgs3, setImgs3] = useState<UploadedImage[]>([]);
+  const [avatar, setAvatar] = useState<UploadedImage[]>([]);
+  const [avatarB, setAvatarB] = useState<UploadedImage[]>([]);
+  const [postLength, setPostLength] = useState(0);
+  const [row, setRow] = useState<{ id: string; content_json: string; content_html: string; saved_at: string } | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  /** 模拟后端：存 Lexical 的 EditorState JSON（真源）+ 写入时生成的 HTML（只读展示用） */
+  function save() {
+    setBusy(true);
+    window.setTimeout(() => {
+      setRow({ id: 'p_' + Math.random().toString(36).slice(2, 8), content_json: doc.json, content_html: doc.html, saved_at: new Date().toLocaleTimeString() });
+      setBusy(false);
+    }, 250);
+  }
+  const [doc, setDoc] = useState<{ json: string; html: string }>({ json: '', html: '' });
+  const docImages = doc.json ? countImageNodes(JSON.parse(doc.json)) : 0;
+  const [imgs, setImgs] = useState<UploadedImage[]>([]);
+
+  return (
+    <div className='flex flex-col gap-4'>
+      <Card
+        name='富文本编辑器（帖子正文用）'
+        note='所见即所得（Lexical 内核）。帖子正文上限 20000 字（超出自动截断，计数变红）。存储用它 EditorState JSON（节点自带 type/version，无损往返），写入时同时生成 HTML 供只读展示；工具栏与输入 @ 走同一个候选面板；图片是正文节点。'
+      >
+        <p className='mb-2 text-[12px] leading-relaxed text-muted-foreground'>
+          这一页还有两个控件<strong className='font-medium text-foreground'>没有独立入口</strong>，它们只在这个编辑器内部出现：
+          <strong className='font-medium text-foreground'>MaxLengthPlugin</strong>
+          （字数上限插件——正文超过 20000 字时由它截断，右上角计数随之变红）和
+          <strong className='font-medium text-foreground'>MentionMenu</strong>
+          （提及候选菜单——在正文里打一个 @ 就弹出来，候选来自下面的 candidates 属性）。
+        </p>
+        <MarkdownEditor
+          value={doc.json}
+          candidates={CANDIDATES}
+          onChange={(json, html) => setDoc({ json, html })}
+          images={imgs}
+          onImagesChange={setImgs}
+          maxImages={10}
+          maxLength={20000}
+          onLengthChange={setPostLength}
+          allowOriginal
+        />
+        <Row label='当前内容' hint='正文存 EditorState JSON（后端 content_json），HTML 由前端生成、服务端清洗后存 content_html'>
+          <span className='text-[12px] text-muted-foreground'>
+            正文 {textLength(doc.html)} 字　图片 {docImages} 张　（真源：EditorState JSON；HTML 是派生物）
+          </span>
+        </Row>
+      </Card>
+
+      <Card
+        name='往返测试：存一次，再读回来'
+        note='存：JSON + HTML（模拟后端的 content_json / content_html）。读：直接用存下来的 HTML 渲染回来——与评论区共用同一个 CommentBody。'
+      >
+        <Row label='① 存' hint='把当前的 JSON + HTML 存进模拟的那一行'>
+          <Button primary disabled={textLength(doc.html) === 0 || busy} onClick={save}>
+            {busy ? '保存中…' : '存一次（模拟发布）'}
+          </Button>
+          <span className='text-[11px] text-muted-foreground'>{postLength} / 20000 字 · {docImages} 张图</span>
+        </Row>
+        {row ? (
+          <>
+            <Row label='② 存储里到底存了什么' hint='后端那两列的样子（JSON 太长，这里截断显示）：'>
+              <pre className='max-h-40 w-full overflow-auto rounded-md border border-border bg-muted/40 p-2 text-[12px] whitespace-pre-wrap text-foreground'>
+                {JSON.stringify({ ...row, content_json: row.content_json.slice(0, 160) + (row.content_json.length > 160 ? '…' : '') }, null, 2)}
+              </pre>
+            </Row>
+            <Row label='③ 读回来' hint='读回来的样子——提及是链接、图片是图片'>
+              <div className='w-full max-w-2xl rounded-md border border-border p-3'>
+                <CommentBody body={row.content_html} collapsible collapsedHeight={200} className='prose prose-sm max-w-none text-foreground' />
+              </div>
+            </Row>
+          </>
+        ) : (
+          <Row label='② ③' hint='还没存过'>
+            <span className='text-[12px] text-muted-foreground'>上面写点东西（试试 @ 提及 + 一张图），再点「存一次」。</span>
+          </Row>
+        )}
+      </Card>
+      <Card
+        name='图片上传控件 · 允许原图（max=10）'
+        note='默认自动压缩：长边 1600、WebP 0.82。打开「上传原图」后本次选择跳过压缩，缩略图上会标出「原图/压缩」与实际体积。'
+      >
+        <Row label='上传 / 删除 / 超限提示' hint='超过上限的会提示并忽略'>
+          <ImageUploader images={imgs10} onChange={setImgs10} max={10} allowOriginal compress />
+        </Row>
+      </Card>
+
+      <Card
+        name='图片上传控件 · 禁止原图 + 上限 3'
+        note='allowOriginal=false 时界面上不会出现「上传原图」开关——能力由使用方决定，控件不自己决定。'
+      >
+        <Row label='只能压缩上传'>
+          <ImageUploader images={imgs3} onChange={setImgs3} max={3} allowOriginal={false} compress />
+        </Row>
+      </Card>
+
+      <Card
+        name='图片上传控件 · 头像形态（单图）'
+        note='variant=avatar：强制 1 张、圆形预览、更换/移除。换头像、封面这类单图位复用同一个控件，不再写第二套。'
+      >
+        <Row label='未设置 / 已选 / 移除' hint='限额与压缩和其它形态是同一套规则'>
+          <ImageUploader images={avatar} onChange={setAvatar} variant='avatar' label='上传头像' />
+          <ImageUploader images={avatarB} onChange={setAvatarB} variant='avatar' label='上传封面' />
+        </Row>
+      </Card>
+
+      <Card name='待补' note='按需求文档只列确实要做的。'>
+        <Row label='未做' hint='不做出来不许进业务页面'>
+          <span className='rounded-sm bg-muted px-1.5 py-0.5 text-[11px] text-muted-foreground'>图片拖拽排序</span>
+          <span className='rounded-sm bg-muted px-1.5 py-0.5 text-[11px] text-muted-foreground'>粘贴上传</span>
+          <span className='rounded-sm bg-muted px-1.5 py-0.5 text-[11px] text-muted-foreground'>上传进度与失败重试</span>
+        </Row>
+      </Card>
+    </div>
+  );
+}

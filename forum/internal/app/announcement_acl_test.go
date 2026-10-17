@@ -1,0 +1,254 @@
+package app
+
+import (
+	"context"
+	"testing"
+	"time"
+
+	"forum/internal/auth"
+	authpgsql "forum/internal/auth/pgsql"
+	"forum/internal/authz"
+	"forum/internal/forum"
+	"forum/internal/platform/apperr"
+	"forum/internal/platform/db"
+	"forum/migrations"
+)
+
+// announcement_acl_test.go：公告区「只有管理员能发」这条老站规则（第三轮拍板 §1c）。
+//
+// 老站真源：sections.post_min_role='admin'（公告区发帖）/ 'member'（公告区回复），
+// core/resource.rs 的 PostSection::Announcement.required_permission() == ManageUsers。
+// 新站的落点只能是 board_acls（等级门槛表达不了角色）—— 三条路与取舍写在《数据迁移审计》§6.5。
+//
+// 三件事一起钉，缺一条都证明不了「这条规则真的在库里」：
+//  1. 库里是 ACL 白名单态：acl_enabled=true + 四个内置角色各一行；
+//  2. 普通用户发公告区 → 拒绝（ACL 判定第 6 步白名单制；老站是角色门槛没到，两边都拒）；
+//  3. 管理员 → 成功，且普通用户仍能回复（reply_min_role=member，回复这一档不能一起收紧）。
+func TestAnnouncementBoardOnlyAdminsCanPost(t *testing.T) {
+	if testing.Short() {
+		t.Skip("要跑真迁移 + 真服务，-short 跳过")
+	}
+	ctx := context.Background()
+	cfg := e2eConfig(t)
+	if err := db.Migrate(ctx, cfg.DB.DSN, migrations.FS()); err != nil {
+		t.Fatalf("跑迁移失败: %v", err)
+	}
+	in, err := NewInfra(ctx, cfg, discardLogger())
+	if err != nil {
+		t.Fatalf("NewInfra: %v", err)
+	}
+	defer in.Close()
+	if err := Seed(ctx, cfg); err != nil {
+		t.Fatalf("Seed: %v", err)
+	}
+	m, err := newModules(ctx, cfg, in)
+	if err != nil {
+		t.Fatalf("newModules: %v", err)
+	}
+
+	// ── 1. 库里是 ACL 白名单态 ────────────────────────────────────────
+	var aclEnabled bool
+	if err := in.Pool.QueryRow(ctx,
+		"SELECT acl_enabled FROM boards WHERE slug = 'announcement'").Scan(&aclEnabled); err != nil {
+		t.Fatalf("读公告区的 acl_enabled: %v", err)
+	}
+	if !aclEnabled {
+		t.Fatal("公告区 acl_enabled 不是 true：角色门槛只能靠 board_acls 表达（min_post_level 是等级，不是角色）")
+	}
+	// 逐角色比对：**只有管理员那一档能发**，回复一律放开（老站 reply_min_role='member'）。
+	// 只数行数是不够的 —— 四行全 false 也能凑够 4。
+	wantACL := map[string][2]bool{
+		"user": {false, true}, "creator": {false, true},
+		"admin": {true, true}, "superadmin": {true, true},
+	}
+	rows, err := in.Pool.Query(ctx, `
+		SELECT r.key, a.can_post, a.can_reply
+		  FROM board_acls a
+		  JOIN boards b ON b.id = a.board_id
+		  JOIN roles  r ON r.id = a.role_id
+		 WHERE b.slug = 'announcement'`)
+	if err != nil {
+		t.Fatalf("读公告区的 ACL 行: %v", err)
+	}
+	got := map[string][2]bool{}
+	for rows.Next() {
+		var key string
+		var canPost, canReply bool
+		if err := rows.Scan(&key, &canPost, &canReply); err != nil {
+			t.Fatalf("扫描 ACL 行: %v", err)
+		}
+		got[key] = [2]bool{canPost, canReply}
+	}
+	rows.Close()
+	if err := rows.Err(); err != nil {
+		t.Fatalf("遍历 ACL 行: %v", err)
+	}
+	if len(got) != len(wantACL) {
+		t.Fatalf("公告区应当给四个内置角色各一行（user/creator/admin/superadmin），实际 %d 行: %v", len(got), got)
+	}
+	for key, want := range wantACL {
+		if got[key] != want {
+			t.Errorf("角色 %s 的 (can_post, can_reply) = %v，期望 %v", key, got[key], want)
+		}
+	}
+
+	// ── 2. 普通用户发公告区 → 拒绝 ───────────────────────────────────
+	member := seededActor(t, ctx, in, "demo-thor")
+	if !member.Perms.Has(authz.PermTopicCreate) {
+		t.Fatal("前置不成立：种子普通用户没有 topic.create —— 那样拒绝就无法归因到公告区这条规则")
+	}
+	_, err = m.Forum.CreateTopic(ctx, member, forum.CreateTopicInput{
+		BoardSlug: "announcement", Title: "普通用户发的公告（应当被拒）", ContentMD: "正文",
+	})
+	if err == nil {
+		t.Fatal("普通用户往公告区发帖成功了 —— 「只有管理员能发」在真站上是假的")
+	}
+	if code := appErrCode(t, err); code != "board.acl_denied" {
+		t.Fatalf("期望 board.acl_denied（分区规则，不是等级门槛），实际 %s: %v", code, err)
+	}
+
+	// ── 3. 管理员 → 成功；普通用户仍能回复 ──────────────────────────
+	admin := seededActor(t, ctx, in, "demo-admin")
+	detail, err := m.Forum.CreateTopic(ctx, admin, forum.CreateTopicInput{
+		BoardSlug: "announcement", Title: "管理员发的公告（应当成功）", ContentMD: "正文",
+	})
+	if err != nil {
+		t.Fatalf("管理员往公告区发帖被拒了: %v", err)
+	}
+	if detail.Board.Slug != "announcement" {
+		t.Fatalf("发到别的分区去了: %s", detail.Board.Slug)
+	}
+	if _, err := m.Forum.CreatePost(ctx, member, detail.ID, forum.CreatePostInput{ContentMD: "普通用户回一句"}); err != nil {
+		t.Fatalf("老站公告区的 reply_min_role 是 member，普通用户应当能回复，实际: %v", err)
+	}
+}
+
+// seededActor 把种子用户装成与请求路径同形的 Actor：权限闭包来自 auth/pgsql.LoadActor（唯一实现）。
+func seededActor(t *testing.T, ctx context.Context, in *Infra, handle string) *authz.Actor {
+	t.Helper()
+	var userID, roleID int64
+	if err := in.Pool.QueryRow(ctx,
+		"SELECT id, role_id FROM users WHERE username = $1", handle).Scan(&userID, &roleID); err != nil {
+		t.Fatalf("读种子用户 %s（先跑 seed）: %v", handle, err)
+	}
+	ar, err := authpgsql.LoadActor(ctx, in.DB, roleID, userID, time.Now().UTC())
+	if err != nil {
+		t.Fatalf("装配 %s 的权限: %v", handle, err)
+	}
+	p := &auth.Principal{
+		UserID: userID, PublicID: ar.PublicID, Status: ar.Status,
+		EmailVerified: ar.EmailVerified != nil, Activated: ar.ActivatedAt != nil,
+		RoleID: ar.RoleID, RoleKey: ar.RoleKey, RoleName: ar.RoleName,
+		IsSuper: ar.IsSuper, Perms: authz.NewSet(ar.PermKeys...), BoardIDs: ar.BoardIDs,
+	}
+	return p.Actor()
+}
+
+func appErrCode(t *testing.T, err error) string {
+	t.Helper()
+	ae, ok := err.(*apperr.Error)
+	if !ok {
+		t.Fatalf("期望业务错误（带 code），实际 %T: %v", err, err)
+	}
+	return ae.Code
+}
+
+// TestSeedAnnouncementACLIsIdempotent 钉「可重复执行」：第一遍 changed>0（真的改了东西），
+// 第二遍必须 changed=0 —— 否则每次部署都白写一遍 updated_at。
+// 判据用「改动条数」而不是「值对不对」：值对不代表没重复写。
+func TestSeedAnnouncementACLIsIdempotent(t *testing.T) {
+	if testing.Short() {
+		t.Skip("要跑真迁移，-short 跳过")
+	}
+	ctx := context.Background()
+	cfg := e2eConfig(t)
+	if err := db.Migrate(ctx, cfg.DB.DSN, migrations.FS()); err != nil {
+		t.Fatalf("跑迁移失败: %v", err)
+	}
+	in, err := NewInfra(ctx, cfg, discardLogger())
+	if err != nil {
+		t.Fatalf("NewInfra: %v", err)
+	}
+	defer in.Close()
+	// 摆一个干净的前置：公告区刚建出来、还没开 ACL（= 迁移跑完但 seed 还没跑的样子）。
+	if _, err := in.Pool.Exec(ctx,
+		"INSERT INTO boards (slug, name, description) VALUES ('announcement', '公告', '用例') "+
+			"ON CONFLICT (slug) DO UPDATE SET acl_enabled = false"); err != nil {
+		t.Fatalf("摆前置: %v", err)
+	}
+	first, err := seedAnnouncementACL(ctx, in.Pool)
+	if err != nil {
+		t.Fatalf("第一次: %v", err)
+	}
+	if first == 0 {
+		t.Fatal("第一次应当真的改了东西（否则这条用例证明不了幂等）")
+	}
+	second, err := seedAnnouncementACL(ctx, in.Pool)
+	if err != nil {
+		t.Fatalf("第二次: %v", err)
+	}
+	if second != 0 {
+		t.Fatalf("第二次应当 0 改动，实际 %d —— 每次部署都会白写一遍", second)
+	}
+}
+
+// TestBoardNamesConvergeToSeed 钉「迁移过来的库不能只改新 seed」这一半（第三轮拍板 §1c）：
+// 判据是「先把一行改成旧名，再跑 seed，它得变回来」—— 只断言「新库里的名字对」
+// 对已存在的行一无所知（那正是这条要求要防的事）。
+func TestBoardNamesConvergeToSeed(t *testing.T) {
+	if testing.Short() {
+		t.Skip("要跑真迁移 + 真 Seed，-short 跳过")
+	}
+	ctx := context.Background()
+	cfg := e2eConfig(t)
+	if err := db.Migrate(ctx, cfg.DB.DSN, migrations.FS()); err != nil {
+		t.Fatalf("跑迁移失败: %v", err)
+	}
+	in, err := NewInfra(ctx, cfg, discardLogger())
+	if err != nil {
+		t.Fatalf("NewInfra: %v", err)
+	}
+	if err := Seed(ctx, cfg); err != nil {
+		in.Close()
+		t.Fatalf("Seed: %v", err)
+	}
+	// 先把它改成「迁移前那种旧名」——真实场景就是库里已经躺着旧名。
+	if _, err := in.Pool.Exec(ctx,
+		"UPDATE boards SET name = '工具（玩家）' WHERE slug = 'tool-player'"); err != nil {
+		in.Close()
+		t.Fatalf("改旧名: %v", err)
+	}
+	in.Close() // 关掉再跑第二次 seed，证明「库里已有的行」这条路 —— 复用同一个连接也行，这里只是不让池白占
+	// 再跑一次 seed：已存在的行必须收敛回 seed 的字面量（seedBoards 的 default 那一支）。
+	if err := Seed(ctx, cfg); err != nil {
+		t.Fatalf("第二次 Seed: %v", err)
+	}
+	in2, err := NewInfra(ctx, cfg, discardLogger())
+	if err != nil {
+		t.Fatalf("NewInfra(2): %v", err)
+	}
+	defer in2.Close()
+	// 期望值直接来自 seed 那一份字面量（不在这里抄第二份中文）。
+	for _, b := range seedBoardRows {
+		var got string
+		if err := in2.Pool.QueryRow(ctx, "SELECT name FROM boards WHERE slug = $1", b.slug).Scan(&got); err != nil {
+			t.Fatalf("读分区 %s: %v", b.slug, err)
+		}
+		if got != b.name {
+			t.Errorf("分区 %s 的 name = %q，seed 的字面量是 %q —— 迁移过来的库里还是旧名", b.slug, got, b.name)
+		}
+	}
+	// 老站 sections.label 的逐字值（判据是**库里的 label**，不是 PostSection::label() 那个死代码）。
+	for slug, want := range map[string]string{
+		"tool-player": "工具（玩家用）",
+		"tool-dev":    "工具（开发者用）",
+	} {
+		var got string
+		if err := in2.Pool.QueryRow(ctx, "SELECT name FROM boards WHERE slug = $1", slug).Scan(&got); err != nil {
+			t.Fatalf("读分区 %s: %v", slug, err)
+		}
+		if got != want {
+			t.Errorf("分区 %s 的 name = %q，老站 sections.label 是 %q", slug, got, want)
+		}
+	}
+}

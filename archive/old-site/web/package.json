@@ -1,0 +1,33 @@
+{
+  "name": "sc2clud-web",
+  "private": true,
+  "type": "module",
+  "description": "SC2clud 前端岛：交互密集模块局部挂载 Vue 3（整站仍是服务端渲染）",
+  "scripts": {
+    "build": "vite build",
+    "watch": "vite build --watch",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@radix-ui/react-dialog": "^1.2.0",
+    "@radix-ui/react-select": "^2.3.8",
+    "@radix-ui/react-tabs": "^1.1.22",
+    "@tiptap/extension-image": "^3.31.4",
+    "@tiptap/extension-link": "^3.31.4",
+    "@tiptap/pm": "^3.31.4",
+    "@tiptap/react": "^3.31.4",
+    "@tiptap/starter-kit": "^3.31.4",
+    "marked": "^18.1.0",
+    "react": "^18.0.0",
+    "react-dom": "^18.0.0",
+    "turndown": "^7.2.4"
+  },
+  "devDependencies": {
+    "@types/react": "^18.3.31",
+    "@types/react-dom": "^18.0.0",
+    "@types/turndown": "^5.0.6",
+    "@vitejs/plugin-react": "^4.0.0",
+    "typescript": "^5.7.3",
+    "vite": "^6.0.11"
+  }
+}

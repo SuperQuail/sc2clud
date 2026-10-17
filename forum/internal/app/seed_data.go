@@ -1,0 +1,773 @@
+package app
+
+// seed_data.go 是 forum seed 的**内容**（不是 schema，也不是迁移 —— 数据种子是另一件事）。
+//
+//   - 分区逐字照设计：web/src/devroom/pages/12-topic/mock.ts 的 BOARDS（slug / 名称 / 简介 / 顺序）。
+//     （14-home 那份 BOARDS 是**列表筛选项**，键空间与分区不同，见 完全重构/上线设计.md §2 第 2 条。）
+//   - 人名、昵称、邮箱照 完全重构/DevRoom-假数据规范.md 的统一名单：昵称用星际争霸兵种名、
+//     handle 一律 demo- 前缀、邮箱一律 example.com（RFC 2606 保留域）。**不出现任何真实社区成员**。
+//   - 正文按「星际争霸战役社区」写：战役发布、原版 mod 调整、玩家工具、开发者工具、求助。
+//
+// shortcut: topics / posts 靠 client_token 幂等，**改这里的文案不会更新已存在的行**
+// （token 命中即返回原行）。要让新文案生效：删掉那一行再跑 seed。
+
+import (
+	"context"
+	"errors"
+	"fmt"
+	"strings"
+
+	"github.com/jackc/pgx/v5/pgxpool"
+)
+
+type seedBoard struct{ slug, name, description string }
+
+// 顺序即 boards.sort（升序展示）。
+var seedBoardRows = []seedBoard{
+	{"announcement", "公告", "版本发布、维护窗口与规则变动只在这里发；讨论请到对应分区。"},
+	{"vanilla-mod", "原版战役 mod", "不改剧情、只改体验：平衡、AI、画面与手感。"},
+	{"custom-campaign", "自制战役", "玩家自制战役与地图：发布、试玩反馈、卡关求助都在这里。"},
+	// 这两行的中文名逐字照老站 sections.label（第三轮拍板 §1c）：`tool_player` = 工具（玩家用）、
+	// `tool_dev` = 工具（开发者用）。老站的 PostSection::label() 是死代码，页面上那五个名字来自
+	// sections 表 —— 所以「哪个是原文」的判据是**库里的 label**，不是枚举里的字面量。
+	{"tool-player", "工具（玩家用）", "给玩家用的工具：启动器、存档管理、汉化与画质补丁。"},
+	{"tool-dev", "工具（开发者用）", "给作者用的工具：数据编辑器辅助、脚本库、打包与发布流水线。"},
+}
+
+type seedUser struct {
+	handle   string
+	nickname string
+	roleKey  string // roles.key：user / creator / admin / superadmin（0017 种下的四个内置角色）
+	bio      string
+	exp      int
+	daysAgo  int // 注册于几天前（个人主页的「加入时间」）
+}
+
+// 名单取值来自 完全重构/DevRoom-假数据规范.md（长昵称的都在，用来验证排版）。
+var seedUserRows = []seedUser{
+	{"demo-admin", "示范管理员", "admin",
+		"战役作者，负责关卡设计与剧情。卡住、崩溃这类问题走反馈区，回复区只聊设计。", 24000, 620},
+	{"demo-marine", "陆战队员", "creator",
+		"做战役也做 mod，喜欢把数值调到「能过但不轻松」。", 6400, 410},
+	{"demo-zealot", "狂热者", "creator",
+		"触发器写得多，数据编辑器写得少。工具都放在 GitHub 上。", 4900, 380},
+	{"demo-thor", "雷神", "user",
+		"只玩原版战役 mod，画面补丁收藏爱好者。", 2500, 300},
+	{"demo-queen", "虫后", "user",
+		"自制战役区常驻，喜欢整理索引帖。", 3600, 350},
+	{"demo-mule", "矿骡", "user",
+		"手残，靠存档过日子。", 900, 210},
+	{"demo-drone", "工蜂", "user", "刚学会用数据编辑器，问题比较多。", 100, 40},
+	{"demo-battlecruiser", "大和号", "user",
+		"玩战役十年，最近开始自己改数值。", 1600, 260},
+	{"demo-voidray", "虚空辉光舰", "user",
+		"做汉化与转载，版权一律先问作者。", 2200, 280},
+	{"demo-medivac", "医疗兵", "user", "写小工具，顺手修别人的存档。", 1200, 190},
+	{"demo-sciencevessel", "科学球", "user",
+		"喜欢研究数值与性能，帖子都带实测数据。", 3025, 320},
+}
+
+type seedReply struct {
+	author     string
+	body       string
+	hoursAfter int // 相对主题的回复时间（小时）
+	parent     int // 楼中楼：父回复在 replies 里的下标；-1 = 顶层回复
+}
+
+type seedTopic struct {
+	token    string // client_token：幂等键，同时是这份数据的稳定标识
+	board    string
+	kind     string // discussion | resource | repost
+	author   string
+	title    string
+	body     string
+	hoursAgo int
+	pinned   bool
+	featured bool
+	replies  []seedReply
+}
+
+// 24 篇：够首页翻到第二页（前端每页 20），也够每个分区都有自己的第一屏。
+// 时间从 3 周前铺到几小时前 —— 首页的「最新回复」排序因此看得出先后。
+var seedTopicRows = []seedTopic{
+	{
+		token: "seed-ann-rules", board: "announcement", kind: "discussion", author: "demo-admin",
+		title:    "社区规则与分区说明（2026 版）：发布、转载与求助分别发在哪",
+		hoursAgo: 520, pinned: true,
+		body: `这个站只做一件事：让星际争霸 II 的战役内容（自制战役、原版 mod、工具与素材）能被找到、被讨论。
+
+## 发在哪
+
+- **自制战役**：你做的战役、地图、关卡包。发布贴请写清版本号、关数、是否全语音；
+- **原版战役 mod**：不改剧情、只改体验的调整（平衡、AI、画面、手感）；
+- **工具（玩家用）**：给玩家用的启动器、存档管理、汉化与画质补丁；
+- **工具（开发者用）**：数据编辑器辅助、脚本库、打包与发布流水线；
+- **公告**：只有维护与规则变动发在这里。
+
+## 转载
+
+转载必须先获得作者授权，标题带「转载：」，正文里写清原作者与原始地址。没有授权的搬运会被删除。
+
+## 求助
+
+卡关求助请带三样东西：关卡名、你的版本号、卡住时的截图或录像。只写「打不过」的帖子，别人只能猜。`,
+		replies: []seedReply{
+			{"demo-marine", "补一句：发资源帖请把安装方式写在正文第一段，别让人翻到第三屏才看到解压到哪。", 500, -1},
+			{"demo-voidray", "转载那条我记下了，之前有两次是私信问过作者才发的，授权截图我会附在正文。", 260, -1},
+		},
+	},
+	{
+		token: "seed-ann-account", board: "announcement", kind: "discussion", author: "demo-admin",
+		title:    "站点使用说明：账号、头像与发帖门槛",
+		hoursAgo: 500,
+		body: `站点刚开，先把几件容易踩的事写在这里。
+
+## 账号
+
+注册后需要激活才能发帖；只读不需要登录。搜索、分区页、帖子页对游客全部开放。
+
+## 头像
+
+没设头像时会用一张默认头像；都没有就显示昵称首字。头像有体积上限，超过会被拒绝而不是被裁掉。
+
+## 发帖门槛
+
+普通分区不设等级门槛。个别分区以后可能会设（比如只让发过资源的人发），设了会在发帖框上方写清楚要几级。
+
+## 反馈
+
+站点本身的 bug、崩溃、显示问题走反馈区，不要发在战役贴的回复里 —— 那里作者看不到。`,
+		replies: []seedReply{
+			{"demo-drone", "问一下：激活邮件没收到，能只读多久？", 420, -1},
+			{"demo-admin", "只读一直可以。激活只影响发帖，不影响浏览和搜索。", 410, 0},
+		},
+	},
+	{
+		token: "seed-ann-changelog", board: "announcement", kind: "discussion", author: "demo-admin",
+		title:    "《余烬》系列更新日志汇总（持续更新）",
+		hoursAgo: 26, featured: true,
+		body: `把三章的更新日志汇总成一篇，省得每章都翻一遍。
+
+## 第三章 1.2（最新）
+
+- 第 11 关菌毯推进改为线性 + 上限封顶（详见对应说明帖）；
+- 第 4 关护送目标不再因为离得太远而回头；
+- 全语音补齐第二章遗留的两段过场。
+
+## 第二章 1.7
+
+- 存档兼容：第二章的进度可以带进第三章；
+- 修掉「指挥官等级到 15 后经验条卡住」的显示问题。
+
+## 第一章 2.1
+
+- 重做第一关的开场镜头；
+- 修掉一个在 21:9 分辨率下 UI 出框的问题。`,
+		replies: []seedReply{
+			{"demo-thor", "第三章的语音是重新配的还是沿用之前的？音量比第二章低一点。", 20, -1},
+			{"demo-admin", "重新配的。音量问题下个版本统一抬 2dB，先手动把语音轨调高一点。", 18, 0},
+		},
+	},
+	{
+		token: "seed-camp-ember3", board: "custom-campaign", kind: "resource", author: "demo-admin",
+		title:    "《余烬》第三章完整版发布：4 关战役 + 全语音 + 中英双语",
+		hoursAgo: 168, pinned: true, featured: true,
+		body: `三个月打磨的第三章今天上线。四关战役、9 段过场、全语音，安装包与更新说明都在下面。
+
+## 这一章有什么
+
+- 4 个关卡，平均 25–35 分钟一关，困难难度下更久；
+- 9 段过场，全部有配音，中英双语字幕可切换；
+- 新增一套「阵地推进」机制：据点会随你占领的顺序改变后续路线。
+
+## 安装
+
+解压后把 Maps 目录整个覆盖到星际争霸 II 的安装目录。装过前两章的直接进游戏，存档兼容。
+
+## 已知问题
+
+- 第 4 关在 4K 分辨率下小地图偶尔闪烁，切一次分辨率就好；
+- 极少数机器上第一次进关卡会卡 3–5 秒（在预载语音），不是崩溃。
+
+## 反馈
+
+卡关、崩溃、文本错误都请回在这个帖子里，附关卡名 + 版本号 + 截图。`,
+		replies: []seedReply{
+			{"demo-marine", "通了两遍，第三关的据点顺序真的会改路线，第二遍走的是完全不同的后半段。这个设计值。", 150, -1},
+			{"demo-mule", "第 4 关护送那段我还是过不去，目标走太慢了，敌人从后面追上来就没了。", 120, -1},
+			{"demo-admin", "护送段确认偏难，正在做一个「目标提速」的开关，下个版本给。", 118, 1},
+			{"demo-voidray", "英文版的字幕有一处把「执政官」翻成了 Executor，应该是 Hierarch。我把位置发你私信。", 96, -1},
+			{"demo-queen", "已经加进索引帖了。第三章的推荐难度是困难还是普通？", 60, -1},
+			{"demo-admin", "第一次玩建议普通，困难是给背过流程的人准备的。", 58, 4},
+		},
+	},
+	{
+		token: "seed-camp-ember2-save", board: "custom-campaign", kind: "discussion", author: "demo-admin",
+		title:    "《余烬》第二章存档继承说明：进度、装备与指挥官等级怎么带过去",
+		hoursAgo: 300, featured: true,
+		body: `问的人太多，单独发一篇。
+
+## 会带过去的
+
+- 关卡进度（按「已通关的最高关」算）；
+- 指挥官等级与技能点；
+- 第三章开局给的初始装备箱，按第二章通关时的难度给。
+
+## 不会带过去的
+
+- 关卡内的一次性消耗品；
+- 上一章里捡到的、但没有装上的装备。
+
+## 怎么继承
+
+把第二章的存档目录留着，第一次进第三章时游戏会自己读。**别删存档**：删了就只能从默认配置开新档。
+
+如果读完还是默认配置，先确认两章是同一个安装目录、存档没有被云同步覆盖成旧版本。`,
+		replies: []seedReply{
+			{"demo-battlecruiser", "云同步确实会覆盖。我关掉云同步之后就正常继承了。", 280, -1},
+			{"demo-drone", "请问存档目录具体在哪？我在文档里没找到。", 200, -1},
+			{"demo-admin", "文档里那节写得太靠后了，下个版本挪到开头。目录在「我的文档」下按章节分的三个文件夹。", 198, 1},
+		},
+	},
+	{
+		token: "seed-camp-creep11", board: "custom-campaign", kind: "discussion", author: "demo-marine",
+		title:    "第 11 关「菌毯推进」数值回调说明：线性推进 + 上限封顶",
+		hoursAgo: 96, featured: true,
+		body: `第 11 关的菌毯扩散速度原来跟着游戏速度走，8 分钟之后是几何级增长，正面硬顶基本打不过。
+现在改成线性推进 + 上限封顶：前 6 分钟与旧版一致，之后每 30 秒 +2%，最多 +40%。
+
+## 数值对照
+
+- 0–6 分钟：与旧版完全一致（老存档的节奏不会突然变快）；
+- 6–18 分钟：每 30 秒 +2%，累计到 +40% 封顶；
+- 18 分钟之后：不再增长（旧版此时约为 +260%）。
+
+> 结论：中期不再是一道必须靠读档过的墙，但漏防依然会输 —— 只是输得有解释。
+
+## 怎么装
+
+解压后把 Maps 整个目录覆盖到安装目录即可；装过第二章的直接进游戏，存档兼容。
+
+第 4 关的护送目标不能离你太远，超过两屏它会自己往回走 —— 这是引擎行为，这次没改。`,
+		replies: []seedReply{
+			{"demo-voidray", "18 分钟才封顶是不是太晚了？我把主基地的防空全打光了才顶住第一波。", 90, -1},
+			{"demo-marine", "封顶时间我试过 14 分钟，背板的人会觉得没挑战；18 分钟是取了中间值。要更早可以自己在触发器里改常量。", 88, 0},
+			{"demo-drone", "第一次通这关，说几个真会卡住人的地方：前 6 分钟别急着推，先把右边的高能瓦斯占了，中期非常缺气。", 72, -1},
+			{"demo-mule", "还有一点：工程车至少留两个在家补防空，AI 会绕后打补给站。正面赢着赢着家就没了。", 48, -1},
+			{"demo-sciencevessel", "实测了一下：+40% 封顶之后，只要中间不漏两波，容错大概多出 4 分钟。这个改动是对的。", 30, -1},
+			{"demo-marine", "补充一句：老存档在更新后重新进关卡就能生效，不需要重开战役。", 20, -1},
+		},
+	},
+	{
+		token: "seed-camp-stuck5", board: "custom-campaign", kind: "discussion", author: "demo-mule",
+		title:    "卡关求助：《余烬》第五章「静默轨道」的护送段怎么过？",
+		hoursAgo: 40,
+		body: `第五章护送那段，目标走得慢，后面两波追兵一起来就散架了。
+
+- 版本：第三章 1.2，困难难度；
+- 兵力：两队陆战队员 + 四台坦克，没有空军；
+- 试过把坦克架在路口，但目标不等我，自己往前走了。
+
+有没有低损耗的打法？还是说这个难度本来就得放掉几台坦克？`,
+		replies: []seedReply{
+			{"demo-marine", "关键是别跟目标走一条线。坦克架在目标**前方**的路口，让它自己走进你的火力范围，不是你去追它。", 36, -1},
+			{"demo-zealot", "困难难度下追兵的第二波会从侧翼来，留一队兵在侧路。另外目标掉血到一半会自动停一下，那是给你重整的窗口。", 30, -1},
+			{"demo-mule", "按上面两条重打了一次，过了，只掉了两台坦克。谢谢。", 12, -1},
+		},
+	},
+	{
+		token: "seed-camp-ash06", board: "custom-campaign", kind: "resource", author: "demo-thor",
+		title:    "自制战役《灰烬归来》v0.6 测试版：求试玩与卡关反馈",
+		hoursAgo: 72,
+		body: `自己做的战役，第六个测试版。三关，第二关是重点，想听听节奏上的意见。
+
+## 内容
+
+- 3 关，人类视角，无语音，有中英文本；
+- 难度只有普通和困难两档（简单档还没做）；
+- 自带一个跳过前一关的存档，方便直接测第二关。
+
+## 想听什么
+
+1. 第二关的资源够不够（我怀疑气矿给多了）；
+2. 有没有哪一波来得莫名其妙；
+3. 文本里的错别字。
+
+## 安装
+
+解压到 Maps 目录即可。这是测试版，**不要覆盖你正在玩的正式战役目录**。`,
+		replies: []seedReply{
+			{"demo-queen", "第二关气矿确实多，我到中期就不知道该花在哪了。建议砍掉两个气矿点，或者把高级单位提前放出来。", 60, -1},
+			{"demo-marine", "第一关的引导文字出现得太晚，我是先被打了才看到提示。挪到开场。", 44, -1},
+			{"demo-voidray", "文本里有两处「的地得」用错，我把行号发你。", 30, -1},
+			{"demo-thor", "都记下了。气矿点砍一个、引导提前，v0.7 一起改。", 24, -1},
+			{"demo-mule", "第二关我卡在最后的防守，三路同时来真的守得住吗？", 8, -1},
+		},
+	},
+	{
+		token: "seed-camp-index30", board: "custom-campaign", kind: "repost", author: "demo-voidray",
+		title:    "转载：老站「自制战役索引帖」里的 30 张经典地图链接整理",
+		hoursAgo: 260,
+		body: `把老索引帖里还能下载的地图重新核对了一遍，失效链接已标注替代地址。
+
+- 原作者：多位（逐条标在表格里），本贴只做链接核对与整理；
+- 本次核对：30 条，其中 24 条可用、4 条已失效（附替代）、2 条作者已删档；
+- 不含任何需要付费或需要注册才能下载的地址。
+
+如果哪位作者不希望自己的作品被列在这里，回帖或私信我，我立刻删掉对应行。`,
+		replies: []seedReply{
+			{"demo-queen", "这份整理救了我，之前一半链接都点不开。已经置顶到索引帖了。", 200, -1},
+			{"demo-battlecruiser", "第 17 条那个作者的网盘换了域名，新地址我发你。", 130, -1},
+		},
+	},
+	{
+		token: "seed-camp-pushfeel", board: "custom-campaign", kind: "discussion", author: "demo-marine",
+		title:    "战役地图怎么做出「推进感」：三张参考图与触发器骨架",
+		hoursAgo: 120,
+		body: `很多人问「为什么你的关卡打起来像是在推进，我的像是在原地刷怪」。差别不在特效，在结构。
+
+## 三个做法
+
+1. **让地形替你标记进度**：每推进一段就换一次地貌（草地 → 焦土 → 熔岩），玩家不用看地图也知道走到哪了；
+2. **据点要有名字**：一个带名字的据点被打下来，比一个无名碉堡有推进感；
+3. **撤退路径要变**：占领后敌人的增援路线要跟着变，否则玩家会觉得自己在白打。
+
+## 触发器骨架
+
+用「区域进入事件 → 设置据点状态 → 重设增援路径」三段，不要在周期事件里轮询。
+
+三张参考图我放在附件里，可以直接照着重画地形。`,
+		replies: []seedReply{
+			{"demo-zealot", "第三点最容易被忽略。我的关卡就是没重设路径，打下来之后敌人还是往老路走，看起来很傻。", 110, -1},
+			{"demo-thor", "参考图收下了，正好在重画第一关的地形。", 80, -1},
+			{"demo-sciencevessel", "补充：据点状态用自定义值存，别用全局变量，读档会丢。", 40, -1},
+		},
+	},
+	{
+		token: "seed-camp-escort-slow", board: "custom-campaign", kind: "discussion", author: "demo-drone",
+		title:    "反馈：第三章第 4 关的护送目标走得太慢，能不能给个加速开关",
+		hoursAgo: 20,
+		body: `第 4 关护送目标的速度大概是普通单位的一半，路上还要停三次。
+
+不是打不过，是等得无聊 —— 每次停下来我都在原地看它走。能不能加一个开关，让它走快一点？
+
+如果不加开关，至少把停顿次数减到一次。`,
+		replies: []seedReply{
+			{"demo-admin", "这个反馈我接受。停顿是为了让玩家有时间布防，但三次确实多。下个版本改成一次停顿 + 提速 20%。", 18, -1},
+			{"demo-mule", "同感。我干脆把这段跳过了。", 14, -1},
+			{"demo-medivac", "顺手做了个改速度的小 mod，需要的话我发出来，但正式版本还是等官方改。", 6, -1},
+		},
+	},
+	{
+		token: "seed-vanilla-ai23", board: "vanilla-mod", kind: "resource", author: "demo-zealot",
+		title:    "原版战役 AI 增强 mod v2.3：围点打援不再是一波流",
+		hoursAgo: 150, featured: true,
+		body: `只改 AI 行为，不改剧情、不改数值。v2.3 的重点是让 AI 会「留着兵」。
+
+## 改了什么
+
+- AI 不再把全部部队一次投入，会留一支预备队（约 20% 兵力）；
+- 玩家撤退时会追击一段距离，但不会一路追到基地；
+- 空投从固定波次改成按玩家防线薄弱处选择。
+
+## 兼容性
+
+- 与原版战役的存档兼容，中途装上也生效；
+- 与其他改 AI 的 mod **不兼容**，两个一起装会互相覆盖。
+
+## 安装
+
+解压到 Mods 目录，进游戏后在「对战 → 自定义 → 依赖项」里勾上。`,
+		replies: []seedReply{
+			{"demo-battlecruiser", "留预备队之后明显难了，以前一波打光就结束了。", 140, -1},
+			{"demo-thor", "空投改成打薄弱处之后，家里的防空终于有用了。", 100, -1},
+			{"demo-marine", "问一下：这个 mod 和难度调整类 mod 会冲突吗？", 60, -1},
+			{"demo-zealot", "只改 AI 行为，不改数值，所以和难度调整类不冲突；和别的 AI mod 冲突。", 58, 2},
+		},
+	},
+	{
+		token: "seed-vanilla-gfx", board: "vanilla-mod", kind: "resource", author: "demo-thor",
+		title:    "画面增强配置包：不改模型，只调光照与后处理",
+		hoursAgo: 400,
+		body: `这个包**不替换任何模型与贴图**，只改光照、雾和后处理参数，所以体积很小（不到 2 MB），也不会改变美术风格。
+
+## 包含
+
+- 三套光照预设：明亮（白天战役）、压抑（虫族关卡）、低饱和（过场多的章节）；
+- 关掉一层默认的雾，远景不再糊成一片；
+- 后处理里把锐化调低一档，避免单位和地形边缘出现白边。
+
+## 安装与回退
+
+解压到安装目录，包里有 recover 脚本可以一键回退到原始配置。
+
+## 已知问题
+
+在部分集成显卡上帧率会掉 5–10 帧，把光照预设换成「明亮」可以缓解。`,
+		replies: []seedReply{
+			{"demo-mule", "「压抑」那套用在虫族关卡里真的对味了。", 380, -1},
+			{"demo-drone", "集成显卡实测确实掉帧，换回明亮预设就好了。", 200, -1},
+		},
+	},
+	{
+		token: "seed-vanilla-bank-sync", board: "vanilla-mod", kind: "discussion", author: "demo-mule",
+		title:    "银行存档在多人模式下不同步，有排查思路吗？",
+		hoursAgo: 30,
+		body: `本地单机存档正常，一进多人房间进度就各存各的。已排除版本不一致的可能（三个人都是同一个版本、同一份地图）。
+
+现象：
+
+- 主机退出后重进，进度回到上一关；
+- 客机拿到的进度反而是最新的。
+
+有人遇到过吗？下一步该查什么？`,
+		replies: []seedReply{
+			{"demo-zealot", "先确认地图是不是把银行写在了玩家本地而不是存档区。多人下银行按玩家分别写，主机那份经常被后加入的覆盖。", 26, -1},
+			{"demo-sciencevessel", "另外看一下地图有没有在关卡结束时主动保存。没有的话，退出时机就决定谁赢。", 22, -1},
+			{"demo-mule", "是地图没在结束时保存。加上之后三方一致了，谢谢。", 4, -1},
+		},
+	},
+	{
+		token: "seed-vanilla-diffcurve", board: "vanilla-mod", kind: "discussion", author: "demo-sciencevessel",
+		title:    "原版战役难度曲线调整：把「背板」换成「应变」",
+		hoursAgo: 210,
+		body: `原版战役的困难难度，很多关卡考的是「你记不记得第 7 分钟来的那一波」。这不算策略，算背诵。
+
+## 我的改法
+
+- 固定波次改成区间波次（比如 6–9 分钟之间随机），并提前给预警；
+- 把「一波全灭你」改成「两波消耗你」，总血量不变但摊开；
+- 关键情报（敌人从哪来）从隐藏改成可见。
+
+## 实测
+
+在 12 张地图上跑了一遍，通关时间平均 +8%，读档次数 -40%。
+
+## 代价
+
+随机化之后速通记录不再可比。这是我要接受的代价，也提前说明。`,
+		replies: []seedReply{
+			{"demo-marine", "读档次数 -40% 这个数据比什么都说明问题。", 200, -1},
+			{"demo-thor", "区间波次加预警，我玩着反而更紧张，因为不知道具体哪分钟来。", 150, -1},
+			{"demo-zealot", "实现上是用周期事件加随机延迟吗？我想抄这个思路。", 60, -1},
+		},
+	},
+	{
+		token: "seed-tp-launcher-win11", board: "tool-player", kind: "discussion", author: "demo-drone",
+		title:    "启动器在 Win11 上偶发读不到存档目录，附排查步骤",
+		hoursAgo: 12,
+		body: `现象：启动器里点「读取进度」偶尔提示找不到存档目录，重启启动器之后又好了。
+
+排查下来是两件事：
+
+1. 启动器把文档目录按「库」的路径解析，而 Win11 上如果开了 OneDrive 同步，文档目录会被重定向；
+2. 重定向之后，路径里带中文用户名的情况下第一次解析会失败，第二次成功（缓存生效）。
+
+临时办法：在启动器的设置里手动指定存档目录，别用自动探测。
+
+已经把日志发给作者了。`,
+		replies: []seedReply{
+			{"demo-medivac", "谢谢日志，问题定位到了：自动探测只重试一次。下个版本改成重试三次，并且把探测到的路径显示在设置页上。", 10, -1},
+			{"demo-mule", "同样的问题，手动指定路径之后确实好了。", 4, -1},
+		},
+	},
+	{
+		token: "seed-tp-backup12", board: "tool-player", kind: "resource", author: "demo-medivac",
+		title:    "战役进度备份工具 v1.2：一键导出银行存档",
+		hoursAgo: 88,
+		body: `小工具，只做一件事：把战役的银行存档按时间打包备份，换机器或重装之后能一键还原。
+
+## 功能
+
+- 一键导出（自动带上时间戳）；
+- 一键还原（会先备份当前存档，不覆盖掉你现有的进度）；
+- 支持自定义备份目录，默认放在文档目录下。
+
+## 不做的事
+
+- 不修改存档内容（只复制）；
+- 不上传任何数据，没有联网代码。
+
+## 需求
+
+Windows 10 及以上。源码在帖子里，介意的话可以自己编译。`,
+		replies: []seedReply{
+			{"demo-mule", "终于不用手动翻目录了。还原那步会先备份当前存档这个设计很贴心。", 70, -1},
+			{"demo-drone", "能加一个「按战役分别备份」的选项吗？我同时玩三个战役，混在一起不好找。", 40, -1},
+			{"demo-medivac", "可以，v1.3 加上分组。", 36, 1},
+		},
+	},
+	{
+		token: "seed-tp-font-fallback", board: "tool-player", kind: "discussion", author: "demo-marine",
+		title:    "汉化补丁装完字体变小方块？先看这份字体回退说明",
+		hoursAgo: 240,
+		body: `汉化补丁最常见的两个问题：字变小方块、或者一部分字变成问号。
+
+## 原因
+
+补丁带的字体只覆盖了常用汉字。遇到生僻字（战役文本里不少）就落到系统的回退字体上，而回退字体如果没被正确声明，就画成方块。
+
+## 怎么修
+
+1. 先确认补丁版本和游戏版本对得上（跨版本用会整段乱码）；
+2. 补丁目录下的 fonts 文件夹要完整覆盖，别只覆盖其中一个；
+3. 还有问题就装一份完整的中文字体，并在系统里设为默认。
+
+## 不是补丁的问题
+
+如果只有过场字幕是方块，那是字幕轨的语言设置，不是字体。`,
+		replies: []seedReply{
+			{"demo-voidray", "补一句：跨版本用真的会整段乱码，我见过有人把第二章的补丁装到第三章上。", 220, -1},
+			{"demo-drone", "按第 2 条覆盖完整之后好了，之前我只覆盖了一半。", 100, -1},
+		},
+	},
+	{
+		token: "seed-tp-conflict", board: "tool-player", kind: "discussion", author: "demo-battlecruiser",
+		title:    "画质补丁与战役 mod 冲突的三种症状，以及各自的开关",
+		hoursAgo: 330,
+		body: `同时装画质补丁和战役 mod 时，症状基本是三种，对应三个不同的开关。
+
+## 症状与做法
+
+1. **单位变成纯白 / 纯紫**：贴图路径冲突。先把画质补丁的「贴图」关掉，只留光照；
+2. **进关卡读条到 90% 卡住**：依赖项顺序问题。在 mod 列表里把战役 mod 排在画质补丁之前；
+3. **过场没有字幕**：画质补丁覆盖了 UI 资源。关掉补丁的 UI 部分。
+
+三种症状我都遇到过，按上面顺序处理没有再复发。`,
+		replies: []seedReply{
+			{"demo-thor", "第 2 条解决了我半年的问题，一直以为是硬盘慢。", 300, -1},
+		},
+	},
+	{
+		token: "seed-td-localizer09", board: "tool-dev", kind: "resource", author: "demo-zealot",
+		title:    "汉化补丁生成器 0.9：从 GameStrings 自动产出对照表",
+		hoursAgo: 110, featured: true,
+		body: `扫描地图内的 GameStrings.txt，生成可直接翻译的对照表并回填；支持增量更新。
+
+## 用法
+
+1. 指向地图目录，工具扫出所有 GameStrings 与 ObjectStrings；
+2. 产出一份 CSV，只包含**新增或改动**的条目；
+3. 翻译完回填，工具只改值不改 key，并保留原有的编码与换行。
+
+## 为什么做增量
+
+全量对照表在第三章这种文本量下已经超过一万行，翻译的人每次都要重新找自己改过哪几行。增量表通常只有几十行。
+
+## 注意
+
+回填前会自动备份原文件。工具不联网。`,
+		replies: []seedReply{
+			{"demo-voidray", "增量这个思路好用，之前做汉化最烦的就是全量重扫。", 100, -1},
+			{"demo-queen", "能导出成「中英对照」两列吗？校对的时候需要同时看。", 70, -1},
+			{"demo-zealot", "下个版本加一个 -bilingual 开关。", 66, 1},
+			{"demo-drone", "编码问题处理得怎么样？我这边有一份是 UTF-8 BOM 的。", 20, -1},
+		},
+	},
+	{
+		token: "seed-td-dynamic-difficulty", board: "tool-dev", kind: "discussion", author: "demo-admin",
+		title:    "触发器里做「动态难度」的三种写法，以及各自的性能代价",
+		hoursAgo: 200,
+		body: `三种写法我都用过，结论先说：**用自定义值缓存，别用周期事件轮询**。
+
+## 三种写法
+
+1. **周期事件轮询**：每 0.5 秒检查一次玩家状态。写起来最直观，但 200 单位规模下每帧多出约 1.5 ms；
+2. **伤害事件回调**：只在挨打时更新难度。开销小，但玩家「不打仗只发展」时难度不会变；
+3. **自定义值缓存**：把统计量写在自定义值里，只在关键节点（占领据点、通关波次）重算。开销最低，也最好调。
+
+## 实测数据
+
+200 单位规模、同一张地图：
+
+- 写法 1：平均帧率 48；
+- 写法 2：57；
+- 写法 3：59，且波动最小。
+
+## 建议
+
+难度调整的粒度本来就不该是「每 0.5 秒」，而是「每打完一波」。粒度选对了，写法自然就是第三种。`,
+		replies: []seedReply{
+			{"demo-zealot", "3 的写法能不能给个骨架？我在周期事件里塞了太多判断，确实卡。", 190, -1},
+			{"demo-admin", "可以，我整理一份贴到下面这个帖子里。", 188, 0},
+			{"demo-sciencevessel", "数据可信。我这边 300 单位规模下，写法 1 掉到 40 以下。", 150, -1},
+			{"demo-marine", "补充一个坑：自定义值在读档之后要重新初始化，不然难度会跳。", 90, -1},
+			{"demo-admin", "对，所以我把重算放在「进入关卡」事件里，不只放在占领事件里。", 88, 3},
+		},
+	},
+	{
+		token: "seed-td-batch-edit", board: "tool-dev", kind: "resource", author: "demo-sciencevessel",
+		title:    "数据编辑器批量改数值的脚本模板（附回滚）",
+		hoursAgo: 350,
+		body: `手改数据编辑器里几百个条目的数值是灾难。这份脚本模板把「改哪一列、改成什么」写在一个表里，批量应用。
+
+## 特点
+
+- 只改指定的列，其余字段原样保留；
+- 每次应用前自动生成一份回滚文件；
+- 改完打印一份 diff（旧值 → 新值），方便 review。
+
+## 用法
+
+把模板里的表格换成你自己的，运行脚本，确认 diff 之后再让它在正式 mod 上跑。**先在副本上跑一遍**。
+
+## 注意
+
+脚本不认识语义。你把单位血量改成 0 它也会照改。`,
+		replies: []seedReply{
+			{"demo-thor", "diff 这一步是关键，不然改错了都不知道。", 330, -1},
+			{"demo-zealot", "能支持条件表达式吗（比如「只改血量大于 200 的单位」）？", 120, -1},
+		},
+	},
+	{
+		token: "seed-td-package", board: "tool-dev", kind: "resource", author: "demo-thor",
+		title:    "打包脚本：一次产出地图 + 依赖 mod + 版本号清单",
+		hoursAgo: 60,
+		body: `发布战役最烦的是「漏带一个依赖」。这个脚本按依赖清单一次打包，并生成一份版本号清单。
+
+## 做什么
+
+- 读地图的依赖项，自动把依赖的 mod 一起打进包里；
+- 生成 VERSION 文件（地图版本 + 每个依赖的版本）；
+- 打包后回读一遍压缩包内容，缺文件直接报错退出。
+
+## 最后一条是有意的
+
+手工打包最容易出的事故就是「包生成了，但里面少一个文件」。回读校验能把它挡在发布之前。`,
+		replies: []seedReply{
+			{"demo-medivac", "回读校验这个做法应该推广到所有发布流程。", 50, -1},
+			{"demo-zealot", "支持命令行参数指定输出目录吗？我想挂到 CI 上。", 30, -1},
+		},
+	},
+	{
+		token: "seed-td-coop-pollution", board: "tool-dev", kind: "discussion", author: "demo-battlecruiser",
+		title:    "同一张地图里同时存在合作指挥官与战役科技，会不会互相污染？",
+		hoursAgo: 180,
+		body: `实验结论：**会**，而且比想象的严重。
+
+## 现象
+
+- 玩家的战役科技等级会串到合作指挥官的天赋上；
+- 反过来，指挥官的天赋点数会出现在战役的升级面板里；
+- 读档之后更乱：两套状态会互相覆盖。
+
+## 原因
+
+两套系统用的是同一份玩家数据目录与同一批升级项。地图里没有给它们各自独立的目录。
+
+## 做法
+
+给两套数据各自独立的目录与升级项，命名前缀分开，并且在关卡开始时显式清一次状态。改完之后没再复现。
+
+如果只想用一套，那就别在同一张地图里同时挂两边的依赖。`,
+		replies: []seedReply{
+			{"demo-admin", "这个结论值得写进开发者文档。我把它整理成一节。", 170, -1},
+			{"demo-sciencevessel", "补充：不止升级项，自定义值也会串，我那边是难度变量被覆盖。", 120, -1},
+			{"demo-zealot", "所以「关卡开始显式清状态」这条要当成必做项，不是可选项。", 60, -1},
+		},
+	},
+	{
+		token: "seed-camp-borderline", board: "custom-campaign", kind: "repost", author: "demo-voidray",
+		title:    "转载：国外作者 Kaldor 的「星海边境」第一章汉化版",
+		hoursAgo: 340,
+		body: `已获得作者授权转载与汉化。文本量约 1.2 万字，欢迎校对，错别字直接回复即可。
+
+- 原作者：Kaldor（授权截图见正文末尾）；
+- 汉化：我 + 两位校对；
+- 版本：对应原版 1.4；
+- 未改动任何数值与关卡结构，只替换文本。
+
+## 已知问题
+
+专有名词前后不一致（前两关叫「星海边境」，第三关开始叫「边区」）。这是原文就有的，我按原文保留了，翻译上做统一的话会偏离原意。`,
+		replies: []seedReply{
+			{"demo-queen", "第三关开始叫「边区」那个我看原文也是这样，保留是对的。", 320, -1},
+			{"demo-drone", "第二关有个 NPC 的台词漏翻了，还是英文。", 100, -1},
+		},
+	},
+}
+
+// ── 公告区的发言权：老站 sections.post_min_role='admin'（第三轮拍板 §1c）────────────────
+//
+// 老站真源：site/crates/sc2clud-core/src/resource.rs 的 PostSection::Announcement.required_permission()
+// == ManageUsers（管理员及以上）；数据侧 sections.post_min_role='admin' + reply_min_role='member'。
+// 新站只有**等级**门槛 min_post_level/min_reply_level，表达不了角色，所以只能落在 board_acls。
+//
+// 为什么是 ACL 白名单，而不是另外两条（数据迁移审计 §6.5 的三条路）：
+//
+//	· ② 给 boards 加一列 min_post_role：新站一人一个基线角色、角色之间**没有继承**
+//	  （0017 四个内置角色 parent_id 全 NULL），「admin 及以上」照样要列两行 —— 加一列不能让这条规则少写一个字，
+//	  只是把它放到第二个地方（多一处要同步的真源），还要动 schema 与 ent；
+//	· ③ 接受一档 + 写进产品说明：零成本，但「公告区只有管理员能发」这句话在真站上就是假的；
+//	· ① 的代价（acl_enabled=true 是白名单制，回复也一起被管住）**正好与老站同形**：
+//	  老站公告区 reply_min_role='member'，所以每个内置角色都要有行 —— 回帖那一档一个字都不收紧。
+//
+// 幂等靠「读现状 → 与目标比对 → 只改不一致的」：跑第二遍 changed=0，不写 updated_at、不长行。
+// **生产也要跑这一步**（现有库的分区是运营数据，只跑 migrate 不会长出新行）：命令是 `forum seed`。
+func seedAnnouncementACL(ctx context.Context, pool *pgxpool.Pool) (int, error) {
+	// 目标 = 四个内置角色的发帖权；回复权一律放开（老站 reply_min_role 恒为 member）。
+	// 老站没有自定义角色这条数据（user_groups 只有 emperor 一条，已按审计 §5.4 处理），
+	// 所以自定义角色按「名字带管理员语义的才发得了」收敛 —— 新站自己的口径，改就改这一条。
+	canPost := map[string]bool{"admin": true, "superadmin": true, "user": false, "creator": false}
+	roles, err := pool.Query(ctx, "SELECT id, key, name FROM roles")
+	if err != nil {
+		return 0, fmt.Errorf("seed: 读角色: %w", err)
+	}
+	defer roles.Close()
+	type row struct {
+		id      int64
+		key     string
+		canPost bool
+	}
+	var want []row
+	for roles.Next() {
+		var id int64
+		var key, name string
+		if err := roles.Scan(&id, &key, &name); err != nil {
+			return 0, fmt.Errorf("seed: 读角色行: %w", err)
+		}
+		p, builtin := canPost[key]
+		if !builtin {
+			p = strings.Contains(name, "管理员")
+		}
+		want = append(want, row{id: id, key: key, canPost: p})
+	}
+	if err := roles.Err(); err != nil {
+		return 0, fmt.Errorf("seed: 遍历角色: %w", err)
+	}
+	if len(want) == 0 {
+		return 0, errors.New("seed: roles 表是空的（0017_seed_authz 没跑？）")
+	}
+
+	var boardID int64
+	var aclEnabled bool
+	if err := pool.QueryRow(ctx,
+		"SELECT id, acl_enabled FROM boards WHERE slug = 'announcement'").Scan(&boardID, &aclEnabled); err != nil {
+		return 0, fmt.Errorf("seed: 读公告区（先跑 seedBoards）: %w", err)
+	}
+
+	changed := 0
+	for _, r := range want {
+		// board_acls 没有 ent 实体（它是纯规则表），所以这一处走原生 SQL —— 与 appeal.go 同一口径。
+		tag, err := pool.Exec(ctx, `
+			INSERT INTO board_acls (board_id, role_id, can_post, can_reply)
+			VALUES ($1, $2, $3, true)
+			ON CONFLICT (board_id, role_id) DO UPDATE
+			   SET can_post = EXCLUDED.can_post, can_reply = true, updated_at = now()
+			 WHERE board_acls.can_post IS DISTINCT FROM EXCLUDED.can_post
+			    OR board_acls.can_reply IS DISTINCT FROM true`,
+			boardID, r.id, r.canPost)
+		if err != nil {
+			return 0, fmt.Errorf("seed: 公告区 ACL（角色 %s）: %w", r.key, err)
+		}
+		changed += int(tag.RowsAffected())
+	}
+	if !aclEnabled {
+		if _, err := pool.Exec(ctx,
+			"UPDATE boards SET acl_enabled = true, updated_at = now() WHERE id = $1", boardID); err != nil {
+			return 0, fmt.Errorf("seed: 开公告区 ACL: %w", err)
+		}
+		changed++
+	}
+	return changed, nil
+}

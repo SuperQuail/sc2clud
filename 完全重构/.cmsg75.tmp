@@ -1,0 +1,24 @@
+三线收口：设计对齐（帖/首页/分区/个人主页/发帖）+ devroom 两屏（AI 审核编辑器 / 搜索）+ 设置契约
+
+三条子 agent 线全部收工，Lead 统一提交（它们都按规矩没有自己 commit）。
+
+改了什么（按线）：
+· w2：前端 API 类型照**后端真名**对齐（cover_hash / avatar_hash / featured(bool) / UserProfile 平铺），
+  mappers 加 imageUrl(hash)，个人主页按 11-profile 重写（hero + 帖子列表 + 举报用户），分区页补卡片⇄紧凑切换；
+  房间与产品共用同一个 ProfileHero（不是抄一份）。根因是**前端类型照设计稿编的**，不是页面写错。
+· w3：发帖页改用设计稿的件 + **下载来源编辑器**（字段名照 dto.go/handler.go 抄，provider 词表照 sources.go 的 switch，
+  PATCH 整条替换语义），新建 source-editor/source-form + 三份测试。
+· w4：devroom **AI 审核编辑器**（模型与端点→温度与上限→两套提示词→试跑→审核历史→阈值/Key/导出权限）
+  与 **19-search 搜索面板**（两档/四态/移动端折叠），数据层按 **d7 §2.1** 对齐（model 改回 deepseek-flash、删掉 max_body_chars）。
+
+Lead 的整合：
+· 设置契约用例修好：它只读 system.ts，而 AI 阈值已搬到 mock/ai.ts → 改成读两个文件（原来这条**在我改之前就是红的**：
+  『mock 里找不到 AI_THRESHOLDS』）。
+· 撤销我上一轮加进 site_settings 的 5 个键（端点/模型/max_tokens/两段提示词）——
+  **d7 §2.2 只把「开关 + 两个举报阈值 + 单帖每日上限」放 site_settings**，模型与提示词属于 ai_config 表；
+  site_settings 只留 ai.review.enabled，并在前端 mock 里补上它。
+· 清掉施工者留下的临时探针 web/scripts/tmp-probe-12.ts。
+
+当前门禁：typecheck ✓ / lint 0 error / **测试 120/120 ✓** / gate:size ✓ / 设置契约用例 ✓；
+**唯一红的是 gate:budget：首屏 JS 174.4/150 KB** —— 来自帖页整屏重写（home 与 topic 都是非懒加载首屏页），
+不是这三线各自的改动（它们都在懒加载 chunk 里）。

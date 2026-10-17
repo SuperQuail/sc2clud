@@ -1,0 +1,87 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+@import "./tokens.css";
+
+html {
+  background: var(--background);
+}
+
+body {
+  margin: 0;
+  color: var(--foreground);
+  font: 14px/1.7 system-ui, -apple-system, 'Segoe UI', 'Noto Sans SC', sans-serif;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * { transition: none !important; animation: none !important; }
+}
+
+/* 夜间模式：我们的开关是 <html data-theme="dark">，不是 Tailwind 默认的 prefers-color-scheme。
+   不接这一条，业务里写 dark: 就会跟着系统走、跟我们的切换按钮脱节。 */
+[data-theme='dark'] {
+  /* 提及蓝在深色下提亮：同一个语义令牌，两套主题各一个值 */
+  --mention-color: #4cc2ff;
+  --mention-color-bg: color-mix(in srgb, var(--mention-color) 18%, transparent);
+}
+
+@custom-variant dark (&:where([data-theme='dark'], [data-theme='dark'] *));
+
+/* Ring UI 的 ButtonSet 会把容器 font-size 设为 0（消 inline-block 之间的间隙），
+   而它的按钮在带 icon 时加 .ring-button-inline，那个类的 font-size:inherit 会继承到这个 0 →
+   **带图标的按钮放进 ButtonSet，文字被算成 0 宽，只剩一个图标**。
+   实测过的受害者：14-home 的视图切换（「卡片」「紧凑列表」）与 15-admin 分区页的上移/下移。
+   逐页套 span 能绕，但每处都有人会忘，所以修在这里一次。 */
+.ring-button-set-buttonSet > .ring-button-inline {
+  /* 用 Ring 自己的变量，才能跟着 heightS/M/L 走（heightS 是 12px，heightM/L 是 14px）。
+     写死 14px 会让 heightS 的图标按钮比同排的纯文字按钮大一号（实测 48px vs 44px）。 */
+  font-size: var(--ring-button-font-size, var(--ring-font-size, 14px));
+}
+
+/* 用户向按钮的「提交中」：一条流动的高光扫过（与 Ring UI 的 loader 观感一致）。
+   只用 transform，尊重 prefers-reduced-motion。 */
+@keyframes vivid-sweep {
+  from { transform: translateX(-100%); }
+  to { transform: translateX(100%); }
+}
+.vivid-loading {
+  position: relative;
+  overflow: hidden;
+}
+.vivid-loading::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(90deg, transparent, color-mix(in srgb, white 34%, transparent), transparent);
+  animation: vivid-sweep 1.4s linear infinite;
+  pointer-events: none;
+}
+@media (prefers-reduced-motion: reduce) {
+  .vivid-loading::after { animation: none; opacity: 0.35; }
+}
+
+/* @提及：只读正文里的链接与编辑器里的芯片**共用同一个令牌**，不要各处分别写颜色。 */
+a[data-mention] {
+  color: var(--mention-color);
+  text-decoration: none;
+}
+a[data-mention]:hover {
+  text-decoration: underline;
+}
+.mention-chip {
+  display: inline-block;
+  padding: 0 4px;
+  border-radius: 4px;
+  background: var(--mention-color-bg);
+  color: var(--mention-color);
+  font-weight: 500;
+  user-select: none;
+}
+/* contenteditable 的占位符（Ring 的 ContentEditable 没有内置 placeholder） */
+[contenteditable][data-placeholder]:empty::before {
+  content: attr(data-placeholder);
+  color: var(--muted-foreground);
+  pointer-events: none;
+}
+[contenteditable] {
+  min-height: 5rem;
+}

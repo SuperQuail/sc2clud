@@ -1,0 +1,17 @@
+{
+ "base": "http://127.0.0.1:19999",
+ "pages": [
+  {
+   "name": "首页(游客)",
+   "url": "/dev/?theme=light",
+   "shot": "trace-home.png",
+   "waitMs": 4000
+  },
+  {
+   "name": "发帖页",
+   "url": "/dev/new?theme=light",
+   "shot": "trace-new.png",
+   "waitMs": 4000
+  }
+ ]
+}

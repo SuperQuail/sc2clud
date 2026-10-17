@@ -1,0 +1,21 @@
+import { spawn } from 'node:child_process';
+import fs from 'node:fs'; import path from 'node:path';
+import { cdp } from './miniws.mjs';
+const PORT=9257;
+const udd = path.join(process.cwd(),'.tools','bt-chrome-'+PORT);
+fs.rmSync(udd,{recursive:true,force:true});
+spawn('C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe',['--headless=new','--disable-gpu','--no-first-run','--host-resolver-rules=MAP sc2clud.test 191.40.41.97','--window-size=1440,900','--remote-debugging-port='+PORT,'--user-data-dir='+udd,'about:blank'],{stdio:'ignore'});
+let page;
+for(let i=0;i<80;i++){try{const l=await (await fetch('http://127.0.0.1:'+PORT+'/json/list')).json();page=l.find(t=>t.type==='page');if(page)break;}catch{} await new Promise(r=>setTimeout(r,250));}
+const c=cdp(page.webSocketDebuggerUrl);
+await c.send('Page.enable'); await c.send('Network.enable'); await c.send('Runtime.enable'); await c.send('Log.enable');
+const bad=[];
+c.on(m=>{ if(m.method==='Network.responseReceived' && m.params.response.status>=400) bad.push(m.params.response.status+' '+m.params.response.url);
+  if(m.method==='Runtime.exceptionThrown') bad.push('EXC '+String(m.params.exceptionDetails?.exception?.description||'').slice(0,200)); });
+await c.send('Page.navigate',{url:'http://sc2clud.test/dev/devroom/?theme=light'});
+await new Promise(r=>setTimeout(r,12000));
+const ev = await c.send('Runtime.evaluate',{expression:'JSON.stringify({tabs:[...document.querySelectorAll("button")].map(b=>b.textContent.trim()).slice(0,20), err:/渲染失败|Failed to fetch/.test(document.body.innerText), text:document.body.innerText.slice(0,300)})',returnByValue:true});
+fs.writeFileSync('shots/blindtest/_devroom.json', JSON.stringify({page:JSON.parse(ev.result.value), errors:bad},null,1),'utf8');
+const s=await c.send('Page.captureScreenshot',{format:'png'});
+fs.writeFileSync('shots/blindtest/full/41b-devroom-via-domain.png', Buffer.from(s.data,'base64'));
+c.close(); process.exit(0);

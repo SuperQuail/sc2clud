@@ -1,0 +1,9 @@
+{{if .Nickname}}{{.Nickname}}，你好：{{else}}你好：{{end}}
+
+{{.Body}}
+{{if .Link}}
+查看详情：{{.Link}}
+{{end}}
+
+-- 
+{{.SiteName}}

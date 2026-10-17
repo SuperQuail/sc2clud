@@ -1,0 +1,75 @@
+/* 设计令牌 = Ring UI 主题的**别名**（唯一真源是库自己的变量）。
+
+   方向很重要：**我们引用库，不覆盖库**。
+   历史教训：曾经反过来（把 --ring-* 覆盖成我们的值），顺手覆盖了 --ring-unit，
+   而按钮高度是 calc(3 * var(--ring-unit)) —— 所有控件缩成一半、文字被挤出按钮。
+   现在只读不写：Ring UI 的尺寸与派生值全归它自己，我们只取颜色。
+
+   深色：Ring UI 的 .ring-ui-theme-dark 一翻，下面的别名自动跟着翻，不需要第二处开关。 */
+:root {
+  --radius: 3px;
+
+  /* 设计语言 B 的强调色（赞赏/活动这类要跳出来的动作） */
+  --vivid-accent: #f97316;
+
+  /* 开关旋钮：**两种主题下都必须浅色**——它模拟物理开关的滑块，
+     用 --background 会在夜间变成黑色（踩过）。 */
+  /* @提及的专用蓝（B 站那一档）：**只在这里定义一次**，
+   * 编辑器里的芯片与只读正文里的链接都引用它，不许各处各写一个蓝。 */
+  --mention-color: #00a1d6;
+  --mention-color-bg: color-mix(in srgb, var(--mention-color) 14%, transparent);
+
+  --switch-knob: #ffffff;
+  --switch-track: var(--muted);
+
+  /* ── 表面与文字 ── */
+  --background: var(--ring-content-background-color);
+  --foreground: var(--ring-text-color);
+  --card: var(--ring-content-background-color);
+  --card-foreground: var(--ring-text-color);
+  --popover: var(--ring-popup-background-color, var(--ring-content-background-color));
+  --popover-foreground: var(--ring-text-color);
+  --muted: var(--ring-secondary-background-color);
+  --muted-foreground: color-mix(in srgb, var(--ring-text-color) 62%, transparent);
+  --accent: var(--ring-hover-background-color);
+  --accent-foreground: var(--ring-text-color);
+
+  /* ── 线 ── */
+  --border: var(--ring-line-color);
+  --input: var(--ring-line-color);
+
+  /* ── 品牌与状态 ── */
+  --primary: var(--ring-button-primary-background-color, var(--ring-link-color));
+  --primary-foreground: #ffffff;
+  --ring: var(--ring-button-primary-background-color, var(--ring-link-color));
+  --destructive: var(--ring-error-color, #db5860);
+  --destructive-foreground: #ffffff;
+  --secondary: var(--ring-secondary-background-color);
+  --secondary-foreground: var(--ring-text-color);
+}
+
+/* 给 Tailwind 生成工具类（bg-background / text-foreground / border-border …） */
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --radius-sm: calc(var(--radius) - 1px);
+  --radius-md: var(--radius);
+  --radius-lg: calc(var(--radius) + 2px);
+}

@@ -1,0 +1,101 @@
+{
+ "base": "http://127.0.0.1:19999",
+ "pages": [
+  {
+   "name": "首页(游客)",
+   "url": "/dev/?theme=light",
+   "shot": "01-home-guest.png",
+   "waitMs": 3000
+  },
+  {
+   "name": "分区页",
+   "url": "/dev/b/general?theme=light",
+   "shot": "02-board.png"
+  },
+  {
+   "name": "帖子页",
+   "url": "/dev/t/3db0425a-1053-5011-8484-a58e828fdd4d?theme=light",
+   "shot": "03-topic.png"
+  },
+  {
+   "name": "个人主页",
+   "url": "/dev/u/Alenger?theme=light",
+   "shot": "04-profile.png"
+  },
+  {
+   "name": "登录页",
+   "url": "/dev/login?theme=light",
+   "shot": "05-login.png"
+  },
+  {
+   "name": "注册页",
+   "url": "/dev/register?theme=light",
+   "shot": "06-register.png"
+  },
+  {
+   "name": "激活页",
+   "url": "/dev/register/verify?theme=light",
+   "shot": "07-verify.png"
+  },
+  {
+   "name": "申诉页",
+   "url": "/dev/appeal?theme=light",
+   "shot": "08-appeal.png"
+  },
+  {
+   "name": "搜索页",
+   "url": "/dev/search?theme=light",
+   "shot": "09-search.png"
+  },
+  {
+   "name": "下载页",
+   "url": "/dev/download?theme=light",
+   "shot": "10-download.png"
+  },
+  {
+   "name": "404页",
+   "url": "/dev/this-does-not-exist?theme=light",
+   "shot": "11-404.png"
+  },
+  {
+   "name": "发帖页",
+   "url": "/dev/new?theme=light",
+   "shot": "12-compose.png"
+  },
+  {
+   "name": "设置页",
+   "url": "/dev/settings?theme=light",
+   "shot": "13-settings.png"
+  },
+  {
+   "name": "通知页",
+   "url": "/dev/notifications?theme=light",
+   "shot": "14-notifications.png"
+  },
+  {
+   "name": "私信页",
+   "url": "/dev/messages?theme=light",
+   "shot": "15-messages.png"
+  },
+  {
+   "name": "管理后台-用户",
+   "url": "/dev/admin/users?theme=light",
+   "shot": "16-admin-users.png"
+  },
+  {
+   "name": "管理后台-角色",
+   "url": "/dev/admin/roles?theme=light",
+   "shot": "17-admin-roles.png"
+  },
+  {
+   "name": "管理后台-分区",
+   "url": "/dev/admin/boards?theme=light",
+   "shot": "18-admin-boards.png"
+  },
+  {
+   "name": "管理后台-审核",
+   "url": "/dev/admin/review?theme=light",
+   "shot": "19-admin-review.png"
+  }
+ ]
+}
