@@ -24,6 +24,11 @@
 
 > **别和上游搞混**：老站的公开原始仓库是 [`SuperQuail/sc2clud`](https://github.com/SuperQuail/sc2clud)（只读参考，自 2026-10-12 起不再更新）；**本仓库 `Tang-Tian-dev/SC2clud`（私有）才是现行 Go + React 实现**，默认分支 `main`。
 
+## 分支与改动流程
+
+- **`main` 是受保护分支：改动一律走 Pull Request**，不直接推。
+- 日常工作分支 `master`（或 `feat/xxx`）：提交后推该分支，再开 PR 合入 `main`。
+- 唯一例外：2026-10-17 新实现接管 `main`（老站历史作为第一父保留）。**之后不再直推 `main`。**
 ## 环境
 
 - Go 装在仓库内：`.tools/go/bin/go.exe`（不改系统 PATH）；Node 22+ / pnpm 11。
